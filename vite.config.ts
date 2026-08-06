@@ -18,7 +18,7 @@ export default defineConfig({
     tsConfigPaths(),
     // Plugin de build do Nitro; gera o output de servidor (preset Cloudflare
     // por padrão, ajuste "preset" aqui se o alvo de deploy mudar).
-    nitro({ preset: "cloudflare_module" }),
+    nitro({ preset: "vercel" }),
   ],
   resolve: {
     dedupe: ["react", "react-dom", "@tanstack/react-router", "@tanstack/react-start"],
