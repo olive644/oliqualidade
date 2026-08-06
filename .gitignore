@@ -1,0 +1,8 @@
+node_modules/
+.output/
+.wrangler/
+.vinxi/
+.nitro/
+dist/
+*.local
+.DS_Store

@@ -1,0 +1,264 @@
+import type {
+  Column,
+  Dashboard,
+  Kind,
+  Row,
+  Widget,
+  WidgetSize,
+  WidgetSpan,
+  WidgetType,
+} from "@/lib/types";
+import { numericKinds } from "@/lib/types";
+
+export function newWidgetId(): string {
+  return `widget_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// Tipos de coluna aceitos como agrupamento (eixo X de linha/area, categoria
+// de barra/pizza/ranking/mapa). Reaproveitado tanto no filtro de colunas
+// candidatas quanto no arrastar-e-soltar de coluna para slot de gráfico
+// (ver columnDragType/columnDropTypes).
+export const groupableKinds: Kind[] = ["category", "text", "date"];
+
+const COLUMN_DRAG_PREFIX = "application/x-oliqualidade-col-";
+
+/**
+ * Nome do tipo MIME sintético usado no dataTransfer ao arrastar uma coluna
+ * (painel "Colunas visíveis") para um slot de campo de gráfico (agrupar
+ * por / coluna numérica). O tipo da coluna fica embutido no próprio nome do
+ * tipo MIME porque, por restrição do HTML5 Drag and Drop, o valor real
+ * (dataTransfer.getData) só fica disponível no evento de drop, mas o slot
+ * de destino precisa saber durante o dragover se aceita aquela coluna, para
+ * decidir se mostra o destaque visual e se chama preventDefault (sem isso o
+ * drop nunca dispara). Como os valores de Kind já são só ascii minúsculo,
+ * não há risco de perda de informação por normalização de case do
+ * navegador nesse tipo MIME.
+ */
+export function columnDragType(kind: Kind): string {
+  return `${COLUMN_DRAG_PREFIX}${kind}`;
+}
+
+/**
+ * Verifica se algum dos tipos presentes no dataTransfer (dragover ou drop)
+ * corresponde a uma coluna de um dos tipos aceitos pelo slot.
+ */
+export function columnDropAccepted(types: readonly string[], accepts: readonly Kind[]): boolean {
+  return accepts.some((k) => types.includes(columnDragType(k)));
+}
+
+/**
+ * Extrai o tipo da coluna sendo arrastada a partir de dataTransfer.types,
+ * mesmo durante o dragover (quando dataTransfer.getData ainda não está
+ * disponível por restrição do navegador). Usado para diferenciar "isto não
+ * é uma coluna sendo arrastada" (ex.: reordenar um widget, que também usa
+ * drag and drop mas não define nenhum tipo com este prefixo) de "é uma
+ * coluna, mas de um tipo que este campo não aceita", para só avisar o
+ * usuário no segundo caso.
+ */
+export function draggedColumnKind(types: readonly string[]): Kind | null {
+  for (const t of types) {
+    if (t.startsWith(COLUMN_DRAG_PREFIX)) return t.slice(COLUMN_DRAG_PREFIX.length) as Kind;
+  }
+  return null;
+}
+
+// Abaixo desse percentual de preenchimento, uma coluna e tratada como
+// "quase vazia" e evitada como agrupamento padrao, mesmo que seja a
+// primeira coluna categorica/de texto encontrada na planilha (caso comum
+// de colunas extras ou mal importadas, ver pickBestGroupColumn).
+const MIN_FILL_RATIO = 0.2;
+
+// Nomes comuns de coluna sequencial em planilhas financeiras (tabela Price,
+// SAC etc.), usados para achar um eixo X razoavel em linha/area quando nao
+// ha coluna de data preenchida.
+const SEQUENTIAL_KEY_HINT =
+  /parcela|periodo|per[i]odo|sequencia|sequ[e]ncia|indice|[i]ndice|ordem|n[o]\.?(\s|$)|numero|n[u]mero|\bmes\b|m[e]s|month|installment/i;
+
+function fillRatio(col: Column, rows: Row[]): number {
+  if (!rows.length) return 1; // sem linhas para avaliar (ex.: testes unitarios): nao penaliza
+  let filled = 0;
+  for (const r of rows) {
+    const v = r[col.key];
+    if (v !== null && v !== "") filled++;
+  }
+  return filled / rows.length;
+}
+
+/**
+ * Escolhe a melhor coluna entre candidatas para uso como agrupamento
+ * padrao, preferindo a mais preenchida. Colunas quase vazias (abaixo de
+ * MIN_FILL_RATIO) so sao escolhidas se nao houver alternativa melhor, para
+ * o painel nao cair inteiro em "Nao informado" por causa de uma coluna
+ * residual ou mal importada da planilha.
+ */
+export function pickBestGroupColumn(candidates: Column[], rows: Row[]): Column | undefined {
+  if (!candidates.length) return undefined;
+  const scored = candidates.map((c) => ({ c, fill: fillRatio(c, rows) }));
+  const usable = scored.filter((s) => s.fill >= MIN_FILL_RATIO);
+  const pool = usable.length ? usable : scored;
+  return pool.reduce((best, cur) => (cur.fill > best.fill ? cur : best)).c;
+}
+
+/**
+ * Para linha/area sem coluna de data preenchida, procura uma coluna
+ * numerica que pareca um indice sequencial (parcela, mes, periodo etc.)
+ * para servir de eixo X, em vez de cair numa coluna categorica sem
+ * nenhum sentido de evolucao no tempo.
+ */
+function pickSequentialIndexColumn(columns: Column[], rows: Row[]): Column | undefined {
+  const candidates = columns.filter(
+    (c) => numericKinds.includes(c.kind) && SEQUENTIAL_KEY_HINT.test(`${c.label} ${c.key}`),
+  );
+  return pickBestGroupColumn(candidates, rows);
+}
+
+export function defaultSpan(type: WidgetType): WidgetSpan {
+  if (type === "metric" || type === "metric-trend" || type === "pie" || type === "rating") return 1;
+  if (type === "bar" || type === "ranking" || type === "map") return 2;
+  return 3; // line, area, table
+}
+
+export function defaultSize(type: WidgetType): WidgetSize {
+  if (type === "metric" || type === "metric-trend" || type === "rating") return "sm";
+  if (type === "map") return "lg";
+  return "md";
+}
+
+/**
+ * Cria um widget novo com valores padrão sensatos a partir das colunas
+ * disponíveis no painel. Usado tanto ao adicionar um widget pela primeira
+ * vez quanto pela migração de painéis antigos (ver buildDefaultWidgets).
+ */
+export function createWidget(
+  type: WidgetType,
+  columns: Column[],
+  seed?: { groupKey?: string; valueKey?: string; op?: Widget["op"] },
+  rows: Row[] = [],
+): Widget {
+  const nums = columns.filter((c) => numericKinds.includes(c.kind));
+  const catCandidates = columns.filter((c) => c.kind === "category" || c.kind === "text");
+  const cat = pickBestGroupColumn(catCandidates, rows);
+  const dateCol = columns.find((c) => c.kind === "date");
+  const dateColFilled = dateCol && fillRatio(dateCol, rows) >= MIN_FILL_RATIO ? dateCol : undefined;
+  const groupable = columns.filter((c) => groupableKinds.includes(c.kind));
+  const groupableBest = pickBestGroupColumn(groupable, rows);
+  const widget: Widget = {
+    id: newWidgetId(),
+    type,
+    span: defaultSpan(type),
+    size: defaultSize(type),
+  };
+  if (type === "metric" || type === "metric-trend" || type === "rating") {
+    const metricKey = seed?.valueKey ?? nums[0]?.key;
+    if (metricKey) widget.metricKey = metricKey;
+    if (type === "metric-trend") {
+      const trendGroupKey = seed?.groupKey ?? dateCol?.key;
+      if (trendGroupKey) widget.groupKey = trendGroupKey;
+    }
+    if (type === "rating") widget.scaleMax = 5;
+  } else if (
+    type === "bar" ||
+    type === "pie" ||
+    type === "line" ||
+    type === "area" ||
+    type === "ranking" ||
+    type === "map"
+  ) {
+    const groupKey =
+      seed?.groupKey ??
+      (type === "line" || type === "area"
+        ? (dateColFilled?.key ?? pickSequentialIndexColumn(columns, rows)?.key)
+        : undefined) ??
+      cat?.key ??
+      groupableBest?.key;
+    const valueKey = seed?.valueKey ?? nums[0]?.key;
+    if (groupKey) widget.groupKey = groupKey;
+    if (valueKey) widget.valueKey = valueKey;
+    widget.op = seed?.op ?? "sum";
+    if (type === "ranking") widget.topN = 5;
+  }
+  return widget;
+}
+
+/**
+ * Gera a grade padrão de widgets para painéis criados antes do modelo de
+ * widgets configuráveis existir. Reproduz o layout fixo antigo (3 cartões de
+ * métrica + barra + pizza + linha + tabela) para que nada mude visualmente
+ * na primeira vez que um painel salvo é reaberto.
+ */
+export function buildDefaultWidgets(
+  columns: Column[],
+  chartConfig?: Dashboard["chartConfig"],
+  rows: Row[] = [],
+): Widget[] {
+  const nums = columns.filter((c) => numericKinds.includes(c.kind));
+  const catCandidates = columns.filter((c) => c.kind === "category" || c.kind === "text");
+  const cat = pickBestGroupColumn(catCandidates, rows);
+  const dateCol = columns.find((c) => c.kind === "date");
+  const dateColFilled = dateCol && fillRatio(dateCol, rows) >= MIN_FILL_RATIO ? dateCol : undefined;
+  const groupable = columns.filter((c) => groupableKinds.includes(c.kind));
+  const groupableBest = pickBestGroupColumn(groupable, rows);
+  const primary = nums[0];
+  const widgets: Widget[] = [];
+
+  for (const c of nums.slice(0, 3)) {
+    widgets.push({ id: newWidgetId(), type: "metric", metricKey: c.key, span: 1, size: "sm" });
+  }
+
+  const barGroupKey = chartConfig?.groupKey ?? cat?.key ?? groupableBest?.key;
+  const barValueKey = chartConfig?.valueKey ?? primary?.key;
+  if (barGroupKey && barValueKey) {
+    widgets.push({
+      id: newWidgetId(),
+      type: "bar",
+      groupKey: barGroupKey,
+      valueKey: barValueKey,
+      op: chartConfig?.op ?? "sum",
+      span: 2,
+      size: "md",
+    });
+  }
+
+  if (cat && primary) {
+    widgets.push({
+      id: newWidgetId(),
+      type: "pie",
+      groupKey: cat.key,
+      valueKey: primary.key,
+      op: "sum",
+      span: 1,
+      size: "md",
+    });
+  }
+
+  const lineGroupKey = dateColFilled?.key ?? pickSequentialIndexColumn(columns, rows)?.key;
+  if (lineGroupKey && primary) {
+    widgets.push({
+      id: newWidgetId(),
+      type: "line",
+      groupKey: lineGroupKey,
+      valueKey: primary.key,
+      op: "sum",
+      span: 3,
+      size: "md",
+    });
+  }
+
+  widgets.push({ id: newWidgetId(), type: "table", span: 3, size: "md" });
+
+  return widgets;
+}
+
+// Classes literais (não construídas dinamicamente) para o scanner do Tailwind encontrar.
+export function spanClass(span: WidgetSpan): string {
+  if (span === 1) return "lg:col-span-1";
+  if (span === 2) return "lg:col-span-2";
+  return "lg:col-span-3";
+}
+
+export function sizeClass(size: WidgetSize, type: WidgetType): string {
+  if (type === "table") return "";
+  if (size === "sm") return "min-h-36";
+  if (size === "md") return "min-h-80";
+  return "min-h-[28rem]";
+}
