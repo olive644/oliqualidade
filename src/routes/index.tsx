@@ -784,29 +784,43 @@ function Onboarding({
     <div
       role="dialog"
       aria-label="Boas-vindas ao Oli.Qualidade"
-      className="fixed bottom-4 left-4 z-50 w-80 border bg-background shadow-panel"
+      className="fixed bottom-5 left-5 z-50 w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-panel"
     >
-      <div className="flex items-center justify-between border-b p-3">
-        <span className="font-mono text-[10px] uppercase text-muted-foreground">
+      <div className="flex items-center gap-1.5 px-4 pt-4" aria-hidden="true">
+        {onboardingSteps.map((_, i) => (
+          <span
+            key={i}
+            className={cn(
+              "h-1 flex-1 rounded-full transition-colors",
+              i <= step ? "bg-primary" : "bg-muted",
+            )}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between px-4 pt-2.5">
+        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
           Passo {step + 1} de {onboardingSteps.length}
         </span>
-        <button aria-label="Fechar boas-vindas" onClick={dismiss}>
-          <X className="size-4 text-muted-foreground" />
+        <button
+          aria-label="Fechar boas-vindas"
+          onClick={dismiss}
+          className="rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <X className="size-4" />
         </button>
       </div>
-      <div className="p-4">
+      <div className="p-4 pt-2.5">
         <h2 className="font-display text-sm font-semibold">{current.title}</h2>
-        <p className="mt-1.5 text-xs text-muted-foreground">{current.text}</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{current.text}</p>
       </div>
-      <div className="flex items-center justify-between border-t p-3">
-        <button className="text-xs text-muted-foreground hover:underline" onClick={dismiss}>
+      <div className="flex items-center justify-between border-t border-border bg-canvas/60 p-3">
+        <button
+          className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          onClick={dismiss}
+        >
           Pular
         </button>
-        <Button
-          size="sm"
-          className="rounded-none"
-          onClick={() => (last ? dismiss() : setStep(step + 1))}
-        >
+        <Button size="sm" onClick={() => (last ? dismiss() : setStep(step + 1))}>
           {last ? "Concluir" : "Próximo"}
         </Button>
       </div>
@@ -828,92 +842,153 @@ function Home(p: {
     (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt,
   );
   const [pendingDelete, setPendingDelete] = useState<Dashboard | null>(null);
+  const totalRows = p.dashboards.reduce((sum, d) => sum + d.rows.length, 0);
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="oliam-topbar">
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <header className="oliam-topbar sticky top-0 z-20">
         <div className="flex items-center gap-3">
           <Mark />
-          <strong className="font-display text-lg">Oli.Qualidade</strong>
+          <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <ThemeToggle theme={p.theme} toggle={p.toggleTheme} />
-          <Button className="rounded-none" onClick={p.newDash}>
+          <Button onClick={p.newDash} className="shadow-sm">
             <Plus />
             Novo painel
           </Button>
         </div>
       </header>
-      <section className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-        <div className="mb-8">
-          <p className="mb-2 font-mono text-xs uppercase text-primary">Seus painéis</p>
-          <h1 className="font-display text-3xl font-medium">Escolha um painel para continuar</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Cada painel guarda seus próprios dados, filtros e gráficos, de forma independente.
-          </p>
-        </div>
-        {sorted.length === 0 ? (
-          <button className="oliam-dropzone w-full" onClick={p.newDash}>
-            <Plus className="size-6 text-primary" />
-            <strong>Criar seu primeiro painel</strong>
-            <span className="text-sm text-muted-foreground">Envie uma planilha para começar</span>
-          </button>
-        ) : (
-          <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
-            {sorted.map((d, i) => (
-              <article
-                key={d.id}
-                className="oliam-widget group relative bg-background"
-                style={{ animationDelay: `${i * 30}ms` }}
-              >
-                <button className="block w-full p-5 text-left" onClick={() => p.openDash(d.id)}>
-                  <span className="mb-3 flex items-center gap-2">
-                    <span className="size-2 rounded-full" style={{ background: hue(d.id) }} />
-                    {d.pinned && <Pin className="size-3 fill-primary text-primary" />}
-                    <span className="truncate font-display text-base font-medium">{d.name}</span>
-                  </span>
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {d.rows.length} linhas · {d.columns.length} colunas
-                  </span>
-                  <span className="mt-1 block text-[11px] text-muted-foreground">
-                    Atualizado em {new Date(d.updatedAt).toLocaleDateString("pt-BR")}
-                  </span>
-                </button>
-                <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    aria-label={d.pinned ? "Desafixar painel" : "Fixar painel"}
-                    onClick={() => p.togglePin(d.id)}
-                  >
-                    <Pin className={cn("size-3.5", d.pinned && "fill-primary text-primary")} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    aria-label="Duplicar painel"
-                    onClick={() => p.duplicateDash(d.id)}
-                  >
-                    <Copy className="size-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    aria-label="Excluir painel"
-                    onClick={() => setPendingDelete(d)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
+      <section className="relative flex-1 overflow-hidden">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 opacity-70"
+          style={{
+            background:
+              "radial-gradient(60% 100% at 15% 0%, color-mix(in oklab, var(--primary) 16%, transparent), transparent), radial-gradient(45% 80% at 85% 10%, color-mix(in oklab, var(--secondary-accent) 14%, transparent), transparent)",
+          }}
+          aria-hidden="true"
+        />
+        <div className="mx-auto w-full max-w-6xl px-6 pb-14 pt-12">
+          <div className="mb-9 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide text-primary shadow-sm">
+                <span className="size-1.5 rounded-full bg-primary" />
+                Seus painéis
+              </p>
+              <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+                Escolha um painel para continuar
+              </h1>
+              <p className="mt-2.5 max-w-lg text-sm text-muted-foreground">
+                Cada painel guarda seus próprios dados, filtros e gráficos, de forma independente.
+              </p>
+            </div>
+            {sorted.length > 0 && (
+              <div className="flex shrink-0 gap-3">
+                <div className="rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
+                  <p className="font-display text-xl font-semibold">{p.dashboards.length}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Painéis
+                  </p>
                 </div>
-              </article>
-            ))}
+                <div className="rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
+                  <p className="font-display text-xl font-semibold">{fmt(totalRows, "number")}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Linhas ao todo
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+          {sorted.length === 0 ? (
+            <button className="oliam-dropzone w-full" onClick={p.newDash}>
+              <Plus className="size-6 text-primary" />
+              <strong>Criar seu primeiro painel</strong>
+              <span className="text-sm text-muted-foreground">Envie uma planilha para começar</span>
+            </button>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {sorted.map((d, i) => (
+                <article
+                  key={d.id}
+                  className="oliam-widget group relative bg-card"
+                  style={{ animationDelay: `${i * 30}ms` }}
+                >
+                  <span
+                    className="absolute inset-x-0 top-0 h-1"
+                    style={{ background: hue(d.id) }}
+                    aria-hidden="true"
+                  />
+                  <button
+                    className="block w-full p-5 pt-6 text-left"
+                    onClick={() => p.openDash(d.id)}
+                  >
+                    <span className="mb-4 flex items-center gap-2.5">
+                      <span
+                        className="flex size-9 shrink-0 items-center justify-center rounded-xl font-display text-sm font-semibold text-white"
+                        style={{ background: hue(d.id) }}
+                        aria-hidden="true"
+                      >
+                        {d.name.trim().charAt(0).toUpperCase() || "P"}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          {d.pinned && (
+                            <Pin className="size-3 shrink-0 fill-primary text-primary" />
+                          )}
+                          <span className="truncate font-display text-base font-semibold">
+                            {d.name}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                          Atualizado em {new Date(d.updatedAt).toLocaleDateString("pt-BR")}
+                        </span>
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-2 border-t border-border pt-3 font-mono text-[11px] text-muted-foreground">
+                      <span className="rounded-md bg-muted px-1.5 py-0.5">
+                        {d.rows.length} linhas
+                      </span>
+                      <span className="rounded-md bg-muted px-1.5 py-0.5">
+                        {d.columns.length} colunas
+                      </span>
+                    </span>
+                  </button>
+                  <div className="absolute right-2 top-3.5 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 bg-card/80 backdrop-blur-sm"
+                      aria-label={d.pinned ? "Desafixar painel" : "Fixar painel"}
+                      onClick={() => p.togglePin(d.id)}
+                    >
+                      <Pin className={cn("size-3.5", d.pinned && "fill-primary text-primary")} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 bg-card/80 backdrop-blur-sm"
+                      aria-label="Duplicar painel"
+                      onClick={() => p.duplicateDash(d.id)}
+                    >
+                      <Copy className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 bg-card/80 backdrop-blur-sm"
+                      aria-label="Excluir painel"
+                      onClick={() => setPendingDelete(d)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
       <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
-        <AlertDialogContent className="rounded-none">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir "{pendingDelete?.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -922,9 +997,9 @@ function Home(p: {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-none">Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (pendingDelete) p.deleteDash(pendingDelete.id);
                 setPendingDelete(null);
@@ -987,7 +1062,15 @@ function Empty(p: {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-canvas">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[28rem] opacity-70"
+        style={{
+          background:
+            "radial-gradient(50% 90% at 20% 0%, color-mix(in oklab, var(--primary) 16%, transparent), transparent), radial-gradient(40% 70% at 90% 15%, color-mix(in oklab, var(--secondary-accent) 14%, transparent), transparent)",
+        }}
+        aria-hidden="true"
+      />
       <header className="oliam-topbar">
         <div className="flex items-center gap-3">
           {p.showBack && (
@@ -1001,7 +1084,7 @@ function Empty(p: {
             </Button>
           )}
           <Mark />
-          <strong className="font-display text-lg">Oli.Qualidade</strong>
+          <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
         </div>
         <div className="flex items-center gap-3">
           <span className="hidden text-xs text-muted-foreground sm:inline">
@@ -1012,8 +1095,11 @@ function Empty(p: {
       </header>
       <section className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-6 py-12">
         <div className="mb-10">
-          <p className="mb-3 font-mono text-xs uppercase text-primary">Novo painel</p>
-          <h1 className="font-display text-4xl font-medium sm:text-5xl">
+          <p className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-xs uppercase tracking-wide text-primary shadow-sm">
+            <span className="size-1.5 rounded-full bg-primary" />
+            Novo painel
+          </p>
+          <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
             Solte a planilha,
             <br />
             receba o relatório.
@@ -1034,8 +1120,10 @@ function Empty(p: {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <Upload className="size-6 text-primary" />
-          <strong>
+          <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Upload className="size-6" />
+          </span>
+          <strong className="font-display text-base">
             {p.loading
               ? (p.loadingLabel ?? "Lendo…")
               : dragging
@@ -1049,7 +1137,7 @@ function Empty(p: {
           )}
         </button>
         {p.importError && (
-          <p className="mt-3 flex items-center gap-2 border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <p className="mt-3 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
             <AlertTriangle className="size-3.5 shrink-0" />
             {p.importError}
           </p>
@@ -1087,21 +1175,16 @@ function Empty(p: {
           </button>
         </div>
         {sheetOpen && (
-          <div className="mt-3 border p-4">
+          <div className="mt-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
             <label className="mb-2 block text-xs font-medium">Google Sheets público</label>
-            <div className="flex">
+            <div className="flex gap-2">
               <input
                 className="oliam-input min-w-0 flex-1"
                 placeholder="Cole o link da planilha"
                 value={p.url}
                 onChange={(e) => p.setUrl(e.target.value)}
               />
-              <Button
-                variant="outline"
-                className="rounded-none border-l-0"
-                disabled={!p.url || p.loading}
-                onClick={p.sheet}
-              >
+              <Button variant="outline" disabled={!p.url || p.loading} onClick={p.sheet}>
                 {p.loading ? "Lendo…" : "Conectar"}
               </Button>
             </div>
@@ -1112,7 +1195,7 @@ function Empty(p: {
           </div>
         )}
         {p.editor && (
-          <div className="mt-3 border p-4">
+          <div className="mt-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
             <label className="mb-2 block text-xs font-medium">Colar dados</label>
             <textarea
               className="oliam-input min-h-28 w-full font-mono text-xs"
@@ -1121,7 +1204,7 @@ function Empty(p: {
               onChange={(e) => p.setPaste(e.target.value)}
             />
             <div className="mt-2 text-right">
-              <Button className="rounded-none" disabled={!p.paste} onClick={p.pasteData}>
+              <Button disabled={!p.paste} onClick={p.pasteData}>
                 Revisar dados
               </Button>
             </div>
@@ -1142,11 +1225,11 @@ function Review(p: {
   importWarning: string | null;
 }) {
   return (
-    <div>
+    <div className="min-h-screen bg-canvas">
       <header className="oliam-topbar">
         <div className="flex items-center gap-3">
           <Mark />
-          <strong className="font-display text-lg">Oli.Qualidade</strong>
+          <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
           <span className="text-muted-foreground">/ Revisão de estrutura</span>
         </div>
         <Button variant="ghost" onClick={p.back}>
@@ -1155,34 +1238,42 @@ function Review(p: {
       </header>
       <div className="mx-auto max-w-5xl px-5 py-10">
         {p.importWarning && (
-          <p className="mb-6 flex items-center gap-2 border border-primary/40 bg-tint px-3 py-2 text-xs text-foreground">
+          <p className="mb-6 flex items-center gap-2 rounded-xl border border-primary/30 bg-tint px-3 py-2.5 text-xs text-foreground">
             <AlertTriangle className="size-3.5 shrink-0 text-primary" />
             {p.importWarning}
           </p>
         )}
         <div className="mb-8 flex flex-wrap justify-between gap-4">
           <div>
-            <p className="font-mono text-xs text-primary">ETAPA 1 DE 2 · OBRIGATÓRIA</p>
-            <h1 className="mt-2 font-display text-3xl">Confirme como cada coluna deve ser lida</h1>
+            <p className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-xs text-primary shadow-sm">
+              <span className="size-1.5 rounded-full bg-primary" />
+              ETAPA 1 DE 2 · OBRIGATÓRIA
+            </p>
+            <h1 className="mt-3 font-display text-3xl font-semibold tracking-tight">
+              Confirme como cada coluna deve ser lida
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               IDs e códigos numéricos devem ser definidos como texto para nunca entrarem em totais.
             </p>
           </div>
-          <p className="font-mono text-xs text-muted-foreground">
+          <p className="whitespace-nowrap rounded-2xl border border-border bg-card px-4 py-3 font-mono text-xs text-muted-foreground shadow-sm">
             {p.name}
             <br />
             {p.rows.length} linhas · {p.columns.length} colunas
           </p>
         </div>
-        <div className="border">
-          <div className="grid grid-cols-[32px_1.3fr_1fr_1fr] border-b bg-muted px-3 py-2 text-xs text-muted-foreground">
+        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="grid grid-cols-[32px_1.3fr_1fr_1fr] border-b border-border bg-muted/60 px-3 py-2.5 font-mono text-[11px] tracking-wide text-muted-foreground">
             <span />
             <span>COLUNA</span>
             <span>TIPO E FORMATO</span>
             <span>AMOSTRA</span>
           </div>
           {p.columns.map((c, i) => (
-            <div key={c.key} className="border-b px-3 py-3 last:border-0">
+            <div
+              key={c.key}
+              className="border-b border-border px-3 py-3 transition-colors last:border-0 hover:bg-accent/40"
+            >
               <div className="grid grid-cols-[32px_1.3fr_1fr_1fr] items-center">
                 <GripVertical className="size-4 text-muted-foreground" />
                 <input
@@ -1239,7 +1330,7 @@ function Review(p: {
           ))}
         </div>
         <div className="mt-8 text-right">
-          <Button className="rounded-none px-6" onClick={p.confirm}>
+          <Button className="px-6 shadow-sm" onClick={p.confirm}>
             Gerar relatório
           </Button>
         </div>
@@ -1743,16 +1834,18 @@ function Dashboard(p: {
   return (
     <div className="flex h-screen overflow-hidden">
       <aside className={cn("oliam-sidebar", !sidebar && "w-0 -translate-x-full border-0")}>
-        <div className="flex h-14 items-center gap-3 border-b px-4">
+        <div className="flex h-16 items-center gap-3 border-b border-border px-4">
           <Mark />
-          <strong className="font-display text-lg">Oli.Qualidade</strong>
+          <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
         </div>
         <div className="flex-1 overflow-auto p-3">
           <button className="oliam-nav-item text-muted-foreground" onClick={p.backHome}>
             <ChevronLeft className="size-4" />
             Todos os painéis
           </button>
-          <p className="px-2 pb-1 pt-3 text-[11px] uppercase text-muted-foreground">Painéis</p>
+          <p className="px-2 pb-1.5 pt-4 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+            Painéis
+          </p>
           {[...p.dashboards]
             .sort((a, b) => b.updatedAt - a.updatedAt)
             .map((x) => (
@@ -1761,9 +1854,19 @@ function Dashboard(p: {
                 className={cn("oliam-nav-item", x.id === d.id && "active")}
                 onClick={() => p.openDash(x.id)}
               >
-                <span className="size-2 shrink-0 rounded-full" style={{ background: hue(x.id) }} />
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ background: x.id === d.id ? "currentColor" : hue(x.id) }}
+                />
                 <span className="truncate">{x.name}</span>
-                {x.pinned && <Pin className="ml-auto size-3 shrink-0 fill-primary text-primary" />}
+                {x.pinned && (
+                  <Pin
+                    className={cn(
+                      "ml-auto size-3 shrink-0",
+                      x.id === d.id ? "fill-current" : "fill-primary text-primary",
+                    )}
+                  />
+                )}
               </button>
             ))}
           <button className="oliam-nav-item text-muted-foreground" onClick={p.newDash}>
@@ -1771,12 +1874,12 @@ function Dashboard(p: {
             Novo painel
           </button>
         </div>
-        <div className="border-t p-3">
+        <div className="border-t border-border p-3">
           <button className="oliam-nav-item" onClick={() => setMissingPanel(true)}>
             <Settings2 className="size-4" />
             Regras de dados ausentes
           </button>
-          <p className="mt-3 px-2 font-mono text-[10px] text-muted-foreground">
+          <p className="mt-2 px-2 font-mono text-[10px] text-muted-foreground">
             {d.rows.length} linhas · local
           </p>
         </div>
@@ -1822,7 +1925,7 @@ function Dashboard(p: {
               size="icon"
               aria-label={insightOpen ? "Ocultar visão geral" : "Mostrar visão geral"}
               aria-pressed={insightOpen}
-              className={cn(insightOpen && "bg-accent")}
+              className={cn(insightOpen && "bg-accent text-primary")}
               onClick={() => setInsightOpen((v) => !v)}
             >
               <PanelRight />
@@ -1848,23 +1951,23 @@ function Dashboard(p: {
             <Button
               variant="outline"
               size="sm"
-              className="hidden rounded-none md:flex"
+              className="hidden md:flex"
               onClick={() => setCommand(true)}
             >
               ⌘K Comandos
             </Button>
-            <Button variant="outline" size="sm" className="rounded-none" onClick={p.reimport}>
+            <Button variant="outline" size="sm" onClick={p.reimport}>
               <Upload />
               <span className="hidden sm:inline">Nova versão</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" className="rounded-none">
+                <Button size="sm">
                   <Download />
                   <span className="hidden sm:inline">Exportar</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="rounded-none">
+              <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={exportXlsx}>
                   <SheetIcon />
                   Planilha XLSX
@@ -1892,16 +1995,12 @@ function Dashboard(p: {
             />
           </div>
           <div className="relative">
-            <Button
-              variant="outline"
-              className="rounded-none"
-              onClick={() => setFilterMenu((v) => !v)}
-            >
+            <Button variant="outline" onClick={() => setFilterMenu((v) => !v)}>
               <Filter />
               Filtrar
             </Button>
             {filterMenu && (
-              <div className="absolute right-0 top-full z-40 mt-1 w-56 border bg-background shadow-panel">
+              <div className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
                 {d.columns
                   .filter((c) => !d.filters.some((f) => f.key === c.key))
                   .map((c) => (
@@ -1926,12 +2025,12 @@ function Dashboard(p: {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="rounded-none">
+              <Button variant="outline">
                 <Plus />
                 Widget
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="rounded-none">
+            <DropdownMenuContent align="start">
               {(Object.keys(widgetTypeLabels) as WidgetType[]).map((type) => (
                 <DropdownMenuItem
                   key={type}
@@ -1943,13 +2042,13 @@ function Dashboard(p: {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" className="rounded-none" onClick={() => setPanel(!panel)}>
+          <Button variant="outline" onClick={() => setPanel(!panel)}>
             <Columns3 />
             Colunas
           </Button>
           <Button
             variant="outline"
-            className="relative rounded-none"
+            className="relative"
             onClick={() => setQualityPanel(!qualityPanel)}
           >
             <ShieldAlert />
@@ -1960,25 +2059,16 @@ function Dashboard(p: {
               </span>
             )}
           </Button>
-          <Button
-            variant="outline"
-            className="rounded-none"
-            onClick={() => setMissingPanel(!missingPanel)}
-          >
+          <Button variant="outline" onClick={() => setMissingPanel(!missingPanel)}>
             <Settings2 />
             <span className="hidden sm:inline">Dados ausentes</span>
           </Button>
-          <Button
-            variant="outline"
-            className="rounded-none"
-            onClick={() => setFormatPanel(!formatPanel)}
-          >
+          <Button variant="outline" onClick={() => setFormatPanel(!formatPanel)}>
             <Palette />
             <span className="hidden sm:inline">Formatação</span>
           </Button>
           <Button
             variant="outline"
-            className="rounded-none"
             onClick={() => {
               resetJoin();
               setJoinOpen(true);
@@ -1988,16 +2078,12 @@ function Dashboard(p: {
             <span className="hidden sm:inline">Combinar planilha</span>
           </Button>
           <div className="relative">
-            <Button
-              variant="outline"
-              className="rounded-none"
-              onClick={() => setBookmarkPanel((v) => !v)}
-            >
+            <Button variant="outline" onClick={() => setBookmarkPanel((v) => !v)}>
               <BookmarkIcon />
               <span className="hidden sm:inline">Marcadores</span>
             </Button>
             {bookmarkPanel && (
-              <div className="absolute right-0 top-full z-40 mt-1 w-80 border bg-background shadow-panel">
+              <div className="absolute right-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
                 <div className="flex items-center justify-between border-b p-3">
                   <strong className="text-sm">Marcadores</strong>
                   <Button variant="ghost" size="icon" onClick={() => setBookmarkPanel(false)}>
@@ -2043,7 +2129,6 @@ function Dashboard(p: {
                   />
                   <Button
                     size="icon"
-                    className="rounded-none"
                     aria-label="Salvar estado atual como marcador"
                     disabled={!bookmarkName.trim()}
                     onClick={saveBookmark}
@@ -2056,7 +2141,6 @@ function Dashboard(p: {
           </div>
           <Button
             variant="outline"
-            className="rounded-none"
             onClick={() => {
               setPresentIndex(0);
               setPresentation(true);
@@ -2068,7 +2152,6 @@ function Dashboard(p: {
           <Button
             variant="ghost"
             size="icon"
-            className="rounded-none"
             aria-label="Atalhos de teclado"
             onClick={() => setShortcuts(true)}
           >
@@ -2076,7 +2159,7 @@ function Dashboard(p: {
           </Button>
         </div>
         {showTermHint && (
-          <div className="flex items-start gap-3 border-b bg-tint px-5 py-3">
+          <div className="flex items-start gap-3 border-b border-border bg-tint px-5 py-3">
             <Info className="mt-0.5 size-4 shrink-0 text-primary" />
             <p className="flex-1 text-xs text-foreground">
               <strong>Agrupamento</strong> organiza os dados por uma coluna, como categoria ou data.{" "}
@@ -2100,7 +2183,10 @@ function Dashboard(p: {
               const col = d.columns.find((c) => c.key === f.key);
               const isRange = col && (numericKinds.includes(col.kind) || col.kind === "date");
               return (
-                <div className="flex items-center border bg-accent text-xs" key={i}>
+                <div
+                  className="flex items-center rounded-full border border-border bg-accent text-xs"
+                  key={i}
+                >
                   <span className="px-2 text-muted-foreground">{col?.label}</span>
                   {isRange ? (
                     <>
@@ -2143,7 +2229,7 @@ function Dashboard(p: {
                     />
                   )}
                   <button
-                    className="p-1"
+                    className="rounded-r-full p-1.5 pr-2.5 text-muted-foreground transition-colors hover:text-destructive"
                     aria-label="Remover filtro"
                     onClick={() => setFilters(d.filters.filter((_, j) => j !== i))}
                   >
@@ -2155,7 +2241,7 @@ function Dashboard(p: {
           </div>
         )}
         {qualityPanel && (
-          <div className="absolute right-4 top-28 z-40 w-96 border bg-background shadow-panel">
+          <div className="absolute right-4 top-28 z-40 w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
             <div className="flex items-center justify-between border-b p-3">
               <strong className="text-sm">Qualidade dos dados</strong>
               <Button variant="ghost" size="icon" onClick={() => setQualityPanel(false)}>
@@ -2191,7 +2277,7 @@ function Dashboard(p: {
           </div>
         )}
         {panel && (
-          <div className="absolute right-4 top-28 z-40 w-96 border bg-background shadow-panel">
+          <div className="absolute right-4 top-28 z-40 w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
             <div className="flex items-center justify-between border-b p-3">
               <strong className="text-sm">Colunas visíveis</strong>
               <Button variant="ghost" size="icon" onClick={() => setPanel(false)}>
@@ -2322,7 +2408,6 @@ function Dashboard(p: {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="rounded-none"
                       onClick={() => {
                         setAddingFormula(false);
                         setFormulaError(null);
@@ -2332,7 +2417,6 @@ function Dashboard(p: {
                     </Button>
                     <Button
                       size="sm"
-                      className="rounded-none"
                       onClick={() => {
                         const availableKeys = d.columns.map((c) => c.key);
                         const error = validateFormula(formulaText, availableKeys);
@@ -2366,11 +2450,7 @@ function Dashboard(p: {
                   </div>
                 </div>
               ) : (
-                <Button
-                  variant="outline"
-                  className="w-full rounded-none"
-                  onClick={() => setAddingFormula(true)}
-                >
+                <Button variant="outline" className="w-full" onClick={() => setAddingFormula(true)}>
                   <Calculator className="size-4" />
                   Nova coluna calculada
                 </Button>
@@ -2388,7 +2468,7 @@ function Dashboard(p: {
           </div>
         )}
         {missingPanel && (
-          <div className="absolute right-4 top-28 z-40 w-96 border bg-background shadow-panel">
+          <div className="absolute right-4 top-28 z-40 w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
             <div className="flex items-center justify-between border-b p-3">
               <strong className="text-sm">Regras de dados ausentes</strong>
               <Button variant="ghost" size="icon" onClick={() => setMissingPanel(false)}>
@@ -2442,7 +2522,7 @@ function Dashboard(p: {
           </div>
         )}
         {formatPanel && (
-          <div className="absolute right-4 top-28 z-40 w-96 border bg-background shadow-panel">
+          <div className="absolute right-4 top-28 z-40 w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
             <div className="flex items-center justify-between border-b p-3">
               <strong className="text-sm">Formatação condicional</strong>
               <Button variant="ghost" size="icon" onClick={() => setFormatPanel(false)}>
@@ -2481,8 +2561,8 @@ function Dashboard(p: {
           </div>
           {insightOpen && (
             <aside className="oliam-insight-sidebar hidden shrink-0 overflow-auto lg:block">
-              <div className="border-b p-4">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              <div className="border-b border-border p-4">
+                <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
                   Visão geral
                 </p>
                 <p className="mt-1 font-mono text-[10px] text-muted-foreground">
@@ -2490,22 +2570,25 @@ function Dashboard(p: {
                 </p>
               </div>
               {nums.length > 0 && (
-                <div className="border-b p-4">
-                  <p className="mb-3 text-[11px] uppercase tracking-wide text-muted-foreground">
+                <div className="border-b border-border p-4">
+                  <p className="mb-3 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
                     KPIs
                   </p>
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
                     {nums.slice(0, 4).map((c) => {
                       const total = data.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
                       const delta = versionDelta?.get(c.key) ?? null;
                       return (
-                        <div key={c.key}>
-                          <p className="truncate text-xs text-muted-foreground">{c.label}</p>
-                          <p className="font-mono text-lg font-medium">{fmt(total, c.kind)}</p>
+                        <div
+                          key={c.key}
+                          className="rounded-xl border border-border bg-card p-2.5 shadow-sm"
+                        >
+                          <p className="truncate text-[11px] text-muted-foreground">{c.label}</p>
+                          <p className="font-mono text-base font-semibold">{fmt(total, c.kind)}</p>
                           {delta !== null && (
                             <p
                               className={cn(
-                                "font-mono text-[11px]",
+                                "font-mono text-[10px]",
                                 delta >= 0 ? "text-secondary-accent" : "text-destructive",
                               )}
                             >
@@ -2524,18 +2607,18 @@ function Dashboard(p: {
                 </div>
               )}
               {sidebarRanking.length > 0 && cat && primary && (
-                <div className="border-b p-4">
-                  <p className="mb-3 text-[11px] uppercase tracking-wide text-muted-foreground">
+                <div className="border-b border-border p-4">
+                  <p className="mb-3 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
                     Ranking por {cat.label}
                   </p>
-                  <div className="space-y-2">
+                  <div className="space-y-0.5">
                     {sidebarRanking.map((r) => {
                       const active = d.filters.some((f) => f.key === cat.key && f.value === r.name);
                       return (
                         <button
                           key={r.name}
                           className={cn(
-                            "block w-full text-left transition-opacity hover:opacity-80",
+                            "oliam-ranking-row block w-full text-left transition-opacity hover:opacity-90",
                             active && "opacity-100",
                           )}
                           onClick={() => {
@@ -2618,7 +2701,7 @@ function Dashboard(p: {
       </section>
       {presentation && (
         <div className="fixed inset-0 z-50 flex flex-col bg-canvas">
-          <div className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Mark />
               <span className="font-display text-sm font-medium text-foreground">{d.name}</span>
@@ -2658,7 +2741,6 @@ function Dashboard(p: {
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-none"
                 onClick={() => {
                   setAutoPlay(false);
                   setPresentation(false);
@@ -2748,7 +2830,7 @@ function Dashboard(p: {
           if (!open) resetJoin();
         }}
       >
-        <DialogContent className="rounded-none sm:max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Combinar planilha</DialogTitle>
             <DialogDescription>
@@ -2835,10 +2917,10 @@ function Dashboard(p: {
           />
           {joinRows && (
             <DialogFooter>
-              <Button variant="ghost" className="rounded-none" onClick={resetJoin}>
+              <Button variant="ghost" onClick={resetJoin}>
                 Trocar arquivo
               </Button>
-              <Button className="rounded-none" onClick={combineJoin}>
+              <Button onClick={combineJoin}>
                 <GitMerge />
                 Combinar
               </Button>
@@ -2847,7 +2929,7 @@ function Dashboard(p: {
         </DialogContent>
       </Dialog>
       <Dialog open={shortcuts} onOpenChange={setShortcuts}>
-        <DialogContent className="rounded-none sm:max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Atalhos de teclado</DialogTitle>
             <DialogDescription>Ações rápidas disponíveis dentro de um painel.</DialogDescription>
@@ -2869,7 +2951,9 @@ function Dashboard(p: {
             ].map((s) => (
               <li key={s.keys} className="flex items-center justify-between gap-4 py-2 text-sm">
                 <span className="text-muted-foreground">{s.label}</span>
-                <kbd className="border bg-muted px-2 py-1 font-mono text-[11px]">{s.keys}</kbd>
+                <kbd className="rounded-md border border-border bg-muted px-2 py-1 font-mono text-[11px]">
+                  {s.keys}
+                </kbd>
               </li>
             ))}
           </ul>
@@ -2999,26 +3083,29 @@ function WidgetHead({
   const interactive = !!(onRemove || onMoveBack || onMoveForward);
   return (
     <div
-      className="flex h-11 flex-wrap items-center justify-between gap-1 border-b px-2"
+      className="flex h-12 flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 px-3"
       draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <div className="flex min-w-0 items-center gap-2 px-2">
+      <div className="flex min-w-0 items-center gap-2 px-1">
         <GripVertical
-          className={cn("size-3.5 shrink-0 text-muted-foreground", draggable && "cursor-grab")}
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-muted-foreground",
+            draggable && "cursor-grab",
+          )}
           aria-hidden="true"
         />
-        {icon}
-        <h2 className="truncate text-xs font-semibold uppercase">{title}</h2>
+        {icon && <span className="shrink-0 text-primary [&_svg]:size-4">{icon}</span>}
+        <h2 className="truncate font-display text-[13px] font-semibold tracking-tight">{title}</h2>
       </div>
       {interactive && (
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            className="size-7"
             aria-label={`Mover ${title} para trás`}
             disabled={disableBack}
             onClick={onMoveBack}
@@ -3028,7 +3115,7 @@ function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            className="size-7"
             aria-label={`Mover ${title} para frente`}
             disabled={disableForward}
             onClick={onMoveForward}
@@ -3038,7 +3125,7 @@ function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            className="size-7 hover:bg-destructive/10 hover:text-destructive"
             aria-label={`Remover ${title}`}
             onClick={onRemove}
           >
@@ -3374,7 +3461,7 @@ function WidgetCard({
     return (
       <button
         type="button"
-        className="flex items-center gap-1 border border-primary bg-tint px-2 py-1 text-[11px] font-medium text-foreground"
+        className="flex items-center gap-1 rounded-full border border-primary/40 bg-tint px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-primary"
         onClick={() => setFilters(filters.filter((f) => f.key !== groupKey))}
         aria-label={`Remover filtro: filtrado por ${active.value}`}
       >
@@ -3401,7 +3488,7 @@ function WidgetCard({
     disableForward: index === count - 1,
   };
   const sizeControls = (
-    <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+    <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
       <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
         Largura
         <select
@@ -3471,7 +3558,7 @@ function WidgetCard({
         : [];
     return (
       <article
-        className={cn("oliam-widget bg-background", spanClass(w.span), sizeClass(w.size, w.type))}
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
         style={{ animationDelay: `${animationDelay}ms`, ...(style ?? {}) }}
       >
         <WidgetHead
@@ -3483,7 +3570,7 @@ function WidgetCard({
           }
           {...dragProps}
         />
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
           <FieldDropSlot
             accepts={numericKinds}
             onDropColumn={(key) => onConfigure({ metricKey: key })}
@@ -3545,28 +3632,41 @@ function WidgetCard({
           )}
         </div>
         <div className="p-5">
-          <p className="font-mono text-3xl" style={style ? { color: style.color } : undefined}>
+          <p
+            className="font-display text-4xl font-semibold tracking-tight"
+            style={style ? { color: style.color } : undefined}
+          >
             <AnimatedNumber value={total} kind={col.kind} />
           </p>
           {versionDelta && (
             <p
               className={cn(
-                "mt-2 font-mono text-xs",
+                "mt-2.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] font-medium",
                 (versionDelta.get(col.key) ?? 0) >= 0
-                  ? "text-secondary-accent"
-                  : "text-destructive",
+                  ? "bg-secondary-accent/12 text-secondary-accent"
+                  : "bg-destructive/12 text-destructive",
               )}
             >
-              {versionDelta.get(col.key) === null
-                ? "sem base para comparar"
-                : `${(versionDelta.get(col.key) as number) >= 0 ? "+" : ""}${new Intl.NumberFormat(
-                    "pt-BR",
-                    { style: "percent", maximumFractionDigits: 1 },
-                  ).format(versionDelta.get(col.key) as number)} vs. anterior`}
+              {versionDelta.get(col.key) === null ? (
+                "sem base para comparar"
+              ) : (
+                <>
+                  {(versionDelta.get(col.key) as number) >= 0 ? (
+                    <ArrowUp className="size-3" />
+                  ) : (
+                    <ArrowDown className="size-3" />
+                  )}
+                  {new Intl.NumberFormat("pt-BR", {
+                    style: "percent",
+                    maximumFractionDigits: 1,
+                  }).format(Math.abs(versionDelta.get(col.key) as number))}{" "}
+                  vs. anterior
+                </>
+              )}
             </p>
           )}
           {w.type === "metric-trend" && (
-            <div className="mt-3 h-12">
+            <div className="mt-4 h-14">
               {sparkline.length >= 2 ? (
                 <ResponsiveContainer>
                   <AreaChart data={sparkline} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
@@ -3580,7 +3680,7 @@ function WidgetCard({
                       type="monotone"
                       dataKey="total"
                       stroke="var(--secondary-accent)"
-                      strokeWidth={1.5}
+                      strokeWidth={2}
                       fill={`url(#spark-${w.id})`}
                       isAnimationActive={false}
                     />
@@ -3648,11 +3748,11 @@ function WidgetCard({
 
     return (
       <article
-        className={cn("oliam-widget bg-background", spanClass(w.span), sizeClass(w.size, w.type))}
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
         style={{ animationDelay: `${animationDelay}ms` }}
       >
         <WidgetHead title={title} icon={icon} {...dragProps} />
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
           <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
@@ -3744,8 +3844,10 @@ function WidgetCard({
                     contentStyle={{
                       background: "var(--popover)",
                       border: "1px solid var(--border)",
-                      borderRadius: 0,
+                      borderRadius: 12,
                       fontSize: 12,
+                      boxShadow:
+                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
                     }}
                   />
                   <Bar
@@ -3782,8 +3884,10 @@ function WidgetCard({
                     contentStyle={{
                       background: "var(--popover)",
                       border: "1px solid var(--border)",
-                      borderRadius: 0,
+                      borderRadius: 12,
                       fontSize: 12,
+                      boxShadow:
+                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
                     }}
                   />
                   <Pie
@@ -3858,8 +3962,10 @@ function WidgetCard({
                     contentStyle={{
                       background: "var(--popover)",
                       border: "1px solid var(--border)",
-                      borderRadius: 0,
+                      borderRadius: 12,
                       fontSize: 12,
+                      boxShadow:
+                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
                     }}
                   />
                   <Area
@@ -3923,8 +4029,10 @@ function WidgetCard({
                     contentStyle={{
                       background: "var(--popover)",
                       border: "1px solid var(--border)",
-                      borderRadius: 0,
+                      borderRadius: 12,
                       fontSize: 12,
+                      boxShadow:
+                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
                     }}
                   />
                   <Line
@@ -3973,7 +4081,7 @@ function WidgetCard({
     const max = ranked.reduce((m, g) => Math.max(m, Math.abs(g.total)), 0) || 1;
     return (
       <article
-        className={cn("oliam-widget bg-background", spanClass(w.span), sizeClass(w.size, w.type))}
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
         style={{ animationDelay: `${animationDelay}ms` }}
       >
         <WidgetHead
@@ -3981,7 +4089,7 @@ function WidgetCard({
           icon={<ListOrdered className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
           <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
@@ -4098,7 +4206,7 @@ function WidgetCard({
       groupCol && valueCol ? groupAndAggregate(data, groupCol.key, valueCol.key, op) : [];
     return (
       <article
-        className={cn("oliam-widget bg-background", spanClass(w.span), sizeClass(w.size, w.type))}
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
         style={{ animationDelay: `${animationDelay}ms` }}
       >
         <WidgetHead
@@ -4106,7 +4214,7 @@ function WidgetCard({
           icon={<MapPin className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
           <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
@@ -4196,7 +4304,7 @@ function WidgetCard({
     const filled = Math.round(avg);
     return (
       <article
-        className={cn("oliam-widget bg-background", spanClass(w.span), sizeClass(w.size, w.type))}
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
         style={{ animationDelay: `${animationDelay}ms` }}
       >
         <WidgetHead
@@ -4204,7 +4312,7 @@ function WidgetCard({
           icon={<Star className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
           <FieldDropSlot
             accepts={numericKinds}
             onDropColumn={(key) => onConfigure({ metricKey: key })}
@@ -4279,7 +4387,7 @@ function WidgetCard({
   // table
   return (
     <article
-      className={cn("oliam-widget bg-background", spanClass(w.span))}
+      className={cn("oliam-widget group bg-card", spanClass(w.span))}
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       <WidgetHead title={`Base detalhada · ${data.length} linhas`} {...dragProps} />
@@ -4321,7 +4429,7 @@ function EmptyWidget({
 }) {
   return (
     <article
-      className={cn("oliam-widget bg-background", spanClass(span), sizeClass(size, type))}
+      className={cn("oliam-widget group bg-card", spanClass(span), sizeClass(size, type))}
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       <WidgetHead title={title} {...dragProps} />
@@ -4514,10 +4622,10 @@ function FormatRulesEditor({
             </>
           )}
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" className="rounded-none" onClick={cancel}>
+            <Button variant="ghost" size="sm" onClick={cancel}>
               Cancelar
             </Button>
-            <Button size="sm" className="rounded-none" onClick={addRule}>
+            <Button size="sm" onClick={addRule}>
               Adicionar regra
             </Button>
           </div>
@@ -4550,12 +4658,12 @@ function DataTable({
     });
   return (
     <div ref={parent} className="h-[360px] overflow-auto">
-      <div className="sticky top-0 z-10 flex min-w-max border-b bg-muted">
+      <div className="sticky top-0 z-10 flex min-w-max border-b border-border bg-muted/60 backdrop-blur-sm">
         {visible.map((c) => {
           const header = (
             <button
               key={c.key}
-              className="flex w-44 items-center gap-2 border-r px-3 py-2 text-left text-[11px] font-semibold uppercase text-muted-foreground"
+              className="flex w-44 items-center gap-2 border-r border-border px-3 py-2.5 text-left font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               onClick={() =>
                 setSort({
                   key: c.key,
@@ -4569,9 +4677,9 @@ function DataTable({
               )}
               {sort?.key === c.key &&
                 (sort.dir === "asc" ? (
-                  <ArrowUp className="size-3 shrink-0" />
+                  <ArrowUp className="size-3 shrink-0 text-primary" />
                 ) : (
-                  <ArrowDown className="size-3 shrink-0" />
+                  <ArrowDown className="size-3 shrink-0 text-primary" />
                 ))}
             </button>
           );
@@ -4590,7 +4698,10 @@ function DataTable({
           return (
             <div
               key={item.key}
-              className="absolute left-0 flex border-b hover:bg-accent"
+              className={cn(
+                "absolute left-0 flex border-b border-border transition-colors hover:bg-accent/60",
+                item.index % 2 === 1 && "bg-muted/25",
+              )}
               style={{ height: item.size, transform: `translateY(${item.start}px)` }}
             >
               {visible.map((c) => {
@@ -4604,7 +4715,7 @@ function DataTable({
                     title={isInterpolated ? "Valor estimado por interpolação" : undefined}
                     style={cellStyle ?? undefined}
                     className={cn(
-                      "w-44 truncate border-r px-3 py-2 text-xs",
+                      "w-44 truncate border-r border-border px-3 py-2 text-xs",
                       numeric && "text-right font-mono",
                       shown === null && "text-muted-foreground",
                       isInterpolated &&
