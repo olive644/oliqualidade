@@ -3413,7 +3413,11 @@ function WidgetCard({
         />
       );
     }
-    const total = data.reduce((s, r) => s + (Number(r[col.key]) || 0), 0);
+    const metricOp: AggregationOp = w.op ?? "sum";
+    const total = aggregate(
+      data.map((r) => Number(r[col.key])).filter((v) => Number.isFinite(v)),
+      metricOp,
+    );
     const style = conditionalStyle(total, col.kind, col.conditionalFormat);
     const trendDateCol =
       w.type === "metric-trend"
@@ -3422,7 +3426,7 @@ function WidgetCard({
         : undefined;
     const sparkline =
       w.type === "metric-trend" && trendDateCol
-        ? [...groupAndAggregate(data, trendDateCol.key, col.key, "sum")].sort((a, b) =>
+        ? [...groupAndAggregate(data, trendDateCol.key, col.key, metricOp)].sort((a, b) =>
             a.name.localeCompare(b.name, "pt-BR"),
           )
         : [];
@@ -3461,6 +3465,21 @@ function WidgetCard({
               </select>
             </label>
           </FieldDropSlot>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Operação
+            <select
+              aria-label="Operação de agregação"
+              className="oliam-select h-7"
+              value={metricOp}
+              onChange={(e) => onConfigure({ op: e.target.value as AggregationOp })}
+            >
+              {Object.entries(aggregationLabels).map(([o, label]) => (
+                <option key={o} value={o}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
           {w.type === "metric-trend" && columns.some((c) => c.kind === "date") && (
             <FieldDropSlot
               accepts={["date"]}

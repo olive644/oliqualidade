@@ -136,14 +136,24 @@ export const aggregationLabels: Record<AggregationOp, string> = {
   count: "Contagem",
   min: "Mínimo",
   max: "Máximo",
+  multiply: "Multiplicação",
+  divide: "Divisão",
 };
 
+/**
+ * Multiplicação e divisão agregam os valores do grupo em sequência (ex: 3
+ * valores a, b, c viram a/b/c). Fazem mais sentido em grupos com poucos
+ * valores (idealmente 2); com 1 valor só, retornam o próprio valor.
+ */
 export function aggregate(values: number[], op: AggregationOp): number {
   if (op === "count") return values.length;
   if (!values.length) return 0;
   if (op === "sum") return values.reduce((s, v) => s + v, 0);
   if (op === "avg") return values.reduce((s, v) => s + v, 0) / values.length;
   if (op === "min") return Math.min(...values);
+  if (op === "max") return Math.max(...values);
+  if (op === "multiply") return values.reduce((s, v) => s * v, 1);
+  if (op === "divide") return values.reduce((acc, v, i) => (i === 0 ? v : acc / v));
   return Math.max(...values);
 }
 

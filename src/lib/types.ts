@@ -41,7 +41,7 @@ export type FilterRule = {
   max?: string; // usado para número (máx) ou data (fim)
 };
 
-export type ChartAggregationOp = "sum" | "avg" | "count" | "min" | "max";
+export type ChartAggregationOp = "sum" | "avg" | "count" | "min" | "max" | "multiply" | "divide";
 
 export type ChartConfig = {
   groupKey: string;
