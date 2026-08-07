@@ -81,10 +81,11 @@ export function detectQualitySignals(rows: Row[], columns: Column[]): QualitySig
     else seen.add(key);
   }
   if (duplicateCount > 0) {
+    const pct = rows.length ? Math.round((duplicateCount / rows.length) * 100) : 0;
     signals.push({
       columnKey: "*",
       kind: "duplicate-rows",
-      message: `${duplicateCount} linha${duplicateCount > 1 ? "s" : ""} duplicada${duplicateCount > 1 ? "s" : ""} encontrada${duplicateCount > 1 ? "s" : ""}.`,
+      message: `${duplicateCount} linha${duplicateCount > 1 ? "s" : ""} duplicada${duplicateCount > 1 ? "s" : ""} encontrada${duplicateCount > 1 ? "s" : ""} (${pct}% da base). São linhas com todos os valores idênticos a outra já existente.`,
     });
   }
 
@@ -96,12 +97,17 @@ export function detectQualitySignals(rows: Row[], columns: Column[]): QualitySig
       const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
       const std = Math.sqrt(variance);
       if (std > 0) {
-        const outliers = values.filter((v) => Math.abs(v - mean) > 3 * std);
+        const lower = mean - 3 * std;
+        const upper = mean + 3 * std;
+        const outliers = values.filter((v) => v < lower || v > upper);
         if (outliers.length) {
+          const extreme = outliers.reduce((a, b) => (Math.abs(b - mean) > Math.abs(a - mean) ? b : a));
+          const fmtNum = (n: number) =>
+            new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(n);
           signals.push({
             columnKey: col.key,
             kind: "outlier",
-            message: `Valor muito fora do padrão em "${col.label}".`,
+            message: `"${col.label}" tem ${outliers.length} valor${outliers.length > 1 ? "es" : ""} muito fora do padrão (ex: ${fmtNum(extreme)}), enquanto a maioria fica entre ${fmtNum(lower)} e ${fmtNum(upper)}.`,
           });
         }
       }
@@ -115,12 +121,14 @@ export function detectQualitySignals(rows: Row[], columns: Column[]): QualitySig
         if (!normalized.has(norm)) normalized.set(norm, new Set());
         normalized.get(norm)?.add(s);
       }
-      const hasInconsistency = [...normalized.values()].some((variants) => variants.size > 1);
-      if (hasInconsistency) {
+      const inconsistent = [...normalized.values()].filter((variants) => variants.size > 1);
+      if (inconsistent.length) {
+        const first = inconsistent[0];
+        const example = first ? [...first].map((v) => `"${v}"`).join(" / ") : "";
         signals.push({
           columnKey: col.key,
           kind: "text-inconsistency",
-          message: `"${col.label}" tem o mesmo valor escrito de formas diferentes.`,
+          message: `"${col.label}" tem o mesmo valor escrito de formas diferentes, ex: ${example}${inconsistent.length > 1 ? ` (e mais ${inconsistent.length - 1} caso${inconsistent.length - 1 > 1 ? "s" : ""})` : ""}.`,
         });
       }
     }

@@ -81,6 +81,32 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   const headerRowIndex = findHeaderRowIndex(aoa);
   const headerRow = (aoa[headerRowIndex] ?? []) as (string | number | null)[];
 
+  // Células mescladas: o Excel só guarda o valor na célula de origem
+  // (canto superior esquerdo do intervalo mesclado); as demais ficam
+  // vazias no arquivo, mesmo aparecendo com o mesmo texto "espalhado"
+  // visualmente na planilha. Sem tratar isso, cada célula vazia de uma
+  // mesclagem no cabeçalho viraria uma coluna "coluna_N" sem nome, mesmo
+  // com um cabeçalho todo preenchido do ponto de vista do usuário. Aqui,
+  // pra cada mesclagem que cobre a linha de cabeçalho, copiamos o valor da
+  // célula de origem (de qualquer linha do intervalo mesclado, cobrindo
+  // tanto mesclagem horizontal quanto vertical) para as células vazias
+  // dentro do intervalo, na linha de cabeçalho.
+  const merges = ws["!merges"] ?? [];
+  let mergedHeaderCells = 0;
+  for (const m of merges) {
+    if (headerRowIndex < m.s.r || headerRowIndex > m.e.r) continue;
+    const originRow = (aoa[m.s.r] ?? []) as (string | number | null)[];
+    const originValue = originRow[m.s.c];
+    if (originValue === null || originValue === "") continue;
+    for (let c = m.s.c; c <= m.e.c; c++) {
+      const cell = headerRow[c];
+      if (cell === null || cell === undefined || cell === "") {
+        headerRow[c] = originValue ?? null;
+        mergedHeaderCells++;
+      }
+    }
+  }
+
   const seen = new Map<string, number>();
   let renamed = 0;
   const headers = headerRow.map((raw, i) => {
@@ -114,6 +140,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (headerRowIndex > 0) {
     messages.push(
       `O cabeçalho foi identificado na linha ${headerRowIndex + 1} da planilha, porque o conteúdo acima não parecia um cabeçalho válido. Confira se a identificação ficou correta.`,
+    );
+  }
+  if (mergedHeaderCells > 0) {
+    messages.push(
+      `${mergedHeaderCells} coluna${mergedHeaderCells > 1 ? "s" : ""} do cabeçalho vinha${mergedHeaderCells > 1 ? "m" : ""} de célula${mergedHeaderCells > 1 ? "s" : ""} mesclada${mergedHeaderCells > 1 ? "s" : ""} na planilha original. Usamos o nome do grupo pra elas, mas talvez você queira renomeá-las individualmente no painel de colunas.`,
     );
   }
   if (renamed > 0) {

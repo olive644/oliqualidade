@@ -30,6 +30,26 @@ describe("sheetToRows", () => {
     expect(warning).toContain("renomeada");
   });
 
+  it("preenche cabeçalhos vindos de células mescladas em vez de virar 'coluna_N'", () => {
+    // Simula uma célula de cabeçalho mesclada cobrindo 3 colunas (comum em
+    // relatórios com categorias agrupando várias sub-colunas): o Excel só
+    // guarda o texto na célula de origem, então as colunas 2 e 3 chegam
+    // como null no array, mesmo aparecendo com o mesmo nome visualmente.
+    const ws = sheet([
+      ["Amostra", "Ar ambiente", null, null],
+      ["A1", 10, 20, 30],
+    ]);
+    ws["!merges"] = [{ s: { r: 0, c: 1 }, e: { r: 0, c: 3 } }];
+    const { rows, warning } = sheetToRows(ws);
+    expect(Object.keys(rows[0] as object)).toEqual([
+      "Amostra",
+      "Ar ambiente",
+      "Ar ambiente_2",
+      "Ar ambiente_3",
+    ]);
+    expect(warning).toContain("mesclada");
+  });
+
   it("ignora linhas inteiramente em branco no meio dos dados", () => {
     // Uma linha em branco "real" (ex: vinda de um CSV colado) chega como
     // células de string vazia, não como células ausentes.

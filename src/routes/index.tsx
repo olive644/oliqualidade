@@ -67,6 +67,7 @@ import {
   Search,
   Settings2,
   Sheet as SheetIcon,
+  ShieldAlert,
   Star,
   Sun,
   Trash2,
@@ -1277,6 +1278,7 @@ function Dashboard(p: {
   }, [exportError]);
   const [filterMenu, setFilterMenu] = useState(false);
   const [dismissedSignals, setDismissedSignals] = useState<Set<string>>(new Set());
+  const [qualityPanel, setQualityPanel] = useState(false);
   const [addingFormula, setAddingFormula] = useState(false);
   const [formulaLabel, setFormulaLabel] = useState("");
   const [formulaText, setFormulaText] = useState("");
@@ -1947,6 +1949,19 @@ function Dashboard(p: {
           </Button>
           <Button
             variant="outline"
+            className="relative rounded-none"
+            onClick={() => setQualityPanel(!qualityPanel)}
+          >
+            <ShieldAlert />
+            <span className="hidden sm:inline">Qualidade dos dados</span>
+            {visibleSignals.length > 0 && (
+              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] text-primary-foreground">
+                {visibleSignals.length}
+              </span>
+            )}
+          </Button>
+          <Button
+            variant="outline"
             className="rounded-none"
             onClick={() => setMissingPanel(!missingPanel)}
           >
@@ -2139,26 +2154,40 @@ function Dashboard(p: {
             })}
           </div>
         )}
-        {visibleSignals.length > 0 && (
-          <div className="flex flex-wrap gap-2 border-b px-5 py-2">
-            {visibleSignals.map((s) => (
-              <div
-                key={`${s.kind}-${s.columnKey}`}
-                className="flex items-center gap-2 border border-primary/40 bg-tint px-2 py-1 text-[11px] text-foreground"
-              >
-                <AlertTriangle className="size-3 shrink-0 text-primary" />
-                {s.message}
-                <button
-                  className="ml-1"
-                  aria-label="Dispensar aviso"
-                  onClick={() =>
-                    setDismissedSignals((prev) => new Set(prev).add(`${s.kind}-${s.columnKey}`))
-                  }
-                >
-                  <X className="size-3" />
-                </button>
+        {qualityPanel && (
+          <div className="absolute right-4 top-28 z-40 w-96 border bg-background shadow-panel">
+            <div className="flex items-center justify-between border-b p-3">
+              <strong className="text-sm">Qualidade dos dados</strong>
+              <Button variant="ghost" size="icon" onClick={() => setQualityPanel(false)}>
+                <X />
+              </Button>
+            </div>
+            {visibleSignals.length === 0 ? (
+              <p className="p-4 text-[12px] text-muted-foreground">
+                Nenhum problema encontrado nos dados atuais.
+              </p>
+            ) : (
+              <div className="max-h-96 overflow-auto p-2">
+                {visibleSignals.map((s) => (
+                  <div
+                    key={`${s.kind}-${s.columnKey}`}
+                    className="flex items-start gap-2 border-b p-2 text-[12px] last:border-b-0"
+                  >
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                    <p className="flex-1 leading-relaxed">{s.message}</p>
+                    <button
+                      className="shrink-0 p-0.5"
+                      aria-label="Dispensar aviso"
+                      onClick={() =>
+                        setDismissedSignals((prev) => new Set(prev).add(`${s.kind}-${s.columnKey}`))
+                      }
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         )}
         {panel && (
