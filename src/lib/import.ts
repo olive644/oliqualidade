@@ -11,6 +11,11 @@ export type SheetImportResult = {
 // linha em branco acima do cabeçalho real).
 const HEADER_SCAN_LIMIT = 10;
 
+// Abaixo dessa proporção de células preenchidas (em relação à largura da
+// tabela), a primeira linha é considerada esparsa demais pra ser um
+// cabeçalho de tabela de verdade, e a busca continua nas linhas seguintes.
+const SPARSE_HEADER_RATIO = 0.34;
+
 // Abaixo desse percentual de preenchimento, uma coluna é avisada como
 // "quase vazia" para o usuário revisar, em vez de seguir silenciosamente
 // para os widgets (onde uma coluna assim vira agrupamento ruim).
@@ -37,19 +42,40 @@ function isClearlyNotHeaderRow(row: (string | number | null)[]): boolean {
 
 /**
  * Acha o índice da linha de cabeçalho real. Por padrão assume a primeira
- * linha (comportamento de sempre), só olhando para linhas seguintes quando
- * a primeira linha claramente não parece um cabeçalho (linha em branco, ou
- * dominada por valores numéricos, como uma linha de título quebrada ou uma
- * célula que vazou de outro lugar da planilha).
+ * linha (comportamento de sempre). Só procura mais abaixo quando a primeira
+ * linha claramente não parece um cabeçalho (linha em branco, dominada por
+ * valores numéricos) OU quando está esparsa demais (poucas células
+ * preenchidas em relação à largura da tabela) — típico de planilhas de
+ * formulário, que têm linhas de metadados no topo (ex: "Programa: X", uma
+ * célula preenchida e o resto vazio) antes da tabela de verdade começar.
+ * Nesse segundo caso, ficamos com a linha mais preenchida dentro da janela
+ * de varredura, em vez da primeira linha "aceitável".
  */
 function findHeaderRowIndex(aoa: (string | number | null)[][]): number {
   if (!aoa.length) return 0;
-  if (!isClearlyNotHeaderRow(aoa[0] ?? [])) return 0;
   const scanLimit = Math.min(HEADER_SCAN_LIMIT, aoa.length);
-  for (let i = 1; i < scanLimit; i++) {
-    if (!isClearlyNotHeaderRow(aoa[i] ?? [])) return i;
+  const width = Math.max(1, ...aoa.slice(0, scanLimit).map((r) => r.length));
+
+  const fillRatio = (row: (string | number | null)[]) =>
+    row.filter((c) => c !== null && c !== "").length / width;
+
+  const firstRow = aoa[0] ?? [];
+  if (!isClearlyNotHeaderRow(firstRow) && fillRatio(firstRow) >= SPARSE_HEADER_RATIO) {
+    return 0;
   }
-  return 0; // não achou nada melhor nas primeiras linhas: mantém o padrão anterior
+
+  let bestIndex = -1;
+  let bestScore = -1;
+  for (let i = 0; i < scanLimit; i++) {
+    const row = aoa[i] ?? [];
+    if (isClearlyNotHeaderRow(row)) continue;
+    const score = fillRatio(row);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+  return bestIndex === -1 ? 0 : bestIndex;
 }
 
 function prettyLabel(key: string): string {

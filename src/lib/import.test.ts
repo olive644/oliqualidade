@@ -50,6 +50,32 @@ describe("sheetToRows", () => {
     expect(warning).toContain("mesclada");
   });
 
+  it("acha a linha de cabeçalho real quando há metadados de formulário acima da tabela", () => {
+    // Padrão comum em planilhas institucionais (ex: formulários de compra):
+    // linhas do topo com um rótulo e um valor solto, e só bem embaixo a
+    // tabela de verdade com o cabeçalho completo.
+    const ws = sheet([
+      ["Programa de Pós-Graduação", null, null, null],
+      ["Professor responsável", null, null, null],
+      ["Item", "Descrição do material", "Unidade", "Qtd"],
+      [1, "Cloreto de sódio", "Frasco", 2],
+      [2, "Micropipeta automática", "Unidade", 1],
+    ]);
+    const { rows } = sheetToRows(ws);
+    expect(Object.keys(rows[0] as object)).toEqual([
+      "Item",
+      "Descrição do material",
+      "Unidade",
+      "Qtd",
+    ]);
+    expect(rows[0]).toEqual({
+      Item: 1,
+      "Descrição do material": "Cloreto de sódio",
+      Unidade: "Frasco",
+      Qtd: 2,
+    });
+  });
+
   it("ignora linhas inteiramente em branco no meio dos dados", () => {
     // Uma linha em branco "real" (ex: vinda de um CSV colado) chega como
     // células de string vazia, não como células ausentes.
