@@ -169,23 +169,42 @@ export function aggregate(values: number[], op: AggregationOp): number {
  * Agrupa linhas por uma coluna e agrega uma coluna numérica com a operação
  * escolhida.
  */
+/**
+ * Agrupa e agrega linhas por uma coluna categórica. Grupos sem nenhum valor
+ * numérico válido na coluna agregada (célula vazia/texto em todas as linhas
+ * daquele grupo) são descartados do resultado — mostrar uma barra "zerada"
+ * nesse caso seria enganoso, já que 0 significaria "sem dado", não "valor
+ * zero" de fato. A operação "count" é a exceção: ela conta linhas do grupo
+ * independente da coluna numérica estar preenchida ou não.
+ */
 export function groupAndAggregate(
   rows: Row[],
   groupKey: string,
   valueKey: string,
   op: AggregationOp,
 ): { name: string; total: number }[] {
-  const buckets = new Map<string, number[]>();
+  const buckets = new Map<string, { values: number[]; rowCount: number }>();
   for (const r of rows) {
     const name = String(r[groupKey] ?? NOT_INFORMED);
-    const v = Number(r[valueKey]);
-    if (!buckets.has(name)) buckets.set(name, []);
-    if (Number.isFinite(v)) buckets.get(name)?.push(v);
+    if (!buckets.has(name)) buckets.set(name, { values: [], rowCount: 0 });
+    const bucket = buckets.get(name);
+    if (!bucket) continue;
+    bucket.rowCount++;
+    const raw = r[valueKey];
+    const hasValue = raw !== null && raw !== undefined && raw !== "";
+    const v = hasValue ? Number(raw) : NaN;
+    if (hasValue && Number.isFinite(v)) bucket.values.push(v);
   }
-  return Array.from(buckets.entries()).map(([name, values]) => ({
-    name,
-    total: aggregate(values, op),
-  }));
+  const result: { name: string; total: number }[] = [];
+  for (const [name, bucket] of buckets) {
+    if (op === "count") {
+      result.push({ name, total: bucket.rowCount });
+      continue;
+    }
+    if (!bucket.values.length) continue;
+    result.push({ name, total: aggregate(bucket.values, op) });
+  }
+  return result;
 }
 
 /**

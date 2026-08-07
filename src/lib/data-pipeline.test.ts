@@ -143,6 +143,32 @@ describe("groupAndAggregate", () => {
     const result = groupAndAggregate(rows, "categoria", "valor", "sum");
     expect(result[0]?.name).toBe(NOT_INFORMED);
   });
+
+  it("descarta grupos sem nenhum valor numérico válido (não mostra barra zerada)", () => {
+    const rows: Row[] = [
+      { categoria: "Empresa A", valor: 10 },
+      { categoria: "Empresa B", valor: null }, // sem dado, não é zero
+      { categoria: "Empresa B", valor: "" },
+      { categoria: null, valor: null },
+    ];
+    const result = groupAndAggregate(rows, "categoria", "valor", "sum");
+    expect(result).toEqual([{ name: "Empresa A", total: 10 }]);
+  });
+
+  it("na operação 'count', conta linhas do grupo mesmo sem valor numérico preenchido", () => {
+    const rows: Row[] = [
+      { categoria: "Empresa A", valor: 10 },
+      { categoria: "Empresa B", valor: null },
+      { categoria: "Empresa B", valor: null },
+    ];
+    const result = groupAndAggregate(rows, "categoria", "valor", "count");
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { name: "Empresa A", total: 1 },
+        { name: "Empresa B", total: 2 },
+      ]),
+    );
+  });
 });
 
 describe("leftJoin", () => {

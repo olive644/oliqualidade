@@ -3060,6 +3060,13 @@ const widgetSpanLabels: Record<WidgetSpan, string> = { 1: "1/3", 2: "2/3", 3: "C
  * a categoria "Não informado" em itálico e tom mais claro, para o usuário
  * distinguir dado ausente de um valor real na primeira olhada.
  */
+/** Trunca um rótulo comprido com reticências, mantendo o texto completo
+ * disponível via <title> (tooltip nativo do navegador ao passar o mouse),
+ * em vez de deixar o SVG quebrar ou sobrepor letras entre rótulos vizinhos. */
+function truncateLabel(value: string, max = 14): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
 function AxisTick({
   x,
   y,
@@ -3080,7 +3087,8 @@ function AxisTick({
       fontStyle={missing ? "italic" : "normal"}
       fill={missing ? "var(--muted-foreground)" : "var(--foreground)"}
     >
-      {value}
+      <title>{value}</title>
+      {truncateLabel(value)}
     </text>
   );
 }
@@ -3107,7 +3115,9 @@ function PieLegend({
         return (
           <li key={entry.value ?? i} className="flex items-center gap-1.5">
             <span className="size-2.5 shrink-0 rounded-full" style={{ background: entry.color }} />
-            <span className={cn(missing && "italic text-muted-foreground")}>{entry.value}</span>
+            <span className={cn(missing && "italic text-muted-foreground")} title={entry.value}>
+              {truncateLabel(entry.value ?? "", 18)}
+            </span>
             <span className="font-mono text-muted-foreground">
               {new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(total)} (
               {pct.toFixed(1)}%)
@@ -3707,10 +3717,29 @@ function WidgetCard({
           <>
             <div className="h-56 p-4">
               <ResponsiveContainer>
-                <BarChart data={series}>
+                <BarChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} />
-                  <YAxis tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="name"
+                    tick={(props) => <AxisTick {...props} />}
+                    label={{
+                      value: groupCol.label,
+                      position: "insideBottom",
+                      offset: -14,
+                      fontSize: 11,
+                      fill: "var(--muted-foreground)",
+                    }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    label={{
+                      value: `${aggregationLabels[op]} de ${valueCol.label}`,
+                      angle: -90,
+                      position: "insideLeft",
+                      fontSize: 11,
+                      fill: "var(--muted-foreground)",
+                    }}
+                  />
                   <ChartTooltip
                     contentStyle={{
                       background: "var(--popover)",
@@ -3796,7 +3825,7 @@ function WidgetCard({
           <>
             <div className="h-56 p-4">
               <ResponsiveContainer>
-                <AreaChart data={series}>
+                <AreaChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
                   <defs>
                     <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.45} />
@@ -3804,8 +3833,27 @@ function WidgetCard({
                     </linearGradient>
                   </defs>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} />
-                  <YAxis tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="name"
+                    tick={(props) => <AxisTick {...props} />}
+                    label={{
+                      value: groupCol.label,
+                      position: "insideBottom",
+                      offset: -14,
+                      fontSize: 11,
+                      fill: "var(--muted-foreground)",
+                    }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    label={{
+                      value: `${aggregationLabels[op]} de ${valueCol.label}`,
+                      angle: -90,
+                      position: "insideLeft",
+                      fontSize: 11,
+                      fill: "var(--muted-foreground)",
+                    }}
+                  />
                   <ChartTooltip
                     contentStyle={{
                       background: "var(--popover)",
@@ -3848,10 +3896,29 @@ function WidgetCard({
           <>
             <div className="h-56 p-4">
               <ResponsiveContainer>
-                <LineChart data={series}>
+                <LineChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} />
-                  <YAxis tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="name"
+                    tick={(props) => <AxisTick {...props} />}
+                    label={{
+                      value: groupCol.label,
+                      position: "insideBottom",
+                      offset: -14,
+                      fontSize: 11,
+                      fill: "var(--muted-foreground)",
+                    }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    label={{
+                      value: `${aggregationLabels[op]} de ${valueCol.label}`,
+                      angle: -90,
+                      position: "insideLeft",
+                      fontSize: 11,
+                      fill: "var(--muted-foreground)",
+                    }}
+                  />
                   <ChartTooltip
                     contentStyle={{
                       background: "var(--popover)",
