@@ -264,4 +264,28 @@ describe("sheetToRows", () => {
     const { warning } = sheetToRows(ws);
     expect(warning).toBeNull();
   });
+
+  it("descarta automaticamente uma coluna sem nome no cabeçalho e quase vazia (fragmento fora da tabela)", () => {
+    // Reproduz o bug relatado: uma coluna extra sem cabeçalho, com texto
+    // solto em só uma linha, aparecia como "Coluna N" com dado sem sentido
+    // mesmo não existindo de fato como coluna da planilha do usuário.
+    const ws = sheet([
+      ["parcela", "status", null],
+      ...Array.from({ length: 10 }, (_, i) => [i + 1, "Em dia", null]),
+      [11, "Em dia", "nota solta"],
+    ]);
+    const { rows, warning } = sheetToRows(ws);
+    expect(Object.keys(rows[0] as object)).toEqual(["parcela", "status"]);
+    expect(warning).toContain("removida automaticamente");
+  });
+
+  it("mantém uma coluna sem nome no cabeçalho quando ela tem dados de verdade", () => {
+    const ws = sheet([
+      ["parcela", "status", null],
+      ...Array.from({ length: 10 }, (_, i) => [i + 1, "Em dia", `obs ${i}`]),
+    ]);
+    const { rows, warning } = sheetToRows(ws);
+    expect(Object.keys(rows[0] as object)).toEqual(["parcela", "status", "coluna_3"]);
+    expect(warning ?? "").not.toContain("removida automaticamente");
+  });
 });

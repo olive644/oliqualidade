@@ -157,7 +157,9 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
 
   const seen = new Map<string, number>();
   let renamed = 0;
+  const headerWasBlank: boolean[] = [];
   const headers = headerRow.map((raw, i) => {
+    headerWasBlank[i] = raw === null || raw === "";
     const base = raw === null || raw === "" ? `coluna_${i + 1}` : String(raw).trim();
     const count = seen.get(base) ?? 0;
     seen.set(base, count + 1);
@@ -213,11 +215,37 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   }
   if (trailingNotesTrimmed > 0) rows.length -= trailingNotesTrimmed;
 
-  const nearEmptyColumns =
+  // Colunas sem nenhum texto no cabeçalho E quase sem dados: quase sempre
+  // são um fragmento solto capturado só por estar dentro do retângulo de
+  // células usadas da planilha (ex: uma anotação de rodapé que sobrou fora
+  // do corte de notas acima, ou uma célula formatada mas nunca preenchida),
+  // não uma coluna real da tabela. Descartamos em vez de expor como
+  // "Coluna N" com dado sem sentido. Uma coluna sem nome mas com dados de
+  // verdade continua sendo importada normalmente, com um nome genérico.
+  const ghostColumns =
     rows.length >= 5
-      ? headers.filter((h) => {
+      ? headers.filter((h, i) => {
+          if (!headerWasBlank[i]) return false;
           const filled = rows.filter((r) => r[h] !== null && r[h] !== "").length;
           return filled / rows.length < NEAR_EMPTY_RATIO;
+        })
+      : [];
+  const finalHeaders = ghostColumns.length
+    ? headers.filter((h) => !ghostColumns.includes(h))
+    : headers;
+  const finalRows: Row[] = ghostColumns.length
+    ? rows.map((r) => {
+        const clean: Row = {};
+        for (const h of finalHeaders) clean[h] = r[h] ?? null;
+        return clean;
+      })
+    : rows;
+
+  const nearEmptyColumns =
+    finalRows.length >= 5
+      ? finalHeaders.filter((h) => {
+          const filled = finalRows.filter((r) => r[h] !== null && r[h] !== "").length;
+          return filled / finalRows.length < NEAR_EMPTY_RATIO;
         })
       : [];
 
@@ -244,7 +272,12 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   }
   if (renamed > 0) {
     messages.push(
-      `${renamed} coluna${renamed > 1 ? "s" : ""} com nome repetido no cabeçalho foi${renamed > 1 ? "ram" : ""} renomeada${renamed > 1 ? "s" : ""} para não perder dados.`,
+      `${renamed} coluna${renamed > 1 ? "s" : ""} com nome repetido no cabeçalho ${renamed > 1 ? "foram" : "foi"} renomeada${renamed > 1 ? "s" : ""} para não perder dados.`,
+    );
+  }
+  if (ghostColumns.length > 0) {
+    messages.push(
+      `${ghostColumns.length > 1 ? "Foram encontradas colunas" : "Foi encontrada uma coluna"} sem nenhum texto no cabeçalho e quase sem dados (provavelmente um fragmento fora da tabela) e ${ghostColumns.length > 1 ? "elas foram removidas" : "ela foi removida"} automaticamente da importação.`,
     );
   }
   if (nearEmptyColumns.length > 0) {
@@ -255,11 +288,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   }
   if (blankSkipped > 0) {
     messages.push(
-      `${blankSkipped} linha${blankSkipped > 1 ? "s" : ""} em branco no meio dos dados foi${blankSkipped > 1 ? "ram" : ""} ignorada${blankSkipped > 1 ? "s" : ""}.`,
+      `${blankSkipped} linha${blankSkipped > 1 ? "s" : ""} em branco no meio dos dados ${blankSkipped > 1 ? "foram" : "foi"} ignorada${blankSkipped > 1 ? "s" : ""}.`,
     );
   }
 
-  return { rows, warning: messages.length ? messages.join(" ") : null };
+  return { rows: finalRows, warning: messages.length ? messages.join(" ") : null };
 }
 
 // Acima desse tamanho, mostramos um aviso de que o processamento pode
