@@ -4719,7 +4719,9 @@ function DataTable({
                 return (
                   <div
                     key={c.key}
-                    title={isInterpolated ? "Valor estimado por interpolação" : undefined}
+                    title={
+                      isInterpolated ? "Valor estimado por interpolação" : (shown ?? undefined)
+                    }
                     style={cellStyle ?? undefined}
                     className={cn(
                       "w-44 truncate border-r border-border px-3 py-2 text-xs",

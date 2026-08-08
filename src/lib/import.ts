@@ -133,8 +133,21 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     // coberta como um rótulo de categoria repetiria. Replicar esse texto
     // em várias colunas faria uma linha de nota parecer uma linha de dado
     // "cheia" pro resto do pipeline (inclusive escapando do corte de notas
-    // soltas no fim da planilha), então essas mesclagens são ignoradas.
-    if (typeof originValue === "string" && originValue.length > MERGE_FILL_MAX_LENGTH) continue;
+    // soltas no fim da planilha). Isso só vale pra mesclagem HORIZONTAL
+    // (várias colunas): uma mesclagem VERTICAL (uma coluna só, várias
+    // linhas) é sempre dado legítimo repetindo, mesmo com texto longo —
+    // por exemplo, a descrição de um item de compra mesclada cobrindo as
+    // linhas de cada fornecedor concorrente abaixo dele. Sem essa
+    // distinção, descrições longas ficavam com "Não informado" nas linhas
+    // de baixo, enquanto descrições curtas (que não disparavam o corte)
+    // funcionavam normalmente.
+    const isHorizontalMerge = m.e.c > m.s.c;
+    if (
+      isHorizontalMerge &&
+      typeof originValue === "string" &&
+      originValue.length > MERGE_FILL_MAX_LENGTH
+    )
+      continue;
     for (let r = m.s.r; r <= m.e.r; r++) {
       const row = (aoa[r] ?? []) as (string | number | null)[];
       for (let c = m.s.c; c <= m.e.c; c++) {

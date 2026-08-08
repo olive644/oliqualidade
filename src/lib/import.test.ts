@@ -128,6 +128,31 @@ describe("sheetToRows", () => {
     expect(warning).toContain("nota");
   });
 
+  it("replica descrição longa mesclada verticalmente, mesmo passando de 60 caracteres", () => {
+    // Reproduz o bug relatado: uma descrição de item comprida (bem comum
+    // em pedido de compra, com especificação técnica detalhada) mesclada
+    // verticalmente cobrindo as linhas dos fornecedores concorrentes. O
+    // corte por tamanho de texto vale só pra mesclagem horizontal (nota de
+    // rodapé); mesclagem vertical é sempre dado legítimo, mesmo longo.
+    const descricaoLonga =
+      "CLORETO DE SÓDIO - ASPECTO FÍSICO PÓ CRISTALINO BRANCO OU CRISTAIS INCOLORES, PESO MOLECULAR 58,45G/MOL, PUREZA MÍNIMA DE 99,5%.";
+    expect(descricaoLonga.length).toBeGreaterThan(60);
+    const wsVert = sheet([
+      ["Item", "Descrição", "Qtd", "Fornecedor"],
+      [1, descricaoLonga, 1, "Empresa A"],
+      [null, null, null, "Empresa B"],
+      [null, null, null, "Empresa C"],
+    ]);
+    wsVert["!merges"] = [
+      { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } }, // Item, vertical
+      { s: { r: 1, c: 1 }, e: { r: 3, c: 1 } }, // Descrição, vertical
+      { s: { r: 1, c: 2 }, e: { r: 3, c: 2 } }, // Qtd, vertical
+    ];
+    const { rows: rowsVert } = sheetToRows(wsVert);
+    expect(rowsVert.every((r) => r["Descrição"] === descricaoLonga)).toBe(true);
+    expect(rowsVert.every((r) => r["Item"] === 1)).toBe(true);
+  });
+
   it("corta notas do fim mesmo quando há centenas de linhas em branco entre os dados e as notas", () => {
     // Reproduz o caso real relatado: um monte de linhas em branco
     // "sobrando" no arquivo entre a última linha de dado e as notas de
