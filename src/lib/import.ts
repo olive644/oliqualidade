@@ -104,33 +104,42 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     header: 1,
     defval: null,
   });
-  const headerRowIndex = findHeaderRowIndex(aoa);
-  const headerRow = (aoa[headerRowIndex] ?? []) as (string | number | null)[];
 
   // Células mescladas: o Excel só guarda o valor na célula de origem
   // (canto superior esquerdo do intervalo mesclado); as demais ficam
-  // vazias no arquivo, mesmo aparecendo com o mesmo texto "espalhado"
-  // visualmente na planilha. Sem tratar isso, cada célula vazia de uma
-  // mesclagem no cabeçalho viraria uma coluna "coluna_N" sem nome, mesmo
-  // com um cabeçalho todo preenchido do ponto de vista do usuário. Aqui,
-  // pra cada mesclagem que cobre a linha de cabeçalho, copiamos o valor da
-  // célula de origem (de qualquer linha do intervalo mesclado, cobrindo
-  // tanto mesclagem horizontal quanto vertical) para as células vazias
-  // dentro do intervalo, na linha de cabeçalho.
+  // vazias no arquivo, mesmo aparecendo com o mesmo texto/valor "espalhado"
+  // visualmente na planilha inteira. Isso acontece tanto no cabeçalho
+  // (mesclagem horizontal, ex: uma categoria cobrindo várias colunas)
+  // quanto nas linhas de dados (mesclagem vertical, ex: um item de compra
+  // cujo código e descrição cobrem várias linhas de fornecedores
+  // concorrentes abaixo dele). Preenchemos aqui, pra toda a planilha, antes
+  // de decidir qual linha é o cabeçalho — copiando o valor da célula de
+  // origem de cada mesclagem para todas as células vazias dentro do
+  // intervalo mesclado.
   const merges = ws["!merges"] ?? [];
-  let mergedHeaderCells = 0;
+  const filledByRow = new Map<number, number>();
   for (const m of merges) {
-    if (headerRowIndex < m.s.r || headerRowIndex > m.e.r) continue;
     const originRow = (aoa[m.s.r] ?? []) as (string | number | null)[];
     const originValue = originRow[m.s.c];
-    if (originValue === null || originValue === "") continue;
-    for (let c = m.s.c; c <= m.e.c; c++) {
-      const cell = headerRow[c];
-      if (cell === null || cell === undefined || cell === "") {
-        headerRow[c] = originValue ?? null;
-        mergedHeaderCells++;
+    if (originValue === null || originValue === undefined || originValue === "") continue;
+    for (let r = m.s.r; r <= m.e.r; r++) {
+      const row = (aoa[r] ?? []) as (string | number | null)[];
+      for (let c = m.s.c; c <= m.e.c; c++) {
+        if (r === m.s.r && c === m.s.c) continue;
+        if (row[c] === null || row[c] === undefined || row[c] === "") {
+          row[c] = originValue;
+          filledByRow.set(r, (filledByRow.get(r) ?? 0) + 1);
+        }
       }
     }
+  }
+
+  const headerRowIndex = findHeaderRowIndex(aoa);
+  const headerRow = (aoa[headerRowIndex] ?? []) as (string | number | null)[];
+  const mergedHeaderCells = filledByRow.get(headerRowIndex) ?? 0;
+  let mergedCells = 0;
+  for (const [row, count] of filledByRow) {
+    if (row !== headerRowIndex) mergedCells += count;
   }
 
   const seen = new Map<string, number>();
@@ -144,11 +153,14 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     return `${base}_${count + 1}`;
   });
 
-  const dataRows = headers.length
-    ? XLSX.utils.sheet_to_json<Row>(ws, {
-        header: headers,
-        range: headerRowIndex + 1,
-        defval: null,
+  const dataRows: Row[] = headers.length
+    ? aoa.slice(headerRowIndex + 1).map((row) => {
+        const obj: Row = {};
+        headers.forEach((h, i) => {
+          const v = row[i];
+          obj[h] = v === undefined ? null : v;
+        });
+        return obj;
       })
     : [];
   const rows = dataRows.filter((r) => Object.values(r).some((v) => v !== null && v !== ""));
@@ -171,6 +183,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (mergedHeaderCells > 0) {
     messages.push(
       `${mergedHeaderCells} coluna${mergedHeaderCells > 1 ? "s" : ""} do cabeçalho vinha${mergedHeaderCells > 1 ? "m" : ""} de célula${mergedHeaderCells > 1 ? "s" : ""} mesclada${mergedHeaderCells > 1 ? "s" : ""} na planilha original. Usamos o nome do grupo pra elas, mas talvez você queira renomeá-las individualmente no painel de colunas.`,
+    );
+  }
+  if (mergedCells > 0) {
+    messages.push(
+      `${mergedCells} célula${mergedCells > 1 ? "s" : ""} de dado${mergedCells > 1 ? "s" : ""} vinha${mergedCells > 1 ? "m" : ""} de célula${mergedCells > 1 ? "s" : ""} mesclada${mergedCells > 1 ? "s" : ""} verticalmente na planilha original (ex: um item cobrindo várias linhas de fornecedores). Repetimos o valor da célula de origem em cada linha, em vez de deixar "Não informado" nas linhas vazias.`,
     );
   }
   if (renamed > 0) {

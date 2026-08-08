@@ -50,6 +50,32 @@ describe("sheetToRows", () => {
     expect(warning).toContain("mesclada");
   });
 
+  it("preenche células de dados vindas de mesclagem vertical (item cobrindo várias linhas de fornecedores)", () => {
+    // Reproduz o padrão real relatado: um item de compra (Descrição,
+    // Código, Unidade, Qtd) mesclado verticalmente cobrindo 3 linhas de
+    // fornecedores concorrentes abaixo dele. Só a linha de origem da
+    // mesclagem tem valor no arquivo; as duas linhas seguintes vêm nulas
+    // nessas colunas, mesmo pertencendo ao mesmo item visualmente.
+    const ws = sheet([
+      ["Item", "Descrição", "Qtd", "Fornecedor", "Preço"],
+      [1, "Cloreto de sódio", 1, "Empresa A", 80],
+      [null, null, null, "Empresa B", 100],
+      [null, null, null, "Empresa C", 95],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } }, // Item
+      { s: { r: 1, c: 1 }, e: { r: 3, c: 1 } }, // Descrição
+      { s: { r: 1, c: 2 }, e: { r: 3, c: 2 } }, // Qtd
+    ];
+    const { rows, warning } = sheetToRows(ws);
+    expect(rows).toEqual([
+      { Item: 1, Descrição: "Cloreto de sódio", Qtd: 1, Fornecedor: "Empresa A", Preço: 80 },
+      { Item: 1, Descrição: "Cloreto de sódio", Qtd: 1, Fornecedor: "Empresa B", Preço: 100 },
+      { Item: 1, Descrição: "Cloreto de sódio", Qtd: 1, Fornecedor: "Empresa C", Preço: 95 },
+    ]);
+    expect(warning).toContain("mesclada");
+  });
+
   it("acha a linha de cabeçalho real quando há metadados de formulário acima da tabela", () => {
     // Padrão comum em planilhas institucionais (ex: formulários de compra):
     // linhas do topo com um rótulo e um valor solto, e só bem embaixo a
