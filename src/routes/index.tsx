@@ -3188,8 +3188,10 @@ function AxisTick({
  */
 function PieLegend({
   payload,
+  kind,
 }: {
   payload?: { value?: string; color?: string; payload?: { total?: number } }[];
+  kind?: Kind;
 }) {
   if (!payload?.length) return null;
   const sum = payload.reduce((s, entry) => s + (entry.payload?.total ?? 0), 0);
@@ -3206,8 +3208,7 @@ function PieLegend({
               {truncateLabel(entry.value ?? "", 18)}
             </span>
             <span className="font-mono text-muted-foreground">
-              {new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(total)} (
-              {pct.toFixed(1)}%)
+              {fmt(total, kind ?? "number") ?? total} ({pct.toFixed(1)}%)
             </span>
           </li>
         );
@@ -3832,6 +3833,7 @@ function WidgetCard({
                   />
                   <YAxis
                     tick={{ fontSize: 10 }}
+                    tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                     label={{
                       value: `${aggregationLabels[op]} de ${valueCol.label}`,
                       angle: -90,
@@ -3849,6 +3851,7 @@ function WidgetCard({
                       boxShadow:
                         "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
                     }}
+                    formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                   />
                   <Bar
                     dataKey="total"
@@ -3862,9 +3865,7 @@ function WidgetCard({
                       position="top"
                       fontSize={10}
                       fill="var(--muted-foreground)"
-                      formatter={(v: number) =>
-                        new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(v)
-                      }
+                      formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                     />
                   </Bar>
                 </BarChart>
@@ -3889,6 +3890,7 @@ function WidgetCard({
                       boxShadow:
                         "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
                     }}
+                    formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                   />
                   <Pie
                     data={pieSeries}
@@ -3914,6 +3916,7 @@ function WidgetCard({
                             payload?: { total?: number };
                           }[]
                         }
+                        kind={valueCol.kind}
                       />
                     )}
                   />
@@ -3950,6 +3953,7 @@ function WidgetCard({
                   />
                   <YAxis
                     tick={{ fontSize: 10 }}
+                    tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                     label={{
                       value: `${aggregationLabels[op]} de ${valueCol.label}`,
                       angle: -90,
@@ -3967,6 +3971,7 @@ function WidgetCard({
                       boxShadow:
                         "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
                     }}
+                    formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                   />
                   <Area
                     type="monotone"
@@ -4017,6 +4022,7 @@ function WidgetCard({
                   />
                   <YAxis
                     tick={{ fontSize: 10 }}
+                    tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                     label={{
                       value: `${aggregationLabels[op]} de ${valueCol.label}`,
                       angle: -90,
@@ -4034,6 +4040,7 @@ function WidgetCard({
                       boxShadow:
                         "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
                     }}
+                    formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                   />
                   <Line
                     type="monotone"
