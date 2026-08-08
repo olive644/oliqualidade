@@ -128,6 +128,29 @@ describe("sheetToRows", () => {
     expect(warning).toContain("nota");
   });
 
+  it("corta notas do fim mesmo quando há centenas de linhas em branco entre os dados e as notas", () => {
+    // Reproduz o caso real relatado: um monte de linhas em branco
+    // "sobrando" no arquivo entre a última linha de dado e as notas de
+    // rodapé. O corte de notas do fim precisa ignorar as linhas em branco
+    // primeiro, senão o orçamento do corte (limitado de propósito) é
+    // gasto todo em linhas em branco e nunca alcança a nota de verdade.
+    const blankRows = Array.from({ length: 50 }, () => [null, null, null, null, null]);
+    const ws2 = sheet([
+      ["Item", "Descrição", "Qtd", "Fornecedor", "Preço"],
+      [1, "Cloreto de sódio", 1, "Empresa A", 80],
+      [2, "Micropipeta", 1, "Empresa D", 1500],
+      [null, null, null, null, "Total da compra do professor"],
+      ...blankRows,
+    ]);
+    const { rows: rows2, warning: warning2 } = sheetToRows(ws2);
+    expect(rows2).toEqual([
+      { Item: 1, Descrição: "Cloreto de sódio", Qtd: 1, Fornecedor: "Empresa A", Preço: 80 },
+      { Item: 2, Descrição: "Micropipeta", Qtd: 1, Fornecedor: "Empresa D", Preço: 1500 },
+    ]);
+    expect(warning2).toContain("nota");
+    expect(warning2).toContain("branco");
+  });
+
   it("acha a linha de cabeçalho real quando há metadados de formulário acima da tabela", () => {
     // Padrão comum em planilhas institucionais (ex: formulários de compra):
     // linhas do topo com um rótulo e um valor solto, e só bem embaixo a

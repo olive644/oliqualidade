@@ -177,34 +177,41 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       })
     : [];
 
+  // Linhas inteiramente em branco (comum em planilhas com um monte de
+  // linhas "sobrando" formatadas mas nunca usadas) são removidas ANTES do
+  // corte de notas do fim, senão elas ocupam sozinhas o orçamento do corte
+  // e a nota de verdade (que está antes delas no arquivo) nunca é
+  // alcançada.
+  const nonBlankRows = dataRows.filter((r) => Object.values(r).some((v) => v !== null && v !== ""));
+  const blankSkipped = dataRows.length - nonBlankRows.length;
+
   // Notas/resumo soltos no fim da planilha (comum em formulários que
   // fecham com um texto corrido, ex: "Total da compra: R$X — verificar
   // documentação da empresa vencedora") acabam contaminando uma coluna
   // quase vazia com fragmentos de texto, como se fossem mais uma linha de
   // dado da tabela. Cortamos uma sequência contígua de linhas no FIM da
-  // planilha que estão claramente esparsas demais pra pertencer à mesma
-  // tabela (a maioria das colunas vazia), parando assim que encontrarmos,
-  // de baixo pra cima, uma linha que parece dado de verdade. O corte é
-  // limitado a um número pequeno de linhas para não arriscar apagar dados
-  // reais caso o arquivo simplesmente tenha linhas finais esparsas.
+  // planilha (já sem as linhas em branco) que estão claramente esparsas
+  // demais pra pertencer à mesma tabela (a maioria das colunas vazia),
+  // parando assim que encontrarmos, de baixo pra cima, uma linha que
+  // parece dado de verdade. O corte é limitado a um número pequeno de
+  // linhas para não arriscar apagar dados reais caso o arquivo simplesmente
+  // tenha linhas finais esparsas.
   const TRAILING_NOTE_FILL_RATIO = 0.25;
   const MAX_TRAILING_TRIM = 10;
+  const rows = [...nonBlankRows];
   let trailingNotesTrimmed = 0;
   while (
-    dataRows.length > 1 &&
+    rows.length > 1 &&
     trailingNotesTrimmed < MAX_TRAILING_TRIM &&
-    trailingNotesTrimmed < dataRows.length - 1
+    trailingNotesTrimmed < rows.length - 1
   ) {
-    const last = dataRows[dataRows.length - 1 - trailingNotesTrimmed];
+    const last = rows[rows.length - 1 - trailingNotesTrimmed];
     if (!last) break;
     const filled = Object.values(last).filter((v) => v !== null && v !== "").length;
     if (filled / headers.length >= TRAILING_NOTE_FILL_RATIO) break;
     trailingNotesTrimmed++;
   }
-  if (trailingNotesTrimmed > 0) dataRows.length -= trailingNotesTrimmed;
-
-  const rows = dataRows.filter((r) => Object.values(r).some((v) => v !== null && v !== ""));
-  const blankSkipped = dataRows.length - rows.length;
+  if (trailingNotesTrimmed > 0) rows.length -= trailingNotesTrimmed;
 
   const nearEmptyColumns =
     rows.length >= 5
