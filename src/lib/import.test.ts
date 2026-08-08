@@ -76,6 +76,27 @@ describe("sheetToRows", () => {
     expect(warning).toContain("mesclada");
   });
 
+  it("ignora linhas de nota/resumo soltas no fim da planilha, sem confundir com dado da tabela", () => {
+    // Reproduz o padrão real relatado: depois da tabela de itens, a
+    // planilha fecha com um texto corrido de resumo ("Total da compra:
+    // R$X — verificar documentação..."), que ocupa só 1 célula de uma
+    // coluna quase toda vazia, em vez de seguir o padrão preenchido da
+    // tabela.
+    const ws = sheet([
+      ["Item", "Descrição", "Qtd", "Fornecedor", "Preço"],
+      [1, "Cloreto de sódio", 1, "Empresa A", 80],
+      [2, "Micropipeta", 1, "Empresa D", 1500],
+      [null, null, null, null, "Total da compra do professor: R$ 1580,00"],
+      [null, null, null, null, "Empresa A ganhou o item 1: verificar documentação."],
+    ]);
+    const { rows, warning } = sheetToRows(ws);
+    expect(rows).toEqual([
+      { Item: 1, Descrição: "Cloreto de sódio", Qtd: 1, Fornecedor: "Empresa A", Preço: 80 },
+      { Item: 2, Descrição: "Micropipeta", Qtd: 1, Fornecedor: "Empresa D", Preço: 1500 },
+    ]);
+    expect(warning).toContain("nota");
+  });
+
   it("acha a linha de cabeçalho real quando há metadados de formulário acima da tabela", () => {
     // Padrão comum em planilhas institucionais (ex: formulários de compra):
     // linhas do topo com um rótulo e um valor solto, e só bem embaixo a

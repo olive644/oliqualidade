@@ -163,6 +163,33 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         return obj;
       })
     : [];
+
+  // Notas/resumo soltos no fim da planilha (comum em formulários que
+  // fecham com um texto corrido, ex: "Total da compra: R$X — verificar
+  // documentação da empresa vencedora") acabam contaminando uma coluna
+  // quase vazia com fragmentos de texto, como se fossem mais uma linha de
+  // dado da tabela. Cortamos uma sequência contígua de linhas no FIM da
+  // planilha que estão claramente esparsas demais pra pertencer à mesma
+  // tabela (a maioria das colunas vazia), parando assim que encontrarmos,
+  // de baixo pra cima, uma linha que parece dado de verdade. O corte é
+  // limitado a um número pequeno de linhas para não arriscar apagar dados
+  // reais caso o arquivo simplesmente tenha linhas finais esparsas.
+  const TRAILING_NOTE_FILL_RATIO = 0.25;
+  const MAX_TRAILING_TRIM = 10;
+  let trailingNotesTrimmed = 0;
+  while (
+    dataRows.length > 1 &&
+    trailingNotesTrimmed < MAX_TRAILING_TRIM &&
+    trailingNotesTrimmed < dataRows.length - 1
+  ) {
+    const last = dataRows[dataRows.length - 1 - trailingNotesTrimmed];
+    if (!last) break;
+    const filled = Object.values(last).filter((v) => v !== null && v !== "").length;
+    if (filled / headers.length >= TRAILING_NOTE_FILL_RATIO) break;
+    trailingNotesTrimmed++;
+  }
+  if (trailingNotesTrimmed > 0) dataRows.length -= trailingNotesTrimmed;
+
   const rows = dataRows.filter((r) => Object.values(r).some((v) => v !== null && v !== ""));
   const blankSkipped = dataRows.length - rows.length;
 
@@ -188,6 +215,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (mergedCells > 0) {
     messages.push(
       `${mergedCells} célula${mergedCells > 1 ? "s" : ""} de dado${mergedCells > 1 ? "s" : ""} vinha${mergedCells > 1 ? "m" : ""} de célula${mergedCells > 1 ? "s" : ""} mesclada${mergedCells > 1 ? "s" : ""} verticalmente na planilha original (ex: um item cobrindo várias linhas de fornecedores). Repetimos o valor da célula de origem em cada linha, em vez de deixar "Não informado" nas linhas vazias.`,
+    );
+  }
+  if (trailingNotesTrimmed > 0) {
+    messages.push(
+      `${trailingNotesTrimmed} linha${trailingNotesTrimmed > 1 ? "s" : ""} no fim da planilha ${trailingNotesTrimmed > 1 ? "pareciam" : "parecia"} nota${trailingNotesTrimmed > 1 ? "s" : ""}/resumo solto${trailingNotesTrimmed > 1 ? "s" : ""} em vez de dado da tabela (a maioria das colunas vazia) e ${trailingNotesTrimmed > 1 ? "foram ignoradas" : "foi ignorada"}. Confira o fim do arquivo se algum dado real tiver sumido.`,
     );
   }
   if (renamed > 0) {
