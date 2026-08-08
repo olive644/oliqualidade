@@ -21,6 +21,11 @@ const SPARSE_HEADER_RATIO = 0.34;
 // para os widgets (onde uma coluna assim vira agrupamento ruim).
 const NEAR_EMPTY_RATIO = 0.1;
 
+// Células mescladas com texto mais comprido que isso (uma frase corrida,
+// não um rótulo curto de categoria) não são replicadas pelas outras
+// células do intervalo mesclado — ver comentário em sheetToRows.
+const MERGE_FILL_MAX_LENGTH = 60;
+
 function cellLooksNumeric(v: string | number | null): boolean {
   if (v === null || v === "") return false;
   if (typeof v === "number") return true;
@@ -122,6 +127,14 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     const originRow = (aoa[m.s.r] ?? []) as (string | number | null)[];
     const originValue = originRow[m.s.c];
     if (originValue === null || originValue === undefined || originValue === "") continue;
+    // Uma célula mesclada cobrindo texto muito comprido (uma frase, uma
+    // nota de rodapé) normalmente é só um truque visual pra caber o texto
+    // na tela — não significa que aquele valor se repete em cada coluna
+    // coberta como um rótulo de categoria repetiria. Replicar esse texto
+    // em várias colunas faria uma linha de nota parecer uma linha de dado
+    // "cheia" pro resto do pipeline (inclusive escapando do corte de notas
+    // soltas no fim da planilha), então essas mesclagens são ignoradas.
+    if (typeof originValue === "string" && originValue.length > MERGE_FILL_MAX_LENGTH) continue;
     for (let r = m.s.r; r <= m.e.r; r++) {
       const row = (aoa[r] ?? []) as (string | number | null)[];
       for (let c = m.s.c; c <= m.e.c; c++) {

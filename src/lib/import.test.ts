@@ -97,6 +97,37 @@ describe("sheetToRows", () => {
     expect(warning).toContain("nota");
   });
 
+  it("não deixa uma nota de rodapé mesclada horizontalmente escapar do corte, mesmo cobrindo várias colunas", () => {
+    // Reproduz o caso real: a ÚLTIMA linha da planilha é uma frase longa
+    // mesclada horizontalmente cobrindo várias colunas (parece "cheia"),
+    // mas uma linha de nota mais curta ("Total da compra do professor")
+    // vem ANTES dela. Sem tratar a mesclagem de frase longa como especial,
+    // a linha da frase comprida "protege" a linha anterior de ser cortada,
+    // porque a varredura de baixo pra cima para na primeira linha que
+    // parece preenchida.
+    const ws = sheet([
+      ["Item", "Descrição", "Qtd", "Fornecedor", "Preço"],
+      [1, "Cloreto de sódio", 1, "Empresa A", 80],
+      [2, "Micropipeta", 1, "Empresa D", 1500],
+      [null, null, null, null, 1715], // "Total da compra do professor"
+      [
+        "Empresa D ganhou o item 2: verificar se o faturamento mínimo da empresa é menor do que R$1.500,00.",
+        null,
+        null,
+        null,
+        null,
+      ],
+    ]);
+    // A frase longa da última linha está mesclada cobrindo as 5 colunas.
+    ws["!merges"] = [{ s: { r: 4, c: 0 }, e: { r: 4, c: 4 } }];
+    const { rows, warning } = sheetToRows(ws);
+    expect(rows).toEqual([
+      { Item: 1, Descrição: "Cloreto de sódio", Qtd: 1, Fornecedor: "Empresa A", Preço: 80 },
+      { Item: 2, Descrição: "Micropipeta", Qtd: 1, Fornecedor: "Empresa D", Preço: 1500 },
+    ]);
+    expect(warning).toContain("nota");
+  });
+
   it("acha a linha de cabeçalho real quando há metadados de formulário acima da tabela", () => {
     // Padrão comum em planilhas institucionais (ex: formulários de compra):
     // linhas do topo com um rótulo e um valor solto, e só bem embaixo a
