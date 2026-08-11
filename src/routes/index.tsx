@@ -164,6 +164,7 @@ import {
   NOT_INFORMED,
   pieRoundnessFor,
   relevantAggregationOps,
+  sortAllBarCategories,
   toggleClickFilter,
   type AggregationOp,
   type QualitySignal,
@@ -490,6 +491,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
       if (!active) return;
       setDashboards(list);
       dashboardsRef.current = list;
+      setFolderMonitors(
+        Object.fromEntries(
+          list
+            .filter((dashboard) => dashboard.folderMonitor)
+            .map((dashboard) => [dashboard.id, dashboard.folderMonitor!]),
+        ),
+      );
       if (routeId) {
         if (list.some((d) => d.id === routeId)) {
           setStage("dashboard");
@@ -660,7 +668,16 @@ export function OliAm({ routeId }: { routeId?: string }) {
       delete next[dashboardId];
       return next;
     });
-    if (forget) void removeFolderMonitor(dashboardId);
+    if (forget) {
+      void removeFolderMonitor(dashboardId);
+      persist(
+        dashboardsRef.current.map((dashboard) => {
+          if (dashboard.id !== dashboardId) return dashboard;
+          const { folderMonitor: _folderMonitor, ...withoutMonitor } = dashboard;
+          return { ...withoutMonitor, updatedAt: Date.now() };
+        }),
+      );
+    }
   };
 
   const startFolderMonitor = (
@@ -686,6 +703,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
       lastSyncedAt,
     };
     setFolderMonitors((current) => ({ ...current, [dashboardId]: initialSnapshot }));
+    persist(
+      dashboardsRef.current.map((dashboard) =>
+        dashboard.id === dashboardId
+          ? { ...dashboard, folderMonitor: initialSnapshot, updatedAt: Date.now() }
+          : dashboard,
+      ),
+    );
     void saveFolderMonitor(dashboardId, {
       directory: selection.directory,
       fileName: selection.file.name,
@@ -708,6 +732,23 @@ export function OliAm({ routeId }: { routeId?: string }) {
                 fileNames: workbookNames,
               },
             }));
+            persist(
+              dashboardsRef.current.map((dashboard) =>
+                dashboard.id === dashboardId
+                  ? {
+                      ...dashboard,
+                      folderMonitor: {
+                        folderName: runtime.directory.name,
+                        fileName: runtime.fileName,
+                        fileCount: workbookNames.length,
+                        fileNames: workbookNames,
+                        status: "watching",
+                        lastSyncedAt: Date.now(),
+                      },
+                    }
+                  : dashboard,
+              ),
+            );
             void saveFolderMonitor(dashboardId, {
               directory: runtime.directory,
               fileName: runtime.fileName,
@@ -825,7 +866,19 @@ export function OliAm({ routeId }: { routeId?: string }) {
     void (async () => {
       for (const dashboard of dashboardsRef.current) {
         const stored = await loadFolderMonitor(dashboard.id);
-        if (!stored) continue;
+        if (!stored) {
+          if (dashboard.folderMonitor) {
+            setFolderMonitors((current) => ({
+              ...current,
+              [dashboard.id]: {
+                ...dashboard.folderMonitor!,
+                status: "error",
+                error: "Reconecte a pasta uma vez para reativar a leitura automática.",
+              },
+            }));
+          }
+          continue;
+        }
         try {
           const permission = stored.directory.queryPermission
             ? await stored.directory.queryPermission({ mode: "read" })
@@ -1140,7 +1193,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
             update={updateCurrent}
             rename={renameDash}
             reimport={() => startReimport(current.id)}
-            folderMonitor={folderMonitors[current.id]}
+            folderMonitor={folderMonitors[current.id] ?? current.folderMonitor}
             connectFolder={() => void connectFolder(current.id)}
             disconnectFolder={() => stopFolderMonitor(current.id, true)}
             theme={theme}
@@ -5313,10 +5366,7 @@ function WidgetCard({
       w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
         ? sortChronologically(grouped)
         : grouped;
-    const barSeries =
-      w.type === "bar"
-        ? [...series].sort((a, b) => Math.abs(b.total) - Math.abs(a.total)).slice(0, 10)
-        : series;
+    const barSeries = w.type === "bar" ? sortAllBarCategories(series) : series;
     const pieSeries = (() => {
       if (w.type !== "pie") return series;
       if (series.length <= 6) return series;
@@ -5410,7 +5460,13 @@ function WidgetCard({
           <>
             <div className="h-64 p-4">
               <ResponsiveContainer>
-                <BarChart data={barSeries} margin={{ top: 20, right: 16, left: 12, bottom: 26 }}>
+                <BarChart
+                  data={barSeries}
+                  margin={{ top: 20, right: 16, left: 12, bottom: 26 }}
+                  barCategoryGap={
+                    barSeries.length > 20 ? "48%" : barSeries.length > 10 ? "34%" : "18%"
+                  }
+                >
                   <defs>
                     <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
@@ -5455,7 +5511,7 @@ function WidgetCard({
                     dataKey="total"
                     fill={`url(#bar-grad-${w.id})`}
                     radius={[6, 6, 0, 0]}
-                    maxBarSize={72}
+                    maxBarSize={Math.max(10, Math.min(72, Math.floor(680 / barSeries.length)))}
                     onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
                     cursor="pointer"
                     animationDuration={500}
@@ -5475,11 +5531,6 @@ function WidgetCard({
               Tabela alternativa ao gráfico de barras:{" "}
               {barSeries.map((g) => `${g.name}, ${g.total}`).join("; ")}.
             </p>
-            {series.length > barSeries.length && (
-              <p className="border-t px-4 py-2 text-[11px] text-muted-foreground">
-                Exibindo as 10 maiores categorias de {series.length} para manter o gráfico legível.
-              </p>
-            )}
           </>
         ) : w.type === "pie" ? (
           <>

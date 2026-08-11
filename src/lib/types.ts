@@ -122,6 +122,7 @@ export type Dashboard = {
   createdAt: number;
   updatedAt: number;
   pinned: boolean;
+  folderMonitor?: import("@/lib/folder-monitor").FolderMonitorView;
 };
 
 export const kinds: Record<Kind, string> = {

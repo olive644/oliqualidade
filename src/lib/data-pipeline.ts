@@ -7,6 +7,10 @@ import { parseDateValue } from "@/lib/format";
  * fatia da pizza) e aplicar uma marcação visual diferenciada. */
 export const NOT_INFORMED = "Não informado";
 
+export function sortAllBarCategories<T extends { total: number }>(series: T[]): T[] {
+  return [...series].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+}
+
 /**
  * Aplica as regras de dados ausentes configuradas por coluna.
  * - Numéricas: ignore (padrão, mantém null), zero, interpolate, hide-row

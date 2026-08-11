@@ -26,6 +26,7 @@ type LegacyDashboard = {
   bookmarks?: Bookmark[];
   sheets?: SheetData[];
   activeSheetIndex?: number;
+  folderMonitor?: Dashboard["folderMonitor"];
 };
 
 function widgetCompatible(widget: Widget, columns: Column[]): boolean {
@@ -97,6 +98,7 @@ export function migrateDashboard(raw: unknown): Dashboard {
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
       pinned: d.pinned,
+      ...(d.folderMonitor ? { folderMonitor: d.folderMonitor } : {}),
     };
   }
   const sheet: SheetData = {
@@ -117,6 +119,7 @@ export function migrateDashboard(raw: unknown): Dashboard {
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
     pinned: d.pinned,
+    ...(d.folderMonitor ? { folderMonitor: d.folderMonitor } : {}),
   };
 }
 

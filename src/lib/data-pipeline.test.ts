@@ -9,8 +9,22 @@ import {
   NOT_INFORMED,
   pieRoundnessFor,
   relevantAggregationOps,
+  sortAllBarCategories,
   toggleClickFilter,
 } from "@/lib/data-pipeline";
+
+describe("sortAllBarCategories", () => {
+  it("mantém todas as categorias e apenas ordena pelas maiores barras", () => {
+    const categories = Array.from({ length: 24 }, (_, index) => ({
+      name: `Categoria ${index + 1}`,
+      total: index + 1,
+    }));
+    const sorted = sortAllBarCategories(categories);
+    expect(sorted).toHaveLength(24);
+    expect(sorted[0]?.total).toBe(24);
+    expect(sorted.at(-1)?.total).toBe(1);
+  });
+});
 import type { Column, FilterRule, Row } from "@/lib/types";
 
 const numberCol = (key: string, missingRule?: Column["missingRule"]): Column => ({

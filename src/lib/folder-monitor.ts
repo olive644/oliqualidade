@@ -71,6 +71,10 @@ export async function pickFolderWorkbook(win: Window): Promise<FolderWorkbookSel
     throw new Error("unsupported");
   }
   const directory = await picker.showDirectoryPicker({ mode: "read" });
+  // Enumera enquanto a autorização da pasta está recém-concedida. Em algumas
+  // versões do Chromium, abrir o seletor de arquivo em seguida pode suspender
+  // temporariamente o iterador do diretório e produzir uma falsa lista vazia.
+  const listedBeforeFilePicker = await listSupportedWorkbooks(directory);
   const [handle] = await picker.showOpenFilePicker({
     startIn: directory,
     multiple: false,
@@ -93,8 +97,10 @@ export async function pickFolderWorkbook(win: Window): Promise<FolderWorkbookSel
   if (!handle || !isSupportedWorkbook(handle.name)) throw new Error("unsupported-file");
   const relativePath = await directory.resolve(handle);
   if (!relativePath) throw new Error("outside-directory");
-  const listed = await listSupportedWorkbooks(directory);
-  const workbookNames = listed.length ? listed : [handle.name];
+  const listedAfterFilePicker = await listSupportedWorkbooks(directory);
+  const workbookNames = [
+    ...new Set([...listedBeforeFilePicker, ...listedAfterFilePicker, handle.name]),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   return { directory, handle, file: await handle.getFile(), workbookNames };
 }
 

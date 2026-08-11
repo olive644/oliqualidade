@@ -62,6 +62,28 @@ describe("migrateDashboard", () => {
     expect(migrated.sheets[0]!.name).toBe("Vendas");
   });
 
+  it("preserva a última contagem da pasta monitorada", () => {
+    const folderMonitor = {
+      folderName: "Relatórios",
+      fileName: "principal.xlsx",
+      fileCount: 2,
+      fileNames: ["principal.xlsx", "apoio.xlsx"],
+      status: "watching" as const,
+      lastSyncedAt: 10,
+    };
+    const migrated = migrateDashboard({
+      id: "monitor",
+      name: "Monitor",
+      sheets: [{ name: "Dados", rows, columns, filters: [] }],
+      activeSheetIndex: 0,
+      createdAt: 0,
+      updatedAt: 0,
+      pinned: false,
+      folderMonitor,
+    });
+    expect(migrated.folderMonitor).toEqual(folderMonitor);
+  });
+
   it("corrige um activeSheetIndex inválido (fora dos limites) para 0, em vez de quebrar", () => {
     const modern = {
       id: "4",

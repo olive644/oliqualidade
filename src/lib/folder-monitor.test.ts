@@ -55,6 +55,39 @@ describe("folder monitor", () => {
     });
   });
 
+  it("preserva a contagem feita antes de abrir a planilha específica", async () => {
+    const selectedFile = { name: "principal.xlsx", size: 12, lastModified: 30 } as File;
+    const selectedHandle = {
+      kind: "file" as const,
+      name: selectedFile.name,
+      getFile: async () => selectedFile,
+    };
+    let scans = 0;
+    const directory = {
+      kind: "directory" as const,
+      name: "Relatórios",
+      resolve: async () => [selectedFile.name],
+      getFileHandle: async () => selectedHandle,
+      entries: async function* () {
+        scans++;
+        if (scans > 1) return;
+        for (const name of ["principal.xlsx", "apoio.xls", "dados.csv", "notas.txt"])
+          yield [name, { kind: "file" as const, name, getFile: async () => selectedFile }] as [
+            string,
+            LocalFileHandle,
+          ];
+      },
+    };
+    const win = {
+      showDirectoryPicker: async () => directory,
+      showOpenFilePicker: async () => [selectedHandle],
+    } as unknown as Window;
+
+    await expect(pickFolderWorkbook(win)).resolves.toMatchObject({
+      workbookNames: ["apoio.xls", "dados.csv", "principal.xlsx"],
+    });
+  });
+
   it("conta somente planilhas legíveis na pasta", async () => {
     const directory = {
       kind: "directory" as const,
