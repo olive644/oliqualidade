@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { migrateDashboard, migrateDashboards, mergeReimportedSheets } from "@/lib/dashboard";
+import {
+  mergeReimportedColumns,
+  migrateDashboard,
+  migrateDashboards,
+  mergeReimportedSheets,
+} from "@/lib/dashboard";
 import type { Bookmark, ChartConfig, Column, Row, SheetData, Widget } from "@/lib/types";
 
 const columns: Column[] = [
@@ -168,6 +173,48 @@ describe("mergeReimportedSheets", () => {
     ];
     const merged = mergeReimportedSheets(oldSheets, [{ name: "Vendas", rows, columns }]);
     expect(merged.map((s) => s.name)).toEqual(["Vendas"]);
+  });
+
+  it("preserva formatação, visibilidade, tipo e colunas calculadas ao atualizar a fonte", () => {
+    const oldColumns: Column[] = [
+      {
+        key: "receita",
+        label: "Receita líquida",
+        kind: "currency",
+        visible: false,
+        description: "Após descontos",
+        missingRule: "zero",
+        conditionalFormat: [
+          { id: "meta", type: "threshold", operator: "gte", value: 100, color: "#16a34a" },
+        ],
+      },
+      {
+        key: "margem_calc",
+        label: "Margem calculada",
+        kind: "percentage",
+        visible: true,
+        description: "",
+        formula: "receita / custo",
+      },
+    ];
+    const freshColumns: Column[] = [
+      {
+        key: "receita",
+        label: "receita",
+        kind: "number",
+        visible: true,
+        description: "",
+      },
+      { key: "custo", label: "Custo", kind: "currency", visible: true, description: "" },
+    ];
+
+    const merged = mergeReimportedColumns(oldColumns, freshColumns);
+
+    expect(merged.find((column) => column.key === "receita")).toMatchObject(oldColumns[0]!);
+    expect(merged.find((column) => column.key === "custo")).toMatchObject(freshColumns[1]!);
+    expect(merged.find((column) => column.key === "margem_calc")?.formula).toBe(
+      "receita / custo",
+    );
   });
 });
 

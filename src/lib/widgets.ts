@@ -14,6 +14,15 @@ export function newWidgetId(): string {
   return `widget_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/**
+ * Cria uma cópia independente de um widget, preservando toda a configuração
+ * visual e de dados. O identificador sempre muda para que React, arrastar e
+ * remover continuem tratando original e cópia como cartões distintos.
+ */
+export function duplicateWidget(widget: Widget): Widget {
+  return { ...widget, id: newWidgetId() };
+}
+
 // Tipos de coluna aceitos como agrupamento (eixo X de linha/area, categoria
 // de barra/pizza/ranking/mapa). Reaproveitado tanto no filtro de colunas
 // candidatas quanto no arrastar-e-soltar de coluna para slot de gráfico

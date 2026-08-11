@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { evalFormula, fmt, infer, inferColumns, sortChronologically } from "@/lib/format";
-import type { Row } from "@/lib/types";
+import {
+  conditionalColor,
+  conditionalStyle,
+  evalFormula,
+  fmt,
+  infer,
+  inferColumns,
+  sortChronologically,
+} from "@/lib/format";
+import type { ConditionalFormatRule, Row } from "@/lib/types";
 
 describe("infer", () => {
   it("detecta moeda por nome de coluna com valor numérico", () => {
@@ -137,6 +145,42 @@ describe("fmt", () => {
   it("formata número com no máximo 2 casas decimais", () => {
     const expected = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(1000.567);
     expect(fmt(1000.567, "number")).toBe(expected);
+  });
+});
+
+describe("formatação condicional", () => {
+  const threshold: ConditionalFormatRule[] = [
+    { id: "low", type: "threshold", operator: "lt", value: 10, color: "#dc2626" },
+  ];
+  const scale: ConditionalFormatRule[] = [
+    {
+      id: "scale",
+      type: "scale",
+      min: 0,
+      max: 100,
+      minColor: "#dbeafe",
+      maxColor: "#1d4ed8",
+    },
+  ];
+
+  it("entrega a mesma cor para tabela e elementos de gráfico", () => {
+    expect(conditionalColor(5, "number", threshold)).toBe("#dc2626");
+    expect(conditionalStyle(5, "number", threshold)).toEqual({ color: "#dc2626" });
+  });
+
+  it("interpola uma escala que pode ser usada como fundo ou preenchimento", () => {
+    const color = "color-mix(in oklch, #1d4ed8 50%, #dbeafe)";
+    expect(conditionalColor(50, "currency", scale)).toBe(color);
+    expect(conditionalStyle(50, "currency", scale)).toEqual({ background: color });
+  });
+
+  it("prioriza um limite específico mesmo quando a escala foi criada antes", () => {
+    expect(conditionalColor(5, "number", [...scale, ...threshold])).toBe("#dc2626");
+  });
+
+  it("ignora regras em colunas não numéricas e valores ausentes", () => {
+    expect(conditionalColor(5, "text", threshold)).toBeNull();
+    expect(conditionalStyle(null, "number", threshold)).toBeNull();
   });
 });
 

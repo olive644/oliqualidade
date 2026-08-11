@@ -598,15 +598,15 @@
   top: 11px;
   left: 6px;
 }
-.oliam-bar-drag-scroll {
+.oliam-chart-drag-scroll {
   cursor: grab;
   scrollbar-width: thin;
 }
-.oliam-bar-drag-scroll.oliam-bar-dragging {
+.oliam-chart-drag-scroll.oliam-chart-dragging {
   cursor: grabbing;
   user-select: none;
 }
-.oliam-bar-drag-scroll.oliam-bar-dragging * {
+.oliam-chart-drag-scroll.oliam-chart-dragging * {
   user-select: none;
 }
 .oliam-sidebar-backdrop {

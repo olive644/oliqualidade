@@ -11,6 +11,7 @@ import {
   pieRoundnessFor,
   relevantAggregationOps,
   sortAllBarCategories,
+  timeSeriesChartPresentation,
   toggleClickFilter,
 } from "@/lib/data-pipeline";
 
@@ -34,6 +35,29 @@ describe("barChartPresentation", () => {
 
   it("habilita rolagem horizontal em bases extensas, mantendo todas as barras juntas", () => {
     expect(barChartPresentation(300)).toEqual({ scrollable: true, contentWidth: 19200 });
+  });
+});
+
+describe("timeSeriesChartPresentation", () => {
+  it("mantém séries curtas na largura do cartão", () => {
+    expect(timeSeriesChartPresentation(8)).toEqual({
+      scrollable: false,
+      contentWidth: undefined,
+    });
+  });
+
+  it("dá espaço por ponto e habilita navegação em linha e área extensas", () => {
+    expect(timeSeriesChartPresentation(24)).toEqual({
+      scrollable: true,
+      contentWidth: 1728,
+    });
+  });
+
+  it("usa passo compacto na métrica com tendência", () => {
+    expect(timeSeriesChartPresentation(24, true)).toEqual({
+      scrollable: true,
+      contentWidth: 1056,
+    });
   });
 });
 

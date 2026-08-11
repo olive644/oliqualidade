@@ -1,6 +1,10 @@
 import { migrateDashboards } from "@/lib/dashboard";
 import type { Dashboard } from "@/lib/types";
-import type { FolderMonitorView, LocalDirectoryHandle } from "@/lib/folder-monitor";
+import type {
+  FileFingerprint,
+  FolderMonitorView,
+  LocalDirectoryHandle,
+} from "@/lib/folder-monitor";
 
 export const DASH_KEY = "oliam-dashboards";
 export const THEME_KEY = "oliam-theme";
@@ -79,6 +83,9 @@ export type StoredFolderMonitor = {
   directory: LocalDirectoryHandle;
   fileName: string;
   snapshot: FolderMonitorView;
+  // Opcional para ler registros criados antes desta versão. Sem ele, a
+  // restauração força uma sincronização e passa a gravá-lo novamente.
+  fingerprint?: FileFingerprint;
 };
 
 export async function loadFolderMonitor(

@@ -5,6 +5,7 @@ import {
   columnDragType,
   columnDropAccepted,
   createWidget,
+  duplicateWidget,
   draggedColumnKind,
   groupableKinds,
   newWidgetId,
@@ -25,6 +26,27 @@ describe("newWidgetId", () => {
   it("gera ids únicos", () => {
     const ids = new Set(Array.from({ length: 20 }, () => newWidgetId()));
     expect(ids.size).toBe(20);
+  });
+});
+
+describe("duplicateWidget", () => {
+  it("preserva a configuração e gera um identificador novo", () => {
+    const original = {
+      id: "widget_original",
+      type: "bar" as const,
+      title: "Receita por região",
+      groupKey: "regiao",
+      valueKey: "receita",
+      op: "avg" as const,
+      span: 2 as const,
+      size: "lg" as const,
+    };
+
+    const copy = duplicateWidget(original);
+
+    expect(copy).toEqual({ ...original, id: expect.any(String) });
+    expect(copy.id).not.toBe(original.id);
+    expect(copy).not.toBe(original);
   });
 });
 
