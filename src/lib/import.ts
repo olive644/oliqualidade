@@ -123,6 +123,15 @@ function cellLooksNumeric(v: string | number | null): boolean {
   return /^-?\d+([.,]\d+)?%?$/.test(s) || EXCEL_ERROR_PATTERN.test(s);
 }
 
+function cellLooksDate(v: unknown): boolean {
+  if (v === null || v === undefined || v === "") return false;
+  const s = String(v).trim();
+  return (
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s) ||
+    /^\d{4}-\d{1,2}-\d{1,2}(?:[T\s].*)?$/.test(s)
+  );
+}
+
 /**
  * Uma linha "claramente não é cabeçalho" quando está inteiramente vazia ou
  * quando pelo menos uma célula preenchida parece um valor numérico. Um
@@ -680,6 +689,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     const last = rows[rows.length - 1 - trailingNotesTrimmed];
     if (!last) break;
     const filled = Object.values(last).filter((v) => v !== null && v !== "").length;
+    // Formulários operacionais costumam deixar datas futuras já preparadas
+    // para preenchimento. Uma linha só com data é um registro/agendamento
+    // válido, não uma nota de rodapé, então o corte deve parar aqui.
+    const firstHeader = headers[0];
+    if (firstHeader && cellLooksDate(last[firstHeader])) break;
     if (filled / headers.length >= TRAILING_NOTE_FILL_RATIO) break;
     trailingNotesTrimmed++;
   }
