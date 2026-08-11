@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Row } from "@/lib/types";
+import { analyzeAdvancedQuality, type AdvancedQualityReport } from "@/lib/advanced-quality";
 import type {
   PivotTableDiagnostic,
   StructuredTableDiagnostic,
@@ -82,6 +83,7 @@ export type ImportDiagnostics = {
   transformations: string[];
   warnings: string[];
   qualityScore: number;
+  advancedQuality?: AdvancedQualityReport;
   suggestedNormalization: string[];
   header: { row: number; confidence: number };
 };
@@ -544,6 +546,11 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
       ? columns.reduce((sum, column) => sum + column.qualityScore, 0) / columns.length
       : 0,
   );
+  const advancedQuality = analyzeAdvancedQuality(rows, columns);
+  if (advancedQuality.totalAnomalies)
+    warnings.push(
+      `${advancedQuality.totalAnomalies} linha(s) com possível anomalia estatística detectada(s)`,
+    );
   const header = detectHeader(ws);
   const suggestedNormalization = columns
     .flatMap((column) =>
@@ -574,6 +581,7 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     transformations,
     warnings,
     qualityScore,
+    advancedQuality,
     suggestedNormalization,
     header,
   };

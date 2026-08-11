@@ -1493,7 +1493,11 @@ function Review(p: {
                 Qualidade
               </div>
               <div className="mt-1 font-display text-2xl">{active.diagnostics.qualityScore}%</div>
-              <div className="text-xs text-muted-foreground">consistência dos dados</div>
+              <div className="text-xs text-muted-foreground">
+                consistência dos dados
+                {active.diagnostics.advancedQuality &&
+                  ` · robusta ${active.diagnostics.advancedQuality.tableScore}%`}
+              </div>
             </div>
           </div>
         )}
@@ -1545,6 +1549,29 @@ function Review(p: {
                 )}
               </div>
             )}
+            {active.diagnostics.advancedQuality?.columns.length ? (
+              <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-3">
+                {active.diagnostics.advancedQuality.columns.map((column) => (
+                  <div
+                    key={column.key}
+                    className="rounded-xl border border-border bg-background p-3 text-xs"
+                  >
+                    <div className="font-medium">
+                      {column.key} · score {column.score}%
+                    </div>
+                    <div className="mt-1 text-muted-foreground">
+                      IQR {column.iqr?.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) ?? "—"}
+                      {" · "}MAD{" "}
+                      {column.mad?.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) ?? "—"}
+                    </div>
+                    <div className="text-muted-foreground">
+                      IQR {column.iqrOutliers} · MAD {column.madOutliers} · Z-score{" "}
+                      {column.zScoreOutliers} · temporal {column.temporalAnomalies}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
         {active?.diagnostics?.warnings.length ? (

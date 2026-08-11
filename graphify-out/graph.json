@@ -574,6 +574,61 @@
       "provenance": "EXTRACTED"
     },
     {
+      "id": "file:src/lib/advanced-quality.test.ts",
+      "label": "src/lib/advanced-quality.test.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/advanced-quality.test.ts",
+      "source_location": "src/lib/advanced-quality.test.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "file:src/lib/advanced-quality.ts",
+      "label": "src/lib/advanced-quality.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/advanced-quality.ts",
+      "source_location": "src/lib/advanced-quality.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/advanced-quality.ts#AdvancedColumnQuality",
+      "label": "AdvancedColumnQuality",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/advanced-quality.ts",
+      "source_location": "src/lib/advanced-quality.ts:1",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/advanced-quality.ts#AdvancedQualityReport",
+      "label": "AdvancedQualityReport",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/advanced-quality.ts",
+      "source_location": "src/lib/advanced-quality.ts:17",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/advanced-quality.ts#analyzeAdvancedQuality",
+      "label": "analyzeAdvancedQuality",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/advanced-quality.ts",
+      "source_location": "src/lib/advanced-quality.ts:47",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
       "id": "file:src/lib/auto-dashboard.test.ts",
       "label": "src/lib/auto-dashboard.test.ts",
       "kind": "file",
@@ -1195,7 +1250,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:7",
+      "source_location": "src/lib/import-intelligence.ts:8",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1206,7 +1261,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:16",
+      "source_location": "src/lib/import-intelligence.ts:17",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1217,7 +1272,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:34",
+      "source_location": "src/lib/import-intelligence.ts:35",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1228,7 +1283,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:49",
+      "source_location": "src/lib/import-intelligence.ts:50",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1239,7 +1294,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:59",
+      "source_location": "src/lib/import-intelligence.ts:60",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1250,7 +1305,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:401",
+      "source_location": "src/lib/import-intelligence.ts:403",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1261,7 +1316,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:580",
+      "source_location": "src/lib/import-intelligence.ts:588",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1272,7 +1327,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:594",
+      "source_location": "src/lib/import-intelligence.ts:602",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1283,7 +1338,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:644",
+      "source_location": "src/lib/import-intelligence.ts:652",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1294,7 +1349,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:671",
+      "source_location": "src/lib/import-intelligence.ts:679",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1305,7 +1360,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:684",
+      "source_location": "src/lib/import-intelligence.ts:692",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -2449,6 +2504,36 @@
       "provenance": "EXTRACTED"
     },
     {
+      "source": "file:src/lib/advanced-quality.test.ts",
+      "target": "file:src/lib/advanced-quality.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/advanced-quality.ts",
+      "target": "file:src/lib/types.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/advanced-quality.ts",
+      "target": "symbol:src/lib/advanced-quality.ts#AdvancedColumnQuality",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/advanced-quality.ts",
+      "target": "symbol:src/lib/advanced-quality.ts#AdvancedQualityReport",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/advanced-quality.ts",
+      "target": "symbol:src/lib/advanced-quality.ts#analyzeAdvancedQuality",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
       "source": "file:src/lib/auto-dashboard.test.ts",
       "target": "file:src/lib/auto-dashboard.ts",
       "relationship": "imports",
@@ -2817,6 +2902,12 @@
     {
       "source": "file:src/lib/import-intelligence.ts",
       "target": "file:src/lib/types.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/import-intelligence.ts",
+      "target": "file:src/lib/advanced-quality.ts",
       "relationship": "imports",
       "provenance": "EXTRACTED"
     },
