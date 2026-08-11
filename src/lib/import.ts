@@ -181,7 +181,17 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
     if (isBanner(i)) continue;
     const row = aoa[i] ?? [];
     if (isClearlyNotHeaderRow(row)) continue;
-    const score = fillRatio(row);
+    // Cabeçalhos verdadeiros costumam ser seguidos imediatamente por dados.
+    // Esse bônus resolve empates com blocos institucionais mesclados
+    // (assinaturas/cargos), que podem ter a mesma densidade visual do
+    // cabeçalho, mas não têm números nas linhas seguintes.
+    const lookahead = aoa.slice(i + 1, Math.min(i + 4, aoa.length));
+    const numericBelow = lookahead.reduce(
+      (count, candidate) => count + candidate.filter(cellLooksNumeric).length,
+      0,
+    );
+    const dataEvidence = Math.min(0.25, numericBelow / Math.max(1, width * 3));
+    const score = fillRatio(row) + dataEvidence;
     if (score > bestScore) {
       bestScore = score;
       bestIndex = i;
