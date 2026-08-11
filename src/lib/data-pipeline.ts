@@ -29,6 +29,27 @@ export function barChartPresentation(categoryCount: number) {
   };
 }
 
+// Linha, área e sparkline também precisam de espaço horizontal por ponto:
+// comprimir dezenas de datas na largura fixa do cartão sobrepõe rótulos e
+// transforma a curva em um bloco difícil de ler. A versão compacta é usada
+// pela métrica com tendência, que tem menos altura e pede um passo menor.
+const TIME_SERIES_SLOT_PX = 72;
+const COMPACT_TIME_SERIES_SLOT_PX = 44;
+const TIME_SERIES_SCROLL_THRESHOLD = 8;
+const COMPACT_TIME_SERIES_SCROLL_THRESHOLD = 10;
+
+export function timeSeriesChartPresentation(pointCount: number, compact = false) {
+  const threshold = compact
+    ? COMPACT_TIME_SERIES_SCROLL_THRESHOLD
+    : TIME_SERIES_SCROLL_THRESHOLD;
+  const slot = compact ? COMPACT_TIME_SERIES_SLOT_PX : TIME_SERIES_SLOT_PX;
+  const scrollable = pointCount > threshold;
+  return {
+    scrollable,
+    contentWidth: scrollable ? pointCount * slot : undefined,
+  };
+}
+
 /**
  * Aplica as regras de dados ausentes configuradas por coluna.
  * - Numéricas: ignore (padrão, mantém null), zero, interpolate, hide-row
