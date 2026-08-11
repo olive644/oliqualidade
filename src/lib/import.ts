@@ -56,6 +56,60 @@ function normalizeRawRow(row: (string | number | Date | null)[]): (string | numb
   return row.map((v) => (v instanceof Date ? formatDateCell(v) : v));
 }
 
+const PLAIN_NUMERIC_TEXT_PATTERN = /^[-+]?(?:\d+|\d*[.,]\d+)$/;
+const IDENTIFIER_HEADER_PATTERN =
+  /(^|[\s_-])(id|c[oó]digo|cod|n[º°o]\.?|n[uú]mero|sku|protocolo)([\s_.-]|\d|$)/i;
+
+/**
+ * Alguns formulários reais mudam o tipo de célula no meio da mesma coluna:
+ * medições antigas são números do Excel e as mais recentes são texto
+ * ("1.50"), embora representem a mesma grandeza. Quando a coluna tem pelo
+ * menos um número real e 90% ou mais dos valores preenchidos são números ou
+ * texto numérico simples, convertemos apenas esses textos para number.
+ *
+ * A exigência de um número real, a proteção por nome de identificador e a
+ * preservação de inteiros com zero à esquerda evitam transformar códigos,
+ * protocolos e SKUs em métricas por engano.
+ */
+function normalizeMixedNumericColumns(rows: Row[]): { rows: Row[]; changes: number } {
+  if (!rows.length) return { rows, changes: 0 };
+  const headers = Object.keys(rows[0] ?? {});
+  const numericHeaders = new Set<string>();
+
+  for (const header of headers) {
+    if (IDENTIFIER_HEADER_PATTERN.test(header)) continue;
+    const values = rows.map((row) => row[header]).filter((value) => value !== null && value !== "");
+    if (!values.some((value) => typeof value === "number")) continue;
+    const numericLike = values.filter((value) => {
+      if (typeof value === "number") return Number.isFinite(value);
+      if (typeof value !== "string") return false;
+      const trimmed = value.trim();
+      if (!PLAIN_NUMERIC_TEXT_PATTERN.test(trimmed)) return false;
+      return !/^[-+]?0\d+$/.test(trimmed);
+    }).length;
+    if (values.length && numericLike / values.length >= 0.9) numericHeaders.add(header);
+  }
+
+  if (!numericHeaders.size) return { rows, changes: 0 };
+  let changes = 0;
+  const normalized = rows.map((row) => {
+    let next = row;
+    for (const header of numericHeaders) {
+      const value = row[header];
+      if (typeof value !== "string") continue;
+      const trimmed = value.trim();
+      if (!PLAIN_NUMERIC_TEXT_PATTERN.test(trimmed) || /^[-+]?0\d+$/.test(trimmed)) continue;
+      const parsed = Number(trimmed.replace(",", "."));
+      if (!Number.isFinite(parsed)) continue;
+      if (next === row) next = { ...row };
+      next[header] = parsed;
+      changes++;
+    }
+    return next;
+  });
+  return { rows: normalized, changes };
+}
+
 // Códigos de erro que o Excel escreve quando uma fórmula não consegue
 // calcular (ex: divisão por zero num "Ticket médio" antes de ter vendas).
 // Sintaticamente são texto, mas semanticamente são um valor quebrado, típico
@@ -657,11 +711,14 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       })
     : rows;
 
+  const { rows: normalizedRows, changes: numericTextCellsNormalized } =
+    normalizeMixedNumericColumns(finalRows);
+
   const nearEmptyColumns =
-    finalRows.length >= 5
+    normalizedRows.length >= 5
       ? finalHeaders.filter((h) => {
-          const filled = finalRows.filter((r) => r[h] !== null && r[h] !== "").length;
-          return filled / finalRows.length < NEAR_EMPTY_RATIO;
+          const filled = normalizedRows.filter((r) => r[h] !== null && r[h] !== "").length;
+          return filled / normalizedRows.length < NEAR_EMPTY_RATIO;
         })
       : [];
 
@@ -702,6 +759,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       `${nearEmptyColumns.length > 1 ? "As colunas" : "A coluna"} ${names} ${nearEmptyColumns.length > 1 ? "estão" : "está"} quase ${nearEmptyColumns.length > 1 ? "vazias" : "vazia"}. Confira se ${nearEmptyColumns.length > 1 ? "elas foram importadas" : "ela foi importada"} corretamente antes de usá-la${nearEmptyColumns.length > 1 ? "s" : ""} em um gráfico.`,
     );
   }
+  if (numericTextCellsNormalized > 0) {
+    messages.push(
+      `${numericTextCellsNormalized} mediç${numericTextCellsNormalized > 1 ? "ões numéricas estavam" : "ão numérica estava"} salva${numericTextCellsNormalized > 1 ? "s" : ""} como texto no Excel e ${numericTextCellsNormalized > 1 ? "foram convertidas" : "foi convertida"} para número, mantendo a coluna consistente para cálculos e gráficos.`,
+    );
+  }
   if (blankSkipped > 0) {
     messages.push(
       `${blankSkipped} linha${blankSkipped > 1 ? "s" : ""} em branco no meio dos dados ${blankSkipped > 1 ? "foram" : "foi"} ignorada${blankSkipped > 1 ? "s" : ""}.`,
@@ -709,9 +771,9 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   }
 
   return {
-    rows: finalRows,
+    rows: normalizedRows,
     warning: messages.length ? messages.join(" ") : null,
-    diagnostics: diagnoseImportedSheet(ws, finalRows),
+    diagnostics: diagnoseImportedSheet(ws, normalizedRows),
   };
 }
 
