@@ -43,6 +43,7 @@ import {
   Download,
   FileImage,
   FileText,
+  Files,
   Filter,
   FolderSync,
   GitMerge,
@@ -147,6 +148,7 @@ import {
   infer,
   inferColumns,
   palette,
+  parseDateValue,
   validateFormula,
   withCalculatedColumns,
 } from "@/lib/format";
@@ -195,6 +197,7 @@ import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
   fingerprint,
+  listSupportedWorkbooks,
   pickFolderWorkbook,
   type FileFingerprint,
   type FolderMonitorView,
@@ -467,6 +470,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         directory: LocalDirectoryHandle;
         fileName: string;
         fingerprint: FileFingerprint;
+        workbookNames: string[];
         timer: ReturnType<typeof setInterval>;
         syncing: boolean;
       }
@@ -663,6 +667,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       directory: selection.directory,
       fileName: selection.file.name,
       fingerprint: fingerprint(selection.file),
+      workbookNames: selection.workbookNames,
       timer: undefined as unknown as ReturnType<typeof setInterval>,
       syncing: false,
     };
@@ -671,6 +676,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
       [dashboardId]: {
         folderName: selection.directory.name,
         fileName: selection.file.name,
+        fileCount: selection.workbookNames.length,
+        fileNames: selection.workbookNames,
         status: "watching",
         lastSyncedAt,
       },
@@ -680,6 +687,19 @@ export function OliAm({ routeId }: { routeId?: string }) {
       runtime.syncing = true;
       void (async () => {
         try {
+          const listed = await listSupportedWorkbooks(runtime.directory);
+          const workbookNames = listed.length ? listed : [runtime.fileName];
+          if (workbookNames.join("\n") !== runtime.workbookNames.join("\n")) {
+            runtime.workbookNames = workbookNames;
+            setFolderMonitors((current) => ({
+              ...current,
+              [dashboardId]: {
+                ...current[dashboardId]!,
+                fileCount: workbookNames.length,
+                fileNames: workbookNames,
+              },
+            }));
+          }
           const handle = await runtime.directory.getFileHandle(runtime.fileName);
           const file = await handle.getFile();
           if (!fileChanged(runtime.fingerprint, file)) return;
@@ -714,6 +734,33 @@ export function OliAm({ routeId }: { routeId?: string }) {
     folderRuntimes.current.set(dashboardId, runtime);
   };
 
+  const ensureFolderFilesWidget = (dashboardId: string) => {
+    const list = dashboardsRef.current;
+    const dashboard = list.find((item) => item.id === dashboardId);
+    if (!dashboard) return;
+    const sheetIndex = Math.min(dashboard.activeSheetIndex, dashboard.sheets.length - 1);
+    const sheet = dashboard.sheets[sheetIndex];
+    if (!sheet) return;
+    const widgets =
+      sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows);
+    if (widgets.some((widget) => widget.type === "folder-files")) return;
+    persist(
+      list.map((item) =>
+        item.id === dashboardId
+          ? {
+              ...item,
+              sheets: item.sheets.map((candidate, index) =>
+                index === sheetIndex
+                  ? { ...candidate, widgets: [...widgets, createWidget("folder-files", [])] }
+                  : candidate,
+              ),
+              updatedAt: Date.now(),
+            }
+          : item,
+      ),
+    );
+  };
+
   const connectFolder = async (dashboardId?: string) => {
     setImportError(null);
     try {
@@ -724,12 +771,15 @@ export function OliAm({ routeId }: { routeId?: string }) {
           [dashboardId]: {
             folderName: selection.directory.name,
             fileName: selection.file.name,
+            fileCount: selection.workbookNames.length,
+            fileNames: selection.workbookNames,
             status: "syncing",
             lastSyncedAt: Date.now(),
           },
         }));
         await syncMonitoredFile(dashboardId, selection.file);
         startFolderMonitor(dashboardId, selection);
+        ensureFolderFilesWidget(dashboardId);
         toast.success("Pasta conectada. O Oli acompanhará alterações enquanto estiver aberto.");
       } else {
         pendingFolderSelection.current = selection;
@@ -823,6 +873,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       setCurrentId(dash.id);
       if (pendingFolderSelection.current) {
         startFolderMonitor(dash.id, pendingFolderSelection.current);
+        ensureFolderFilesWidget(dash.id);
         pendingFolderSelection.current = null;
       }
       void navigate({ to: "/painel/$id", params: { id: dash.id } });
@@ -2242,6 +2293,7 @@ function Dashboard(p: {
   const canAdd: Record<WidgetType, boolean> = {
     metric: nums.length > 0,
     "metric-trend": nums.length > 0,
+    "folder-files": true,
     bar: nums.length > 0 && groupableCols.length > 0,
     pie: nums.length > 0 && groupableCols.length > 0,
     line: nums.length > 0 && !!dateCol,
@@ -2593,6 +2645,7 @@ function Dashboard(p: {
             sort={sort}
             setSort={setSort}
             versionDelta={versionDelta}
+            folderMonitor={p.folderMonitor}
             animationDelay={Math.min(i, 8) * 40}
             filters={sheet.filters}
             setFilters={setFilters}
@@ -4696,6 +4749,7 @@ function WidgetCard({
   sort,
   setSort,
   versionDelta,
+  folderMonitor,
   animationDelay,
   filters,
   setFilters,
@@ -4716,6 +4770,7 @@ function WidgetCard({
   sort: { key: string; dir: "asc" | "desc" } | null;
   setSort: (s: { key: string; dir: "asc" | "desc" } | null) => void;
   versionDelta: Map<string, number | null> | null;
+  folderMonitor: FolderMonitorView | undefined;
   animationDelay: number;
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
@@ -4810,6 +4865,75 @@ function WidgetCard({
     </div>
   );
 
+  if (w.type === "folder-files") {
+    const formats = new Map<string, number>();
+    for (const fileName of folderMonitor?.fileNames ?? []) {
+      const extension = fileName.split(".").pop()?.toUpperCase() ?? "OUTRO";
+      formats.set(extension, (formats.get(extension) ?? 0) + 1);
+    }
+    const formatSeries = [...formats].map(([name, total]) => ({ name, total }));
+    return (
+      <article
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <WidgetHead
+          title="Planilhas monitoradas"
+          icon={<Files className="size-3.5 shrink-0 text-muted-foreground" />}
+          {...dragProps}
+        />
+        {sizeControls}
+        <div className="grid min-h-40 grid-cols-[auto_1fr] items-center gap-5 p-5">
+          <div>
+            <p className="font-display text-5xl font-extrabold tracking-tight text-primary">
+              {folderMonitor?.fileCount ?? 0}
+            </p>
+            <p className="mt-1 text-xs font-medium text-muted-foreground">
+              {folderMonitor?.fileCount === 1 ? "planilha compatível" : "planilhas compatíveis"}
+            </p>
+            <p className="mt-3 max-w-32 truncate font-mono text-[10px] text-muted-foreground">
+              {folderMonitor ? folderMonitor.folderName : "Nenhuma pasta conectada"}
+            </p>
+          </div>
+          {formatSeries.length ? (
+            <div className="h-28 min-w-0" aria-label="Arquivos por formato">
+              <ResponsiveContainer>
+                <BarChart data={formatSeries} margin={{ top: 16, right: 4, left: 4, bottom: 0 }}>
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis hide allowDecimals={false} />
+                  <ChartTooltip
+                    cursor={{ fill: "var(--accent)", fillOpacity: 0.35 }}
+                    formatter={(value: number) => [
+                      `${value} arquivo${value === 1 ? "" : "s"}`,
+                      "Total",
+                    ]}
+                  />
+                  <Bar dataKey="total" fill="var(--primary)" radius={[6, 6, 2, 2]}>
+                    <LabelList
+                      dataKey="total"
+                      position="top"
+                      fontSize={10}
+                      fill="var(--foreground)"
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Use “Monitorar pasta” para contar automaticamente arquivos XLSX, XLS e CSV.
+            </p>
+          )}
+        </div>
+      </article>
+    );
+  }
+
   if (w.type === "metric" || w.type === "metric-trend") {
     const col = columns.find((c) => c.key === w.metricKey) ?? numericCols[0];
     if (!col) {
@@ -4825,7 +4949,8 @@ function WidgetCard({
         />
       );
     }
-    const metricOp: AggregationOp = w.op ?? "sum";
+    const metricOps: AggregationOp[] = ["sum", "avg", "count", "min", "max"];
+    const metricOp: AggregationOp = metricOps.includes(w.op ?? "sum") ? (w.op ?? "sum") : "sum";
     const total = aggregate(
       data.map((r) => Number(r[col.key])).filter((v) => Number.isFinite(v)),
       metricOp,
@@ -4838,10 +4963,18 @@ function WidgetCard({
         : undefined;
     const sparkline =
       w.type === "metric-trend" && trendDateCol
-        ? [...groupAndAggregate(data, trendDateCol.key, col.key, metricOp)].sort((a, b) =>
-            a.name.localeCompare(b.name, "pt-BR"),
+        ? [...groupAndAggregate(data, trendDateCol.key, col.key, metricOp)].sort(
+            (a, b) =>
+              (parseDateValue(a.name) ?? Number.MAX_SAFE_INTEGER) -
+              (parseDateValue(b.name) ?? Number.MAX_SAFE_INTEGER),
           )
         : [];
+    const sparkStart = sparkline[0]?.total;
+    const sparkEnd = sparkline.at(-1)?.total;
+    const sparkChange =
+      sparkStart !== undefined && sparkEnd !== undefined && sparkStart !== 0
+        ? (sparkEnd - sparkStart) / Math.abs(sparkStart)
+        : null;
     return (
       <article
         className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -4888,11 +5021,13 @@ function WidgetCard({
               value={metricOp}
               onChange={(e) => onConfigure({ op: e.target.value as AggregationOp })}
             >
-              {Object.entries(aggregationLabels).map(([o, label]) => (
-                <option key={o} value={o}>
-                  {label}
-                </option>
-              ))}
+              {Object.entries(aggregationLabels)
+                .filter(([o]) => metricOps.includes(o as AggregationOp))
+                .map(([o, label]) => (
+                  <option key={o} value={o}>
+                    {label}
+                  </option>
+                ))}
             </select>
           </label>
           {w.type === "metric-trend" && columns.some((c) => c.kind === "date") && (
@@ -4955,26 +5090,69 @@ function WidgetCard({
             </p>
           )}
           {w.type === "metric-trend" && (
-            <div className="mt-4 h-14">
+            <div className="mt-4">
               {sparkline.length >= 2 ? (
-                <ResponsiveContainer>
-                  <AreaChart data={sparkline} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-                    <defs>
-                      <linearGradient id={`spark-${w.id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--secondary-accent)" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="var(--secondary-accent)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey="total"
-                      stroke="var(--secondary-accent)"
-                      strokeWidth={2}
-                      fill={`url(#spark-${w.id})`}
-                      isAnimationActive={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <>
+                  <div className="h-14">
+                    <ResponsiveContainer>
+                      <AreaChart data={sparkline} margin={{ top: 3, right: 3, left: 3, bottom: 3 }}>
+                        <defs>
+                          <linearGradient id={`spark-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop
+                              offset="0%"
+                              stopColor="var(--secondary-accent)"
+                              stopOpacity={0.5}
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="var(--secondary-accent)"
+                              stopOpacity={0}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <ChartTooltip
+                          contentStyle={{
+                            background: "var(--popover)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 10,
+                            fontSize: 11,
+                          }}
+                          formatter={(value: number) => [
+                            fmt(value, col.kind) ?? String(value),
+                            col.label,
+                          ]}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="total"
+                          stroke="var(--secondary-accent)"
+                          strokeWidth={2}
+                          fill={`url(#spark-${w.id})`}
+                          dot={false}
+                          activeDot={{ r: 3, fill: "var(--secondary-accent)" }}
+                          isAnimationActive={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-muted-foreground">
+                    <span>{sparkline[0]?.name}</span>
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        (sparkChange ?? 0) >= 0 ? "text-secondary-accent" : "text-destructive",
+                      )}
+                    >
+                      {sparkChange === null
+                        ? `${sparkline.length} períodos`
+                        : new Intl.NumberFormat("pt-BR", {
+                            style: "percent",
+                            maximumFractionDigits: 1,
+                          }).format(sparkChange)}
+                    </span>
+                    <span>{sparkline.at(-1)?.name}</span>
+                  </div>
+                </>
               ) : (
                 <p className="text-xs text-muted-foreground">
                   Sem coluna de data suficiente para o sparkline.
@@ -5031,6 +5209,10 @@ function WidgetCard({
       w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
         ? [...grouped].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
         : grouped;
+    const barSeries =
+      w.type === "bar"
+        ? [...series].sort((a, b) => Math.abs(b.total) - Math.abs(a.total)).slice(0, 10)
+        : series;
     const pieSeries = (() => {
       if (w.type !== "pie") return series;
       if (series.length <= 6) return series;
@@ -5122,9 +5304,13 @@ function WidgetCard({
           </p>
         ) : w.type === "bar" ? (
           <>
-            <div className="h-56 p-4">
+            <div className="h-72 p-4">
               <ResponsiveContainer>
-                <BarChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
+                <BarChart
+                  layout="vertical"
+                  data={barSeries}
+                  margin={{ top: 4, right: 72, left: 8, bottom: 18 }}
+                >
                   <defs>
                     <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
@@ -5133,12 +5319,13 @@ function WidgetCard({
                   </defs>
                   <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.6} />
                   <XAxis
-                    dataKey="name"
-                    tick={(props) => <AxisTick {...props} />}
+                    type="number"
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={{ stroke: "var(--border)" }}
+                    tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                     label={{
-                      value: groupCol.label,
+                      value: `${aggregationLabels[op]} de ${valueCol.label}`,
                       position: "insideBottom",
                       offset: -14,
                       fontSize: 11,
@@ -5147,19 +5334,15 @@ function WidgetCard({
                     }}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                    type="category"
+                    dataKey="name"
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
-                    width={44}
-                    tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                    label={{
-                      value: `${aggregationLabels[op]} de ${valueCol.label}`,
-                      angle: -90,
-                      position: "insideLeft",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      fill: "var(--muted-foreground)",
-                    }}
+                    width={112}
+                    tickFormatter={(value: string) =>
+                      value.length > 18 ? `${value.slice(0, 16)}…` : value
+                    }
                   />
                   <ChartTooltip
                     cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
@@ -5168,7 +5351,7 @@ function WidgetCard({
                         active={props.active}
                         payload={props.payload as { value?: number }[]}
                         label={props.label as string}
-                        series={series}
+                        series={barSeries}
                         kind={valueCol.kind}
                       />
                     )}
@@ -5176,14 +5359,14 @@ function WidgetCard({
                   <Bar
                     dataKey="total"
                     fill={`url(#bar-grad-${w.id})`}
-                    radius={[6, 6, 0, 0]}
+                    radius={[0, 6, 6, 0]}
                     onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
                     cursor="pointer"
                     animationDuration={500}
                   >
                     <LabelList
                       dataKey="total"
-                      position="top"
+                      position="right"
                       fontSize={10}
                       fill="var(--muted-foreground)"
                       formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
@@ -5194,8 +5377,13 @@ function WidgetCard({
             </div>
             <p className="sr-only">
               Tabela alternativa ao gráfico de barras:{" "}
-              {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
+              {barSeries.map((g) => `${g.name}, ${g.total}`).join("; ")}.
             </p>
+            {series.length > barSeries.length && (
+              <p className="border-t px-4 py-2 text-[11px] text-muted-foreground">
+                Exibindo as 10 maiores categorias de {series.length} para manter o gráfico legível.
+              </p>
+            )}
           </>
         ) : w.type === "pie" ? (
           <>

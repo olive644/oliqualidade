@@ -201,6 +201,12 @@ describe("createWidget, novos tipos", () => {
     expect(w.size).toBe("sm");
   });
 
+  it("widget de pasta monitorada nasce compacto e sem depender de colunas", () => {
+    const w = createWidget("folder-files", []);
+    expect(w.span).toBe(1);
+    expect(w.size).toBe("sm");
+  });
+
   it("área usa data como agrupamento padrão, como a linha", () => {
     const w = createWidget("area", columns);
     expect(w.groupKey).toBe("data_venda");

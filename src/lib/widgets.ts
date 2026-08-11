@@ -137,13 +137,21 @@ function pickSequentialIndexColumn(columns: Column[], rows: Row[]): Column | und
 }
 
 export function defaultSpan(type: WidgetType): WidgetSpan {
-  if (type === "metric" || type === "metric-trend" || type === "pie" || type === "rating") return 1;
+  if (
+    type === "metric" ||
+    type === "metric-trend" ||
+    type === "folder-files" ||
+    type === "pie" ||
+    type === "rating"
+  )
+    return 1;
   if (type === "bar" || type === "ranking" || type === "map") return 2;
   return 3; // line, area, table
 }
 
 export function defaultSize(type: WidgetType): WidgetSize {
-  if (type === "metric" || type === "metric-trend" || type === "rating") return "sm";
+  if (type === "metric" || type === "metric-trend" || type === "folder-files" || type === "rating")
+    return "sm";
   if (type === "map") return "lg";
   return "md";
 }

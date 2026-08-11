@@ -245,7 +245,9 @@ export function relevantAggregationOps(
   const list = [...buckets.values()];
   const maxValues = list.length ? Math.max(...list.map((b) => b.values)) : 0;
   const maxRows = list.length ? Math.max(...list.map((b) => b.rowCount)) : 0;
-  if (maxValues > 1) return ["sum", "avg", "count", "min", "max", "multiply", "divide"];
+  // Multiplicação/divisão entre dezenas de linhas explode ou tende a zero,
+  // produzindo barras ilegíveis e sem interpretação analítica útil.
+  if (maxValues > 1) return ["sum", "avg", "count", "min", "max"];
   if (maxRows > 1) return ["sum", "count"];
   return ["sum"];
 }

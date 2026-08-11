@@ -3,6 +3,7 @@ import {
   fileChanged,
   fingerprint,
   isSupportedWorkbook,
+  listSupportedWorkbooks,
   pickFolderWorkbook,
   type LocalDirectoryHandle,
   type LocalFileHandle,
@@ -35,13 +36,39 @@ describe("folder monitor", () => {
       name: "Relatórios",
       resolve: async () => [file.name],
       getFileHandle: async () => handle,
+      values: async function* () {
+        yield handle;
+        yield { kind: "file" as const, name: "custos.csv", getFile: async () => file };
+        yield { kind: "file" as const, name: "leia-me.txt", getFile: async () => file };
+      },
     } satisfies LocalDirectoryHandle;
     const win = {
       showDirectoryPicker: async () => directory,
       showOpenFilePicker: async () => [handle],
     } as unknown as Window;
 
-    await expect(pickFolderWorkbook(win)).resolves.toMatchObject({ directory, handle, file });
+    await expect(pickFolderWorkbook(win)).resolves.toMatchObject({
+      directory,
+      handle,
+      file,
+      workbookNames: ["custos.csv", "vendas.xlsx"],
+    });
+  });
+
+  it("conta somente planilhas legíveis na pasta", async () => {
+    const directory = {
+      kind: "directory" as const,
+      name: "Dados",
+      resolve: async () => null,
+      getFileHandle: async () => {
+        throw new Error("unused");
+      },
+      values: async function* () {
+        for (const name of ["vendas.xlsx", "custos.CSV", "notas.txt", "arquivo.pdf"])
+          yield { kind: "file" as const, name, getFile: async () => ({ name }) as File };
+      },
+    };
+    await expect(listSupportedWorkbooks(directory)).resolves.toEqual(["custos.CSV", "vendas.xlsx"]);
   });
 
   it("informa quando o navegador não oferece acesso seguro a pastas", async () => {

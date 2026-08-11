@@ -174,7 +174,7 @@ describe("groupAndAggregate", () => {
 });
 
 describe("relevantAggregationOps", () => {
-  it("mostra todas as 7 operações quando algum grupo tem mais de 1 valor numérico", () => {
+  it("oferece somente operações estáveis quando algum grupo tem mais de 1 valor numérico", () => {
     const rows: Row[] = [
       { vendedor: "Ana", valor: 100 },
       { vendedor: "Ana", valor: 200 },
@@ -186,8 +186,6 @@ describe("relevantAggregationOps", () => {
       "count",
       "min",
       "max",
-      "multiply",
-      "divide",
     ]);
   });
 

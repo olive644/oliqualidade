@@ -52,6 +52,7 @@ export type ChartConfig = {
 export type WidgetType =
   | "metric"
   | "metric-trend"
+  | "folder-files"
   | "bar"
   | "pie"
   | "line"
@@ -81,6 +82,7 @@ export type Widget = {
 export const widgetTypeLabels: Record<WidgetType, string> = {
   metric: "Métrica",
   "metric-trend": "Métrica com tendência",
+  "folder-files": "Planilhas monitoradas",
   bar: "Gráfico de barras",
   pie: "Gráfico de pizza",
   line: "Linha do tempo",
