@@ -508,7 +508,10 @@ export function OliAm({ routeId }: { routeId?: string }) {
       }
     });
   };
-  const prepare = (data: { name: string; rows: Row[]; diagnostics?: ImportDiagnostics }[], n: string) => {
+  const prepare = (
+    data: { name: string; rows: Row[]; diagnostics?: ImportDiagnostics }[],
+    n: string,
+  ) => {
     const nonEmpty = data.filter((s) => s.rows.length > 0);
     if (!nonEmpty.length) return;
     setReviewSheets(
@@ -1143,20 +1146,37 @@ function Home(p: {
   );
 }
 
-
 function LoadingCube() {
   return (
     <div className="oliam-loader-wrap" aria-hidden="true">
       <div className="loader">
-        <div className="ground"><div /></div>
-        <div className="box box0"><div /></div>
-        <div className="box box1"><div /></div>
-        <div className="box box2"><div /></div>
-        <div className="box box3"><div /></div>
-        <div className="box box4"><div /></div>
-        <div className="box box5"><div /></div>
-        <div className="box box6"><div /></div>
-        <div className="box box7"><div /></div>
+        <div className="ground">
+          <div />
+        </div>
+        <div className="box box0">
+          <div />
+        </div>
+        <div className="box box1">
+          <div />
+        </div>
+        <div className="box box2">
+          <div />
+        </div>
+        <div className="box box3">
+          <div />
+        </div>
+        <div className="box box4">
+          <div />
+        </div>
+        <div className="box box5">
+          <div />
+        </div>
+        <div className="box box6">
+          <div />
+        </div>
+        <div className="box box7">
+          <div />
+        </div>
       </div>
     </div>
   );
@@ -1271,12 +1291,8 @@ function Empty(p: {
           {p.loading ? (
             <>
               <LoadingCube />
-              <strong className="font-display text-base">
-                {p.loadingLabel ?? "Lendo…"}
-              </strong>
-              <span className="text-sm text-muted-foreground">
-                Analisando sua planilha…
-              </span>
+              <strong className="font-display text-base">{p.loadingLabel ?? "Lendo…"}</strong>
+              <span className="text-sm text-muted-foreground">Analisando sua planilha…</span>
             </>
           ) : (
             <>
@@ -1426,29 +1442,45 @@ function Review(p: {
         {active?.diagnostics && (
           <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">Confiança da importação</div>
+              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
+                Confiança da importação
+              </div>
               <div className="mt-1 flex items-end gap-2">
                 <strong className="font-display text-2xl">{active.diagnostics.confidence}%</strong>
                 <span className="pb-0.5 text-xs text-muted-foreground">estrutura detectada</span>
               </div>
             </div>
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">Dados</div>
-              <div className="mt-1 font-display text-2xl">{active.diagnostics.rowCount.toLocaleString("pt-BR")}</div>
-              <div className="text-xs text-muted-foreground">linhas · {active.diagnostics.columnCount} colunas</div>
+              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
+                Dados
+              </div>
+              <div className="mt-1 font-display text-2xl">
+                {active.diagnostics.rowCount.toLocaleString("pt-BR")}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                linhas · {active.diagnostics.columnCount} colunas
+              </div>
             </div>
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">Integridade</div>
+              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
+                Integridade
+              </div>
               <div className="mt-1 font-display text-2xl">{active.diagnostics.duplicateRows}</div>
               <div className="text-xs text-muted-foreground">linhas duplicadas detectadas</div>
             </div>
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">Estrutura</div>
-              <div className="mt-1 font-display text-2xl">{active.diagnostics.formulaCells + active.diagnostics.mergedRanges}</div>
+              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
+                Estrutura
+              </div>
+              <div className="mt-1 font-display text-2xl">
+                {active.diagnostics.formulaCells + active.diagnostics.mergedRanges}
+              </div>
               <div className="text-xs text-muted-foreground">fórmulas + mesclagens</div>
             </div>
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">Qualidade</div>
+              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
+                Qualidade
+              </div>
               <div className="mt-1 font-display text-2xl">{active.diagnostics.qualityScore}%</div>
               <div className="text-xs text-muted-foreground">consistência dos dados</div>
             </div>
@@ -1463,7 +1495,8 @@ function Review(p: {
                   Leitura estrutural
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Cabeçalho provável na linha {active.diagnostics.header.row}, com {Math.round(active.diagnostics.header.confidence * 100)}% de confiança.
+                  Cabeçalho provável na linha {active.diagnostics.header.row}, com{" "}
+                  {Math.round(active.diagnostics.header.confidence * 100)}% de confiança.
                 </p>
               </div>
               {active.diagnostics.suggestedNormalization.length > 0 && (
@@ -1482,7 +1515,10 @@ function Review(p: {
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {active.diagnostics.warnings.map((warning) => (
-                <span key={warning} className="rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground">
+                <span
+                  key={warning}
+                  className="rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground"
+                >
                   {warning}
                 </span>
               ))}
@@ -1496,17 +1532,22 @@ function Review(p: {
               Regiões de dados detectadas
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Encontramos áreas potencialmente independentes nesta aba. Elas não serão combinadas automaticamente sem confirmação.
+              Encontramos áreas potencialmente independentes nesta aba. Elas não serão combinadas
+              automaticamente sem confirmação.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {active.diagnostics.tableRegions.map((region, index) => (
-                <div key={`${region.startRow}-${region.startColumn}-${index}`} className="rounded-xl border border-border bg-background p-3 text-xs">
+                <div
+                  key={`${region.startRow}-${region.startColumn}-${index}`}
+                  className="rounded-xl border border-border bg-background p-3 text-xs"
+                >
                   <div className="font-medium">Região {index + 1}</div>
                   <div className="mt-1 font-mono text-muted-foreground">
                     L{region.startRow}:L{region.endRow} · C{region.startColumn}:C{region.endColumn}
                   </div>
                   <div className="mt-1 text-muted-foreground">
-                    {region.rows} linhas · {region.columns} colunas · {Math.round(region.confidence * 100)}% confiança
+                    {region.rows} linhas · {region.columns} colunas ·{" "}
+                    {Math.round(region.confidence * 100)}% confiança
                   </div>
                 </div>
               ))}
@@ -1521,7 +1562,10 @@ function Review(p: {
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {active.diagnostics.transformations.map((item) => (
-                <span key={item} className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+                <span
+                  key={item}
+                  className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground"
+                >
                   {item}
                 </span>
               ))}
@@ -1534,7 +1578,9 @@ function Review(p: {
             <div>
               <strong className="font-medium">Dados potencialmente sensíveis detectados.</strong>
               <p className="mt-1 text-xs text-muted-foreground">
-                O importador marcou {active.diagnostics.columns.filter((c) => c.sensitive).length} coluna(s) como potencialmente pessoal(is). Esses campos não devem ser enviados para IA sem necessidade.
+                O importador marcou {active.diagnostics.columns.filter((c) => c.sensitive).length}{" "}
+                coluna(s) como potencialmente pessoal(is). Esses campos não devem ser enviados para
+                IA sem necessidade.
               </p>
             </div>
           </div>
@@ -1611,9 +1657,14 @@ function Review(p: {
               </div>
               {active.diagnostics?.columns.find((d) => d.key === c.key) && (
                 <div className="mt-2 flex items-center gap-2 pl-8 text-[11px] text-muted-foreground">
-                  <span>Qualidade: {active.diagnostics.columns.find((d) => d.key === c.key)?.qualityScore}%</span>
+                  <span>
+                    Qualidade:{" "}
+                    {active.diagnostics.columns.find((d) => d.key === c.key)?.qualityScore}%
+                  </span>
                   <span>·</span>
-                  <span>{active.diagnostics.columns.find((d) => d.key === c.key)?.missing ?? 0} ausentes</span>
+                  <span>
+                    {active.diagnostics.columns.find((d) => d.key === c.key)?.missing ?? 0} ausentes
+                  </span>
                   {active.diagnostics.columns.find((d) => d.key === c.key)?.sensitive && (
                     <span className="text-amber-600">· sensível</span>
                   )}

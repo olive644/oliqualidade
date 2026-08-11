@@ -556,7 +556,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       );
     }
 
-    return { rows: blockRows, warning: blockMessages.join(" "), diagnostics: diagnoseImportedSheet(ws, blockRows) };
+    return {
+      rows: blockRows,
+      warning: blockMessages.join(" "),
+      diagnostics: diagnoseImportedSheet(ws, blockRows),
+    };
   }
 
   const headerRowIndex = findHeaderRowIndex(aoa, bannerRows);

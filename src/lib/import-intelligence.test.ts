@@ -17,8 +17,22 @@ describe("import intelligence", () => {
       ["Beto", "987.654.321-00", "beto@example.com", "11/08/2026", "R$ 900,00", "8%"],
     ]);
     const rows = [
-      { Cliente: "Ana", CPF: "123.456.789-00", "E-mail": "ana@example.com", Data: "10/08/2026", Valor: "R$ 1.234,50", Taxa: "12%" },
-      { Cliente: "Beto", CPF: "987.654.321-00", "E-mail": "beto@example.com", Data: "11/08/2026", Valor: "R$ 900,00", Taxa: "8%" },
+      {
+        Cliente: "Ana",
+        CPF: "123.456.789-00",
+        "E-mail": "ana@example.com",
+        Data: "10/08/2026",
+        Valor: "R$ 1.234,50",
+        Taxa: "12%",
+      },
+      {
+        Cliente: "Beto",
+        CPF: "987.654.321-00",
+        "E-mail": "beto@example.com",
+        Data: "11/08/2026",
+        Valor: "R$ 900,00",
+        Taxa: "8%",
+      },
     ];
     const diagnostics = diagnoseImportedSheet(ws, rows);
     expect(diagnostics.columnCount).toBe(6);
@@ -30,15 +44,27 @@ describe("import intelligence", () => {
   });
 
   it("preserva linhas e mascara campos sensíveis para contexto de IA", () => {
-    const ws = sheet([["Nome", "CPF", "Cidade"], ["Ana", "12345678900", "Recife"]]);
+    const ws = sheet([
+      ["Nome", "CPF", "Cidade"],
+      ["Ana", "12345678900", "Recife"],
+    ]);
     const rows = [{ Nome: "Ana", CPF: "12345678900", Cidade: "Recife" }];
     const diagnostics = diagnoseImportedSheet(ws, rows);
     const sanitized = sanitizeRowsForAi(rows, diagnostics.columns);
-    expect(sanitized[0]).toEqual({ Nome: "Ana", CPF: "[DADO_SENSIVEL_REMOVIDO]", Cidade: "Recife" });
+    expect(sanitized[0]).toEqual({
+      Nome: "Ana",
+      CPF: "[DADO_SENSIVEL_REMOVIDO]",
+      Cidade: "Recife",
+    });
   });
 
   it("detecta duplicidade de linhas", () => {
-    const ws = sheet([["Produto", "Valor"], ["A", 10], ["A", 10], ["B", 20]]);
+    const ws = sheet([
+      ["Produto", "Valor"],
+      ["A", 10],
+      ["A", 10],
+      ["B", 20],
+    ]);
     const diagnostics = diagnoseImportedSheet(ws, [
       { Produto: "A", Valor: 10 },
       { Produto: "A", Valor: 10 },
@@ -63,7 +89,12 @@ describe("import intelligence", () => {
   });
 
   it("marca transformações estruturais para revisão", () => {
-    const ws = sheet([["Produto", "Valor"], ["A", 10], ["A", 10], ["B", 20]]);
+    const ws = sheet([
+      ["Produto", "Valor"],
+      ["A", 10],
+      ["A", 10],
+      ["B", 20],
+    ]);
     ws["!rows"] = [{}, { hidden: true }, {}, {}];
     const diagnostics = diagnoseImportedSheet(ws, [
       { Produto: "A", Valor: 10 },
@@ -72,7 +103,6 @@ describe("import intelligence", () => {
     ]);
     expect(diagnostics.transformations.some((item) => item.includes("duplicada"))).toBe(true);
   });
-
 });
 
 describe("import intelligence - estrutura e qualidade", () => {
@@ -107,7 +137,6 @@ describe("import intelligence - estrutura e qualidade", () => {
   });
 });
 
-
 describe("normalização de valores importados", () => {
   it("normaliza moeda e número no padrão brasileiro", () => {
     expect(normalizeImportedValue("R$ 1.234,56", "currency").value).toBe(1234.56);
@@ -140,7 +169,6 @@ describe("normalização de valores importados", () => {
     expect(result.changes).toBe(2);
   });
 });
-
 
 it("classifica fórmulas locais, intervalos e referências entre abas", () => {
   const ws = XLSX.utils.aoa_to_sheet([
