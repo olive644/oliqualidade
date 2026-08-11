@@ -3655,15 +3655,45 @@ function GeminiChatPanel({ dashboard, sheet }: { dashboard: Dashboard; sheet: Sh
           </form>
         </section>
       )}
-      <Button
-        className="h-12 rounded-full px-4 shadow-panel"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        aria-label="Abrir assistente do dashboard"
-      >
-        <Bot className="mr-2 size-4" />
-        Perguntar ao Oli
-      </Button>
+      <div className="oli-mascot-group" data-open={open || undefined}>
+        <div className="oli-mascot" aria-hidden="true">
+          <span className="oli-mascot-antenna" />
+          <span className="oli-mascot-head">
+            <i className="oli-mascot-eye" />
+            <i className="oli-mascot-eye" />
+            <b className="oli-mascot-smile" />
+          </span>
+          <span className="oli-mascot-body">
+            <Mark />
+          </span>
+          <span className="oli-mascot-name">Oli</span>
+        </div>
+        <div className="oli-mascot-action">
+          <button
+            type="button"
+            className="oli-chat-trigger"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+            aria-label={open ? "Fechar assistente Oli" : "Abrir assistente do dashboard"}
+          >
+            <svg
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="32"
+              height="32"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path d="M8 9h8M8 13h6" />
+              <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12z" />
+            </svg>
+          </button>
+          <span className="oli-chat-label">Converse comigo!</span>
+        </div>
+      </div>
     </div>
   );
 }
