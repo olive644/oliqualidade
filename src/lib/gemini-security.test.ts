@@ -72,7 +72,9 @@ describe("segurança do Gemini", () => {
     const fetchMock = vi.fn(
       async () =>
         new Response(
-          JSON.stringify({ candidates: [{ content: { parts: [{ text: "Resumo seguro" }] } }] }),
+          JSON.stringify({
+            steps: [{ type: "model_output", content: [{ type: "text", text: "Resumo seguro" }] }],
+          }),
           { status: 200 },
         ),
     );
@@ -90,5 +92,57 @@ describe("segurança do Gemini", () => {
     expect(String(url)).not.toContain("test-secret");
     expect(JSON.stringify(init?.body)).not.toContain("test-secret");
     expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe("test-secret");
+    expect(String(url)).toBe("https://generativelanguage.googleapis.com/v1/interactions");
+  });
+
+  it("troca um modelo antigo pelo padrão atual quando ele não existe", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 404 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            steps: [{ type: "model_output", content: [{ type: "text", text: "Tudo certo" }] }],
+          }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await handleGeminiChat(
+      new Request("http://localhost/api/gemini/chat", {
+        method: "POST",
+        headers: { "x-forwarded-for": "fallback-model" },
+        body: JSON.stringify({ message: "Resuma", dashboard }),
+      }),
+      { GEMINI_API_KEY: "test-secret", GEMINI_MODEL: "gemini-2.5-flash" },
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[1]?.body)).toContain("gemini-3.6-flash");
+  });
+
+  it.each([
+    [403, "chave do Gemini é inválida"],
+    [404, "modelo Gemini configurado não está disponível"],
+    [429, "limite de uso do Gemini foi atingido"],
+  ])("explica falhas do Gemini com status %i", async (status, expectedMessage) => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { status: "UPSTREAM_ERROR" } }), { status }),
+      ),
+    );
+    const response = await handleGeminiChat(
+      new Request("http://localhost/api/gemini/chat", {
+        method: "POST",
+        headers: { "x-forwarded-for": `status-${status}` },
+        body: JSON.stringify({ message: "Resuma", dashboard }),
+      }),
+      { GEMINI_API_KEY: "test-secret" },
+    );
+    const result = (await response.json()) as { error: string };
+    expect(result.error).toContain(expectedMessage);
   });
 });

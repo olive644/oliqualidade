@@ -1514,7 +1514,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/gemini-server.ts",
-      "source_location": "src/lib/gemini-server.ts:18",
+      "source_location": "src/lib/gemini-server.ts:85",
       "community": "Shared Libraries",
       "community_name": "Shared Libraries",
       "provenance": "EXTRACTED"
