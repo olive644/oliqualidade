@@ -1631,6 +1631,55 @@ function OliLoader({ compact = false }: { compact?: boolean }) {
   );
 }
 
+function OliWelcomeScene({ busy }: { busy: boolean }) {
+  return (
+    <div className="oli-welcome-scene" data-busy={busy || undefined} aria-hidden="true">
+      <span className="oli-scene-glow" />
+      <span className="oli-scene-clock">
+        <i />
+      </span>
+      <span className="oli-scene-shelf">
+        <i />
+        <i />
+        <i />
+        <b />
+      </span>
+      <span className="oli-scene-paper">
+        <i />
+      </span>
+      <span className="oli-scene-sofa">
+        <i />
+        <b />
+      </span>
+      <span className="oli-scene-character">
+        <span className="oli-scene-ear oli-scene-ear-left" />
+        <span className="oli-scene-ear oli-scene-ear-right" />
+        <span className="oli-scene-body" />
+        <span className="oli-scene-face">
+          <i className="oli-scene-eye oli-scene-eye-left" />
+          <i className="oli-scene-eye oli-scene-eye-right" />
+          <b />
+        </span>
+        <span className="oli-scene-paw oli-scene-paw-left" />
+        <span className="oli-scene-paw oli-scene-paw-right" />
+      </span>
+      <span className="oli-scene-desk" />
+      <span className="oli-scene-monitor">
+        <span className="oli-scene-chart">
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
+        <b />
+      </span>
+      <span className="oli-scene-floor" />
+      <span className="oli-scene-spark oli-scene-spark-one">✦</span>
+      <span className="oli-scene-spark oli-scene-spark-two">✦</span>
+    </div>
+  );
+}
+
 function Empty(p: {
   onUpload: () => void;
   onDropFile: (file: File) => void;
@@ -1711,136 +1760,182 @@ function Empty(p: {
           <ThemeToggle theme={p.theme} toggle={p.toggleTheme} />
         </div>
       </header>
-      <section className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-6 py-12">
-        <div className="mb-10">
-          <p className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-xs uppercase tracking-wide text-primary shadow-sm">
-            <span className="size-1.5 rounded-full bg-primary" />
-            Novo painel
-          </p>
-          <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl">
-            Solte a planilha,
-            <br />
-            receba o relatório.
-          </h1>
-          <p className="mt-5 max-w-xl text-muted-foreground">
-            Envie um CSV ou XLSX. O Oli.Qualidade reconhece as colunas, confirma os tipos com você e
-            monta um painel pronto para ajustar.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="oliam-dropzone"
-          data-dragging={dragging}
-          onClick={p.onUpload}
-          disabled={p.loading}
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {p.loading ? (
-            <>
-              <OliLoader />
-              <strong className="font-display text-base">{p.loadingLabel ?? "Lendo…"}</strong>
-              <span className="text-sm text-muted-foreground">Analisando sua planilha…</span>
-            </>
-          ) : (
-            <>
-              <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <Upload className="size-6" />
-              </span>
-              <strong className="font-display text-base">
-                {dragging ? "Solte o arquivo aqui" : "Arraste um CSV ou XLSX aqui"}
-              </strong>
-              <span className="text-sm text-muted-foreground">
-                ou clique para selecionar o arquivo
-              </span>
-            </>
-          )}
-        </button>
-        {p.importError && (
-          <p className="mt-3 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
-            <AlertTriangle className="size-3.5 shrink-0" />
-            {p.importError}
-          </p>
-        )}
-        <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-          <Check className="size-3.5 shrink-0 text-secondary-accent" />
-          Seus dados são processados no navegador e não são enviados a nenhum servidor.
-        </p>
-        <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-          <span>Outras formas de importar:</span>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-            aria-expanded={sheetOpen}
-            onClick={() => setSheetOpen(!sheetOpen)}
-          >
-            Google Sheets
-            <ChevronDown className={cn("size-3 transition-transform", sheetOpen && "rotate-180")} />
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-            aria-expanded={p.editor}
-            onClick={() => p.setEditor(!p.editor)}
-          >
-            Colar dados
-            <ChevronDown className={cn("size-3 transition-transform", p.editor && "rotate-180")} />
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-            onClick={p.onFolder}
-          >
-            <FolderSync className="size-3.5" />
-            Pasta monitorada
-          </button>
-          <button
-            type="button"
-            className="font-medium text-primary hover:underline"
-            onClick={p.onDemo}
-          >
-            Explorar com dados de exemplo
-          </button>
-        </div>
-        {sheetOpen && (
-          <div className="mt-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <label className="mb-2 block text-xs font-medium">Google Sheets público</label>
-            <div className="flex gap-2">
-              <input
-                className="oliam-input min-w-0 flex-1"
-                placeholder="Cole o link da planilha"
-                value={p.url}
-                onChange={(e) => p.setUrl(e.target.value)}
-              />
-              <Button variant="outline" disabled={!p.url || p.loading} onClick={p.sheet}>
-                {p.loading ? "Lendo…" : "Conectar"}
-              </Button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              A planilha precisa estar publicada para leitura (Arquivo → Compartilhar → Publicar na
-              Web).
+      <main className="oli-welcome">
+        <section className="oli-welcome-hero">
+          <div className="oli-welcome-copy">
+            <p className="oli-welcome-badge">
+              <span />
+              Novo painel inteligente
             </p>
-          </div>
-        )}
-        {p.editor && (
-          <div className="mt-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <label className="mb-2 block text-xs font-medium">Colar dados</label>
-            <textarea
-              className="oliam-input min-h-28 w-full font-mono text-xs"
-              placeholder="Cole dados separados por tabulação ou vírgula, copiados direto do Excel…"
-              value={p.paste}
-              onChange={(e) => p.setPaste(e.target.value)}
-            />
-            <div className="mt-2 text-right">
-              <Button disabled={!p.paste} onClick={p.pasteData}>
-                Revisar dados
-              </Button>
+            <h1>
+              Solte a planilha.
+              <span>O Oli cuida do resto.</span>
+            </h1>
+            <p className="oli-welcome-lead">
+              Transforme CSV e Excel em um painel pronto para explorar. O Oli reconhece a estrutura,
+              confere os tipos e encontra os indicadores que merecem atenção.
+            </p>
+            <div className="oli-welcome-flow" aria-label="Etapas automáticas">
+              <span>
+                <b>01</b> Lê
+              </span>
+              <i />
+              <span>
+                <b>02</b> Organiza
+              </span>
+              <i />
+              <span>
+                <b>03</b> Visualiza
+              </span>
             </div>
           </div>
-        )}
-      </section>
+          <OliWelcomeScene busy={p.loading} />
+        </section>
+
+        <section className="oli-import-shell">
+          <div className="oli-import-heading">
+            <div>
+              <span className="oli-import-kicker">Comece pelos seus dados</span>
+              <h2>Crie seu próximo relatório</h2>
+            </div>
+            <div className="oli-file-types" aria-label="Formatos aceitos">
+              <span>XLSX</span>
+              <span>CSV</span>
+              <span>XLS</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="oli-welcome-dropzone"
+            data-dragging={dragging}
+            onClick={p.onUpload}
+            disabled={p.loading}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {p.loading ? (
+              <>
+                <OliLoader />
+                <span className="oli-dropzone-copy">
+                  <strong>{p.loadingLabel ?? "Lendo sua planilha…"}</strong>
+                  <small>O Oli está organizando os dados e preparando a visualização.</small>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="oli-upload-orbit">
+                  <Upload />
+                  <i />
+                </span>
+                <span className="oli-dropzone-copy">
+                  <strong>
+                    {dragging ? "Pode soltar — o Oli pegou!" : "Arraste sua planilha aqui"}
+                  </strong>
+                  <small>ou clique para escolher um arquivo no computador</small>
+                </span>
+                <span className="oli-dropzone-action">Selecionar arquivo</span>
+              </>
+            )}
+          </button>
+          {p.importError && (
+            <p className="oli-import-error">
+              <AlertTriangle />
+              {p.importError}
+            </p>
+          )}
+          <div className="oli-import-privacy">
+            <ShieldAlert />
+            <span>
+              <strong>Seus dados ficam com você.</strong> O processamento acontece no navegador.
+            </span>
+          </div>
+
+          <div className="oli-import-divider">
+            <span>ou importe de outro jeito</span>
+          </div>
+          <div className="oli-import-options">
+            <button
+              type="button"
+              aria-expanded={sheetOpen}
+              onClick={() => setSheetOpen(!sheetOpen)}
+            >
+              <span>
+                <SheetIcon />
+              </span>
+              <div>
+                <strong>Google Sheets</strong>
+                <small>Conecte uma planilha pública</small>
+              </div>
+              <ChevronDown className={cn(sheetOpen && "rotate-180")} />
+            </button>
+            <button type="button" aria-expanded={p.editor} onClick={() => p.setEditor(!p.editor)}>
+              <span>
+                <ClipboardPaste />
+              </span>
+              <div>
+                <strong>Colar dados</strong>
+                <small>Copie direto do Excel</small>
+              </div>
+              <ChevronDown className={cn(p.editor && "rotate-180")} />
+            </button>
+            <button type="button" onClick={p.onFolder}>
+              <span>
+                <FolderSync />
+              </span>
+              <div>
+                <strong>Pasta monitorada</strong>
+                <small>Atualização automática</small>
+              </div>
+              <ArrowRight />
+            </button>
+            <button type="button" onClick={p.onDemo}>
+              <span>
+                <Play />
+              </span>
+              <div>
+                <strong>Ver demonstração</strong>
+                <small>Explore dados de exemplo</small>
+              </div>
+              <ArrowRight />
+            </button>
+          </div>
+          {sheetOpen && (
+            <div className="oli-import-expand">
+              <label>Link público do Google Sheets</label>
+              <div>
+                <input
+                  className="oliam-input"
+                  placeholder="Cole o link da planilha"
+                  value={p.url}
+                  onChange={(e) => p.setUrl(e.target.value)}
+                />
+                <Button variant="outline" disabled={!p.url || p.loading} onClick={p.sheet}>
+                  {p.loading ? "Lendo…" : "Conectar"}
+                </Button>
+              </div>
+              <p>A planilha precisa estar publicada para leitura na Web.</p>
+            </div>
+          )}
+          {p.editor && (
+            <div className="oli-import-expand">
+              <label>Dados copiados</label>
+              <textarea
+                className="oliam-input"
+                placeholder="Cole dados separados por tabulação ou vírgula, copiados direto do Excel…"
+                value={p.paste}
+                onChange={(e) => p.setPaste(e.target.value)}
+              />
+              <div className="text-right">
+                <Button disabled={!p.paste} onClick={p.pasteData}>
+                  Revisar dados
+                </Button>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
