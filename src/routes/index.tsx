@@ -1160,37 +1160,15 @@ function Home(p: {
   );
 }
 
-function LoadingCube() {
+function TypewriterLoader({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="oliam-loader-wrap" aria-hidden="true">
-      <div className="loader">
-        <div className="ground">
-          <div />
+    <div className={cn("oliam-typewriter-wrap", compact && "is-compact")} aria-hidden="true">
+      <div className="typewriter">
+        <div className="slide">
+          <i />
         </div>
-        <div className="box box0">
-          <div />
-        </div>
-        <div className="box box1">
-          <div />
-        </div>
-        <div className="box box2">
-          <div />
-        </div>
-        <div className="box box3">
-          <div />
-        </div>
-        <div className="box box4">
-          <div />
-        </div>
-        <div className="box box5">
-          <div />
-        </div>
-        <div className="box box6">
-          <div />
-        </div>
-        <div className="box box7">
-          <div />
-        </div>
+        <div className="paper" />
+        <div className="keyboard" />
       </div>
     </div>
   );
@@ -1304,7 +1282,7 @@ function Empty(p: {
         >
           {p.loading ? (
             <>
-              <LoadingCube />
+              <TypewriterLoader />
               <strong className="font-display text-base">{p.loadingLabel ?? "Lendo…"}</strong>
               <span className="text-sm text-muted-foreground">Analisando sua planilha…</span>
             </>
@@ -2477,11 +2455,11 @@ function Dashboard(p: {
                   Planilha XLSX
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPng()}>
-                  <FileImage />
+                  {exporting === "png" ? <TypewriterLoader compact /> : <FileImage />}
                   {exporting === "png" ? "Gerando PNG…" : "Imagem PNG"}
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPdf()}>
-                  <FileText />
+                  {exporting === "pdf" ? <TypewriterLoader compact /> : <FileText />}
                   {exporting === "pdf" ? "Gerando PDF…" : "PDF do painel (várias páginas)"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -3624,8 +3602,12 @@ function GeminiChatPanel({ dashboard, sheet }: { dashboard: Dashboard; sheet: Sh
               </div>
             ))}
             {loading && (
-              <div className="max-w-[88%] rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
-                Analisando o painel…
+              <div
+                className="flex max-w-[88%] items-center gap-3 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground"
+                role="status"
+              >
+                <TypewriterLoader compact />
+                <span>Analisando o painel…</span>
               </div>
             )}
           </div>
@@ -4241,7 +4223,15 @@ function MapWidgetBody({
 
   return (
     <>
-      <div ref={containerRef} className="h-64 w-full" />
+      <div className="relative">
+        <div ref={containerRef} className="h-64 w-full" />
+        {pending > 0 && (
+          <div className="oliam-map-loading" role="status">
+            <TypewriterLoader compact />
+            <span>Localizando {pending}…</span>
+          </div>
+        )}
+      </div>
       {allUnresolved && (
         <p className="border-t bg-destructive/10 px-4 py-2 text-[11px] text-destructive">
           Nenhum dos {grouped.length} valores dessa coluna foi reconhecido como local (cidade,

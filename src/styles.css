@@ -1398,3 +1398,243 @@
     opacity: 1;
   }
 }
+
+/* Typewriter loading indicator, adapted from Uiverse.io by Nawsome. */
+.oliam-typewriter-wrap {
+  display: grid;
+  width: 132px;
+  height: 96px;
+  place-items: center;
+}
+.oliam-typewriter-wrap.is-compact {
+  width: 34px;
+  height: 28px;
+}
+.oliam-typewriter-wrap.is-compact .typewriter {
+  scale: 0.25;
+}
+.typewriter {
+  --blue: color-mix(in oklab, var(--primary) 78%, white);
+  --blue-dark: var(--primary);
+  --key: var(--primary-foreground);
+  --paper: color-mix(in oklab, var(--card) 88%, var(--primary));
+  --text: color-mix(in oklab, var(--muted-foreground) 44%, transparent);
+  --tool: var(--secondary-accent);
+  --duration: 3s;
+  position: relative;
+  width: 120px;
+  animation: typewriter-bounce var(--duration) linear infinite;
+  transform-origin: center;
+}
+.typewriter .slide {
+  width: 92px;
+  height: 20px;
+  margin-left: 14px;
+  border-radius: 3px;
+  background: linear-gradient(var(--blue), var(--blue-dark));
+  transform: translateX(14px);
+  animation: typewriter-slide var(--duration) ease infinite;
+}
+.typewriter .slide::before,
+.typewriter .slide::after,
+.typewriter .slide i::before {
+  position: absolute;
+  background: var(--tool);
+  content: "";
+}
+.typewriter .slide::before {
+  top: 6px;
+  left: 100%;
+  width: 2px;
+  height: 8px;
+}
+.typewriter .slide::after {
+  top: 3px;
+  left: 94px;
+  width: 6px;
+  height: 14px;
+  border-radius: 3px;
+}
+.typewriter .slide i {
+  position: absolute;
+  top: 4px;
+  right: 100%;
+  display: block;
+  width: 6px;
+  height: 4px;
+  background: var(--tool);
+}
+.typewriter .slide i::before {
+  top: -2px;
+  right: 100%;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+}
+.typewriter .paper {
+  position: absolute;
+  top: -26px;
+  left: 24px;
+  width: 40px;
+  height: 46px;
+  border-radius: 5px;
+  background: var(--paper);
+  transform: translateY(46px);
+  animation: typewriter-paper var(--duration) linear infinite;
+}
+.typewriter .paper::before {
+  position: absolute;
+  top: 7px;
+  right: 6px;
+  left: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text);
+  box-shadow:
+    0 12px 0 var(--text),
+    0 24px 0 var(--text),
+    0 36px 0 var(--text);
+  content: "";
+  transform: scaleY(0.8);
+}
+.typewriter .keyboard {
+  position: relative;
+  z-index: 1;
+  width: 120px;
+  height: 56px;
+  margin-top: -10px;
+}
+.typewriter .keyboard::before,
+.typewriter .keyboard::after {
+  position: absolute;
+  content: "";
+}
+.typewriter .keyboard::before {
+  inset: 0;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+  transform: perspective(10px) rotateX(2deg);
+  transform-origin: 50% 100%;
+}
+.typewriter .keyboard::after {
+  top: 25px;
+  left: 2px;
+  width: 11px;
+  height: 4px;
+  border-radius: 2px;
+  box-shadow:
+    15px 0 0 var(--key),
+    30px 0 0 var(--key),
+    45px 0 0 var(--key),
+    60px 0 0 var(--key),
+    75px 0 0 var(--key),
+    90px 0 0 var(--key),
+    22px 10px 0 var(--key),
+    37px 10px 0 var(--key),
+    52px 10px 0 var(--key),
+    60px 10px 0 var(--key),
+    68px 10px 0 var(--key),
+    83px 10px 0 var(--key);
+  animation: typewriter-keyboard var(--duration) linear infinite;
+}
+.oliam-map-loading {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  padding: 5px 9px 5px 5px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(8px);
+}
+@keyframes typewriter-bounce {
+  85%,
+  92%,
+  100% {
+    transform: translateY(0);
+  }
+  89% {
+    transform: translateY(-4px);
+  }
+  95% {
+    transform: translateY(2px);
+  }
+}
+@keyframes typewriter-slide {
+  5%,
+  100% {
+    transform: translateX(14px);
+  }
+  15%,
+  30% {
+    transform: translateX(6px);
+  }
+  40%,
+  55% {
+    transform: translateX(0);
+  }
+  65%,
+  70% {
+    transform: translateX(-4px);
+  }
+  80%,
+  89% {
+    transform: translateX(-12px);
+  }
+}
+@keyframes typewriter-paper {
+  5%,
+  92%,
+  100% {
+    transform: translateY(46px);
+  }
+  20%,
+  30% {
+    transform: translateY(34px);
+  }
+  40%,
+  55% {
+    transform: translateY(22px);
+  }
+  65%,
+  70% {
+    transform: translateY(10px);
+  }
+  80%,
+  85% {
+    transform: translateY(0);
+  }
+}
+@keyframes typewriter-keyboard {
+  9%,
+  54% {
+    transform: translateY(2px);
+  }
+  18%,
+  45%,
+  72% {
+    transform: translateX(1px);
+  }
+  27%,
+  36%,
+  63%,
+  81% {
+    transform: translateY(-1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typewriter,
+  .typewriter .slide,
+  .typewriter .paper,
+  .typewriter .keyboard::after {
+    animation: none;
+  }
+}
