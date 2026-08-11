@@ -1,4 +1,23 @@
 import type { Column, Row } from "@/lib/types";
+import { parseDateValue } from "@/lib/format";
+
+type RankedAggregate = {
+  group: string;
+  sum: number;
+  average: number;
+  count: number;
+};
+
+type CrossAnalysis = {
+  groupBy: string;
+  metric: string;
+  ranking: RankedAggregate[];
+};
+
+type MonthlyCrossAnalysis = CrossAnalysis & {
+  dateColumn: string;
+  month: string;
+};
 
 export type GeminiDashboardInput = {
   name: string;
@@ -22,6 +41,8 @@ export type GeminiSafeContext = {
     average?: number;
     topValues?: Array<{ value: string; count: number }>;
   }>;
+  crossAnalyses: CrossAnalysis[];
+  monthlyCrossAnalyses: MonthlyCrossAnalysis[];
 };
 
 const SENSITIVE =
@@ -62,8 +83,113 @@ const asNumber = (value: unknown) => {
   return Number.isFinite(number) ? number : null;
 };
 
+const semanticScore = (column: Column, patterns: RegExp[]) => {
+  const name = `${column.key} ${column.label}`;
+  return patterns.reduce(
+    (score, pattern, index) => score + (pattern.test(name) ? 20 - index : 0),
+    0,
+  );
+};
+
+const preferredColumns = (columns: Column[], patterns: RegExp[], limit: number) =>
+  columns
+    .map((column, index) => ({ column, index, score: semanticScore(column, patterns) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, limit)
+    .map(({ column }) => column);
+
+const summarizeGroups = (rows: Row[], groupKey: string, metricKey: string) => {
+  const groups = new Map<string, { sum: number; count: number }>();
+  for (const row of rows) {
+    const group = String(row[groupKey] ?? "")
+      .trim()
+      .slice(0, 100);
+    const value = asNumber(row[metricKey]);
+    if (!group || value === null) continue;
+    const aggregate = groups.get(group) ?? { sum: 0, count: 0 };
+    aggregate.sum += value;
+    aggregate.count += 1;
+    groups.set(group, aggregate);
+  }
+  return [...groups]
+    .map(([group, aggregate]) => ({
+      group,
+      sum: aggregate.sum,
+      average: aggregate.sum / aggregate.count,
+      count: aggregate.count,
+    }))
+    .sort((a, b) => b.sum - a.sum || b.count - a.count)
+    .slice(0, 10);
+};
+
+function buildCrossAnalyses(rows: Row[], columns: Column[]) {
+  const dimensions = preferredColumns(
+    columns.filter(
+      (column) =>
+        ["text", "category"].includes(column.kind) &&
+        !SENSITIVE.test(`${column.key} ${column.label}`),
+    ),
+    [
+      /vendedor|seller|consultor|representante/i,
+      /cliente|customer/i,
+      /produto|item/i,
+      /categoria/i,
+    ],
+    6,
+  );
+  const metrics = preferredColumns(
+    columns.filter((column) => ["number", "currency", "percentage"].includes(column.kind)),
+    [
+      /total.?bruto|valor.?total/i,
+      /faturamento|receita|vendas?|sales|revenue/i,
+      /quantidade|qtd|quantity/i,
+      /pre[cç]o/i,
+    ],
+    4,
+  );
+  const dates = preferredColumns(
+    columns.filter((column) => column.kind === "date"),
+    [/data.?venda|date.?sale/i, /data|date|m[eê]s/i],
+    1,
+  );
+  const crossAnalyses = dimensions.flatMap((dimension) =>
+    metrics.map((metric) => ({
+      groupBy: dimension.label,
+      metric: metric.label,
+      ranking: summarizeGroups(rows, dimension.key, metric.key),
+    })),
+  );
+  const monthlyCrossAnalyses: MonthlyCrossAnalysis[] = [];
+  const dateColumn = dates[0];
+  if (dateColumn) {
+    const byMonth = new Map<string, Row[]>();
+    for (const row of rows) {
+      const timestamp = parseDateValue(row[dateColumn.key] ?? null);
+      if (timestamp === null) continue;
+      const date = new Date(timestamp);
+      const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const bucket = byMonth.get(month) ?? [];
+      bucket.push(row);
+      byMonth.set(month, bucket);
+    }
+    const months = [...byMonth].sort(([a], [b]) => a.localeCompare(b)).slice(-24);
+    for (const dimension of dimensions)
+      for (const metric of metrics)
+        for (const [month, monthRows] of months)
+          monthlyCrossAnalyses.push({
+            dateColumn: dateColumn.label,
+            month,
+            groupBy: dimension.label,
+            metric: metric.label,
+            ranking: summarizeGroups(monthRows, dimension.key, metric.key).slice(0, 5),
+          });
+  }
+  return { crossAnalyses, monthlyCrossAnalyses };
+}
+
 export function buildSafeDashboardContext(input: GeminiDashboardInput): GeminiSafeContext {
   const rows = input.rows.slice(0, 50_000);
+  const analyses = buildCrossAnalyses(rows, input.columns);
   return {
     dashboard: input.name.slice(0, 120),
     sheet: input.sheetName.slice(0, 120),
@@ -106,6 +232,7 @@ export function buildSafeDashboardContext(input: GeminiDashboardInput): GeminiSa
             .map(([value, count]) => ({ value, count })),
         };
       }),
+    ...analyses,
   };
 }
 

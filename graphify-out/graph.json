@@ -1426,7 +1426,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/gemini-security.ts",
-      "source_location": "src/lib/gemini-security.ts:1",
+      "source_location": "src/lib/gemini-security.ts:20",
       "community": "Shared Libraries",
       "community_name": "Shared Libraries",
       "provenance": "EXTRACTED"
@@ -1437,7 +1437,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/gemini-security.ts",
-      "source_location": "src/lib/gemini-security.ts:8",
+      "source_location": "src/lib/gemini-security.ts:27",
       "community": "Shared Libraries",
       "community_name": "Shared Libraries",
       "provenance": "EXTRACTED"
@@ -1448,7 +1448,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/gemini-security.ts",
-      "source_location": "src/lib/gemini-security.ts:36",
+      "source_location": "src/lib/gemini-security.ts:57",
       "community": "Shared Libraries",
       "community_name": "Shared Libraries",
       "provenance": "EXTRACTED"
@@ -1459,7 +1459,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/gemini-security.ts",
-      "source_location": "src/lib/gemini-security.ts:40",
+      "source_location": "src/lib/gemini-security.ts:61",
       "community": "Shared Libraries",
       "community_name": "Shared Libraries",
       "provenance": "EXTRACTED"
@@ -1470,7 +1470,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/gemini-security.ts",
-      "source_location": "src/lib/gemini-security.ts:63",
+      "source_location": "src/lib/gemini-security.ts:188",
       "community": "Shared Libraries",
       "community_name": "Shared Libraries",
       "provenance": "EXTRACTED"
@@ -1481,7 +1481,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/gemini-security.ts",
-      "source_location": "src/lib/gemini-security.ts:112",
+      "source_location": "src/lib/gemini-security.ts:239",
       "community": "Shared Libraries",
       "community_name": "Shared Libraries",
       "provenance": "EXTRACTED"
@@ -1492,7 +1492,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/gemini-security.ts",
-      "source_location": "src/lib/gemini-security.ts:119",
+      "source_location": "src/lib/gemini-security.ts:246",
       "community": "Shared Libraries",
       "community_name": "Shared Libraries",
       "provenance": "EXTRACTED"
@@ -3322,6 +3322,12 @@
     {
       "source": "file:src/lib/gemini-security.ts",
       "target": "file:src/lib/types.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "file:src/lib/format.ts",
       "relationship": "imports",
       "provenance": "EXTRACTED"
     },

@@ -6,7 +6,7 @@ Generated from the current TypeScript source tree using the local structural fal
 
 - Files: 90
 - Nodes: 223
-- Relationships: 273
+- Relationships: 274
 - Communities: 5
 
 ## Communities
@@ -25,7 +25,7 @@ Generated from the current TypeScript source tree using the local structural fal
 - `file:src/lib/import-intelligence.ts` — degree 20
 - `file:src/lib/auto-dashboard.ts` — degree 17
 - `file:src/lib/data-pipeline.ts` — degree 17
-- `file:src/lib/format.ts` — degree 15
+- `file:src/lib/format.ts` — degree 16
 - `file:src/lib/widgets.ts` — degree 15
 - `file:src/lib/folder-monitor.ts` — degree 12
 - `file:src/lib/storage.ts` — degree 12
