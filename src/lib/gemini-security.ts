@@ -1,5 +1,6 @@
 import type { Column, Row } from "@/lib/types";
 import { parseDateValue } from "@/lib/format";
+import type { LiveDashboardContext, LiveWidgetSnapshot } from "@/lib/assistant-context";
 
 type RankedAggregate = {
   group: string;
@@ -24,6 +25,7 @@ export type GeminiDashboardInput = {
   sheetName: string;
   columns: Column[];
   rows: Row[];
+  liveView?: LiveDashboardContext;
 };
 
 export type GeminiSafeContext = {
@@ -43,7 +45,10 @@ export type GeminiSafeContext = {
   }>;
   crossAnalyses: CrossAnalysis[];
   monthlyCrossAnalyses: MonthlyCrossAnalysis[];
+  liveView?: LiveDashboardContext;
 };
+
+export type GeminiChatHistoryMessage = { role: "user" | "assistant"; text: string };
 
 const SENSITIVE =
   /(cpf|cnpj|rg|email|e-mail|telefone|celular|phone|endereco|endereço|senha|password|token|secret|api.?key|pix|conta.?banc)/i;
@@ -68,6 +73,23 @@ export function validateChatMessage(value: unknown) {
   if (detectPromptInjection(message))
     throw new Error("A mensagem contém instruções potencialmente inseguras.");
   return message;
+}
+
+export function validateChatHistory(value: unknown): GeminiChatHistoryMessage[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error("Histórico da conversa inválido.");
+  return value.slice(-12).map((entry) => {
+    if (!entry || typeof entry !== "object") throw new Error("Histórico da conversa inválido.");
+    const candidate = entry as { role?: unknown; text?: unknown };
+    if (candidate.role !== "user" && candidate.role !== "assistant")
+      throw new Error("Histórico da conversa inválido.");
+    if (typeof candidate.text !== "string") throw new Error("Histórico da conversa inválido.");
+    const text = candidate.text.trim();
+    if (!text || text.length > 4_000) throw new Error("Histórico da conversa inválido.");
+    if (candidate.role === "user" && detectPromptInjection(text))
+      throw new Error("O histórico contém instruções potencialmente inseguras.");
+    return { role: candidate.role, text };
+  });
 }
 
 const asNumber = (value: unknown) => {
@@ -187,52 +209,233 @@ function buildCrossAnalyses(rows: Row[], columns: Column[]) {
   return { crossAnalyses, monthlyCrossAnalyses };
 }
 
+const safeText = (value: unknown, limit = 160) => {
+  const text = typeof value === "string" ? value : String(value ?? "");
+  const clean = text
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .trim()
+    .slice(0, limit);
+  return INJECTION.some((pattern) => pattern.test(clean))
+    ? "[conteúdo ocultado por segurança]"
+    : clean;
+};
+
+const finiteNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+const ALLOWED_OPERATIONS = new Set(["sum", "avg", "count", "min", "max", "multiply", "divide"]);
+
+function sanitizeLiveWidget(
+  widget: LiveWidgetSnapshot,
+  safeKeys: Set<string>,
+): LiveWidgetSnapshot | null {
+  if (!widget || typeof widget !== "object") return null;
+  const allowedTypes = new Set([
+    "metric",
+    "metric-trend",
+    "folder-files",
+    "bar",
+    "pie",
+    "line",
+    "area",
+    "ranking",
+    "rating",
+    "map",
+    "table",
+  ]);
+  if (!allowedTypes.has(widget.type)) return null;
+  const metric =
+    widget.metric && safeKeys.has(widget.metric.key)
+      ? {
+          key: safeText(widget.metric.key),
+          label: safeText(widget.metric.label),
+          kind: safeText(widget.metric.kind, 40),
+        }
+      : undefined;
+  const groupBy =
+    widget.groupBy && safeKeys.has(widget.groupBy.key)
+      ? {
+          key: safeText(widget.groupBy.key),
+          label: safeText(widget.groupBy.label),
+          kind: safeText(widget.groupBy.kind, 40),
+        }
+      : undefined;
+  // Widgets ligados a uma coluna removida por privacidade não entram no
+  // contexto do modelo; tabela e contador de arquivos não expõem valores.
+  if (widget.metric && !metric) return null;
+  if (widget.groupBy && !groupBy) return null;
+  const displayedValue = widget.displayedValue
+    ? {
+        value: finiteNumber(widget.displayedValue.value) ?? 0,
+        formatted: safeText(widget.displayedValue.formatted, 80),
+      }
+    : undefined;
+  const sanitizePeriod = (period: { label: string; value: number; formatted: string }) => ({
+    label: safeText(period.label, 100),
+    value: finiteNumber(period.value) ?? 0,
+    formatted: safeText(period.formatted, 80),
+  });
+  const trend = widget.trend
+    ? {
+        firstPeriod: sanitizePeriod(widget.trend.firstPeriod),
+        lastPeriod: sanitizePeriod(widget.trend.lastPeriod),
+        change: finiteNumber(widget.trend.change),
+        formattedChange: safeText(widget.trend.formattedChange, 80),
+        meaning: safeText(widget.trend.meaning, 240),
+      }
+    : undefined;
+  const previousVersion = widget.previousVersion
+    ? {
+        change: finiteNumber(widget.previousVersion.change),
+        formattedChange: safeText(widget.previousVersion.formattedChange, 80),
+        meaning: safeText(widget.previousVersion.meaning, 240),
+      }
+    : undefined;
+  const series = widget.series
+    ? {
+        items: widget.series.items.slice(0, 100).flatMap((item) => {
+          const value = finiteNumber(item.value);
+          if (value === null) return [];
+          return [
+            {
+              label: safeText(item.label, 100),
+              value,
+              formatted: safeText(item.formatted, 80),
+              ...(typeof item.groupedCategories === "number" &&
+              Number.isFinite(item.groupedCategories)
+                ? { groupedCategories: Math.max(0, Math.floor(item.groupedCategories)) }
+                : {}),
+            },
+          ];
+        }),
+        totalItems: Math.max(0, Math.floor(finiteNumber(widget.series.totalItems) ?? 0)),
+        truncated: Boolean(widget.series.truncated),
+      }
+    : undefined;
+  return {
+    id: safeText(widget.id, 100),
+    type: widget.type,
+    title: safeText(widget.title),
+    status: widget.status === "ready" ? "ready" : "empty",
+    ...(metric ? { metric } : {}),
+    ...(groupBy ? { groupBy } : {}),
+    ...(widget.operation && ALLOWED_OPERATIONS.has(widget.operation.key)
+      ? {
+          operation: {
+            key: widget.operation.key,
+            label: safeText(widget.operation.label, 80),
+          },
+        }
+      : {}),
+    ...(displayedValue ? { displayedValue } : {}),
+    ...(trend ? { trend } : {}),
+    ...(previousVersion ? { previousVersion } : {}),
+    ...(series ? { series } : {}),
+    ...(finiteNumber(widget.scaleMax) === null ? {} : { scaleMax: finiteNumber(widget.scaleMax)! }),
+    ...(finiteNumber(widget.rowCount) === null
+      ? {}
+      : { rowCount: Math.max(0, Math.floor(finiteNumber(widget.rowCount)!)) }),
+  };
+}
+
+function sanitizeLiveView(
+  view: LiveDashboardContext | undefined,
+  safeColumns: Column[],
+): LiveDashboardContext | undefined {
+  if (!view || typeof view !== "object") return undefined;
+  const safeKeys = new Set(safeColumns.map((column) => column.key));
+  const filters = Array.isArray(view.filters)
+    ? view.filters.slice(0, 30).flatMap((filter) => {
+        if (!filter || !safeKeys.has(filter.columnKey)) return [];
+        return [
+          {
+            columnKey: safeText(filter.columnKey),
+            columnLabel: safeText(filter.columnLabel),
+            kind: safeText(filter.kind, 40),
+            value: safeText(filter.value),
+            ...(filter.min === undefined ? {} : { min: safeText(filter.min, 80) }),
+            ...(filter.max === undefined ? {} : { max: safeText(filter.max, 80) }),
+          },
+        ];
+      })
+    : [];
+  const sort =
+    view.sort && safeKeys.has(view.sort.columnKey)
+      ? {
+          columnKey: safeText(view.sort.columnKey),
+          columnLabel: safeText(view.sort.columnLabel),
+          direction: view.sort.direction === "desc" ? ("desc" as const) : ("asc" as const),
+        }
+      : null;
+  const widgets = Array.isArray(view.widgets)
+    ? view.widgets
+        .slice(0, 60)
+        .map((widget) => sanitizeLiveWidget(widget, safeKeys))
+        .filter((widget): widget is LiveWidgetSnapshot => widget !== null)
+    : [];
+  return {
+    capturedAt: safeText(view.capturedAt, 60),
+    source: "current-filtered-view",
+    dashboard: safeText(view.dashboard),
+    sheet: safeText(view.sheet),
+    totalRows: Math.max(0, Math.floor(finiteNumber(view.totalRows) ?? 0)),
+    visibleRows: Math.max(0, Math.floor(finiteNumber(view.visibleRows) ?? 0)),
+    search: safeText(view.search),
+    filters,
+    sort,
+    widgets,
+  };
+}
+
 export function buildSafeDashboardContext(input: GeminiDashboardInput): GeminiSafeContext {
   const rows = input.rows.slice(0, 50_000);
-  const analyses = buildCrossAnalyses(rows, input.columns);
+  const safeColumns = input.columns.filter(
+    (column) => !SENSITIVE.test(`${column.key} ${column.label}`),
+  );
+  const analyses = buildCrossAnalyses(rows, safeColumns);
+  const liveView = sanitizeLiveView(input.liveView, safeColumns);
+  if (liveView) {
+    liveView.dashboard = input.name.slice(0, 120);
+    liveView.sheet = input.sheetName.slice(0, 120);
+  }
   return {
     dashboard: input.name.slice(0, 120),
     sheet: input.sheetName.slice(0, 120),
     rowCount: input.rows.length,
-    columns: input.columns
-      .filter((column) => !SENSITIVE.test(`${column.key} ${column.label}`))
-      .map((column) => {
-        const values = rows
-          .map((row) => row[column.key])
-          .filter((value) => value !== null && value !== "");
-        const base = {
-          key: column.key,
-          label: column.label,
-          kind: column.kind,
-          missing: input.rows.length - values.length,
-          distinct: new Set(values.map(String)).size,
-        };
-        if (["number", "currency", "percentage"].includes(column.kind)) {
-          const numbers = values.map(asNumber).filter((value): value is number => value !== null);
-          return numbers.length
-            ? {
-                ...base,
-                min: Math.min(...numbers),
-                max: Math.max(...numbers),
-                average: numbers.reduce((sum, value) => sum + value, 0) / numbers.length,
-              }
-            : base;
-        }
-        const counts = new Map<string, number>();
-        for (const value of values)
-          counts.set(
-            String(value).slice(0, 100),
-            (counts.get(String(value).slice(0, 100)) ?? 0) + 1,
-          );
-        return {
-          ...base,
-          topValues: [...counts]
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 10)
-            .map(([value, count]) => ({ value, count })),
-        };
-      }),
+    columns: safeColumns.map((column) => {
+      const values = rows
+        .map((row) => row[column.key])
+        .filter((value) => value !== null && value !== "");
+      const base = {
+        key: column.key,
+        label: column.label,
+        kind: column.kind,
+        missing: input.rows.length - values.length,
+        distinct: new Set(values.map(String)).size,
+      };
+      if (["number", "currency", "percentage"].includes(column.kind)) {
+        const numbers = values.map(asNumber).filter((value): value is number => value !== null);
+        return numbers.length
+          ? {
+              ...base,
+              min: Math.min(...numbers),
+              max: Math.max(...numbers),
+              average: numbers.reduce((sum, value) => sum + value, 0) / numbers.length,
+            }
+          : base;
+      }
+      const counts = new Map<string, number>();
+      for (const value of values)
+        counts.set(String(value).slice(0, 100), (counts.get(String(value).slice(0, 100)) ?? 0) + 1);
+      return {
+        ...base,
+        topValues: [...counts]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([value, count]) => ({ value, count })),
+      };
+    }),
     ...analyses,
+    ...(liveView ? { liveView } : {}),
   };
 }
 
