@@ -1600,15 +1600,32 @@ function Home(p: {
   );
 }
 
-function TypewriterLoader({ compact = false }: { compact?: boolean }) {
+function OliLoader({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={cn("oliam-typewriter-wrap", compact && "is-compact")} aria-hidden="true">
-      <div className="typewriter">
-        <div className="slide">
+    <div className={cn("oliam-loader-wrap", compact && "is-compact")} aria-hidden="true">
+      <div className="oli-loader">
+        <span className="oli-loader-shadow" />
+        <span className="oli-loader-data">
           <i />
-        </div>
-        <div className="paper" />
-        <div className="keyboard" />
+          <i />
+          <i />
+        </span>
+        <span className="oli-loader-ear oli-loader-ear-left" />
+        <span className="oli-loader-ear oli-loader-ear-right" />
+        <span className="oli-loader-body">
+          <span className="oli-loader-face">
+            <i className="oli-loader-eye oli-loader-eye-left" />
+            <i className="oli-loader-eye oli-loader-eye-right" />
+            <b />
+          </span>
+          <span className="oli-loader-belly" />
+        </span>
+        <span className="oli-loader-arm oli-loader-arm-left" />
+        <span className="oli-loader-arm oli-loader-arm-right" />
+        <span className="oli-loader-laptop">
+          <i />
+        </span>
+        <span className="oli-loader-keyboard" />
       </div>
     </div>
   );
@@ -1723,7 +1740,7 @@ function Empty(p: {
         >
           {p.loading ? (
             <>
-              <TypewriterLoader />
+              <OliLoader />
               <strong className="font-display text-base">{p.loadingLabel ?? "Lendo…"}</strong>
               <span className="text-sm text-muted-foreground">Analisando sua planilha…</span>
             </>
@@ -3163,7 +3180,7 @@ function Dashboard(p: {
                     }
                   >
                     {p.folderMonitor.status === "syncing" ? (
-                      <TypewriterLoader compact />
+                      <OliLoader compact />
                     ) : (
                       <FolderSync className="size-4" />
                     )}
@@ -3216,11 +3233,11 @@ function Dashboard(p: {
                   Planilha XLSX
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPng()}>
-                  {exporting === "png" ? <TypewriterLoader compact /> : <FileImage />}
+                  {exporting === "png" ? <OliLoader compact /> : <FileImage />}
                   {exporting === "png" ? "Gerando PNG…" : "Imagem PNG"}
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPdf()}>
-                  {exporting === "pdf" ? <TypewriterLoader compact /> : <FileText />}
+                  {exporting === "pdf" ? <OliLoader compact /> : <FileText />}
                   {exporting === "pdf"
                     ? "Gerando PDF…"
                     : "PDF do painel (tabelas completas)"}
@@ -4475,7 +4492,7 @@ function GeminiChatPanel({
             ))}
             {loading && (
               <div className="oli-chat-loading" role="status">
-                <TypewriterLoader compact />
+                <OliLoader compact />
                 <span>Analisando o painel…</span>
               </div>
             )}
@@ -5156,7 +5173,7 @@ function MapWidgetBody({
         <div ref={containerRef} className="h-64 w-full" />
         {pending > 0 && (
           <div className="oliam-map-loading" role="status">
-            <TypewriterLoader compact />
+            <OliLoader compact />
             <span>Localizando {pending}…</span>
           </div>
         )}
