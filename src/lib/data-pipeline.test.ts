@@ -25,6 +25,22 @@ describe("sortAllBarCategories", () => {
     expect(sorted.at(-1)?.total).toBe(1);
   });
 });
+
+describe("relevantAggregationOps para categorias", () => {
+  it("oferece somente contagem quando a coluna de valor não é numérica", () => {
+    expect(
+      relevantAggregationOps(
+        [
+          { Status: "Enviado", Código: "A1" },
+          { Status: "Enviado", Código: "A2" },
+          { Status: "Pendente", Código: "A3" },
+        ],
+        "Status",
+        "Código",
+      ),
+    ).toEqual(["count"]);
+  });
+});
 import type { Column, FilterRule, Row } from "@/lib/types";
 
 const numberCol = (key: string, missingRule?: Column["missingRule"]): Column => ({

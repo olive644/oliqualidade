@@ -199,7 +199,7 @@ describe("migração de widgets incompatíveis", () => {
     expect(migrated.sheets[0]?.widgets?.some((widget) => widget.id === "bad")).toBe(false);
     expect(migrated.sheets[0]?.widgets?.some((widget) => widget.type === "table")).toBe(true);
     expect(migrated.sheets[0]?.autoDashboard?.warnings.join(" ")).toContain(
-      "Nenhuma métrica segura",
+      "Nenhuma métrica numérica segura",
     );
   });
 });

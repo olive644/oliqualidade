@@ -175,4 +175,38 @@ describe("generateAutoDashboardPlan", () => {
     expect(widgets.find((item) => item.type === "line")?.groupKey).toBe("data_venda");
     expect(widgets.every((item) => Boolean(item.title))).toBe(true);
   });
+
+  it("gera categorias por contagem quando a base só possui códigos e textos", () => {
+    const controlColumns = [
+      column("Código", "text"),
+      column("Data G", "date"),
+      column("Responsável", "category"),
+      column("Status", "category"),
+    ];
+    const controlRows: Row[] = [
+      { Código: "A1", "Data G": "01/08/2026", Responsável: "Ana", Status: "Enviado" },
+      { Código: "A2", "Data G": "02/08/2026", Responsável: "Beto", Status: "Pendente" },
+      { Código: "A3", "Data G": "02/08/2026", Responsável: "Ana", Status: "Enviado" },
+    ];
+    const controlDiagnostics = diagnostics([
+      diagnostic("Código", "id"),
+      diagnostic("Data G", "date"),
+      diagnostic("Responsável", "category"),
+      diagnostic("Status", "category"),
+    ]);
+    const plan = generateAutoDashboardPlan({
+      columns: controlColumns,
+      rows: controlRows,
+      diagnostics: controlDiagnostics,
+    });
+    const categoryCharts = plan.recommendations.filter(
+      (item) => item.op === "count" && item.groupKey === "Responsável",
+    );
+    expect(categoryCharts.some((item) => item.widgetType === "bar")).toBe(true);
+    expect(categoryCharts.every((item) => item.valueKey === "Código")).toBe(true);
+    expect(
+      plan.recommendations.some((item) => item.widgetType === "line" && item.op === "count"),
+    ).toBe(true);
+    expect(plan.recommendations.some((item) => item.kind === "kpi")).toBe(false);
+  });
 });

@@ -247,8 +247,10 @@ export function relevantAggregationOps(
     buckets.set(name, bucket);
   }
   const list = [...buckets.values()];
+  if (!list.length) return ["sum"];
   const maxValues = list.length ? Math.max(...list.map((b) => b.values)) : 0;
   const maxRows = list.length ? Math.max(...list.map((b) => b.rowCount)) : 0;
+  if (maxValues === 0) return ["count"];
   // Multiplicação/divisão entre dezenas de linhas explode ou tende a zero,
   // produzindo barras ilegíveis e sem interpretação analítica útil.
   if (maxValues > 1) return ["sum", "avg", "count", "min", "max"];

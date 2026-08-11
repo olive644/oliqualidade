@@ -40,7 +40,7 @@ function widgetCompatible(widget: Widget, columns: Column[]): boolean {
   return Boolean(
     group &&
     value &&
-    numericKinds.includes(value.kind) &&
+    (widget.op === "count" || numericKinds.includes(value.kind)) &&
     (widget.type !== "line" || group.kind === "date"),
   );
 }

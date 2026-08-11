@@ -215,6 +215,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   const metrics = byRole("metric");
   const dimensions = byRole("dimension");
   const temporal = byRole("temporal-dimension");
+  const identifiers = byRole("identifier");
   const recommendations: DashboardRecommendation[] = [];
 
   for (const metric of metrics.slice(0, 3)) {
@@ -322,6 +323,82 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
     }
   }
 
+  // Bases operacionais frequentemente possuem apenas códigos, datas e
+  // categorias (sem uma medida financeira/quantitativa segura). Nesse caso,
+  // contar registros é uma análise válida e evita tanto um painel vazio quanto
+  // a soma enganosa de protocolos como "Nº 1".
+  const countKey = identifiers[0]?.key ?? input.columns[0]?.key;
+  if (!primaryMetric && countKey) {
+    if (primaryTime) {
+      recommendations.push(
+        recommendation(input, {
+          id: slug("contagem-temporal", primaryTime.key, countKey),
+          kind: "visualization",
+          title: `Registros por ${primaryTime.label}`,
+          widgetType: "line",
+          groupKey: primaryTime.key,
+          valueKey: countKey,
+          op: "count",
+          columns: [primaryTime.key, countKey],
+          baseConfidence: 91,
+          reasons: ["Sem métrica numérica segura, a série mostra a contagem de registros."],
+        }),
+      );
+    }
+    for (const dimension of dimensions.slice(0, 2)) {
+      const cardinality = distinctCount(input.rows, dimension.key);
+      recommendations.push(
+        recommendation(input, {
+          id: slug("contagem", dimension.key, countKey),
+          kind: "visualization",
+          title: `Registros por ${dimension.label}`,
+          widgetType: "bar",
+          groupKey: dimension.key,
+          valueKey: countKey,
+          op: "count",
+          columns: [dimension.key, countKey],
+          baseConfidence: 90,
+          reasons: ["A contagem compara quantos registros pertencem a cada categoria."],
+          warnings:
+            cardinality > 50
+              ? [`A dimensão possui alta cardinalidade (${cardinality} valores).`]
+              : [],
+        }),
+      );
+      recommendations.push(
+        recommendation(input, {
+          id: slug("ranking-contagem", dimension.key, countKey),
+          kind: "visualization",
+          title: `Ranking de ${dimension.label} por registros`,
+          widgetType: "ranking",
+          groupKey: dimension.key,
+          valueKey: countKey,
+          op: "count",
+          topN: 5,
+          columns: [dimension.key, countKey],
+          baseConfidence: 88,
+          reasons: ["O ranking destaca as categorias com mais registros."],
+        }),
+      );
+      if (cardinality >= 2 && cardinality <= 8) {
+        recommendations.push(
+          recommendation(input, {
+            id: slug("distribuicao-contagem", dimension.key, countKey),
+            kind: "visualization",
+            title: `Distribuição de registros por ${dimension.label}`,
+            widgetType: "pie",
+            groupKey: dimension.key,
+            valueKey: countKey,
+            op: "count",
+            columns: [dimension.key, countKey],
+            baseConfidence: 84,
+            reasons: ["Poucas categorias permitem comparar a distribuição por contagem."],
+          }),
+        );
+      }
+    }
+  }
+
   recommendations.push({
     id: "table-detail",
     kind: "table",
@@ -335,7 +412,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   const planWarnings: string[] = [];
   if (!metrics.length)
     planWarnings.push(
-      "Nenhuma métrica segura foi identificada; o plano mantém apenas o detalhamento.",
+      "Nenhuma métrica numérica segura foi identificada; as visualizações usam contagem de registros.",
     );
   if (input.diagnostics && input.diagnostics.confidence < 70) {
     planWarnings.push(

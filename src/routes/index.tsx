@@ -5092,7 +5092,8 @@ function WidgetCard({
   }
 
   if (w.type === "metric" || w.type === "metric-trend") {
-    const col = columns.find((c) => c.key === w.metricKey) ?? numericCols[0];
+    const col =
+      columns.find((c) => c.key === w.metricKey && numericKinds.includes(c.kind)) ?? numericCols[0];
     if (!col) {
       return (
         <EmptyWidget
@@ -5327,7 +5328,13 @@ function WidgetCard({
       w.type === "line"
         ? columns.find((c) => c.key === w.groupKey && c.kind === "date")
         : columns.find((c) => c.key === w.groupKey);
-    const valueCol = columns.find((c) => c.key === w.valueKey) ?? numericCols[0];
+    const requestedOp = w.op ?? "sum";
+    const configuredValueCol = columns.find((c) => c.key === w.valueKey);
+    const valueCol =
+      (configuredValueCol &&
+      (requestedOp === "count" || numericKinds.includes(configuredValueCol.kind))
+        ? configuredValueCol
+        : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
     const relevantOps =
       groupCol && valueCol
         ? relevantAggregationOps(data, groupCol.key, valueCol.key)
@@ -5336,13 +5343,17 @@ function WidgetCard({
       ? (w.op ?? "sum")
       : (relevantOps[0] ?? "sum");
     const title =
-      w.type === "line"
-        ? `Evolução de ${valueCol?.label ?? ""}`
-        : w.type === "area"
-          ? `Evolução de ${valueCol?.label ?? ""} (área)`
-          : w.type === "pie"
-            ? "Distribuição"
-            : `${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`;
+      op === "count"
+        ? w.type === "pie"
+          ? `Distribuição de registros por ${groupCol?.label ?? ""}`
+          : `Contagem de registros por ${groupCol?.label ?? ""}`
+        : w.type === "line"
+          ? `Evolução de ${valueCol?.label ?? ""}`
+          : w.type === "area"
+            ? `Evolução de ${valueCol?.label ?? ""} (área)`
+            : w.type === "pie"
+              ? "Distribuição"
+              : `${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`;
     const icon =
       w.type === "line" ? (
         <TrendingUp className="size-3.5 shrink-0 text-muted-foreground" />
@@ -5415,17 +5426,17 @@ function WidgetCard({
             </select>
           </FieldDropSlot>
           <FieldDropSlot
-            accepts={numericKinds}
+            accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
             onDropColumn={(key) => onConfigure({ valueKey: key })}
           >
             <select
-              aria-label="Coluna numérica"
+              aria-label={op === "count" ? "Coluna usada para contar" : "Coluna numérica"}
               className="oliam-select"
               value={valueCol?.key ?? ""}
               onChange={(e) => onConfigure({ valueKey: e.target.value })}
             >
               {!valueCol && <option value="">Selecione…</option>}
-              {numericCols.map((c) => (
+              {(op === "count" ? columns : numericCols).map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
                 </option>
@@ -5826,7 +5837,13 @@ function WidgetCard({
 
   if (w.type === "ranking") {
     const groupCol = columns.find((c) => c.key === w.groupKey);
-    const valueCol = columns.find((c) => c.key === w.valueKey) ?? numericCols[0];
+    const requestedOp = w.op ?? "sum";
+    const configuredValueCol = columns.find((c) => c.key === w.valueKey);
+    const valueCol =
+      (configuredValueCol &&
+      (requestedOp === "count" || numericKinds.includes(configuredValueCol.kind))
+        ? configuredValueCol
+        : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
     const relevantOps =
       groupCol && valueCol
         ? relevantAggregationOps(data, groupCol.key, valueCol.key)
@@ -5845,7 +5862,11 @@ function WidgetCard({
         style={{ animationDelay: `${animationDelay}ms` }}
       >
         <WidgetHead
-          title={`Top ${topN} · ${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`}
+          title={
+            op === "count"
+              ? `Top ${topN} · Registros por ${groupCol?.label ?? ""}`
+              : `Top ${topN} · ${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`
+          }
           icon={<ListOrdered className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
@@ -5874,17 +5895,17 @@ function WidgetCard({
             </select>
           </FieldDropSlot>
           <FieldDropSlot
-            accepts={numericKinds}
+            accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
             onDropColumn={(key) => onConfigure({ valueKey: key })}
           >
             <select
-              aria-label="Coluna numérica"
+              aria-label={op === "count" ? "Coluna usada para contar" : "Coluna numérica"}
               className="oliam-select"
               value={valueCol?.key ?? ""}
               onChange={(e) => onConfigure({ valueKey: e.target.value })}
             >
               {!valueCol && <option value="">Selecione…</option>}
-              {numericCols.map((c) => (
+              {(op === "count" ? columns : numericCols).map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
                 </option>
@@ -5967,7 +5988,13 @@ function WidgetCard({
 
   if (w.type === "map") {
     const groupCol = columns.find((c) => c.key === w.groupKey);
-    const valueCol = columns.find((c) => c.key === w.valueKey) ?? numericCols[0];
+    const requestedOp = w.op ?? "sum";
+    const configuredValueCol = columns.find((c) => c.key === w.valueKey);
+    const valueCol =
+      (configuredValueCol &&
+      (requestedOp === "count" || numericKinds.includes(configuredValueCol.kind))
+        ? configuredValueCol
+        : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
     const relevantOps =
       groupCol && valueCol
         ? relevantAggregationOps(data, groupCol.key, valueCol.key)
@@ -5983,7 +6010,11 @@ function WidgetCard({
         style={{ animationDelay: `${animationDelay}ms` }}
       >
         <WidgetHead
-          title={`${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? "local"}`}
+          title={
+            op === "count"
+              ? `Contagem de registros por ${groupCol?.label ?? "local"}`
+              : `${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? "local"}`
+          }
           icon={<MapPin className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
@@ -6012,17 +6043,17 @@ function WidgetCard({
             </select>
           </FieldDropSlot>
           <FieldDropSlot
-            accepts={numericKinds}
+            accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
             onDropColumn={(key) => onConfigure({ valueKey: key })}
           >
             <select
-              aria-label="Coluna numérica"
+              aria-label={op === "count" ? "Coluna usada para contar" : "Coluna numérica"}
               className="oliam-select"
               value={valueCol?.key ?? ""}
               onChange={(e) => onConfigure({ valueKey: e.target.value })}
             >
               {!valueCol && <option value="">Selecione…</option>}
-              {numericCols.map((c) => (
+              {(op === "count" ? columns : numericCols).map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
                 </option>
@@ -6064,7 +6095,8 @@ function WidgetCard({
   }
 
   if (w.type === "rating") {
-    const col = columns.find((c) => c.key === w.metricKey) ?? numericCols[0];
+    const col =
+      columns.find((c) => c.key === w.metricKey && numericKinds.includes(c.kind)) ?? numericCols[0];
     const scaleMax = w.scaleMax ?? 5;
     if (!col) {
       return (
