@@ -1190,6 +1190,39 @@
       "provenance": "EXTRACTED"
     },
     {
+      "id": "file:src/lib/gemini-client.test.ts",
+      "label": "src/lib/gemini-client.test.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-client.test.ts",
+      "source_location": "src/lib/gemini-client.test.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "file:src/lib/gemini-client.ts",
+      "label": "src/lib/gemini-client.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-client.ts",
+      "source_location": "src/lib/gemini-client.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-client.ts#askGemini",
+      "label": "askGemini",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-client.ts",
+      "source_location": "src/lib/gemini-client.ts:1",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
       "id": "file:src/lib/gemini-security.test.ts",
       "label": "src/lib/gemini-security.test.ts",
       "kind": "file",
@@ -2218,7 +2251,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "tsx",
       "source_file": "src/routes/index.tsx",
-      "source_location": "src/routes/index.tsx:416",
+      "source_location": "src/routes/index.tsx:419",
       "community": "Application Routes",
       "community_name": "Application Routes",
       "provenance": "EXTRACTED"
@@ -2991,6 +3024,30 @@
       "provenance": "EXTRACTED"
     },
     {
+      "source": "file:src/lib/gemini-client.test.ts",
+      "target": "file:src/lib/gemini-client.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-client.test.ts",
+      "target": "file:src/lib/types.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-client.ts",
+      "target": "file:src/lib/types.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-client.ts",
+      "target": "symbol:src/lib/gemini-client.ts#askGemini",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
       "source": "file:src/lib/gemini-security.test.ts",
       "target": "file:src/lib/gemini-security.ts",
       "relationship": "imports",
@@ -3731,6 +3788,12 @@
     {
       "source": "file:src/routes/index.tsx",
       "target": "file:src/lib/geocode.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/routes/index.tsx",
+      "target": "file:src/lib/gemini-client.ts",
       "relationship": "imports",
       "provenance": "EXTRACTED"
     },

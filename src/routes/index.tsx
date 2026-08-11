@@ -30,6 +30,7 @@ import {
   ArrowRight,
   ArrowUp,
   BarChart3,
+  Bot,
   Bookmark as BookmarkIcon,
   BookmarkPlus,
   Calculator,
@@ -64,6 +65,7 @@ import {
   Plus,
   Redo2,
   Search,
+  Send,
   Settings2,
   Sheet as SheetIcon,
   ShieldAlert,
@@ -186,6 +188,7 @@ import {
 import { mergeReimportedSheets } from "@/lib/dashboard";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import { geocodeMissing } from "@/lib/geocode";
+import { askGemini } from "@/lib/gemini-client";
 import "leaflet/dist/leaflet.css";
 
 const demo: Row[] = [
@@ -3541,6 +3544,126 @@ function Dashboard(p: {
           </ul>
         </DialogContent>
       </Dialog>
+      <GeminiChatPanel dashboard={d} sheet={sheet} />
+    </div>
+  );
+}
+
+function GeminiChatPanel({ dashboard, sheet }: { dashboard: Dashboard; sheet: SheetData }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
+
+  useEffect(() => setMessages([]), [dashboard.id, sheet.name]);
+  const submit = async () => {
+    const message = draft.trim();
+    if (!message || loading) return;
+    setDraft("");
+    setMessages((current) => [...current, { role: "user", text: message }]);
+    setLoading(true);
+    try {
+      const answer = await askGemini(message, dashboard, sheet);
+      setMessages((current) => [...current, { role: "assistant", text: answer }]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          text: error instanceof Error ? error.message : "Não foi possível responder.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
+      {open && (
+        <section className="flex h-[min(34rem,70vh)] w-[min(24rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
+          <header className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="rounded-xl bg-primary p-2 text-primary-foreground">
+                <Bot className="size-4" />
+              </span>
+              <div>
+                <strong className="text-sm">Assistente Oli</strong>
+                <p className="text-[11px] text-muted-foreground">
+                  {sheet.name} · contexto protegido
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setOpen(false)}
+              aria-label="Fechar assistente"
+            >
+              <X className="size-4" />
+            </Button>
+          </header>
+          <div className="flex-1 space-y-3 overflow-auto p-4" aria-live="polite">
+            {!messages.length && (
+              <div className="rounded-xl bg-tint p-3 text-sm text-muted-foreground">
+                Pergunte sobre totais, médias, categorias ou qualidade da aba ativa. Dados sensíveis
+                não são enviados.
+              </div>
+            )}
+            {messages.map((message, index) => (
+              <div
+                key={`${message.role}-${index}`}
+                className={cn(
+                  "max-w-[88%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm",
+                  message.role === "user"
+                    ? "ml-auto bg-primary text-primary-foreground"
+                    : "bg-muted text-foreground",
+                )}
+              >
+                {message.text}
+              </div>
+            ))}
+            {loading && (
+              <div className="max-w-[88%] rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
+                Analisando o painel…
+              </div>
+            )}
+          </div>
+          <form
+            className="flex gap-2 border-t border-border p-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              maxLength={2000}
+              placeholder="Pergunte sobre este painel…"
+              aria-label="Mensagem para o assistente"
+              className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!draft.trim() || loading}
+              aria-label="Enviar mensagem"
+            >
+              <Send className="size-4" />
+            </Button>
+          </form>
+        </section>
+      )}
+      <Button
+        className="h-12 rounded-full px-4 shadow-panel"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-label="Abrir assistente do dashboard"
+      >
+        <Bot className="mr-2 size-4" />
+        Perguntar ao Oli
+      </Button>
     </div>
   );
 }
