@@ -579,6 +579,66 @@ describe("sheetToRows", () => {
     ]);
   });
 
+  it("lê formulário de qualidade com cabeçalho institucional, mesclagens e medições numéricas como texto", () => {
+    const ws = sheetWithDates([
+      ["Controle de Análise Diária de Cloro Residual Livre", null, null, null, null, null, null],
+      ["FRS-QA-028-Suape", null, null, null, null, null, null],
+      ["Rev. 01 – Vigência: 26/07/2024", null, null, null, null, null, null],
+      [],
+      ["Elaborado por: Qualidade", null, "Revisado por: Gestão", null, "Aprovado por: Liderança"],
+      ["Técnico de Qualidade", null, "Técnica de Qualidade", null, "Líder de Qualidade"],
+      ["Data: 22/07/2024", null, "Data: 26/07/2024", null, "Data: 27/07/2024"],
+      [
+        "Data",
+        "Pontos de Análise (0,2 a 2 mg/L - Frequência Diária) TODO DESVIO DEVE SER COMUNICADO À GESTÃO DE QUALIDADE",
+      ],
+      [],
+      [
+        null,
+        "Saída do Poço",
+        "Pia de Higienização de Alimentos",
+        "Pia de Higienização de Mãos",
+        "Torre de Processo",
+        "Barreira Sanitária (Injeção)",
+        "Barreira Sanitária (AOKI)",
+      ],
+      [new Date(2026, 6, 1), 2, 1, 1, 1, 1, 0.2],
+      [new Date(2026, 6, 2), "2.05", "1.33", "1.13", "1.00", "2.68", "0.50"],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
+      { s: { r: 7, c: 0 }, e: { r: 9, c: 0 } },
+      { s: { r: 7, c: 1 }, e: { r: 7, c: 6 } },
+    ];
+    // Reproduz colunas apenas formatadas além da tabela real.
+    ws["!ref"] = "A1:W12";
+
+    const { rows, warning } = sheetToRows(ws);
+
+    expect(rows).toHaveLength(2);
+    expect(Object.keys(rows[0] as object)).toEqual([
+      "Data",
+      "Saída do Poço",
+      "Pia de Higienização de Alimentos",
+      "Pia de Higienização de Mãos",
+      "Torre de Processo",
+      "Barreira Sanitária (Injeção)",
+      "Barreira Sanitária (AOKI)",
+    ]);
+    expect(rows[1]).toEqual({
+      Data: "02/07/2026",
+      "Saída do Poço": 2.05,
+      "Pia de Higienização de Alimentos": 1.33,
+      "Pia de Higienização de Mãos": 1.13,
+      "Torre de Processo": 1,
+      "Barreira Sanitária (Injeção)": 2.68,
+      "Barreira Sanitária (AOKI)": 0.5,
+    });
+    expect(warning).toContain("linha 10");
+    expect(warning).toContain("medições numéricas");
+  });
+
   it("recupera coluna com fórmula sem valor calculado guardado no arquivo", () => {
     // Reproduz o caso real relatado: planilha gerada por script (não pelo
     // Excel de verdade), onde "Total" tem a fórmula mas nunca foi
