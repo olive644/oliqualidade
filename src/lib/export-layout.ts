@@ -44,3 +44,54 @@ export function pdfPageSlices(
   }
   return slices;
 }
+
+export type PdfTablePage = {
+  columnStart: number;
+  columnEnd: number;
+  rowStart: number;
+  rowEnd: number;
+};
+
+/**
+ * Divide uma tabela em páginas legíveis, tanto por linhas quanto por
+ * colunas. Os limites são exclusivos no fim e nunca repartem uma célula.
+ */
+export function pdfTablePages(
+  rowCount: number,
+  columnCount: number,
+  contentWidthPt: number,
+  contentHeightPt: number,
+  options: {
+    minColumnWidthPt?: number;
+    rowHeightPt?: number;
+    tableHeaderHeightPt?: number;
+    titleHeightPt?: number;
+  } = {},
+): PdfTablePage[] {
+  if (rowCount < 0 || columnCount <= 0 || contentWidthPt <= 0 || contentHeightPt <= 0) return [];
+  const minColumnWidth = options.minColumnWidthPt ?? 92;
+  const rowHeight = options.rowHeightPt ?? 18;
+  const tableHeaderHeight = options.tableHeaderHeightPt ?? 24;
+  const titleHeight = options.titleHeightPt ?? 24;
+  const columnsPerPage = Math.max(1, Math.floor(contentWidthPt / minColumnWidth));
+  const rowsPerPage = Math.max(
+    1,
+    Math.floor((contentHeightPt - tableHeaderHeight - titleHeight) / rowHeight),
+  );
+  const pages: PdfTablePage[] = [];
+
+  for (let columnStart = 0; columnStart < columnCount; columnStart += columnsPerPage) {
+    const columnEnd = Math.min(columnCount, columnStart + columnsPerPage);
+    const rowPages = Math.max(1, Math.ceil(rowCount / rowsPerPage));
+    for (let page = 0; page < rowPages; page++) {
+      const rowStart = page * rowsPerPage;
+      pages.push({
+        columnStart,
+        columnEnd,
+        rowStart,
+        rowEnd: Math.min(rowCount, rowStart + rowsPerPage),
+      });
+    }
+  }
+  return pages;
+}
