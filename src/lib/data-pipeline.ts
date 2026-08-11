@@ -11,11 +11,21 @@ export function sortAllBarCategories<T extends { total: number }>(series: T[]): 
   return [...series].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
 }
 
+/**
+ * Barras sempre lado a lado (layout horizontal), pra permitir comparar a
+ * variação entre categorias visualmente de forma direta. Quando há muitas
+ * categorias, em vez de trocar de layout, o gráfico ganha uma largura maior
+ * que a área visível (BAR_SLOT px por categoria) e o container rola na
+ * horizontal — inclusive por arrasto com o mouse, não só toque/scrollbar.
+ */
+const BAR_SLOT_PX = 64;
+const BAR_SCROLL_THRESHOLD = 12;
+
 export function barChartPresentation(categoryCount: number) {
-  const scrollable = categoryCount > 12;
+  const scrollable = categoryCount > BAR_SCROLL_THRESHOLD;
   return {
     scrollable,
-    contentHeight: scrollable ? Math.max(288, categoryCount * 30) : 256,
+    contentWidth: scrollable ? categoryCount * BAR_SLOT_PX : undefined,
   };
 }
 

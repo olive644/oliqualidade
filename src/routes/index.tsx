@@ -4549,32 +4549,6 @@ function AxisTick({
   );
 }
 
-function CategoryAxisTick({
-  x,
-  y,
-  payload,
-}: {
-  x?: number;
-  y?: number;
-  payload?: { value?: string | number };
-}) {
-  const value = String(payload?.value ?? "");
-  const missing = value === NOT_INFORMED;
-  return (
-    <text
-      x={(x ?? 0) - 8}
-      y={(y ?? 0) + 4}
-      textAnchor="end"
-      fontSize={10}
-      fontStyle={missing ? "italic" : "normal"}
-      fill={missing ? "var(--muted-foreground)" : "var(--foreground)"}
-    >
-      <title>{value}</title>
-      {truncateLabel(value, 24)}
-    </text>
-  );
-}
-
 function compactAxisValue(value: number, kind: Kind) {
   const options: Intl.NumberFormatOptions = {
     notation: "compact",
@@ -4965,6 +4939,40 @@ function WidgetCard({
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const handleGroupClick = (groupKey: string, value: string) => {
     setFilters(toggleClickFilter(filters, groupKey, value));
+  };
+  // Gráfico de barras com muitas categorias: permite arrastar com o mouse
+  // pra rolar na horizontal (touch já rola nativamente via overflow-x-auto,
+  // isso só cobre o caso de clicar-e-arrastar com o mouse).
+  const barScrollRef = useRef<HTMLDivElement>(null);
+  const handleBarScrollPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    const el = barScrollRef.current;
+    if (!el) return;
+    const startX = e.clientX;
+    const startScroll = el.scrollLeft;
+    let dragged = false;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add("oliam-bar-dragging");
+    const onMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX;
+      if (Math.abs(delta) > 3) dragged = true;
+      el.scrollLeft = startScroll - delta;
+    };
+    const onUp = () => {
+      el.classList.remove("oliam-bar-dragging");
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      // Evita que o clique-arrasto dispare o cross-filter da barra por baixo
+      // do cursor (onClick da <Bar>) quando o usuário só quis rolar.
+      if (dragged) {
+        const suppress = (evt: MouseEvent) => evt.stopPropagation();
+        el.addEventListener("click", suppress, { capture: true, once: true });
+      }
+    };
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
   };
   // Indicador "filtrado por X" exibido no cabeçalho de controles do widget
   // quando a coluna de agrupamento dele tem um filtro simples ativo,
@@ -5498,30 +5506,26 @@ function WidgetCard({
         ) : w.type === "bar" ? (
           <>
             <div
+              ref={barPresentation.scrollable ? barScrollRef : undefined}
               className={cn(
-                "p-4",
-                barPresentation.scrollable ? "max-h-[28rem] overflow-y-auto" : "h-64",
+                "h-64 overflow-x-auto overflow-y-hidden p-4",
+                barPresentation.scrollable && "oliam-bar-drag-scroll",
               )}
+              onPointerDown={barPresentation.scrollable ? handleBarScrollPointerDown : undefined}
             >
               <div
-                style={
-                  barPresentation.scrollable
-                    ? { height: barPresentation.contentHeight, minWidth: 560 }
-                    : { height: "100%" }
-                }
+                style={{
+                  height: "100%",
+                  width: barPresentation.scrollable ? barPresentation.contentWidth : "100%",
+                  minWidth: "100%",
+                }}
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={barSeries}
-                    layout={barPresentation.scrollable ? "vertical" : "horizontal"}
-                    margin={
-                      barPresentation.scrollable
-                        ? { top: 4, right: 112, left: 8, bottom: 18 }
-                        : { top: 20, right: 16, left: 12, bottom: 26 }
-                    }
-                    barCategoryGap={
-                      barPresentation.scrollable ? "22%" : barSeries.length > 10 ? "34%" : "18%"
-                    }
+                    layout="horizontal"
+                    margin={{ top: 20, right: 16, left: 12, bottom: 26 }}
+                    barCategoryGap={barSeries.length > 10 ? "34%" : "18%"}
                   >
                     <defs>
                       <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -5530,65 +5534,35 @@ function WidgetCard({
                       </linearGradient>
                     </defs>
                     <CartesianGrid
-                      vertical={!barPresentation.scrollable}
-                      horizontal={barPresentation.scrollable}
+                      vertical={false}
+                      horizontal
                       stroke="var(--border)"
                       strokeOpacity={0.6}
                     />
-                    {barPresentation.scrollable ? (
-                      <>
-                        <XAxis
-                          type="number"
-                          tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                          tickLine={false}
-                          axisLine={{ stroke: "var(--border)" }}
-                          tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
-                          label={{
-                            value: valueCol.label,
-                            position: "insideBottom",
-                            offset: -16,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            fill: "var(--muted-foreground)",
-                          }}
-                        />
-                        <YAxis
-                          type="category"
-                          dataKey="name"
-                          tick={(props) => <CategoryAxisTick {...props} />}
-                          tickLine={false}
-                          axisLine={false}
-                          interval={0}
-                          width={164}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <XAxis
-                          type="category"
-                          dataKey="name"
-                          tick={(props) => <AxisTick {...props} />}
-                          tickLine={false}
-                          axisLine={{ stroke: "var(--border)" }}
-                          label={{
-                            value: groupCol.label,
-                            position: "insideBottom",
-                            offset: -16,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            fill: "var(--muted-foreground)",
-                          }}
-                        />
-                        <YAxis
-                          type="number"
-                          tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                          tickLine={false}
-                          axisLine={false}
-                          width={66}
-                          tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
-                        />
-                      </>
-                    )}
+                    <XAxis
+                      type="category"
+                      dataKey="name"
+                      tick={(props) => <AxisTick {...props} />}
+                      tickLine={false}
+                      axisLine={{ stroke: "var(--border)" }}
+                      interval={0}
+                      label={{
+                        value: groupCol.label,
+                        position: "insideBottom",
+                        offset: -16,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        fill: "var(--muted-foreground)",
+                      }}
+                    />
+                    <YAxis
+                      type="number"
+                      tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={66}
+                      tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
+                    />
                     <ChartTooltip
                       cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
                       content={(props) => (
@@ -5604,19 +5578,15 @@ function WidgetCard({
                     <Bar
                       dataKey="total"
                       fill={`url(#bar-grad-${w.id})`}
-                      radius={barPresentation.scrollable ? [0, 6, 6, 0] : [6, 6, 0, 0]}
-                      maxBarSize={
-                        barPresentation.scrollable
-                          ? 20
-                          : Math.max(10, Math.min(72, Math.floor(680 / barSeries.length)))
-                      }
+                      radius={[6, 6, 0, 0]}
+                      maxBarSize={72}
                       onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
                       cursor="pointer"
                       animationDuration={500}
                     >
                       <LabelList
                         dataKey="total"
-                        position={barPresentation.scrollable ? "right" : "top"}
+                        position="top"
                         fontSize={10}
                         fill="var(--muted-foreground)"
                         formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
@@ -5628,7 +5598,8 @@ function WidgetCard({
             </div>
             {barPresentation.scrollable && (
               <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-                {barSeries.length.toLocaleString("pt-BR")} categorias · role para ver todas
+                {barSeries.length.toLocaleString("pt-BR")} categorias · arraste para os lados para
+                ver todas
               </p>
             )}
             <p className="sr-only">

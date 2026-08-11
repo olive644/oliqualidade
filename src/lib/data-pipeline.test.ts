@@ -28,12 +28,12 @@ describe("sortAllBarCategories", () => {
 });
 
 describe("barChartPresentation", () => {
-  it("mantém colunas compactas quando há poucas categorias", () => {
-    expect(barChartPresentation(8)).toEqual({ scrollable: false, contentHeight: 256 });
+  it("mantém barras lado a lado sem rolagem quando há poucas categorias", () => {
+    expect(barChartPresentation(8)).toEqual({ scrollable: false, contentWidth: undefined });
   });
 
-  it("cria uma linha legível por categoria e habilita rolagem em bases extensas", () => {
-    expect(barChartPresentation(300)).toEqual({ scrollable: true, contentHeight: 9000 });
+  it("habilita rolagem horizontal em bases extensas, mantendo todas as barras juntas", () => {
+    expect(barChartPresentation(300)).toEqual({ scrollable: true, contentWidth: 19200 });
   });
 });
 
