@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLiveDashboardContext } from "@/lib/assistant-context";
+import { buildLiveDashboardContext, buildLiveSuggestedPrompts } from "@/lib/assistant-context";
 import type { Column, Widget } from "@/lib/types";
 
 const columns: Column[] = [
@@ -53,6 +53,9 @@ describe("contexto vivo do assistente", () => {
       lastPeriod: { label: "11/08/2026", value: 106.684 },
     });
     expect(widget?.trend?.meaning).toContain("último período - primeiro período");
+    expect(buildLiveSuggestedPrompts(context)[0]).toBe(
+      "Explique a variação de -40,4% em Itens Processados, de 01/08/2026 até 11/08/2026.",
+    );
   });
 
   it("usa somente as linhas filtradas e registra filtros, busca e ordenação atuais", () => {
@@ -79,6 +82,7 @@ describe("contexto vivo do assistente", () => {
       columnLabel: "Data",
       direction: "desc",
     });
+    expect(buildLiveSuggestedPrompts(context)).toContain("Resuma 1 registro desta visão filtrada.");
   });
 
   it("resume séries extensas sem perder a indicação de que há mais itens", () => {
