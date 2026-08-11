@@ -32,6 +32,7 @@ export type LocalDirectoryHandle = {
     [string, LocalFileHandle | { kind: "directory"; name: string }]
   >;
   values?: () => AsyncIterableIterator<LocalFileHandle | { kind: "directory"; name: string }>;
+  queryPermission?: (options?: { mode?: "read" }) => Promise<PermissionState>;
 };
 
 type LocalPickerWindow = Window & {

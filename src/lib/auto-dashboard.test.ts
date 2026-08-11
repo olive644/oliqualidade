@@ -74,6 +74,11 @@ describe("classifyDashboardColumn", () => {
     expect(result.reasons.join(" ")).toContain("não deve ser agregada");
   });
 
+  it("reconhece rótulos Nº como identificadores", () => {
+    const result = classifyDashboardColumn(column("Nº 1", "text"), diagnostic("Nº 1", "integer"));
+    expect(result.role).toBe("identifier");
+  });
+
   it("prioriza a marcação de dado sensível", () => {
     const result = classifyDashboardColumn(
       column("cpf", "number"),

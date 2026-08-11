@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { evalFormula, fmt, infer, inferColumns } from "@/lib/format";
+import { evalFormula, fmt, infer, inferColumns, sortChronologically } from "@/lib/format";
 import type { Row } from "@/lib/types";
 
 describe("infer", () => {
@@ -35,6 +35,16 @@ describe("infer", () => {
   it("detecta número puro quando o nome não sugere moeda nem percentual", () => {
     const rows: Row[] = [{ quantidade: 5 }, { quantidade: 8 }];
     expect(infer(rows)[0]?.kind).toBe("number");
+  });
+
+  it("infere números armazenados como texto sem promover códigos e protocolos", () => {
+    const columns = infer([
+      { Quantidade: "12", "Nº 1": "39960", Código: "50026804" },
+      { Quantidade: "18", "Nº 1": "39963", Código: "50041209" },
+    ]);
+    expect(columns.find((column) => column.key === "Quantidade")?.kind).toBe("number");
+    expect(columns.find((column) => column.key === "Nº 1")?.kind).not.toBe("number");
+    expect(columns.find((column) => column.key === "Código")?.kind).not.toBe("number");
   });
 
   it("detecta data pelo nome da coluna", () => {
@@ -74,6 +84,18 @@ describe("infer", () => {
   it("cai em número (não categoria) quando a coluna está vazia e o nome não dá pista", () => {
     const rows: Row[] = [{ observacao: null }, { observacao: null }];
     expect(infer(rows)[0]?.kind).toBe("number");
+  });
+});
+
+describe("sortChronologically", () => {
+  it("ordena datas brasileiras pelo tempo, não alfabeticamente", () => {
+    expect(
+      sortChronologically([
+        { name: "31/07/2026" },
+        { name: "04/05/2026" },
+        { name: "18/06/2026" },
+      ]).map((item) => item.name),
+    ).toEqual(["04/05/2026", "18/06/2026", "31/07/2026"]);
   });
 });
 

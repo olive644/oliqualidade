@@ -62,7 +62,7 @@ const METRIC_KIND = new Set<ColumnDiagnostic["kind"]>([
 ]);
 const TEMPORAL_KIND = new Set<ColumnDiagnostic["kind"]>(["date", "datetime"]);
 const IDENTIFIER_NAME =
-  /(^|[\s_-])(id|codigo|c[oó]digo|cpf|cnpj|pedido|matr[ií]cula|sku|uuid|protocolo)([\s_-]|$)/i;
+  /(^|[\s_-])(id|codigo|c[oó]digo|cod|n[º°o]\.?|n[uú]mero|cpf|cnpj|pedido|matr[ií]cula|sku|uuid|protocolo)([\s_.-]|\d|$)/i;
 const METRIC_NAME =
   /(valor|faturamento|receita|venda|quantidade|qtd|pre[cç]o|custo|lucro|margem|total|saldo|ticket|meta)/i;
 const TEMPORAL_NAME =

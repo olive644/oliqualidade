@@ -36,10 +36,20 @@ function inferOne(key: string, rows: Row[]): Column {
   const vals = rows.map((r) => r[key]).filter((v) => v !== null && v !== "");
   const v = vals[0];
   const low = key.toLowerCase();
+  const identifierName =
+    /(^|[\s_-])(id|c[oó]digo|cod|n[º°o]\.?|n[uú]mero|sku|protocolo)([\s_.-]|\d|$)/i.test(low);
+  const numericTextRatio = vals.length
+    ? vals.filter(
+        (value) =>
+          typeof value === "number" ||
+          (typeof value === "string" && /^[-+]?\d+(?:[.,]\d+)?$/.test(value.trim())),
+      ).length / vals.length
+    : 0;
   let kind: Kind = "text";
   if (low.includes("data") || (typeof v === "string" && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(v)))
     kind = "date";
-  else if (typeof v === "number") kind = numericKindFromName(low);
+  else if (identifierName) kind = new Set(vals).size < 12 ? "category" : "text";
+  else if (typeof v === "number" || numericTextRatio >= 0.9) kind = numericKindFromName(low);
   else if (vals.length === 0)
     // Coluna sem nenhum valor de amostra (100% nula/vazia): não há motivo pra
     // tratar como texto/categoria por padrão. Aplica a mesma checagem de nome
@@ -109,6 +119,14 @@ export function parseDateValue(v: Value): number | null {
   }
   const t = Date.parse(s);
   return Number.isNaN(t) ? null : t;
+}
+
+export function sortChronologically<T extends { name: string }>(items: T[]): T[] {
+  return [...items].sort(
+    (a, b) =>
+      (parseDateValue(a.name) ?? Number.MAX_SAFE_INTEGER) -
+      (parseDateValue(b.name) ?? Number.MAX_SAFE_INTEGER),
+  );
 }
 
 /**

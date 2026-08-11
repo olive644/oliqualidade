@@ -1,5 +1,6 @@
 import { migrateDashboards } from "@/lib/dashboard";
 import type { Dashboard } from "@/lib/types";
+import type { FolderMonitorView, LocalDirectoryHandle } from "@/lib/folder-monitor";
 
 export const DASH_KEY = "oliam-dashboards";
 export const THEME_KEY = "oliam-theme";
@@ -9,6 +10,7 @@ export const TERM_HINTS_KEY = "oliam-term-hints-seen";
 const DB_NAME = "oliam";
 const DB_VERSION = 1;
 const STORE = "kv";
+const FOLDER_MONITOR_PREFIX = "oliam-folder-monitor:";
 
 // IndexedDB costuma liberar bem mais espaço por origem que o localStorage
 // (frequentemente uma fração do disco, contra ~5-10MB do localStorage), mas
@@ -58,6 +60,46 @@ function idbSet(db: IDBDatabase, key: string, value: unknown): Promise<boolean> 
       resolve(false);
     }
   });
+}
+
+function idbDelete(db: IDBDatabase, key: string): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+export type StoredFolderMonitor = {
+  directory: LocalDirectoryHandle;
+  fileName: string;
+  snapshot: FolderMonitorView;
+};
+
+export async function loadFolderMonitor(
+  dashboardId: string,
+): Promise<StoredFolderMonitor | undefined> {
+  const db = await openDb();
+  if (!db) return undefined;
+  return idbGet<StoredFolderMonitor>(db, `${FOLDER_MONITOR_PREFIX}${dashboardId}`);
+}
+
+export async function saveFolderMonitor(
+  dashboardId: string,
+  monitor: StoredFolderMonitor,
+): Promise<void> {
+  const db = await openDb();
+  if (db) await idbSet(db, `${FOLDER_MONITOR_PREFIX}${dashboardId}`, monitor);
+}
+
+export async function removeFolderMonitor(dashboardId: string): Promise<void> {
+  const db = await openDb();
+  if (db) await idbDelete(db, `${FOLDER_MONITOR_PREFIX}${dashboardId}`);
 }
 
 // Migração silenciosa e única: painéis salvos antes da mudança para

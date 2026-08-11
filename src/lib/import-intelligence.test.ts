@@ -11,6 +11,32 @@ import {
 const sheet = (aoa: (string | number | null)[][]) => XLSX.utils.aoa_to_sheet(aoa);
 
 describe("import intelligence", () => {
+  it("trata números de controle como identificadores, não métricas", () => {
+    const ws = sheet([
+      ["Código", "Nº 1", "Nº 2", "Data G", "Responsável"],
+      ["50026804", "39960", "89798781", "20/05/2026", "FERNANDO"],
+      ["50041209", "39963", "89799261", "01/06/2026", "CRISTIANO"],
+    ]);
+    const diagnostics = diagnoseImportedSheet(ws, [
+      {
+        Código: "50026804",
+        "Nº 1": "39960",
+        "Nº 2": "89798781",
+        "Data G": "20/05/2026",
+        Responsável: "FERNANDO",
+      },
+      {
+        Código: "50041209",
+        "Nº 1": "39963",
+        "Nº 2": "89799261",
+        "Data G": "01/06/2026",
+        Responsável: "CRISTIANO",
+      },
+    ]);
+    expect(diagnostics.columns.find((column) => column.key === "Código")?.kind).toBe("id");
+    expect(diagnostics.columns.find((column) => column.key === "Nº 1")?.kind).toBe("id");
+    expect(diagnostics.columns.find((column) => column.key === "Nº 2")?.kind).toBe("id");
+  });
   it("detecta tipos e qualidade básicos", () => {
     const ws = sheet([
       ["Cliente", "CPF", "E-mail", "Data", "Valor", "Taxa"],

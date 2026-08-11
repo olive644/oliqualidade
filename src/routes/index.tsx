@@ -149,6 +149,7 @@ import {
   inferColumns,
   palette,
   parseDateValue,
+  sortChronologically,
   validateFormula,
   withCalculatedColumns,
 } from "@/lib/format";
@@ -171,9 +172,12 @@ import type { ImportDiagnostics } from "@/lib/import-intelligence";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import {
   loadDashboards,
+  loadFolderMonitor,
   loadGeocodeCache,
   ONBOARDING_KEY,
+  removeFolderMonitor,
   saveDashboards,
+  saveFolderMonitor,
   saveGeocodeCache,
   TERM_HINTS_KEY,
   THEME_KEY,
@@ -463,6 +467,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
   const [importProgressLabel, setImportProgressLabel] = useState<string | null>(null);
   const dashboardsRef = useRef<Dashboard[]>([]);
   const pendingFolderSelection = useRef<FolderWorkbookSelection | null>(null);
+  const restoredFolderMonitors = useRef(false);
   const folderRuntimes = useRef(
     new Map<
       string,
@@ -646,7 +651,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
     );
   };
 
-  const stopFolderMonitor = (dashboardId: string) => {
+  const stopFolderMonitor = (dashboardId: string, forget = false) => {
     const runtime = folderRuntimes.current.get(dashboardId);
     if (runtime) clearInterval(runtime.timer);
     folderRuntimes.current.delete(dashboardId);
@@ -655,6 +660,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       delete next[dashboardId];
       return next;
     });
+    if (forget) void removeFolderMonitor(dashboardId);
   };
 
   const startFolderMonitor = (
@@ -671,17 +677,20 @@ export function OliAm({ routeId }: { routeId?: string }) {
       timer: undefined as unknown as ReturnType<typeof setInterval>,
       syncing: false,
     };
-    setFolderMonitors((current) => ({
-      ...current,
-      [dashboardId]: {
-        folderName: selection.directory.name,
-        fileName: selection.file.name,
-        fileCount: selection.workbookNames.length,
-        fileNames: selection.workbookNames,
-        status: "watching",
-        lastSyncedAt,
-      },
-    }));
+    const initialSnapshot: FolderMonitorView = {
+      folderName: selection.directory.name,
+      fileName: selection.file.name,
+      fileCount: selection.workbookNames.length,
+      fileNames: selection.workbookNames,
+      status: "watching",
+      lastSyncedAt,
+    };
+    setFolderMonitors((current) => ({ ...current, [dashboardId]: initialSnapshot }));
+    void saveFolderMonitor(dashboardId, {
+      directory: selection.directory,
+      fileName: selection.file.name,
+      snapshot: initialSnapshot,
+    });
     runtime.timer = setInterval(() => {
       if (runtime.syncing) return;
       runtime.syncing = true;
@@ -699,6 +708,18 @@ export function OliAm({ routeId }: { routeId?: string }) {
                 fileNames: workbookNames,
               },
             }));
+            void saveFolderMonitor(dashboardId, {
+              directory: runtime.directory,
+              fileName: runtime.fileName,
+              snapshot: {
+                folderName: runtime.directory.name,
+                fileName: runtime.fileName,
+                fileCount: workbookNames.length,
+                fileNames: workbookNames,
+                status: "watching",
+                lastSyncedAt: Date.now(),
+              },
+            });
           }
           const handle = await runtime.directory.getFileHandle(runtime.fileName);
           const file = await handle.getFile();
@@ -788,7 +809,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      if (dashboardId) stopFolderMonitor(dashboardId);
+      if (dashboardId) stopFolderMonitor(dashboardId, true);
       const message =
         error instanceof Error && error.message === "unsupported"
           ? "O monitoramento de pasta requer Chrome ou Edge atualizado."
@@ -797,6 +818,57 @@ export function OliAm({ routeId }: { routeId?: string }) {
       toast.error(message);
     }
   };
+
+  useEffect(() => {
+    if (!ready || restoredFolderMonitors.current) return;
+    restoredFolderMonitors.current = true;
+    void (async () => {
+      for (const dashboard of dashboardsRef.current) {
+        const stored = await loadFolderMonitor(dashboard.id);
+        if (!stored) continue;
+        try {
+          const permission = stored.directory.queryPermission
+            ? await stored.directory.queryPermission({ mode: "read" })
+            : "granted";
+          if (permission !== "granted") {
+            setFolderMonitors((current) => ({
+              ...current,
+              [dashboard.id]: {
+                ...stored.snapshot,
+                status: "error",
+                error: "Autorize novamente a pasta pelo botão Monitorar pasta.",
+              },
+            }));
+            continue;
+          }
+          const handle = await stored.directory.getFileHandle(stored.fileName);
+          const file = await handle.getFile();
+          const listed = await listSupportedWorkbooks(stored.directory);
+          startFolderMonitor(
+            dashboard.id,
+            {
+              directory: stored.directory,
+              handle,
+              file,
+              workbookNames: listed.length ? listed : stored.snapshot.fileNames,
+            },
+            stored.snapshot.lastSyncedAt,
+          );
+        } catch {
+          setFolderMonitors((current) => ({
+            ...current,
+            [dashboard.id]: {
+              ...stored.snapshot,
+              status: "error",
+              error: "A pasta não está mais disponível. Conecte-a novamente.",
+            },
+          }));
+        }
+      }
+    })();
+    // A restauração deve ocorrer uma única vez após a carga local.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
   const pasteData = () => {
     setImportError(null);
     setImportWarning(null);
@@ -1070,7 +1142,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
             reimport={() => startReimport(current.id)}
             folderMonitor={folderMonitors[current.id]}
             connectFolder={() => void connectFolder(current.id)}
-            disconnectFolder={() => stopFolderMonitor(current.id)}
+            disconnectFolder={() => stopFolderMonitor(current.id, true)}
             theme={theme}
             toggleTheme={toggle}
           />
@@ -3765,9 +3837,19 @@ function Dashboard(p: {
               <Upload />
               Importar nova versão
             </CommandItem>
-            <CommandItem onSelect={p.folderMonitor ? p.disconnectFolder : p.connectFolder}>
+            <CommandItem
+              onSelect={
+                p.folderMonitor?.status === "error" || !p.folderMonitor
+                  ? p.connectFolder
+                  : p.disconnectFolder
+              }
+            >
               <FolderSync />
-              {p.folderMonitor ? "Desconectar pasta monitorada" : "Monitorar pasta local"}
+              {p.folderMonitor?.status === "error"
+                ? "Reconectar pasta monitorada"
+                : p.folderMonitor
+                  ? "Desconectar pasta monitorada"
+                  : "Monitorar pasta local"}
             </CommandItem>
             <CommandItem onSelect={exportXlsx}>
               <Download />
@@ -5229,7 +5311,7 @@ function WidgetCard({
         : [];
     const series =
       w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
-        ? [...grouped].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+        ? sortChronologically(grouped)
         : grouped;
     const barSeries =
       w.type === "bar"

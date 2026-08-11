@@ -100,6 +100,8 @@ const CURRENCY = /^(?:R\$|US\$|€|£|¥|\$)\s*[+-]?[\d.]+(?:,\d+)?\s*$/;
 const PERCENTAGE = /^[+-]?(?:\d+(?:[.,]\d+)?)\s*%$/;
 const DATE = /^(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})$/;
 const DATETIME = /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}.*\d{1,2}:\d{2}/;
+const IDENTIFIER_NAME =
+  /(^|[\s_-])(id|c[oó]digo|cod|n[º°o]\.?|n[uú]mero|matr[ií]cula|sku|uuid|protocolo)([\s_.-]|\d|$)/i;
 
 function normalized(value: unknown): string {
   return String(value ?? "").trim();
@@ -116,6 +118,7 @@ function kindFor(
   const samples = nonEmpty(values).slice(0, 500);
   if (!samples.length) return { kind: "text", confidence: 0.1 };
   const name = label.toLowerCase();
+  if (IDENTIFIER_NAME.test(name)) return { kind: "id", confidence: 0.92 };
   const scores: Array<[DetectedFieldKind, number]> = [
     [
       "cpf",
@@ -165,9 +168,6 @@ function kindFor(
   const unique = new Set(samples.map((v) => v.toLowerCase())).size;
   if (unique <= Math.max(20, samples.length * 0.15)) return { kind: "category", confidence: 0.82 };
 
-  if (/\b(id|codigo|código|cod|matricula|matrícula|sku|uuid)\b/i.test(name)) {
-    return { kind: "id", confidence: 0.76 };
-  }
   return { kind: "text", confidence: 0.75 };
 }
 
