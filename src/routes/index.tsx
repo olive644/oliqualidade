@@ -166,6 +166,7 @@ import {
   relevantAggregationOps,
   sortAllBarCategories,
   barChartPresentation,
+  timeSeriesChartPresentation,
   toggleClickFilter,
   type AggregationOp,
   type QualitySignal,
@@ -4943,23 +4944,23 @@ function WidgetCard({
   // Gráfico de barras com muitas categorias: permite arrastar com o mouse
   // pra rolar na horizontal (touch já rola nativamente via overflow-x-auto,
   // isso só cobre o caso de clicar-e-arrastar com o mouse).
-  const barScrollRef = useRef<HTMLDivElement>(null);
-  const handleBarScrollPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+  const chartScrollRef = useRef<HTMLDivElement>(null);
+  const handleChartScrollPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== "mouse" || e.button !== 0) return;
-    const el = barScrollRef.current;
+    const el = chartScrollRef.current;
     if (!el) return;
     const startX = e.clientX;
     const startScroll = el.scrollLeft;
     let dragged = false;
     el.setPointerCapture(e.pointerId);
-    el.classList.add("oliam-bar-dragging");
+    el.classList.add("oliam-chart-dragging");
     const onMove = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startX;
       if (Math.abs(delta) > 3) dragged = true;
       el.scrollLeft = startScroll - delta;
     };
     const onUp = () => {
-      el.classList.remove("oliam-bar-dragging");
+      el.classList.remove("oliam-chart-dragging");
       el.removeEventListener("pointermove", onMove);
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
@@ -4974,14 +4975,59 @@ function WidgetCard({
     el.addEventListener("pointerup", onUp);
     el.addEventListener("pointercancel", onUp);
   };
-  const scrollBarChart = (direction: -1 | 1) => {
-    const el = barScrollRef.current;
+  const scrollChart = (direction: -1 | 1) => {
+    const el = chartScrollRef.current;
     if (!el) return;
     el.scrollBy({
       left: direction * Math.max(el.clientWidth * 0.75, 240),
       behavior: "smooth",
     });
   };
+  const ChartScrollButtons = ({
+    label,
+    compact = false,
+  }: {
+    label: string;
+    compact?: boolean;
+  }) => (
+    <div
+      className={cn(
+        "absolute z-10 flex gap-1",
+        compact ? "right-1 top-1" : "right-5 top-5",
+      )}
+      data-export-controls
+      aria-label={`Navegação horizontal do ${label}`}
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={cn(
+          "rounded-full bg-card/90 shadow-sm backdrop-blur",
+          compact ? "size-7" : "size-8",
+        )}
+        onClick={() => scrollChart(-1)}
+        aria-label={`Rolar ${label} para a esquerda`}
+        title="Rolar para a esquerda"
+      >
+        <ArrowLeft className={compact ? "size-3.5" : "size-4"} />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={cn(
+          "rounded-full bg-card/90 shadow-sm backdrop-blur",
+          compact ? "size-7" : "size-8",
+        )}
+        onClick={() => scrollChart(1)}
+        aria-label={`Rolar ${label} para a direita`}
+        title="Rolar para a direita"
+      >
+        <ArrowRight className={compact ? "size-3.5" : "size-4"} />
+      </Button>
+    </div>
+  );
   // Indicador "filtrado por X" exibido no cabeçalho de controles do widget
   // quando a coluna de agrupamento dele tem um filtro simples ativo,
   // sincronizado com a barra de filtros do topo (mesmo estado, sheet.filters).
@@ -5170,6 +5216,7 @@ function WidgetCard({
               (parseDateValue(b.name) ?? Number.MAX_SAFE_INTEGER),
           )
         : [];
+    const sparkPresentation = timeSeriesChartPresentation(sparkline.length, true);
     const sparkStart = sparkline[0]?.total;
     const sparkEnd = sparkline.at(-1)?.total;
     const sparkChange =
@@ -5294,8 +5341,27 @@ function WidgetCard({
             <div className="mt-4">
               {sparkline.length >= 2 ? (
                 <>
-                  <div className="h-14">
-                    <ResponsiveContainer>
+                  <div className="relative">
+                    <div
+                      ref={sparkPresentation.scrollable ? chartScrollRef : undefined}
+                      className={cn(
+                        "h-16 overflow-x-auto overflow-y-hidden",
+                        sparkPresentation.scrollable && "oliam-chart-drag-scroll",
+                      )}
+                      onPointerDown={
+                        sparkPresentation.scrollable ? handleChartScrollPointerDown : undefined
+                      }
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: sparkPresentation.scrollable
+                            ? sparkPresentation.contentWidth
+                            : "100%",
+                          minWidth: "100%",
+                        }}
+                      >
+                        <ResponsiveContainer>
                       <AreaChart data={sparkline} margin={{ top: 3, right: 3, left: 3, bottom: 3 }}>
                         <defs>
                           <linearGradient id={`spark-${w.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -5334,7 +5400,12 @@ function WidgetCard({
                           isAnimationActive={false}
                         />
                       </AreaChart>
-                    </ResponsiveContainer>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                    {sparkPresentation.scrollable && (
+                      <ChartScrollButtons label="tendência da métrica" compact />
+                    )}
                   </div>
                   <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-muted-foreground">
                     <span>{sparkline[0]?.name}</span>
@@ -5422,6 +5493,7 @@ function WidgetCard({
         : grouped;
     const barSeries = w.type === "bar" ? sortAllBarCategories(series) : series;
     const barPresentation = barChartPresentation(barSeries.length);
+    const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
     const pieSeries = (() => {
       if (w.type !== "pie") return series;
       if (series.length <= 6) return series;
@@ -5515,12 +5587,12 @@ function WidgetCard({
           <>
             <div className="relative">
               <div
-                ref={barPresentation.scrollable ? barScrollRef : undefined}
+                ref={barPresentation.scrollable ? chartScrollRef : undefined}
               className={cn(
                 "h-64 overflow-x-auto overflow-y-hidden p-4",
-                barPresentation.scrollable && "oliam-bar-drag-scroll",
+                barPresentation.scrollable && "oliam-chart-drag-scroll",
               )}
-              onPointerDown={barPresentation.scrollable ? handleBarScrollPointerDown : undefined}
+              onPointerDown={barPresentation.scrollable ? handleChartScrollPointerDown : undefined}
             >
               <div
                 style={{
@@ -5605,34 +5677,7 @@ function WidgetCard({
                 </div>
               </div>
               {barPresentation.scrollable && (
-                <div
-                  className="absolute right-5 top-5 z-10 flex gap-1"
-                  data-export-controls
-                  aria-label="Navegação horizontal do gráfico"
-                >
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="size-8 rounded-full bg-card/90 shadow-sm backdrop-blur"
-                    onClick={() => scrollBarChart(-1)}
-                    aria-label="Rolar gráfico para a esquerda"
-                    title="Rolar para a esquerda"
-                  >
-                    <ArrowLeft className="size-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="size-8 rounded-full bg-card/90 shadow-sm backdrop-blur"
-                    onClick={() => scrollBarChart(1)}
-                    aria-label="Rolar gráfico para a direita"
-                    title="Rolar para a direita"
-                  >
-                    <ArrowRight className="size-4" />
-                  </Button>
-                </div>
+                <ChartScrollButtons label="gráfico de barras" />
               )}
             </div>
             {barPresentation.scrollable && (
@@ -5777,9 +5822,28 @@ function WidgetCard({
           </>
         ) : w.type === "area" ? (
           <>
-            <div className="h-56 p-4">
-              <ResponsiveContainer>
-                <AreaChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
+            <div className="relative">
+              <div
+                ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
+                className={cn(
+                  "h-56 overflow-x-auto overflow-y-hidden p-4",
+                  timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
+                )}
+                onPointerDown={
+                  timeSeriesPresentation.scrollable ? handleChartScrollPointerDown : undefined
+                }
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: timeSeriesPresentation.scrollable
+                      ? timeSeriesPresentation.contentWidth
+                      : "100%",
+                    minWidth: "100%",
+                  }}
+                >
+                  <ResponsiveContainer>
+                    <AreaChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
                   <defs>
                     <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.45} />
@@ -5790,6 +5854,7 @@ function WidgetCard({
                   <XAxis
                     dataKey="name"
                     tick={(props) => <AxisTick {...props} />}
+                    interval={0}
                     label={{
                       value: groupCol.label,
                       position: "insideBottom",
@@ -5850,22 +5915,53 @@ function WidgetCard({
                       />
                     )}
                   />
-                </AreaChart>
-              </ResponsiveContainer>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              {timeSeriesPresentation.scrollable && (
+                <ChartScrollButtons label="gráfico de área" />
+              )}
             </div>
+            {timeSeriesPresentation.scrollable && (
+              <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+                {series.length.toLocaleString("pt-BR")} períodos · use as setas, arraste ou role
+                para os lados
+              </p>
+            )}
             <p className="sr-only">
               Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
             </p>
           </>
         ) : (
           <>
-            <div className="h-56 p-4">
-              <ResponsiveContainer>
-                <LineChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
+            <div className="relative">
+              <div
+                ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
+                className={cn(
+                  "h-56 overflow-x-auto overflow-y-hidden p-4",
+                  timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
+                )}
+                onPointerDown={
+                  timeSeriesPresentation.scrollable ? handleChartScrollPointerDown : undefined
+                }
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: timeSeriesPresentation.scrollable
+                      ? timeSeriesPresentation.contentWidth
+                      : "100%",
+                    minWidth: "100%",
+                  }}
+                >
+                  <ResponsiveContainer>
+                    <LineChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
                   <XAxis
                     dataKey="name"
                     tick={(props) => <AxisTick {...props} />}
+                    interval={0}
                     label={{
                       value: groupCol.label,
                       position: "insideBottom",
@@ -5925,9 +6021,20 @@ function WidgetCard({
                       />
                     )}
                   />
-                </LineChart>
-              </ResponsiveContainer>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              {timeSeriesPresentation.scrollable && (
+                <ChartScrollButtons label="linha do tempo" />
+              )}
             </div>
+            {timeSeriesPresentation.scrollable && (
+              <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+                {series.length.toLocaleString("pt-BR")} períodos · use as setas, arraste ou role
+                para os lados
+              </p>
+            )}
             <p className="sr-only">
               Tabela alternativa à evolução: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}
               .
