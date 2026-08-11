@@ -15,6 +15,7 @@ describe("folder monitor", () => {
     expect(fileChanged(previous, { lastModified: 10, size: 100 } as File)).toBe(false);
     expect(fileChanged(previous, { lastModified: 11, size: 100 } as File)).toBe(true);
     expect(fileChanged(previous, { lastModified: 10, size: 101 } as File)).toBe(true);
+    expect(fileChanged(undefined, { lastModified: 10, size: 100 } as File)).toBe(true);
   });
 
   it("aceita formatos de planilha suportados e rejeita outros arquivos", () => {
