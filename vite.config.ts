@@ -2,7 +2,6 @@ import { defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import tsConfigPaths from "vite-tsconfig-paths";
 import { nitro } from "nitro/vite";
 
 export default defineConfig({
@@ -15,12 +14,12 @@ export default defineConfig({
     }),
     viteReact(),
     tailwindcss(),
-    tsConfigPaths(),
     // Plugin de build do Nitro; gera o output de servidor (preset Cloudflare
     // por padrão, ajuste "preset" aqui se o alvo de deploy mudar).
     nitro({ preset: "vercel" }),
   ],
   resolve: {
+    tsconfigPaths: true,
     dedupe: ["react", "react-dom", "@tanstack/react-router", "@tanstack/react-start"],
   },
 });

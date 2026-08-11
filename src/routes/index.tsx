@@ -2,8 +2,6 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import html2canvas from "html2canvas-pro";
-import { jsPDF } from "jspdf";
 import { toast } from "sonner";
 import {
   Area,
@@ -2019,6 +2017,7 @@ function Dashboard(p: {
     el.style.overflow = "visible";
     el.style.height = "auto";
     try {
+      const { default: html2canvas } = await import("html2canvas-pro");
       return await html2canvas(el, {
         backgroundColor: null,
         scale: 2,
@@ -2053,6 +2052,7 @@ function Dashboard(p: {
     try {
       const canvas = await captureContent();
       if (!canvas) return;
+      const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
       const pageWidth = pdf.internal.pageSize.getWidth(),
         pageHeight = pdf.internal.pageSize.getHeight();
