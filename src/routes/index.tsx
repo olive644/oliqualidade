@@ -337,12 +337,7 @@ const demo: Row[] = [
 ];
 
 function Mark() {
-  return (
-    <span className="oliam-mark" aria-hidden="true">
-      <i />
-      <b />
-    </span>
-  );
+  return <img className="oliam-mark" src="/oli-mark.svg" alt="" aria-hidden="true" />;
 }
 
 function useTheme() {
