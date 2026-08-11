@@ -190,6 +190,7 @@ import { mergeReimportedSheets } from "@/lib/dashboard";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import { geocodeMissing } from "@/lib/geocode";
 import { askGemini } from "@/lib/gemini-client";
+import { captureScale, EXPORT_SURFACE_WIDTH, pdfPageSlices } from "@/lib/export-layout";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
@@ -2258,41 +2259,93 @@ function Dashboard(p: {
     XLSX.utils.book_append_sheet(wb, ws, "Relatório");
     XLSX.writeFile(wb, `${slug}.xlsx`);
   };
+  const settleExportLayout = async () => {
+    await document.fonts?.ready;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  };
+  const exportBreakpoints = (el: HTMLElement) => {
+    const rootTop = el.getBoundingClientRect().top;
+    const rows = new Map<number, number>();
+    for (const widget of el.querySelectorAll<HTMLElement>(".oliam-widget")) {
+      const rect = widget.getBoundingClientRect();
+      const rowTop = Math.round(rect.top - rootTop);
+      rows.set(rowTop, Math.max(rows.get(rowTop) ?? 0, rect.bottom - rootTop + 12));
+    }
+    return [...rows.values()].sort((a, b) => a - b);
+  };
   const captureContent = async () => {
     const el = contentRef.current;
     if (!el) return null;
-    // O container tem overflow-auto para permitir rolar o painel na tela.
-    // Capturando ele desse jeito, o html2canvas corta a imagem no tamanho
-    // visível (a "janela" da rolagem), perdendo tudo que só aparece rolando
-    // para baixo. Para exportar o painel inteiro, relaxamos overflow/altura
-    // só durante a captura e devolvemos ao normal logo em seguida.
-    const prevOverflow = el.style.overflow;
-    const prevHeight = el.style.height;
-    el.style.overflow = "visible";
-    el.style.height = "auto";
+    const previousScroll = { left: el.scrollLeft, top: el.scrollTop };
+    el.classList.add("oliam-export-mode");
+    el.scrollTo(0, 0);
     try {
+      await settleExportLayout();
+      window.dispatchEvent(new Event("resize"));
+      await settleExportLayout();
+      // `scrollWidth` também inclui SVGs responsivos que ainda conservam a
+      // largura anterior por alguns frames, criando uma faixa vazia à direita.
+      // A superfície possui largura fixa; o retângulo renderizado é a fonte
+      // correta para cortar o canvas exatamente no fim do relatório.
+      const cssWidth = Math.ceil(el.getBoundingClientRect().width);
+      const cssHeight = el.scrollHeight;
+      const cleanBreakpoints = exportBreakpoints(el);
       const { default: html2canvas } = await import("html2canvas-pro");
-      return await html2canvas(el, {
-        backgroundColor: null,
-        scale: 2,
-        height: el.scrollHeight,
-        windowHeight: el.scrollHeight,
+      const canvas = await html2canvas(el, {
+        backgroundColor: getComputedStyle(el).backgroundColor,
+        scale: captureScale(cssWidth, cssHeight),
+        width: cssWidth,
+        height: cssHeight,
+        windowWidth: EXPORT_SURFACE_WIDTH,
+        windowHeight: cssHeight,
+        scrollX: 0,
+        scrollY: 0,
+        useCORS: true,
+        allowTaint: false,
+        imageTimeout: 12_000,
+        logging: false,
+        onclone: (clonedDocument, clonedElement) => {
+          clonedElement.classList.add("oliam-export-mode");
+          clonedDocument
+            .querySelectorAll("[data-export-controls]")
+            .forEach((node) => node.remove());
+        },
       });
+      const renderedScale = canvas.width / cssWidth;
+      return {
+        canvas,
+        breakpoints: cleanBreakpoints.map((point) => Math.round(point * renderedScale)),
+      };
     } finally {
-      el.style.overflow = prevOverflow;
-      el.style.height = prevHeight;
+      el.classList.remove("oliam-export-mode");
+      el.scrollTo(previousScroll.left, previousScroll.top);
     }
   };
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = fileName;
+    link.href = url;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2_000);
+  };
+  const canvasBlob = (canvas: HTMLCanvasElement, type: string, quality?: number) =>
+    new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("canvas-blob-failed"))),
+        type,
+        quality,
+      ),
+    );
   const exportPng = async () => {
     setExporting("png");
     setExportError(null);
     try {
-      const canvas = await captureContent();
-      if (!canvas) return;
-      const link = document.createElement("a");
-      link.download = `${slug}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
+      const capture = await captureContent();
+      if (!capture) return;
+      downloadBlob(await canvasBlob(capture.canvas, "image/png"), `${slug}.png`);
     } catch (err) {
       console.error("Falha ao exportar PNG:", err);
       setExportError("Não foi possível gerar o PNG. Tente novamente.");
@@ -2304,26 +2357,80 @@ function Dashboard(p: {
     setExporting("pdf");
     setExportError(null);
     try {
-      const canvas = await captureContent();
-      if (!canvas) return;
+      const capture = await captureContent();
+      if (!capture) return;
       const { jsPDF } = await import("jspdf");
-      const pdf = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
+      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       const pageWidth = pdf.internal.pageSize.getWidth(),
         pageHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pageWidth,
-        imgHeight = (canvas.height * imgWidth) / canvas.width;
-      const imgData = canvas.toDataURL("image/png");
-      let heightLeft = imgHeight,
-        position = 0;
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-      while (heightLeft > 0) {
-        position -= pageHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+      const margin = 28,
+        headerHeight = 28,
+        footerHeight = 18,
+        contentWidth = pageWidth - margin * 2,
+        contentHeight = pageHeight - margin * 2 - headerHeight - footerHeight;
+      const slices = pdfPageSlices(
+        capture.canvas.width,
+        capture.canvas.height,
+        contentWidth,
+        contentHeight,
+        capture.breakpoints,
+      );
+      for (const [index, slice] of slices.entries()) {
+        if (index > 0) pdf.addPage();
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = capture.canvas.width;
+        pageCanvas.height = slice.height;
+        const context = pageCanvas.getContext("2d");
+        if (!context) throw new Error("pdf-canvas-context");
+        context.drawImage(
+          capture.canvas,
+          0,
+          slice.start,
+          capture.canvas.width,
+          slice.height,
+          0,
+          0,
+          pageCanvas.width,
+          pageCanvas.height,
+        );
+        const imageHeight = (slice.height * contentWidth) / capture.canvas.width;
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(12);
+        pdf.setTextColor(30, 41, 59);
+        pdf.text(d.name, margin, margin + 12);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(
+          `${data.length} linhas na visão atual · ${new Date().toLocaleString("pt-BR")}`,
+          pageWidth - margin,
+          margin + 12,
+          { align: "right" },
+        );
+        pdf.addImage(
+          pageCanvas.toDataURL("image/jpeg", 0.94),
+          "JPEG",
+          margin,
+          margin + headerHeight,
+          contentWidth,
+          imageHeight,
+          undefined,
+          "FAST",
+        );
+        pdf.setDrawColor(203, 213, 225);
+        pdf.line(margin, pageHeight - margin - 8, pageWidth - margin, pageHeight - margin - 8);
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(
+          `Oli.Qualidade · página ${index + 1} de ${slices.length}`,
+          pageWidth - margin,
+          pageHeight - margin + 4,
+          { align: "right" },
+        );
+        pageCanvas.width = 1;
+        pageCanvas.height = 1;
       }
-      pdf.save(`${slug}.pdf`);
+      downloadBlob(pdf.output("blob"), `${slug}.pdf`);
     } catch (err) {
       console.error("Falha ao exportar PDF:", err);
       setExportError("Não foi possível gerar o PDF. Tente novamente.");
@@ -3311,6 +3418,23 @@ function Dashboard(p: {
         )}
         <div className="flex min-h-0 flex-1">
           <div ref={contentRef} className="min-w-0 flex-1 overflow-auto bg-canvas p-4 md:p-6">
+            <div className="oliam-export-header" aria-hidden="true">
+              <div>
+                <p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">
+                  Oli.Qualidade
+                </p>
+                <h1 className="mt-1 font-display text-2xl font-bold">{d.name}</h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Aba {sheet.name} · {data.length} de {sheet.rows.length} linhas
+                </p>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                <p>Relatório gerado em</p>
+                <p className="mt-1 font-mono text-foreground">
+                  {new Date().toLocaleString("pt-BR")}
+                </p>
+              </div>
+            </div>
             {gridContent}
           </div>
           {insightOpen && (
@@ -4076,6 +4200,7 @@ function WidgetHead({
     >
       <div className="flex min-w-0 items-center gap-2 px-1">
         <GripVertical
+          data-export-controls
           className={cn(
             "size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-muted-foreground",
             draggable && "cursor-grab",
@@ -4086,7 +4211,7 @@ function WidgetHead({
         <h2 className="truncate font-display text-[13px] font-semibold tracking-tight">{title}</h2>
       </div>
       {interactive && (
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-0.5" data-export-controls>
           <Button
             variant="ghost"
             size="icon"
@@ -4646,7 +4771,10 @@ function WidgetCard({
     disableForward: index === count - 1,
   };
   const sizeControls = (
-    <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
+    <div
+      className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+      data-export-controls
+    >
       <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
         Largura
         <select
@@ -4728,7 +4856,10 @@ function WidgetCard({
           }
           {...dragProps}
         />
-        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
+        <div
+          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+          data-export-controls
+        >
           <FieldDropSlot
             accepts={numericKinds}
             onDropColumn={(key) => onConfigure({ metricKey: key })}
@@ -4923,7 +5054,10 @@ function WidgetCard({
         style={{ animationDelay: `${animationDelay}ms` }}
       >
         <WidgetHead title={title} icon={icon} {...dragProps} />
-        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
+        <div
+          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+          data-export-controls
+        >
           <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
@@ -5380,7 +5514,10 @@ function WidgetCard({
           icon={<ListOrdered className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
-        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
+        <div
+          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+          data-export-controls
+        >
           <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
@@ -5515,7 +5652,10 @@ function WidgetCard({
           icon={<MapPin className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
-        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
+        <div
+          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+          data-export-controls
+        >
           <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
@@ -5617,7 +5757,10 @@ function WidgetCard({
           icon={<Star className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
-        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2">
+        <div
+          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+          data-export-controls
+        >
           <FieldDropSlot
             accepts={numericKinds}
             onDropColumn={(key) => onConfigure({ metricKey: key })}

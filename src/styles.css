@@ -636,6 +636,65 @@
   }
 }
 
+/* Superfície determinística para PNG/PDF: independe do tamanho da janela e
+   remove apenas os controles de edição, preservando os dados e gráficos. */
+.oliam-export-header {
+  display: none;
+}
+.oliam-export-mode {
+  width: 1440px !important;
+  min-width: 1440px !important;
+  max-width: none !important;
+  height: auto !important;
+  flex: none !important;
+  overflow: visible !important;
+  padding: 32px !important;
+  background: var(--canvas) !important;
+  scrollbar-width: none;
+}
+.oliam-export-mode::-webkit-scrollbar {
+  display: none;
+}
+.oliam-export-mode .oliam-export-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  background: var(--card);
+  padding: 22px 24px;
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+.oliam-export-mode > .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  background: transparent !important;
+}
+.oliam-export-mode [data-export-controls] {
+  display: none !important;
+}
+.oliam-export-mode .oliam-widget {
+  animation: none !important;
+  transform: none !important;
+  transition: none !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 6px 18px color-mix(in oklab, var(--foreground) 8%, transparent) !important;
+}
+.oliam-export-mode .oliam-widget h2 {
+  overflow: visible !important;
+  white-space: normal !important;
+  text-overflow: clip !important;
+}
+.oliam-export-mode .recharts-wrapper,
+.oliam-export-mode .recharts-surface {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.oliam-export-mode .leaflet-control-container {
+  display: none !important;
+}
+
 @utility oliam-widget {
   animation: oliam-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
   border-radius: var(--radius-2xl);

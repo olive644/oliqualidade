@@ -1025,6 +1025,50 @@
       "provenance": "EXTRACTED"
     },
     {
+      "id": "file:src/lib/export-layout.test.ts",
+      "label": "src/lib/export-layout.test.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/export-layout.test.ts",
+      "source_location": "src/lib/export-layout.test.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "file:src/lib/export-layout.ts",
+      "label": "src/lib/export-layout.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/export-layout.ts",
+      "source_location": "src/lib/export-layout.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/export-layout.ts#captureScale",
+      "label": "captureScale",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/export-layout.ts",
+      "source_location": "src/lib/export-layout.ts:2",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/export-layout.ts#pdfPageSlices",
+      "label": "pdfPageSlices",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/export-layout.ts",
+      "source_location": "src/lib/export-layout.ts:12",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
       "id": "file:src/lib/folder-monitor.test.ts",
       "label": "src/lib/folder-monitor.test.ts",
       "kind": "file",
@@ -2383,7 +2427,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "tsx",
       "source_file": "src/routes/index.tsx",
-      "source_location": "src/routes/index.tsx:430",
+      "source_location": "src/routes/index.tsx:431",
       "community": "Application Routes",
       "community_name": "Application Routes",
       "provenance": "EXTRACTED"
@@ -3062,6 +3106,24 @@
     {
       "source": "file:src/lib/error-page.ts",
       "target": "symbol:src/lib/error-page.ts#renderErrorPage",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/export-layout.test.ts",
+      "target": "file:src/lib/export-layout.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/export-layout.ts",
+      "target": "symbol:src/lib/export-layout.ts#captureScale",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/export-layout.ts",
+      "target": "symbol:src/lib/export-layout.ts#pdfPageSlices",
       "relationship": "exports",
       "provenance": "EXTRACTED"
     },
@@ -3992,6 +4054,12 @@
     {
       "source": "file:src/routes/index.tsx",
       "target": "file:src/lib/gemini-client.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/routes/index.tsx",
+      "target": "file:src/lib/export-layout.ts",
       "relationship": "imports",
       "provenance": "EXTRACTED"
     },
