@@ -1793,6 +1793,945 @@
   }
 }
 
+/* Abertura do produto: uma estação de dados habitada pelo Oli. */
+.oli-welcome {
+  width: min(1180px, 100%);
+  margin-inline: auto;
+  padding: 46px 28px 70px;
+}
+.oli-welcome-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 0.92fr);
+  align-items: center;
+  gap: clamp(38px, 6vw, 82px);
+  min-height: 430px;
+}
+.oli-welcome-copy {
+  position: relative;
+  z-index: 1;
+}
+.oli-welcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--primary) 7%, var(--card));
+  padding: 6px 11px;
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--primary) 8%, transparent);
+}
+.oli-welcome-badge span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--secondary-accent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--secondary-accent) 16%, transparent);
+  animation: oli-welcome-pulse 2s ease-in-out infinite;
+}
+.oli-welcome-copy h1 {
+  max-width: 680px;
+  margin-top: 18px;
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: clamp(43px, 5.3vw, 72px);
+  font-weight: 850;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+.oli-welcome-copy h1 span {
+  display: block;
+  margin-top: 7px;
+  background: linear-gradient(
+    110deg,
+    var(--primary),
+    color-mix(in oklab, var(--primary) 48%, var(--secondary-accent))
+  );
+  background-clip: text;
+  color: transparent;
+}
+.oli-welcome-lead {
+  max-width: 610px;
+  margin-top: 24px;
+  color: var(--muted-foreground);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.oli-welcome-flow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 27px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.oli-welcome-flow span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.oli-welcome-flow b {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--border));
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.oli-welcome-flow > i {
+  width: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border), var(--primary));
+}
+
+.oli-welcome-scene {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  aspect-ratio: 1.38;
+  overflow: hidden;
+  border: 1px solid rgb(123 165 255 / 22%);
+  border-radius: 38px 38px 18px 38px;
+  background:
+    linear-gradient(rgb(75 134 255 / 5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(75 134 255 / 5%) 1px, transparent 1px),
+    radial-gradient(circle at 72% 18%, rgb(75 134 255 / 24%), transparent 31%),
+    linear-gradient(145deg, #0a2b7b, #071b52 60%, #05143d);
+  background-size:
+    28px 28px,
+    28px 28px,
+    auto,
+    auto;
+  box-shadow:
+    0 30px 70px rgb(3 21 65 / 25%),
+    inset 0 1px 0 rgb(255 255 255 / 9%);
+}
+.oli-welcome-scene::after {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border-radius: inherit;
+  box-shadow: inset 0 -40px 70px rgb(2 11 39 / 25%);
+  content: "";
+  pointer-events: none;
+}
+.oli-scene-glow {
+  position: absolute;
+  right: -12%;
+  bottom: -25%;
+  width: 70%;
+  height: 78%;
+  border-radius: 50%;
+  background: rgb(97 224 194 / 9%);
+  filter: blur(30px);
+}
+.oli-scene-clock {
+  position: absolute;
+  top: 13%;
+  left: 10%;
+  width: 10%;
+  aspect-ratio: 1;
+  border: 4px solid rgb(75 134 255 / 38%);
+  border-radius: 50%;
+  background: #16459c;
+  box-shadow: inset 0 0 0 3px rgb(255 255 255 / 7%);
+}
+.oli-scene-clock::before,
+.oli-scene-clock::after {
+  position: absolute;
+  top: 48%;
+  left: 48%;
+  border-radius: 999px;
+  background: var(--secondary-accent);
+  content: "";
+  transform-origin: left center;
+}
+.oli-scene-clock::before {
+  width: 25%;
+  height: 3px;
+  transform: rotate(5deg);
+}
+.oli-scene-clock::after {
+  width: 20%;
+  height: 3px;
+  transform: rotate(-90deg);
+}
+.oli-scene-shelf {
+  position: absolute;
+  top: 19%;
+  left: 41%;
+  display: flex;
+  width: 25%;
+  height: 13%;
+  align-items: flex-end;
+  gap: 4%;
+  border-bottom: 5px solid #0b225c;
+}
+.oli-scene-shelf i {
+  display: block;
+  width: 13%;
+  height: 72%;
+  border-radius: 3px 3px 0 0;
+  background: #356bd3;
+}
+.oli-scene-shelf i:nth-child(2) {
+  height: 89%;
+  background: #4b86ff;
+}
+.oli-scene-shelf i:nth-child(3) {
+  height: 61%;
+  background: #61e0c2;
+}
+.oli-scene-shelf b {
+  width: 28%;
+  height: 52%;
+  margin-left: auto;
+  border: 3px solid #356bd3;
+  border-radius: 5px;
+  background: #0c276a;
+}
+.oli-scene-shelf b::after {
+  display: block;
+  width: 45%;
+  height: 45%;
+  margin: 15% auto 0;
+  border-radius: 50%;
+  background: var(--secondary-accent);
+  content: "";
+}
+.oli-scene-paper {
+  position: absolute;
+  top: 23%;
+  left: -10%;
+  z-index: 7;
+  width: 9%;
+  aspect-ratio: 0.78;
+  border-radius: 4px;
+  background: #f7fbff;
+  box-shadow: 0 8px 18px rgb(2 11 39 / 32%);
+  transform: rotate(12deg);
+  animation: oli-scene-paper 5.2s ease-in-out infinite;
+}
+.oli-scene-paper::before,
+.oli-scene-paper::after,
+.oli-scene-paper i {
+  position: absolute;
+  right: 18%;
+  left: 18%;
+  height: 5%;
+  border-radius: 99px;
+  background: #4b86ff;
+  content: "";
+}
+.oli-scene-paper::before {
+  top: 24%;
+}
+.oli-scene-paper::after {
+  top: 43%;
+}
+.oli-scene-paper i {
+  top: 62%;
+}
+.oli-scene-sofa {
+  position: absolute;
+  bottom: 15%;
+  left: 11%;
+  z-index: 2;
+  width: 58%;
+  height: 38%;
+  border-radius: 30px 30px 16px 16px;
+  background: linear-gradient(150deg, #1d51ae, #12377f);
+  box-shadow:
+    inset 0 6px 0 rgb(255 255 255 / 5%),
+    0 18px 22px rgb(2 11 39 / 25%);
+}
+.oli-scene-sofa::before,
+.oli-scene-sofa::after {
+  position: absolute;
+  bottom: -5%;
+  width: 10%;
+  height: 52%;
+  border-radius: 20px;
+  background: #12377f;
+  content: "";
+}
+.oli-scene-sofa::before {
+  left: -5%;
+}
+.oli-scene-sofa::after {
+  right: -5%;
+}
+.oli-scene-sofa i,
+.oli-scene-sofa b {
+  position: absolute;
+  top: 7%;
+  width: 45%;
+  height: 63%;
+  border: 2px solid rgb(75 134 255 / 15%);
+  border-radius: 22px 22px 12px 12px;
+}
+.oli-scene-sofa i {
+  left: 3%;
+}
+.oli-scene-sofa b {
+  right: 3%;
+}
+.oli-scene-character {
+  position: absolute;
+  bottom: 18%;
+  left: 34%;
+  z-index: 6;
+  width: 22%;
+  height: 45%;
+  animation: oli-scene-oli 3.4s ease-in-out infinite;
+}
+.oli-scene-body {
+  position: absolute;
+  inset: 22% 7% 0;
+  border-radius: 48% 48% 33% 33%;
+  background: linear-gradient(145deg, #4b86ff, #1553d5 48%, #092f91);
+  box-shadow: inset 6px 7px 10px rgb(255 255 255 / 13%);
+}
+.oli-scene-ear {
+  position: absolute;
+  z-index: -1;
+  top: 13%;
+  width: 34%;
+  height: 28%;
+  border-radius: 50%;
+  background: #092f91;
+}
+.oli-scene-ear-left {
+  left: 7%;
+  transform: rotate(-15deg);
+}
+.oli-scene-ear-right {
+  right: 7%;
+  transform: rotate(15deg);
+}
+.oli-scene-face {
+  position: absolute;
+  top: 29%;
+  left: 50%;
+  z-index: 3;
+  width: 52%;
+  height: 40%;
+  border-radius: 48% 48% 52% 52%;
+  background: #f7fbff;
+  transform: translateX(-50%);
+}
+.oli-scene-eye {
+  position: absolute;
+  top: 25%;
+  width: 10%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #071b4c;
+  animation: oli-scene-blink 4.5s infinite;
+}
+.oli-scene-eye-left {
+  left: 24%;
+}
+.oli-scene-eye-right {
+  right: 24%;
+}
+.oli-scene-face b {
+  position: absolute;
+  top: 48%;
+  left: 50%;
+  width: 17%;
+  height: 12%;
+  border-radius: 50%;
+  background: #071b4c;
+  transform: translateX(-50%);
+}
+.oli-scene-face b::after {
+  position: absolute;
+  top: 80%;
+  left: -34%;
+  width: 165%;
+  height: 100%;
+  border-bottom: 2px solid #071b4c;
+  border-radius: 0 0 99px 99px;
+  content: "";
+}
+.oli-scene-paw {
+  position: absolute;
+  bottom: 2%;
+  z-index: 5;
+  width: 27%;
+  height: 18%;
+  border-radius: 50%;
+  background: #f7fbff;
+  animation: oli-scene-type 0.5s ease-in-out infinite alternate;
+}
+.oli-scene-paw-left {
+  left: 19%;
+}
+.oli-scene-paw-right {
+  right: 19%;
+  animation-delay: -0.25s;
+}
+.oli-scene-desk {
+  position: absolute;
+  right: -4%;
+  bottom: -5%;
+  z-index: 10;
+  width: 55%;
+  height: 29%;
+  border: 1px solid rgb(75 134 255 / 15%);
+  border-radius: 26px 0 0;
+  background: linear-gradient(145deg, #081c52, #04102f);
+  box-shadow: -18px -12px 35px rgb(2 11 39 / 27%);
+}
+.oli-scene-desk::after {
+  position: absolute;
+  top: 17%;
+  left: 13%;
+  width: 18%;
+  height: 4px;
+  border-radius: 999px;
+  background: #244888;
+  box-shadow:
+    0 9px 0 #244888,
+    0 18px 0 #244888;
+  content: "";
+}
+.oli-scene-monitor {
+  position: absolute;
+  right: 7%;
+  bottom: 15%;
+  z-index: 12;
+  width: 35%;
+  height: 45%;
+  border: 5px solid #061744;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #0c2d74, #071d54);
+  box-shadow: 0 14px 28px rgb(2 11 39 / 35%);
+}
+.oli-scene-monitor::before {
+  position: absolute;
+  inset: 8%;
+  border-radius: 7px;
+  background:
+    linear-gradient(rgb(75 134 255 / 10%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(75 134 255 / 10%) 1px, transparent 1px), #09245f;
+  background-size: 14px 14px;
+  content: "";
+}
+.oli-scene-monitor > b {
+  position: absolute;
+  right: 32%;
+  bottom: -20%;
+  width: 32%;
+  height: 20%;
+  border-radius: 0 0 5px 5px;
+  background: #061744;
+}
+.oli-scene-chart {
+  position: absolute;
+  inset: 18% 16% 20%;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.oli-scene-chart i {
+  width: 15%;
+  height: 32%;
+  border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(#61e0c2, #238bc8);
+  transform-origin: bottom;
+  animation: oli-scene-chart 1.8s ease-in-out infinite;
+}
+.oli-scene-chart i:nth-child(2) {
+  height: 55%;
+  animation-delay: -0.2s;
+}
+.oli-scene-chart i:nth-child(3) {
+  height: 78%;
+  animation-delay: -0.4s;
+}
+.oli-scene-chart i:nth-child(4) {
+  height: 100%;
+  animation-delay: -0.6s;
+}
+.oli-scene-floor {
+  position: absolute;
+  right: 5%;
+  bottom: 7%;
+  left: 5%;
+  z-index: 14;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #2b5db5, #61e0c2, transparent);
+  opacity: 0.55;
+}
+.oli-scene-spark {
+  position: absolute;
+  z-index: 15;
+  color: #61e0c2;
+  text-shadow: 0 0 14px rgb(97 224 194 / 70%);
+  animation: oli-scene-spark 2.2s ease-in-out infinite;
+}
+.oli-scene-spark-one {
+  top: 12%;
+  right: 10%;
+  font-size: 18px;
+}
+.oli-scene-spark-two {
+  top: 35%;
+  left: 6%;
+  font-size: 10px;
+  animation-delay: -0.8s;
+}
+.oli-welcome-scene[data-busy] .oli-scene-chart i,
+.oli-welcome-scene[data-busy] .oli-scene-paper {
+  animation-duration: 0.9s;
+}
+
+.oli-import-shell {
+  position: relative;
+  z-index: 2;
+  margin-top: 32px;
+  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--border));
+  border-radius: 30px;
+  background: color-mix(in oklab, var(--card) 96%, transparent);
+  padding: clamp(20px, 3vw, 34px);
+  box-shadow:
+    0 28px 70px color-mix(in oklab, var(--foreground) 10%, transparent),
+    inset 0 1px 0 color-mix(in oklab, white 45%, transparent);
+}
+.oli-import-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.oli-import-kicker {
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.oli-import-heading h2 {
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+.oli-file-types {
+  display: flex;
+  gap: 6px;
+}
+.oli-file-types span {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+  padding: 4px 7px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+}
+.oli-welcome-dropzone {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  width: 100%;
+  min-height: 132px;
+  align-items: center;
+  gap: 18px;
+  overflow: hidden;
+  border: 1.5px dashed color-mix(in oklab, var(--primary) 48%, var(--border));
+  border-radius: 22px;
+  background:
+    radial-gradient(
+      circle at 8% 50%,
+      color-mix(in oklab, var(--primary) 10%, transparent),
+      transparent 22%
+    ),
+    color-mix(in oklab, var(--primary) 3%, var(--background));
+  padding: 24px 27px;
+  text-align: left;
+  transition: 180ms ease;
+}
+.oli-welcome-dropzone:hover:not(:disabled),
+.oli-welcome-dropzone[data-dragging="true"] {
+  border-color: var(--primary);
+  border-style: solid;
+  background-color: color-mix(in oklab, var(--primary) 7%, var(--background));
+  box-shadow: 0 14px 34px color-mix(in oklab, var(--primary) 13%, transparent);
+  transform: translateY(-2px);
+}
+.oli-welcome-dropzone[data-dragging="true"] {
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--primary) 13%, transparent);
+}
+.oli-upload-orbit {
+  position: relative;
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--primary) 20%, transparent);
+  border-radius: 21px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--primary) 13%, var(--card)),
+    var(--card)
+  );
+  color: var(--primary);
+  box-shadow: 0 10px 24px color-mix(in oklab, var(--primary) 12%, transparent);
+}
+.oli-upload-orbit svg {
+  width: 25px;
+  height: 25px;
+}
+.oli-upload-orbit i {
+  position: absolute;
+  inset: -5px;
+  border: 1px solid color-mix(in oklab, var(--secondary-accent) 45%, transparent);
+  border-block-color: transparent;
+  border-radius: 25px;
+  animation: oli-upload-orbit 4s linear infinite;
+}
+.oli-dropzone-copy {
+  display: grid;
+  gap: 5px;
+}
+.oli-dropzone-copy strong {
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 750;
+}
+.oli-dropzone-copy small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.oli-dropzone-action {
+  border-radius: 12px;
+  background: var(--primary);
+  padding: 10px 13px;
+  color: var(--primary-foreground);
+  font-size: 11px;
+  font-weight: 750;
+  box-shadow: 0 7px 18px color-mix(in oklab, var(--primary) 23%, transparent);
+}
+.oli-import-error,
+.oli-import-privacy {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  border-radius: 12px;
+  padding: 9px 11px;
+  font-size: 11px;
+}
+.oli-import-error {
+  border: 1px solid color-mix(in oklab, var(--destructive) 28%, var(--border));
+  background: color-mix(in oklab, var(--destructive) 8%, transparent);
+  color: var(--destructive);
+}
+.oli-import-error svg,
+.oli-import-privacy svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.oli-import-privacy {
+  color: var(--muted-foreground);
+}
+.oli-import-privacy svg {
+  color: var(--secondary-accent);
+}
+.oli-import-privacy strong {
+  color: var(--foreground);
+}
+.oli-import-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 14px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.oli-import-divider::before,
+.oli-import-divider::after {
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+  content: "";
+}
+.oli-import-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.oli-import-options > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--background);
+  padding: 11px;
+  color: var(--foreground);
+  text-align: left;
+  transition: 160ms ease;
+}
+.oli-import-options > button:hover,
+.oli-import-options > button:focus-visible {
+  border-color: color-mix(in oklab, var(--primary) 55%, var(--border));
+  outline: none;
+  background: color-mix(in oklab, var(--primary) 5%, var(--background));
+  transform: translateY(-2px);
+}
+.oli-import-options > button > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--primary) 9%, var(--card));
+  color: var(--primary);
+}
+.oli-import-options svg {
+  width: 15px;
+  height: 15px;
+  transition: transform 160ms;
+}
+.oli-import-options div {
+  min-width: 0;
+}
+.oli-import-options strong,
+.oli-import-options small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oli-import-options strong {
+  font-size: 11px;
+}
+.oli-import-options small {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+.oli-import-expand {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--background);
+  padding: 15px;
+  animation: oliam-in 180ms ease-out;
+}
+.oli-import-expand label {
+  font-size: 11px;
+  font-weight: 700;
+}
+.oli-import-expand > div:not(.text-right) {
+  display: flex;
+  gap: 8px;
+}
+.oli-import-expand input {
+  min-width: 0;
+  flex: 1;
+}
+.oli-import-expand textarea {
+  min-height: 112px;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.oli-import-expand p {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+@media (max-width: 920px) {
+  .oli-welcome-hero {
+    grid-template-columns: 1fr;
+    padding-top: 20px;
+  }
+  .oli-welcome-scene {
+    width: min(620px, 100%);
+    margin-inline: auto;
+  }
+  .oli-import-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .oli-welcome {
+    padding: 28px 14px 48px;
+  }
+  .oli-welcome-hero {
+    gap: 30px;
+    min-height: auto;
+  }
+  .oli-welcome-copy h1 {
+    font-size: 43px;
+  }
+  .oli-welcome-flow {
+    flex-wrap: wrap;
+  }
+  .oli-welcome-flow > i {
+    display: none;
+  }
+  .oli-welcome-scene {
+    border-radius: 27px 27px 12px 27px;
+  }
+  .oli-import-shell {
+    margin-top: 22px;
+    border-radius: 22px;
+    padding: 17px;
+  }
+  .oli-import-heading {
+    align-items: flex-start;
+  }
+  .oli-file-types {
+    display: none;
+  }
+  .oli-welcome-dropzone {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 23px 17px;
+    text-align: center;
+  }
+  .oli-dropzone-action {
+    display: none;
+  }
+  .oli-import-options {
+    grid-template-columns: 1fr;
+  }
+  .oli-import-expand > div:not(.text-right) {
+    flex-direction: column;
+  }
+}
+@keyframes oli-welcome-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+@keyframes oli-scene-paper {
+  0% {
+    opacity: 0;
+    transform: translate(-20%, 20%) rotate(15deg);
+  }
+  15%,
+  72% {
+    opacity: 1;
+  }
+  48% {
+    transform: translate(520%, 18%) rotate(-5deg);
+  }
+  78% {
+    opacity: 1;
+    transform: translate(770%, 125%) rotate(8deg) scale(0.75);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(880%, 145%) rotate(12deg) scale(0.65);
+  }
+}
+@keyframes oli-scene-oli {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-0.5deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(0.5deg);
+  }
+}
+@keyframes oli-scene-blink {
+  0%,
+  45%,
+  49%,
+  100% {
+    transform: scaleY(1);
+  }
+  47% {
+    transform: scaleY(0.06);
+  }
+}
+@keyframes oli-scene-type {
+  from {
+    transform: translateY(-2px) rotate(2deg);
+  }
+  to {
+    transform: translateY(2px) rotate(-2deg);
+  }
+}
+@keyframes oli-scene-chart {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scaleY(0.35);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+@keyframes oli-scene-spark {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.65) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1) rotate(22deg);
+  }
+}
+@keyframes oli-upload-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oli-welcome-badge span,
+  .oli-scene-paper,
+  .oli-scene-character,
+  .oli-scene-eye,
+  .oli-scene-paw,
+  .oli-scene-chart i,
+  .oli-scene-spark,
+  .oli-upload-orbit i {
+    animation: none;
+  }
+}
+
 /* Loading do Oli: o mascote analisa os dados enquanto trabalha no notebook. */
 .oliam-loader-wrap {
   display: grid;
