@@ -200,7 +200,8 @@ import {
 import { mergeReimportedSheets } from "@/lib/dashboard";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import { geocodeMissing } from "@/lib/geocode";
-import { askGemini } from "@/lib/gemini-client";
+import { askGemini, type GeminiChatMessage } from "@/lib/gemini-client";
+import { buildLiveDashboardContext, type LiveDashboardContext } from "@/lib/assistant-context";
 import {
   captureScale,
   EXPORT_SURFACE_WIDTH,
@@ -2452,6 +2453,35 @@ function Dashboard(p: {
   // usuário mexer em algo (a primeira alteração já grava a lista completa).
   const widgets =
     sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows);
+  const assistantContext = useMemo(
+    () =>
+      buildLiveDashboardContext({
+        dashboardName: d.name,
+        sheetName: sheet.name,
+        columns: sheet.columns,
+        rows: data,
+        totalRows: sheet.rows.length,
+        widgets,
+        filters: sheet.filters,
+        search,
+        sort,
+        versionDelta,
+        ...(p.folderMonitor ? { folderMonitor: p.folderMonitor } : {}),
+      }),
+    [
+      d.name,
+      sheet.name,
+      sheet.columns,
+      sheet.rows.length,
+      sheet.filters,
+      data,
+      widgets,
+      search,
+      sort,
+      versionDelta,
+      p.folderMonitor,
+    ],
+  );
   const setWidgets = (next: Widget[]) => {
     recordHistory();
     updateSheet({ widgets: next });
@@ -4308,16 +4338,31 @@ function Dashboard(p: {
           </ul>
         </DialogContent>
       </Dialog>
-      <GeminiChatPanel dashboard={d} sheet={sheet} />
+      <GeminiChatPanel
+        dashboard={d}
+        sheet={sheet}
+        liveRows={data}
+        liveView={assistantContext}
+      />
     </div>
   );
 }
 
-function GeminiChatPanel({ dashboard, sheet }: { dashboard: Dashboard; sheet: SheetData }) {
+function GeminiChatPanel({
+  dashboard,
+  sheet,
+  liveRows,
+  liveView,
+}: {
+  dashboard: Dashboard;
+  sheet: SheetData;
+  liveRows: Row[];
+  liveView: LiveDashboardContext;
+}) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
+  const [messages, setMessages] = useState<GeminiChatMessage[]>([]);
 
   useEffect(() => setMessages([]), [dashboard.id, sheet.name]);
   const submit = async () => {
@@ -4327,7 +4372,7 @@ function GeminiChatPanel({ dashboard, sheet }: { dashboard: Dashboard; sheet: Sh
     setMessages((current) => [...current, { role: "user", text: message }]);
     setLoading(true);
     try {
-      const answer = await askGemini(message, dashboard, sheet);
+      const answer = await askGemini(message, dashboard, sheet, liveRows, liveView, messages);
       setMessages((current) => [...current, { role: "assistant", text: answer }]);
     } catch (error) {
       setMessages((current) => [
@@ -4354,7 +4399,7 @@ function GeminiChatPanel({ dashboard, sheet }: { dashboard: Dashboard; sheet: Sh
               <div>
                 <strong className="text-sm">Assistente Oli</strong>
                 <p className="text-[11px] text-muted-foreground">
-                  {sheet.name} · contexto protegido
+                  {sheet.name} · {liveView.visibleRows} linhas · visão atual
                 </p>
               </div>
             </div>
