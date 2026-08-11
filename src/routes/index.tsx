@@ -30,7 +30,6 @@ import {
   ArrowRight,
   ArrowUp,
   BarChart3,
-  Bot,
   Bookmark as BookmarkIcon,
   BookmarkPlus,
   Calculator,
@@ -201,7 +200,11 @@ import { mergeReimportedSheets } from "@/lib/dashboard";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import { geocodeMissing } from "@/lib/geocode";
 import { askGemini, type GeminiChatMessage } from "@/lib/gemini-client";
-import { buildLiveDashboardContext, type LiveDashboardContext } from "@/lib/assistant-context";
+import {
+  buildLiveDashboardContext,
+  buildLiveSuggestedPrompts,
+  type LiveDashboardContext,
+} from "@/lib/assistant-context";
 import {
   captureScale,
   EXPORT_SURFACE_WIDTH,
@@ -334,12 +337,7 @@ const demo: Row[] = [
 ];
 
 function Mark() {
-  return (
-    <span className="oliam-mark" aria-hidden="true">
-      <i />
-      <b />
-    </span>
-  );
+  return <img className="oliam-mark" src="/oli-mark.svg" alt="" aria-hidden="true" />;
 }
 
 function useTheme() {
@@ -1602,16 +1600,82 @@ function Home(p: {
   );
 }
 
-function TypewriterLoader({ compact = false }: { compact?: boolean }) {
+function OliLoader({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={cn("oliam-typewriter-wrap", compact && "is-compact")} aria-hidden="true">
-      <div className="typewriter">
-        <div className="slide">
+    <div className={cn("oliam-loader-wrap", compact && "is-compact")} aria-hidden="true">
+      <div className="oli-loader">
+        <span className="oli-loader-shadow" />
+        <span className="oli-loader-data">
           <i />
-        </div>
-        <div className="paper" />
-        <div className="keyboard" />
+          <i />
+          <i />
+        </span>
+        <span className="oli-loader-ear oli-loader-ear-left" />
+        <span className="oli-loader-ear oli-loader-ear-right" />
+        <span className="oli-loader-body">
+          <span className="oli-loader-face">
+            <i className="oli-loader-eye oli-loader-eye-left" />
+            <i className="oli-loader-eye oli-loader-eye-right" />
+            <b />
+          </span>
+          <span className="oli-loader-belly" />
+        </span>
+        <span className="oli-loader-arm oli-loader-arm-left" />
+        <span className="oli-loader-arm oli-loader-arm-right" />
+        <span className="oli-loader-laptop">
+          <i />
+        </span>
+        <span className="oli-loader-keyboard" />
       </div>
+    </div>
+  );
+}
+
+function OliWelcomeScene({ busy }: { busy: boolean }) {
+  return (
+    <div className="oli-welcome-scene" data-busy={busy || undefined} aria-hidden="true">
+      <span className="oli-scene-glow" />
+      <span className="oli-scene-clock">
+        <i />
+      </span>
+      <span className="oli-scene-shelf">
+        <i />
+        <i />
+        <i />
+        <b />
+      </span>
+      <span className="oli-scene-paper">
+        <i />
+      </span>
+      <span className="oli-scene-sofa">
+        <i />
+        <b />
+      </span>
+      <span className="oli-scene-character">
+        <span className="oli-scene-ear oli-scene-ear-left" />
+        <span className="oli-scene-ear oli-scene-ear-right" />
+        <span className="oli-scene-body" />
+        <span className="oli-scene-face">
+          <i className="oli-scene-eye oli-scene-eye-left" />
+          <i className="oli-scene-eye oli-scene-eye-right" />
+          <b />
+        </span>
+        <span className="oli-scene-paw oli-scene-paw-left" />
+        <span className="oli-scene-paw oli-scene-paw-right" />
+      </span>
+      <span className="oli-scene-desk" />
+      <span className="oli-scene-monitor">
+        <span className="oli-scene-chart">
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
+        <b />
+      </span>
+      <span className="oli-scene-floor" />
+      <span className="oli-scene-spark oli-scene-spark-one">✦</span>
+      <span className="oli-scene-spark oli-scene-spark-two">✦</span>
     </div>
   );
 }
@@ -1696,136 +1760,182 @@ function Empty(p: {
           <ThemeToggle theme={p.theme} toggle={p.toggleTheme} />
         </div>
       </header>
-      <section className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-6 py-12">
-        <div className="mb-10">
-          <p className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-xs uppercase tracking-wide text-primary shadow-sm">
-            <span className="size-1.5 rounded-full bg-primary" />
-            Novo painel
-          </p>
-          <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl">
-            Solte a planilha,
-            <br />
-            receba o relatório.
-          </h1>
-          <p className="mt-5 max-w-xl text-muted-foreground">
-            Envie um CSV ou XLSX. O Oli.Qualidade reconhece as colunas, confirma os tipos com você e
-            monta um painel pronto para ajustar.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="oliam-dropzone"
-          data-dragging={dragging}
-          onClick={p.onUpload}
-          disabled={p.loading}
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {p.loading ? (
-            <>
-              <TypewriterLoader />
-              <strong className="font-display text-base">{p.loadingLabel ?? "Lendo…"}</strong>
-              <span className="text-sm text-muted-foreground">Analisando sua planilha…</span>
-            </>
-          ) : (
-            <>
-              <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <Upload className="size-6" />
-              </span>
-              <strong className="font-display text-base">
-                {dragging ? "Solte o arquivo aqui" : "Arraste um CSV ou XLSX aqui"}
-              </strong>
-              <span className="text-sm text-muted-foreground">
-                ou clique para selecionar o arquivo
-              </span>
-            </>
-          )}
-        </button>
-        {p.importError && (
-          <p className="mt-3 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
-            <AlertTriangle className="size-3.5 shrink-0" />
-            {p.importError}
-          </p>
-        )}
-        <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-          <Check className="size-3.5 shrink-0 text-secondary-accent" />
-          Seus dados são processados no navegador e não são enviados a nenhum servidor.
-        </p>
-        <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-          <span>Outras formas de importar:</span>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-            aria-expanded={sheetOpen}
-            onClick={() => setSheetOpen(!sheetOpen)}
-          >
-            Google Sheets
-            <ChevronDown className={cn("size-3 transition-transform", sheetOpen && "rotate-180")} />
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-            aria-expanded={p.editor}
-            onClick={() => p.setEditor(!p.editor)}
-          >
-            Colar dados
-            <ChevronDown className={cn("size-3 transition-transform", p.editor && "rotate-180")} />
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-            onClick={p.onFolder}
-          >
-            <FolderSync className="size-3.5" />
-            Pasta monitorada
-          </button>
-          <button
-            type="button"
-            className="font-medium text-primary hover:underline"
-            onClick={p.onDemo}
-          >
-            Explorar com dados de exemplo
-          </button>
-        </div>
-        {sheetOpen && (
-          <div className="mt-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <label className="mb-2 block text-xs font-medium">Google Sheets público</label>
-            <div className="flex gap-2">
-              <input
-                className="oliam-input min-w-0 flex-1"
-                placeholder="Cole o link da planilha"
-                value={p.url}
-                onChange={(e) => p.setUrl(e.target.value)}
-              />
-              <Button variant="outline" disabled={!p.url || p.loading} onClick={p.sheet}>
-                {p.loading ? "Lendo…" : "Conectar"}
-              </Button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              A planilha precisa estar publicada para leitura (Arquivo → Compartilhar → Publicar na
-              Web).
+      <main className="oli-welcome">
+        <section className="oli-welcome-hero">
+          <div className="oli-welcome-copy">
+            <p className="oli-welcome-badge">
+              <span />
+              Novo painel inteligente
             </p>
-          </div>
-        )}
-        {p.editor && (
-          <div className="mt-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <label className="mb-2 block text-xs font-medium">Colar dados</label>
-            <textarea
-              className="oliam-input min-h-28 w-full font-mono text-xs"
-              placeholder="Cole dados separados por tabulação ou vírgula, copiados direto do Excel…"
-              value={p.paste}
-              onChange={(e) => p.setPaste(e.target.value)}
-            />
-            <div className="mt-2 text-right">
-              <Button disabled={!p.paste} onClick={p.pasteData}>
-                Revisar dados
-              </Button>
+            <h1>
+              Solte a planilha.
+              <span>O Oli cuida do resto.</span>
+            </h1>
+            <p className="oli-welcome-lead">
+              Transforme CSV e Excel em um painel pronto para explorar. O Oli reconhece a estrutura,
+              confere os tipos e encontra os indicadores que merecem atenção.
+            </p>
+            <div className="oli-welcome-flow" aria-label="Etapas automáticas">
+              <span>
+                <b>01</b> Lê
+              </span>
+              <i />
+              <span>
+                <b>02</b> Organiza
+              </span>
+              <i />
+              <span>
+                <b>03</b> Visualiza
+              </span>
             </div>
           </div>
-        )}
-      </section>
+          <OliWelcomeScene busy={p.loading} />
+        </section>
+
+        <section className="oli-import-shell">
+          <div className="oli-import-heading">
+            <div>
+              <span className="oli-import-kicker">Comece pelos seus dados</span>
+              <h2>Crie seu próximo relatório</h2>
+            </div>
+            <div className="oli-file-types" aria-label="Formatos aceitos">
+              <span>XLSX</span>
+              <span>CSV</span>
+              <span>XLS</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="oli-welcome-dropzone"
+            data-dragging={dragging}
+            onClick={p.onUpload}
+            disabled={p.loading}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {p.loading ? (
+              <>
+                <OliLoader />
+                <span className="oli-dropzone-copy">
+                  <strong>{p.loadingLabel ?? "Lendo sua planilha…"}</strong>
+                  <small>O Oli está organizando os dados e preparando a visualização.</small>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="oli-upload-orbit">
+                  <Upload />
+                  <i />
+                </span>
+                <span className="oli-dropzone-copy">
+                  <strong>
+                    {dragging ? "Pode soltar — o Oli pegou!" : "Arraste sua planilha aqui"}
+                  </strong>
+                  <small>ou clique para escolher um arquivo no computador</small>
+                </span>
+                <span className="oli-dropzone-action">Selecionar arquivo</span>
+              </>
+            )}
+          </button>
+          {p.importError && (
+            <p className="oli-import-error">
+              <AlertTriangle />
+              {p.importError}
+            </p>
+          )}
+          <div className="oli-import-privacy">
+            <ShieldAlert />
+            <span>
+              <strong>Seus dados ficam com você.</strong> O processamento acontece no navegador.
+            </span>
+          </div>
+
+          <div className="oli-import-divider">
+            <span>ou importe de outro jeito</span>
+          </div>
+          <div className="oli-import-options">
+            <button
+              type="button"
+              aria-expanded={sheetOpen}
+              onClick={() => setSheetOpen(!sheetOpen)}
+            >
+              <span>
+                <SheetIcon />
+              </span>
+              <div>
+                <strong>Google Sheets</strong>
+                <small>Conecte uma planilha pública</small>
+              </div>
+              <ChevronDown className={cn(sheetOpen && "rotate-180")} />
+            </button>
+            <button type="button" aria-expanded={p.editor} onClick={() => p.setEditor(!p.editor)}>
+              <span>
+                <ClipboardPaste />
+              </span>
+              <div>
+                <strong>Colar dados</strong>
+                <small>Copie direto do Excel</small>
+              </div>
+              <ChevronDown className={cn(p.editor && "rotate-180")} />
+            </button>
+            <button type="button" onClick={p.onFolder}>
+              <span>
+                <FolderSync />
+              </span>
+              <div>
+                <strong>Pasta monitorada</strong>
+                <small>Atualização automática</small>
+              </div>
+              <ArrowRight />
+            </button>
+            <button type="button" onClick={p.onDemo}>
+              <span>
+                <Play />
+              </span>
+              <div>
+                <strong>Ver demonstração</strong>
+                <small>Explore dados de exemplo</small>
+              </div>
+              <ArrowRight />
+            </button>
+          </div>
+          {sheetOpen && (
+            <div className="oli-import-expand">
+              <label>Link público do Google Sheets</label>
+              <div>
+                <input
+                  className="oliam-input"
+                  placeholder="Cole o link da planilha"
+                  value={p.url}
+                  onChange={(e) => p.setUrl(e.target.value)}
+                />
+                <Button variant="outline" disabled={!p.url || p.loading} onClick={p.sheet}>
+                  {p.loading ? "Lendo…" : "Conectar"}
+                </Button>
+              </div>
+              <p>A planilha precisa estar publicada para leitura na Web.</p>
+            </div>
+          )}
+          {p.editor && (
+            <div className="oli-import-expand">
+              <label>Dados copiados</label>
+              <textarea
+                className="oliam-input"
+                placeholder="Cole dados separados por tabulação ou vírgula, copiados direto do Excel…"
+                value={p.paste}
+                onChange={(e) => p.setPaste(e.target.value)}
+              />
+              <div className="text-right">
+                <Button disabled={!p.paste} onClick={p.pasteData}>
+                  Revisar dados
+                </Button>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
@@ -3165,7 +3275,7 @@ function Dashboard(p: {
                     }
                   >
                     {p.folderMonitor.status === "syncing" ? (
-                      <TypewriterLoader compact />
+                      <OliLoader compact />
                     ) : (
                       <FolderSync className="size-4" />
                     )}
@@ -3218,11 +3328,11 @@ function Dashboard(p: {
                   Planilha XLSX
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPng()}>
-                  {exporting === "png" ? <TypewriterLoader compact /> : <FileImage />}
+                  {exporting === "png" ? <OliLoader compact /> : <FileImage />}
                   {exporting === "png" ? "Gerando PNG…" : "Imagem PNG"}
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPdf()}>
-                  {exporting === "pdf" ? <TypewriterLoader compact /> : <FileText />}
+                  {exporting === "pdf" ? <OliLoader compact /> : <FileText />}
                   {exporting === "pdf"
                     ? "Gerando PDF…"
                     : "PDF do painel (tabelas completas)"}
@@ -4348,6 +4458,24 @@ function Dashboard(p: {
   );
 }
 
+function OliFace({ compact = false }: { compact?: boolean }) {
+  return (
+    <span className={cn("oli-face", compact && "oli-face-compact")} aria-hidden="true">
+      <span className="oli-face-patch" />
+      <span className="oli-eye oli-eye-left">
+        <i />
+      </span>
+      <span className="oli-eye oli-eye-right">
+        <i />
+      </span>
+      <span className="oli-muzzle">
+        <i className="oli-nose" />
+        <i className="oli-mouth" />
+      </span>
+    </span>
+  );
+}
+
 function GeminiChatPanel({
   dashboard,
   sheet,
@@ -4363,10 +4491,37 @@ function GeminiChatPanel({
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<GeminiChatMessage[]>([]);
+  const assistantRootRef = useRef<HTMLDivElement>(null);
+  const mascotRef = useRef<HTMLButtonElement>(null);
+  const suggestedPrompts = useMemo(() => buildLiveSuggestedPrompts(liveView), [liveView]);
 
   useEffect(() => setMessages([]), [dashboard.id, sheet.name]);
-  const submit = async () => {
-    const message = draft.trim();
+  useEffect(() => {
+    let frame = 0;
+    const trackPointer = (event: PointerEvent) => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const root = assistantRootRef.current;
+        const mascot = mascotRef.current;
+        if (!root || !mascot) return;
+        const rect = mascot.getBoundingClientRect();
+        const deltaX = event.clientX - (rect.left + rect.width / 2);
+        const deltaY = event.clientY - (rect.top + rect.height * 0.36);
+        const distance = Math.hypot(deltaX, deltaY) || 1;
+        const reach = Math.min(4, distance / 75);
+        root.style.setProperty("--oli-look-x", `${(deltaX / distance) * reach}px`);
+        root.style.setProperty("--oli-look-y", `${(deltaY / distance) * reach}px`);
+      });
+    };
+    window.addEventListener("pointermove", trackPointer, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", trackPointer);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const submit = async (suggestedMessage?: string) => {
+    const message = (suggestedMessage ?? draft).trim();
     if (!message || loading) return;
     setDraft("");
     setMessages((current) => [...current, { role: "user", text: message }]);
@@ -4388,17 +4543,17 @@ function GeminiChatPanel({
   };
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
+    <div ref={assistantRootRef} className="oli-assistant-shell">
       {open && (
-        <section className="flex h-[min(34rem,70vh)] w-[min(24rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
-          <header className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div className="flex items-center gap-2">
-              <span className="rounded-xl bg-primary p-2 text-primary-foreground">
-                <Bot className="size-4" />
+        <section className="oli-chat-panel" aria-label="Conversa com o assistente Oli">
+          <header className="oli-chat-header">
+            <div className="oli-chat-identity">
+              <span className="oli-chat-avatar">
+                <OliFace compact />
               </span>
               <div>
-                <strong className="text-sm">Assistente Oli</strong>
-                <p className="text-[11px] text-muted-foreground">
+                <strong>Oli</strong>
+                <p>
                   {sheet.name} · {liveView.visibleRows} linhas · visão atual
                 </p>
               </div>
@@ -4408,42 +4563,50 @@ function GeminiChatPanel({
               size="icon"
               onClick={() => setOpen(false)}
               aria-label="Fechar assistente"
+              className="oli-chat-close"
             >
               <X className="size-4" />
             </Button>
           </header>
-          <div className="flex-1 space-y-3 overflow-auto p-4" aria-live="polite">
+          <div className="oli-chat-content" aria-live="polite">
             {!messages.length && (
-              <div className="rounded-xl bg-tint p-3 text-sm text-muted-foreground">
-                Pergunte sobre totais, médias, categorias ou qualidade da aba ativa. Dados sensíveis
-                não são enviados.
+              <div className="oli-chat-welcome">
+                <strong>Oi! Estou acompanhando o que aparece no seu painel.</strong>
+                <span>
+                  Escolha uma pergunta pronta ou escreva a sua. Dados sensíveis não são enviados.
+                </span>
               </div>
             )}
             {messages.map((message, index) => (
               <div
                 key={`${message.role}-${index}`}
-                className={cn(
-                  "max-w-[88%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm",
-                  message.role === "user"
-                    ? "ml-auto bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground",
-                )}
+                className={cn("oli-chat-message", `oli-chat-message-${message.role}`)}
               >
                 {message.text}
               </div>
             ))}
             {loading && (
-              <div
-                className="flex max-w-[88%] items-center gap-3 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground"
-                role="status"
-              >
-                <TypewriterLoader compact />
+              <div className="oli-chat-loading" role="status">
+                <OliLoader compact />
                 <span>Analisando o painel…</span>
               </div>
             )}
           </div>
+          <div className="oli-chat-suggestions" aria-label="Perguntas sugeridas para esta visão">
+            {suggestedPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                disabled={loading}
+                onClick={() => void submit(prompt)}
+              >
+                <span aria-hidden="true">✦</span>
+                {prompt}
+              </button>
+            ))}
+          </div>
           <form
-            className="flex gap-2 border-t border-border p-3"
+            className="oli-chat-form"
             onSubmit={(event) => {
               event.preventDefault();
               void submit();
@@ -4455,7 +4618,6 @@ function GeminiChatPanel({
               maxLength={2000}
               placeholder="Pergunte sobre este painel…"
               aria-label="Mensagem para o assistente"
-              className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
             />
             <Button
               type="submit"
@@ -4469,43 +4631,32 @@ function GeminiChatPanel({
         </section>
       )}
       <div className="oli-mascot-group" data-open={open || undefined}>
-        <div className="oli-mascot" aria-hidden="true">
-          <span className="oli-mascot-antenna" />
-          <span className="oli-mascot-head">
-            <i className="oli-mascot-eye" />
-            <i className="oli-mascot-eye" />
-            <b className="oli-mascot-smile" />
-          </span>
+        <button
+          ref={mascotRef}
+          type="button"
+          className="oli-mascot"
+          data-state={loading ? "thinking" : open ? "chatting" : "idle"}
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-label={open ? "Fechar assistente Oli" : "Abrir assistente Oli"}
+        >
+          <span className="oli-mascot-spark oli-mascot-spark-one">✦</span>
+          <span className="oli-mascot-spark oli-mascot-spark-two">✦</span>
+          <span className="oli-mascot-ear oli-mascot-ear-left" />
+          <span className="oli-mascot-ear oli-mascot-ear-right" />
+          <span className="oli-mascot-arm oli-mascot-arm-wave" />
+          <span className="oli-mascot-arm oli-mascot-arm-rest" />
           <span className="oli-mascot-body">
-            <Mark />
+            <OliFace />
+            <span className="oli-mascot-belly">
+              <Mark />
+            </span>
           </span>
+          <span className="oli-mascot-foot oli-mascot-foot-left" />
+          <span className="oli-mascot-foot oli-mascot-foot-right" />
           <span className="oli-mascot-name">Oli</span>
-        </div>
-        <div className="oli-mascot-action">
-          <button
-            type="button"
-            className="oli-chat-trigger"
-            onClick={() => setOpen((value) => !value)}
-            aria-expanded={open}
-            aria-label={open ? "Fechar assistente Oli" : "Abrir assistente do dashboard"}
-          >
-            <svg
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="32"
-              height="32"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path d="M8 9h8M8 13h6" />
-              <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12z" />
-            </svg>
-          </button>
-          <span className="oli-chat-label">Converse comigo!</span>
-        </div>
+        </button>
+        <span className="oli-chat-label">{open ? "Estou por aqui!" : "Converse com o Oli"}</span>
       </div>
     </div>
   );
@@ -5117,7 +5268,7 @@ function MapWidgetBody({
         <div ref={containerRef} className="h-64 w-full" />
         {pending > 0 && (
           <div className="oliam-map-loading" role="status">
-            <TypewriterLoader compact />
+            <OliLoader compact />
             <span>Localizando {pending}…</span>
           </div>
         )}
