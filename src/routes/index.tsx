@@ -39,6 +39,7 @@ import {
   ChevronLeft,
   ChevronUp,
   Columns3,
+  ClipboardPaste,
   Copy,
   Download,
   FileImage,
@@ -115,7 +116,6 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type {
-  Bookmark,
   Column,
   ConditionalFormatRule,
   Dashboard,
@@ -135,12 +135,14 @@ import {
   columnDragType,
   columnDropAccepted,
   draggedColumnKind,
+  duplicateWidget,
   groupableKinds,
   pickBestGroupColumn,
   spanClass,
   sizeClass,
 } from "@/lib/widgets";
 import {
+  conditionalColor,
   conditionalStyle,
   evalFormula,
   fmt,
@@ -199,7 +201,13 @@ import { mergeReimportedSheets } from "@/lib/dashboard";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import { geocodeMissing } from "@/lib/geocode";
 import { askGemini } from "@/lib/gemini-client";
-import { captureScale, EXPORT_SURFACE_WIDTH, pdfPageSlices } from "@/lib/export-layout";
+import {
+  captureScale,
+  EXPORT_SURFACE_WIDTH,
+  pdfPageSlices,
+  pdfTablePages,
+} from "@/lib/export-layout";
+import { bookmarkView, createBookmark } from "@/lib/bookmarks";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
@@ -477,10 +485,14 @@ export function OliAm({ routeId }: { routeId?: string }) {
       {
         directory: LocalDirectoryHandle;
         fileName: string;
-        fingerprint: FileFingerprint;
+        fingerprint: FileFingerprint | undefined;
         workbookNames: string[];
+        lastSyncedAt: number;
         timer: ReturnType<typeof setInterval>;
         syncing: boolean;
+        errored: boolean;
+        active: boolean;
+        check: () => Promise<void>;
       }
     >(),
   );
@@ -528,6 +540,24 @@ export function OliAm({ routeId }: { routeId?: string }) {
     },
     [],
   );
+
+  // Abas em segundo plano têm timers reduzidos pelo navegador. Ao voltar,
+  // conferir imediatamente evita esperar o próximo intervalo e também cobre
+  // um arquivo salvo enquanto o painel estava sem foco.
+  useEffect(() => {
+    const checkVisibleMonitors = () => {
+      if (document.visibilityState === "hidden") return;
+      for (const runtime of folderRuntimes.current.values()) void runtime.check();
+    };
+    window.addEventListener("focus", checkVisibleMonitors);
+    window.addEventListener("pageshow", checkVisibleMonitors);
+    document.addEventListener("visibilitychange", checkVisibleMonitors);
+    return () => {
+      window.removeEventListener("focus", checkVisibleMonitors);
+      window.removeEventListener("pageshow", checkVisibleMonitors);
+      document.removeEventListener("visibilitychange", checkVisibleMonitors);
+    };
+  }, []);
 
   // Mantém o painel aberto em sincronia quando a URL muda por fora das próprias
   // ações deste componente: botão voltar/avançar do navegador, ou um link direto.
@@ -663,7 +693,10 @@ export function OliAm({ routeId }: { routeId?: string }) {
 
   const stopFolderMonitor = (dashboardId: string, forget = false) => {
     const runtime = folderRuntimes.current.get(dashboardId);
-    if (runtime) clearInterval(runtime.timer);
+    if (runtime) {
+      runtime.active = false;
+      clearInterval(runtime.timer);
+    }
     folderRuntimes.current.delete(dashboardId);
     setFolderMonitors((current) => {
       const next = { ...current };
@@ -685,117 +718,93 @@ export function OliAm({ routeId }: { routeId?: string }) {
   const startFolderMonitor = (
     dashboardId: string,
     selection: FolderWorkbookSelection,
-    lastSyncedAt = Date.now(),
+    resume?: { lastSyncedAt: number; fingerprint?: FileFingerprint },
   ) => {
     stopFolderMonitor(dashboardId);
     const runtime = {
       directory: selection.directory,
       fileName: selection.file.name,
-      fingerprint: fingerprint(selection.file),
+      // Sem fingerprint salvo (registro antigo), fileChanged força uma
+      // leitura completa no primeiro ciclo após o F5.
+      fingerprint: resume ? resume.fingerprint : fingerprint(selection.file),
       workbookNames: selection.workbookNames,
+      lastSyncedAt: resume?.lastSyncedAt ?? Date.now(),
       timer: undefined as unknown as ReturnType<typeof setInterval>,
       syncing: false,
+      errored: false,
+      active: true,
+      check: async () => {},
     };
-    const initialSnapshot: FolderMonitorView = {
-      folderName: selection.directory.name,
-      fileName: selection.file.name,
-      fileCount: selection.workbookNames.length,
-      fileNames: selection.workbookNames,
-      status: "watching",
-      lastSyncedAt,
+
+    const persistSnapshot = (snapshot: FolderMonitorView) => {
+      if (!runtime.active) return;
+      setFolderMonitors((current) => ({ ...current, [dashboardId]: snapshot }));
+      persist(
+        dashboardsRef.current.map((dashboard) =>
+          dashboard.id === dashboardId
+            ? { ...dashboard, folderMonitor: snapshot, updatedAt: Date.now() }
+            : dashboard,
+        ),
+      );
+      void saveFolderMonitor(dashboardId, {
+        directory: runtime.directory,
+        fileName: runtime.fileName,
+        snapshot,
+        ...(runtime.fingerprint ? { fingerprint: runtime.fingerprint } : {}),
+      });
     };
-    setFolderMonitors((current) => ({ ...current, [dashboardId]: initialSnapshot }));
-    persist(
-      dashboardsRef.current.map((dashboard) =>
-        dashboard.id === dashboardId
-          ? { ...dashboard, folderMonitor: initialSnapshot, updatedAt: Date.now() }
-          : dashboard,
-      ),
-    );
-    void saveFolderMonitor(dashboardId, {
-      directory: selection.directory,
-      fileName: selection.file.name,
-      snapshot: initialSnapshot,
+    const snapshot = (status: FolderMonitorView["status"], error?: string): FolderMonitorView => ({
+      folderName: runtime.directory.name,
+      fileName: runtime.fileName,
+      fileCount: runtime.workbookNames.length,
+      fileNames: runtime.workbookNames,
+      status,
+      lastSyncedAt: runtime.lastSyncedAt,
+      ...(error ? { error } : {}),
     });
-    runtime.timer = setInterval(() => {
-      if (runtime.syncing) return;
+
+    runtime.check = async () => {
+      if (runtime.syncing || !runtime.active) return;
       runtime.syncing = true;
-      void (async () => {
-        try {
-          const listed = await listSupportedWorkbooks(runtime.directory);
-          const workbookNames = listed.length ? listed : [runtime.fileName];
-          if (workbookNames.join("\n") !== runtime.workbookNames.join("\n")) {
-            runtime.workbookNames = workbookNames;
-            setFolderMonitors((current) => ({
-              ...current,
-              [dashboardId]: {
-                ...current[dashboardId]!,
-                fileCount: workbookNames.length,
-                fileNames: workbookNames,
-              },
-            }));
-            persist(
-              dashboardsRef.current.map((dashboard) =>
-                dashboard.id === dashboardId
-                  ? {
-                      ...dashboard,
-                      folderMonitor: {
-                        folderName: runtime.directory.name,
-                        fileName: runtime.fileName,
-                        fileCount: workbookNames.length,
-                        fileNames: workbookNames,
-                        status: "watching",
-                        lastSyncedAt: Date.now(),
-                      },
-                    }
-                  : dashboard,
-              ),
-            );
-            void saveFolderMonitor(dashboardId, {
-              directory: runtime.directory,
-              fileName: runtime.fileName,
-              snapshot: {
-                folderName: runtime.directory.name,
-                fileName: runtime.fileName,
-                fileCount: workbookNames.length,
-                fileNames: workbookNames,
-                status: "watching",
-                lastSyncedAt: Date.now(),
-              },
-            });
-          }
-          const handle = await runtime.directory.getFileHandle(runtime.fileName);
-          const file = await handle.getFile();
-          if (!fileChanged(runtime.fingerprint, file)) return;
-          setFolderMonitors((current) => {
-            const { error: _error, ...monitor } = current[dashboardId]!;
-            return { ...current, [dashboardId]: { ...monitor, status: "syncing" } };
-          });
-          await syncMonitoredFile(dashboardId, file);
-          runtime.fingerprint = fingerprint(file);
-          setFolderMonitors((current) => {
-            const { error: _error, ...monitor } = current[dashboardId]!;
-            return {
-              ...current,
-              [dashboardId]: { ...monitor, status: "watching", lastSyncedAt: Date.now() },
-            };
-          });
-          toast.success(`${runtime.fileName} foi atualizado automaticamente.`);
-        } catch {
+      try {
+        const listed = await listSupportedWorkbooks(runtime.directory);
+        if (!runtime.active) return;
+        const workbookNames = listed.length ? listed : [runtime.fileName];
+        const namesChanged = workbookNames.join("\n") !== runtime.workbookNames.join("\n");
+        runtime.workbookNames = workbookNames;
+        const handle = await runtime.directory.getFileHandle(runtime.fileName);
+        const file = await handle.getFile();
+        const changed = fileChanged(runtime.fingerprint, file);
+        if (changed) {
           setFolderMonitors((current) => ({
             ...current,
-            [dashboardId]: {
-              ...current[dashboardId]!,
-              status: "error",
-              error: "Não foi possível ler a planilha. Verifique se ela ainda existe na pasta.",
-            },
+            [dashboardId]: { ...(current[dashboardId] ?? snapshot("watching")), status: "syncing" },
           }));
-        } finally {
-          runtime.syncing = false;
+          await syncMonitoredFile(dashboardId, file);
+          if (!runtime.active) return;
+          runtime.fingerprint = fingerprint(file);
+          runtime.lastSyncedAt = Date.now();
         }
-      })();
-    }, FOLDER_MONITOR_INTERVAL_MS);
+        if (changed || namesChanged || runtime.errored) persistSnapshot(snapshot("watching"));
+        runtime.errored = false;
+        if (changed) toast.success(`${runtime.fileName} foi atualizado automaticamente.`);
+      } catch {
+        runtime.errored = true;
+        persistSnapshot(
+          snapshot(
+            "error",
+            "Não foi possível ler a planilha. Verifique se ela ainda existe na pasta.",
+          ),
+        );
+      } finally {
+        runtime.syncing = false;
+      }
+    };
+
+    persistSnapshot(snapshot("watching"));
+    runtime.timer = setInterval(() => void runtime.check(), FOLDER_MONITOR_INTERVAL_MS);
     folderRuntimes.current.set(dashboardId, runtime);
+    void runtime.check();
   };
 
   const ensureFolderFilesWidget = (dashboardId: string) => {
@@ -828,6 +837,54 @@ export function OliAm({ routeId }: { routeId?: string }) {
   const connectFolder = async (dashboardId?: string) => {
     setImportError(null);
     try {
+      // Depois de um F5, tenta primeiro reutilizar o handle estruturado que
+      // já está no IndexedDB. Se o navegador exigir novo consentimento, esta
+      // função foi disparada por clique e pode chamar requestPermission sem
+      // obrigar o usuário a escolher a pasta e a planilha outra vez.
+      if (dashboardId) {
+        const stored = await loadFolderMonitor(dashboardId);
+        if (stored) {
+          try {
+            let permission = stored.directory.queryPermission
+              ? await stored.directory.queryPermission({ mode: "read" })
+              : "granted";
+            if (permission !== "granted" && stored.directory.requestPermission) {
+              permission = await stored.directory.requestPermission({ mode: "read" });
+            }
+            if (permission === "granted") {
+              const handle = await stored.directory.getFileHandle(stored.fileName);
+              const file = await handle.getFile();
+              const listed = await listSupportedWorkbooks(stored.directory);
+              startFolderMonitor(
+                dashboardId,
+                {
+                  directory: stored.directory,
+                  handle,
+                  file,
+                  workbookNames: listed.length ? listed : stored.snapshot.fileNames,
+                },
+                {
+                  lastSyncedAt: stored.snapshot.lastSyncedAt,
+                  ...(stored.fingerprint ? { fingerprint: stored.fingerprint } : {}),
+                },
+              );
+              ensureFolderFilesWidget(dashboardId);
+              toast.success("Monitoramento retomado. Conferindo a planilha agora…");
+              return;
+            }
+            const message = "A leitura da pasta não foi autorizada pelo navegador.";
+            setFolderMonitors((current) => ({
+              ...current,
+              [dashboardId]: { ...stored.snapshot, status: "error", error: message },
+            }));
+            toast.error(message);
+            return;
+          } catch {
+            // Handle antigo indisponível: abre o seletor abaixo para trocar
+            // ou reconectar a fonte, preservando o registro se houver cancelamento.
+          }
+        }
+      }
       const selection = await pickFolderWorkbook(window);
       if (dashboardId) {
         setFolderMonitors((current) => ({
@@ -907,7 +964,10 @@ export function OliAm({ routeId }: { routeId?: string }) {
               file,
               workbookNames: listed.length ? listed : stored.snapshot.fileNames,
             },
-            stored.snapshot.lastSyncedAt,
+            {
+              lastSyncedAt: stored.snapshot.lastSyncedAt,
+              ...(stored.fingerprint ? { fingerprint: stored.fingerprint } : {}),
+            },
           );
         } catch {
           setFolderMonitors((current) => ({
@@ -2202,6 +2262,7 @@ function Dashboard(p: {
   const [joinSheetPickerIndex, setJoinSheetPickerIndex] = useState(0);
   const [bookmarkPanel, setBookmarkPanel] = useState(false);
   const [bookmarkName, setBookmarkName] = useState("");
+  const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
   const [presentation, setPresentation] = useState(false);
   const [autoPlay, setAutoPlay] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
@@ -2231,6 +2292,12 @@ function Dashboard(p: {
     cat = pickBestGroupColumn(catCandidates, sheet.rows),
     dateCol = sheet.columns.find((c) => c.kind === "date");
   useEffect(() => setDraftName(d.name), [d.id, d.name]);
+  useEffect(() => {
+    setSearch("");
+    setSort(null);
+    setBookmarkPanel(false);
+    setWidgetClipboard(null);
+  }, [d.id, activeSheetIndex]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -2391,6 +2458,19 @@ function Dashboard(p: {
   };
   const addWidget = (type: WidgetType) =>
     setWidgets([...widgets, createWidget(type, sheet.columns, undefined, sheet.rows)]);
+  const copyCurrentWidget = (widget: Widget) => {
+    setWidgetClipboard({ ...widget });
+    toast.success("Widget copiado. Agora é só colar onde quiser.");
+  };
+  const pasteCopiedWidget = (afterId?: string) => {
+    if (!widgetClipboard) return;
+    const copy = duplicateWidget(widgetClipboard);
+    const next = [...widgets];
+    const afterIndex = afterId ? next.findIndex((widget) => widget.id === afterId) : -1;
+    next.splice(afterIndex >= 0 ? afterIndex + 1 : next.length, 0, copy);
+    setWidgets(next);
+    toast.success("Cópia do widget adicionada ao painel.");
+  };
   const updateWidget = (id: string, patch: Partial<Widget>) =>
     setWidgets(widgets.map((w) => (w.id === id ? { ...w, ...patch } : w)));
   const removeWidget = (id: string) => setWidgets(widgets.filter((w) => w.id !== id));
@@ -2554,6 +2634,64 @@ function Dashboard(p: {
         contentHeight,
         capture.breakpoints,
       );
+      // A visão do painel continua nas primeiras páginas. Se houver widget
+      // de tabela, acrescenta uma versão completa em páginas dedicadas,
+      // dividida por linhas e colunas; assim nenhuma célula depende do
+      // viewport virtualizado nem é cortada no meio por uma fatia do canvas.
+      const tableColumns = widgets.some((widget) => widget.type === "table")
+        ? sheet.columns.filter((column) => column.visible)
+        : [];
+      const tablePages = pdfTablePages(data.length, tableColumns.length, contentWidth, contentHeight, {
+        minColumnWidthPt: 92,
+        rowHeightPt: 18,
+        tableHeaderHeightPt: 24,
+        titleHeightPt: 24,
+      });
+      const totalPages = slices.length + tablePages.length;
+      const drawPageChrome = (index: number, detail: string) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(12);
+        pdf.setTextColor(30, 41, 59);
+        pdf.text(d.name, margin, margin + 12);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(
+          `${detail} · ${new Date().toLocaleString("pt-BR")}`,
+          pageWidth - margin,
+          margin + 12,
+          { align: "right" },
+        );
+        pdf.setDrawColor(203, 213, 225);
+        pdf.line(margin, pageHeight - margin - 8, pageWidth - margin, pageHeight - margin - 8);
+        pdf.text(
+          `Oli.Qualidade · página ${index + 1} de ${totalPages}`,
+          pageWidth - margin,
+          pageHeight - margin + 4,
+          { align: "right" },
+        );
+      };
+      const fitPdfText = (value: string, maxWidth: number) => {
+        if (pdf.getTextWidth(value) <= maxWidth) return value;
+        let low = 0;
+        let high = value.length;
+        while (low < high) {
+          const middle = Math.ceil((low + high) / 2);
+          if (pdf.getTextWidth(`${value.slice(0, middle)}…`) <= maxWidth) low = middle;
+          else high = middle - 1;
+        }
+        return `${value.slice(0, low)}…`;
+      };
+      const hexRgb = (color: string): [number, number, number] | null => {
+        const match = color.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
+        return match
+          ? [
+              Number.parseInt(match[1]!, 16),
+              Number.parseInt(match[2]!, 16),
+              Number.parseInt(match[3]!, 16),
+            ]
+          : null;
+      };
       for (const [index, slice] of slices.entries()) {
         if (index > 0) pdf.addPage();
         const pageCanvas = document.createElement("canvas");
@@ -2573,19 +2711,7 @@ function Dashboard(p: {
           pageCanvas.height,
         );
         const imageHeight = (slice.height * contentWidth) / capture.canvas.width;
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(12);
-        pdf.setTextColor(30, 41, 59);
-        pdf.text(d.name, margin, margin + 12);
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(
-          `${data.length} linhas na visão atual · ${new Date().toLocaleString("pt-BR")}`,
-          pageWidth - margin,
-          margin + 12,
-          { align: "right" },
-        );
+        drawPageChrome(index, `${data.length} linhas na visão atual`);
         pdf.addImage(
           pageCanvas.toDataURL("image/jpeg", 0.94),
           "JPEG",
@@ -2596,18 +2722,61 @@ function Dashboard(p: {
           undefined,
           "FAST",
         );
-        pdf.setDrawColor(203, 213, 225);
-        pdf.line(margin, pageHeight - margin - 8, pageWidth - margin, pageHeight - margin - 8);
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(
-          `Oli.Qualidade · página ${index + 1} de ${slices.length}`,
-          pageWidth - margin,
-          pageHeight - margin + 4,
-          { align: "right" },
-        );
         pageCanvas.width = 1;
         pageCanvas.height = 1;
+      }
+      for (const [tableIndex, plan] of tablePages.entries()) {
+        const pageIndex = slices.length + tableIndex;
+        if (pageIndex > 0) pdf.addPage();
+        const columnsOnPage = tableColumns.slice(plan.columnStart, plan.columnEnd);
+        const columnWidth = contentWidth / columnsOnPage.length;
+        const contentTop = margin + headerHeight;
+        drawPageChrome(pageIndex, `${data.length} linhas na tabela completa`);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(10);
+        pdf.setTextColor(30, 41, 59);
+        const rowRange =
+          plan.rowEnd > plan.rowStart
+            ? `linhas ${plan.rowStart + 1}–${plan.rowEnd}`
+            : "sem linhas";
+        pdf.text(
+          `Base detalhada · ${rowRange} · colunas ${plan.columnStart + 1}–${plan.columnEnd}`,
+          margin,
+          contentTop + 15,
+        );
+        const headerY = contentTop + 24;
+        pdf.setFillColor(241, 245, 249);
+        pdf.setDrawColor(203, 213, 225);
+        pdf.rect(margin, headerY, contentWidth, 24, "FD");
+        pdf.setFontSize(7.5);
+        columnsOnPage.forEach((column, columnIndex) => {
+          const x = margin + columnIndex * columnWidth;
+          if (columnIndex > 0) pdf.line(x, headerY, x, headerY + 24);
+          pdf.text(fitPdfText(column.label, columnWidth - 10), x + 5, headerY + 15);
+        });
+        data.slice(plan.rowStart, plan.rowEnd).forEach((row, rowOffset) => {
+          const y = headerY + 24 + rowOffset * 18;
+          if ((plan.rowStart + rowOffset) % 2 === 1) {
+            pdf.setFillColor(248, 250, 252);
+            pdf.rect(margin, y, contentWidth, 18, "F");
+          }
+          pdf.setDrawColor(226, 232, 240);
+          pdf.line(margin, y + 18, margin + contentWidth, y + 18);
+          columnsOnPage.forEach((column, columnIndex) => {
+            const x = margin + columnIndex * columnWidth;
+            if (columnIndex > 0) pdf.line(x, y, x, y + 18);
+            const raw = row[column.key] ?? null;
+            const shown =
+              fmt(raw, column.kind) ?? (numericKinds.includes(column.kind) ? "–" : NOT_INFORMED);
+            const style = conditionalStyle(raw, column.kind, column.conditionalFormat);
+            const textColor = style?.color ? hexRgb(style.color) : null;
+            if (textColor) pdf.setTextColor(...textColor);
+            else pdf.setTextColor(30, 41, 59);
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(7.5);
+            pdf.text(fitPdfText(shown, columnWidth - 10), x + 5, y + 12);
+          });
+        });
       }
       downloadBlob(pdf.output("blob"), `${slug}.pdf`);
     } catch (err) {
@@ -2698,23 +2867,23 @@ function Dashboard(p: {
   const saveBookmark = () => {
     const trimmed = bookmarkName.trim();
     if (!trimmed) return;
-    const bookmark: Bookmark = {
-      id: `bm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
-      name: trimmed,
-      filters: sheet.filters,
-      search,
-      sort,
-      createdAt: Date.now(),
-    };
+    const bookmark = createBookmark(trimmed, sheet.filters, search, sort);
     updateSheet({ bookmarks: [...bookmarks, bookmark] });
     setBookmarkName("");
   };
   const removeBookmark = (id: string) =>
     updateSheet({ bookmarks: bookmarks.filter((b) => b.id !== id) });
-  const applyBookmark = (b: Bookmark) => {
-    updateSheet({ filters: b.filters });
-    setSearch(b.search);
-    setSort(b.sort);
+  const applyBookmark = (b: (typeof bookmarks)[number]) => {
+    const view = bookmarkView(b, sheet.columns);
+    updateSheet({ filters: view.filters });
+    setSearch(view.search);
+    setSort(view.sort);
+  };
+  const startPresentation = () => {
+    setPresentIndex(0);
+    const first = bookmarks[0];
+    if (first) applyBookmark(first);
+    setPresentation(true);
   };
 
   // Modo apresentação: reaproveita a mesma grade de widgets em tela cheia,
@@ -2777,6 +2946,9 @@ function Dashboard(p: {
             filters={sheet.filters}
             setFilters={setFilters}
             onConfigure={(patch) => updateWidget(w.id, patch)}
+            onCopy={() => copyCurrentWidget(w)}
+            onPaste={() => pasteCopiedWidget(w.id)}
+            canPaste={Boolean(widgetClipboard)}
             onRemove={() => removeWidget(w.id)}
             onMoveBack={() => moveWidget(w.id, -1)}
             onMoveForward={() => moveWidget(w.id, 1)}
@@ -2953,8 +3125,14 @@ function Dashboard(p: {
                       "max-w-48",
                       p.folderMonitor.status === "error" && "border-destructive text-destructive",
                     )}
-                    onClick={p.disconnectFolder}
-                    aria-label={`Desconectar pasta monitorada: ${p.folderMonitor.fileName}`}
+                    onClick={
+                      p.folderMonitor.status === "error" ? p.connectFolder : p.disconnectFolder
+                    }
+                    aria-label={
+                      p.folderMonitor.status === "error"
+                        ? `Retomar pasta monitorada: ${p.folderMonitor.fileName}`
+                        : `Desconectar pasta monitorada: ${p.folderMonitor.fileName}`
+                    }
                   >
                     {p.folderMonitor.status === "syncing" ? (
                       <TypewriterLoader compact />
@@ -2966,7 +3144,7 @@ function Dashboard(p: {
                         ? "Falha na pasta"
                         : p.folderMonitor.fileName}
                     </span>
-                    <X className="size-3" />
+                    {p.folderMonitor.status !== "error" && <X className="size-3" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -2979,7 +3157,11 @@ function Dashboard(p: {
                     Última leitura:{" "}
                     {new Date(p.folderMonitor.lastSyncedAt).toLocaleTimeString("pt-BR")}
                   </p>
-                  <p className="text-[10px] opacity-75">Clique para desconectar.</p>
+                  <p className="text-[10px] opacity-75">
+                    {p.folderMonitor.status === "error"
+                      ? "Clique para autorizar e retomar sem escolher tudo de novo."
+                      : "Clique para desconectar."}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -3011,7 +3193,9 @@ function Dashboard(p: {
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPdf()}>
                   {exporting === "pdf" ? <TypewriterLoader compact /> : <FileText />}
-                  {exporting === "pdf" ? "Gerando PDF…" : "PDF do painel (várias páginas)"}
+                  {exporting === "pdf"
+                    ? "Gerando PDF…"
+                    : "PDF do painel (tabelas completas)"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -3075,6 +3259,15 @@ function Dashboard(p: {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            variant="outline"
+            disabled={!widgetClipboard}
+            onClick={() => pasteCopiedWidget()}
+            title={widgetClipboard ? "Colar uma cópia no fim do painel" : "Copie um widget primeiro"}
+          >
+            <ClipboardPaste />
+            <span className="hidden sm:inline">Colar widget</span>
+          </Button>
           <Button variant="outline" onClick={() => setPanel(!panel)}>
             <Columns3 />
             Colunas
@@ -3174,10 +3367,7 @@ function Dashboard(p: {
           </div>
           <Button
             variant="outline"
-            onClick={() => {
-              setPresentIndex(0);
-              setPresentation(true);
-            }}
+            onClick={startPresentation}
           >
             <Maximize2 />
             <span className="hidden sm:inline">Apresentação</span>
@@ -3672,13 +3862,20 @@ function Dashboard(p: {
                     {nums.slice(0, 4).map((c) => {
                       const total = data.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
                       const delta = versionDelta?.get(c.key) ?? null;
+                      const style = conditionalStyle(total, c.kind, c.conditionalFormat);
                       return (
                         <div
                           key={c.key}
                           className="rounded-xl border border-border bg-card p-2.5 shadow-sm"
+                          style={style ?? undefined}
                         >
                           <p className="truncate text-[11px] text-muted-foreground">{c.label}</p>
-                          <p className="font-mono text-base font-semibold">{fmt(total, c.kind)}</p>
+                          <p
+                            className="font-mono text-base font-semibold"
+                            style={{ color: style?.color }}
+                          >
+                            {fmt(total, c.kind)}
+                          </p>
                           {delta !== null && (
                             <p
                               className={cn(
@@ -3739,7 +3936,13 @@ function Dashboard(p: {
                               className="oliam-ranking-fill"
                               style={{
                                 width: `${Math.max(4, (Math.abs(r.total) / sidebarRankingMax) * 100)}%`,
-                                background: active ? "var(--primary)" : "var(--secondary-accent)",
+                                background:
+                                  conditionalColor(
+                                    r.total,
+                                    primary.kind,
+                                    primary.conditionalFormat,
+                                  ) ??
+                                  (active ? "var(--primary)" : "var(--secondary-accent)"),
                               }}
                             />
                           </div>
@@ -3888,6 +4091,10 @@ function Dashboard(p: {
               <Redo2 />
               Refazer
             </CommandItem>
+            <CommandItem onSelect={() => pasteCopiedWidget()} disabled={!widgetClipboard}>
+              <ClipboardPaste />
+              Colar widget copiado
+            </CommandItem>
             <CommandItem onSelect={p.reimport}>
               <Upload />
               Importar nova versão
@@ -3931,10 +4138,7 @@ function Dashboard(p: {
               Configurar colunas
             </CommandItem>
             <CommandItem
-              onSelect={() => {
-                setPresentIndex(0);
-                setPresentation(true);
-              }}
+              onSelect={startPresentation}
             >
               <Maximize2 />
               Modo apresentação
@@ -4362,6 +4566,9 @@ function WidgetHead({
   onDragOver,
   onDrop,
   onRemove,
+  onCopy,
+  onPaste,
+  canPaste,
   onMoveBack,
   onMoveForward,
   disableBack,
@@ -4374,12 +4581,15 @@ function WidgetHead({
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
   onRemove?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
+  canPaste?: boolean;
   onMoveBack?: () => void;
   onMoveForward?: () => void;
   disableBack?: boolean;
   disableForward?: boolean;
 }) {
-  const interactive = !!(onRemove || onMoveBack || onMoveForward);
+  const interactive = !!(onRemove || onCopy || onPaste || onMoveBack || onMoveForward);
   return (
     <div
       className="flex h-12 flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 px-3"
@@ -4402,6 +4612,27 @@ function WidgetHead({
       </div>
       {interactive && (
         <div className="flex shrink-0 items-center gap-0.5" data-export-controls>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={`Copiar ${title}`}
+            title="Copiar widget"
+            onClick={onCopy}
+          >
+            <Copy className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={`Colar widget após ${title}`}
+            title={canPaste ? "Colar widget após este" : "Copie um widget primeiro"}
+            disabled={!canPaste}
+            onClick={onPaste}
+          >
+            <ClipboardPaste className="size-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -4666,11 +4897,11 @@ const MAP_ATTRIBUTION =
 
 function MapWidgetBody({
   grouped,
-  valueKind,
+  valueColumn,
   onSelect,
 }: {
   grouped: { name: string; total: number }[];
-  valueKind: Kind;
+  valueColumn: Column;
   onSelect: (name: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -4775,13 +5006,23 @@ function MapWidgetBody({
       const primaryColor =
         getComputedStyle(document.documentElement).getPropertyValue("--primary").trim() ||
         "#0ea5e9";
+      const colorProbe = document.createElement("span");
+      colorProbe.hidden = true;
+      document.body.appendChild(colorProbe);
       resolved.forEach((g) => {
         const radius = 7 + (Math.abs(g.total) / max) * 20;
         const pct = sum > 0 ? (g.total / sum) * 100 : 0;
+        const formattedColor = conditionalColor(
+          g.total,
+          valueColumn.kind,
+          valueColumn.conditionalFormat,
+        );
+        colorProbe.style.color = formattedColor ?? primaryColor;
+        const markerColor = getComputedStyle(colorProbe).color || primaryColor;
         const marker = L.circleMarker([g.point.lat, g.point.lng], {
           radius,
-          color: primaryColor,
-          fillColor: primaryColor,
+          color: markerColor,
+          fillColor: markerColor,
           fillOpacity: 0.45,
           weight: 2,
         });
@@ -4792,12 +5033,13 @@ function MapWidgetBody({
         popup.appendChild(strong);
         popup.appendChild(document.createElement("br"));
         popup.appendChild(
-          document.createTextNode(`${fmt(g.total, valueKind) ?? "–"} (${pct.toFixed(1)}%)`),
+          document.createTextNode(`${fmt(g.total, valueColumn.kind) ?? "–"} (${pct.toFixed(1)}%)`),
         );
         marker.bindPopup(popup);
         marker.on("click", () => onSelect(g.name));
         marker.addTo(layer);
       });
+      colorProbe.remove();
       layer.addTo(map);
       layerRef.current = layer;
       resizeTimer = setTimeout(() => {
@@ -4812,7 +5054,7 @@ function MapWidgetBody({
       alive = false;
       clearTimeout(resizeTimer);
     };
-  }, [grouped, cache, onSelect, valueKind, isDark]);
+  }, [grouped, cache, onSelect, valueColumn, isDark]);
 
   const resolvedCount = grouped.filter((g) => cache[g.name]).length;
   const notFoundCount = grouped.filter((g) => g.name in cache && cache[g.name] === null).length;
@@ -4870,10 +5112,12 @@ function ChartDot({
   r,
   payload,
   groupCol,
+  valueCol,
   onSelect,
 }: ChartDotProps & {
   r: number;
   groupCol: Column | undefined;
+  valueCol: Column | undefined;
   onSelect: (groupKey: string, value: string) => void;
 }) {
   if (cx === undefined || cy === undefined) return null;
@@ -4883,7 +5127,13 @@ function ChartDot({
       cx={cx}
       cy={cy}
       r={r}
-      fill="var(--primary)"
+      fill={
+        conditionalColor(
+          payload?.total ?? null,
+          valueCol?.kind ?? "text",
+          valueCol?.conditionalFormat,
+        ) ?? "var(--primary)"
+      }
       style={clickable ? { cursor: "pointer" } : undefined}
       onClick={() => clickable && onSelect(groupCol!.key, String(payload!.name))}
     />
@@ -4907,6 +5157,9 @@ function WidgetCard({
   filters,
   setFilters,
   onConfigure,
+  onCopy,
+  onPaste,
+  canPaste,
   onRemove,
   onMoveBack,
   onMoveForward,
@@ -4928,6 +5181,9 @@ function WidgetCard({
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
   onConfigure: (patch: Partial<Widget>) => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  canPaste: boolean;
   onRemove: () => void;
   onMoveBack: () => void;
   onMoveForward: () => void;
@@ -5060,6 +5316,9 @@ function WidgetCard({
       onDropWidget(e.dataTransfer.getData("text/plain"));
     },
     onRemove,
+    onCopy,
+    onPaste,
+    canPaste,
     onMoveBack,
     onMoveForward,
     disableBack: index === 0,
@@ -5203,6 +5462,8 @@ function WidgetCard({
       metricOp,
     );
     const style = conditionalStyle(total, col.kind, col.conditionalFormat);
+    const formattedChartColor =
+      conditionalColor(total, col.kind, col.conditionalFormat) ?? "var(--secondary-accent)";
     const trendDateCol =
       w.type === "metric-trend"
         ? (columns.find((c) => c.key === w.groupKey && c.kind === "date") ??
@@ -5367,12 +5628,12 @@ function WidgetCard({
                           <linearGradient id={`spark-${w.id}`} x1="0" y1="0" x2="0" y2="1">
                             <stop
                               offset="0%"
-                              stopColor="var(--secondary-accent)"
+                              stopColor={formattedChartColor}
                               stopOpacity={0.5}
                             />
                             <stop
                               offset="100%"
-                              stopColor="var(--secondary-accent)"
+                              stopColor={formattedChartColor}
                               stopOpacity={0}
                             />
                           </linearGradient>
@@ -5392,11 +5653,11 @@ function WidgetCard({
                         <Area
                           type="monotone"
                           dataKey="total"
-                          stroke="var(--secondary-accent)"
+                          stroke={formattedChartColor}
                           strokeWidth={2}
                           fill={`url(#spark-${w.id})`}
                           dot={false}
-                          activeDot={{ r: 3, fill: "var(--secondary-accent)" }}
+                          activeDot={{ r: 3, fill: formattedChartColor }}
                           isAnimationActive={false}
                         />
                       </AreaChart>
@@ -5491,6 +5752,13 @@ function WidgetCard({
       w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
         ? sortChronologically(grouped)
         : grouped;
+    const seriesColor = valueCol
+      ? conditionalColor(
+          series.at(-1)?.total ?? null,
+          valueCol.kind,
+          valueCol.conditionalFormat,
+        ) ?? "var(--primary)"
+      : "var(--primary)";
     const barSeries = w.type === "bar" ? sortAllBarCategories(series) : series;
     const barPresentation = barChartPresentation(barSeries.length);
     const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
@@ -5664,6 +5932,18 @@ function WidgetCard({
                       cursor="pointer"
                       animationDuration={500}
                     >
+                      {barSeries.map((entry) => (
+                        <Cell
+                          key={entry.name}
+                          fill={
+                            conditionalColor(
+                              entry.total,
+                              valueCol.kind,
+                              valueCol.conditionalFormat,
+                            ) ?? `url(#bar-grad-${w.id})`
+                          }
+                        />
+                      ))}
                       <LabelList
                         dataKey="total"
                         position="top"
@@ -5743,7 +6023,13 @@ function WidgetCard({
                     {pieSeries.map((entry, i) => (
                       <Cell
                         key={entry.name}
-                        fill={palette[i % palette.length]}
+                        fill={
+                          conditionalColor(
+                            entry.total,
+                            valueCol.kind,
+                            valueCol.conditionalFormat,
+                          ) ?? palette[i % palette.length]
+                        }
                         opacity={activePieIndex === null || activePieIndex === i ? 1 : 0.45}
                         style={{ transition: "opacity 150ms ease, transform 150ms ease" }}
                         transform={activePieIndex === i ? "scale(1.035)" : undefined}
@@ -5846,8 +6132,8 @@ function WidgetCard({
                     <AreaChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
                   <defs>
                     <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.45} />
-                      <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                      <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
+                      <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -5895,7 +6181,7 @@ function WidgetCard({
                   <Area
                     type="monotone"
                     dataKey="total"
-                    stroke="var(--primary)"
+                    stroke={seriesColor}
                     strokeWidth={2}
                     fill={`url(#area-${w.id})`}
                     dot={(dotProps: ChartDotProps) => (
@@ -5903,6 +6189,7 @@ function WidgetCard({
                         {...dotProps}
                         r={3}
                         groupCol={groupCol}
+                        valueCol={valueCol}
                         onSelect={handleGroupClick}
                       />
                     )}
@@ -5911,6 +6198,7 @@ function WidgetCard({
                         {...dotProps}
                         r={5}
                         groupCol={groupCol}
+                        valueCol={valueCol}
                         onSelect={handleGroupClick}
                       />
                     )}
@@ -6002,13 +6290,14 @@ function WidgetCard({
                   <Line
                     type="monotone"
                     dataKey="total"
-                    stroke="var(--primary)"
+                    stroke={seriesColor}
                     strokeWidth={2}
                     dot={(dotProps: ChartDotProps) => (
                       <ChartDot
                         {...dotProps}
                         r={3}
                         groupCol={groupCol}
+                        valueCol={valueCol}
                         onSelect={handleGroupClick}
                       />
                     )}
@@ -6017,6 +6306,7 @@ function WidgetCard({
                         {...dotProps}
                         r={5}
                         groupCol={groupCol}
+                        valueCol={valueCol}
                         onSelect={handleGroupClick}
                       />
                     )}
@@ -6179,12 +6469,32 @@ function WidgetCard({
                         {g.name}
                       </span>
                     </span>
-                    <span className="font-mono shrink-0">{fmt(g.total, valueCol.kind) ?? "–"}</span>
+                    <span
+                      className="font-mono shrink-0"
+                      style={{
+                        color:
+                          conditionalColor(
+                            g.total,
+                            valueCol.kind,
+                            valueCol.conditionalFormat,
+                          ) ?? undefined,
+                      }}
+                    >
+                      {fmt(g.total, valueCol.kind) ?? "–"}
+                    </span>
                   </div>
                   <div className="oliam-ranking-track">
                     <div
                       className="oliam-ranking-fill"
-                      style={{ width: `${Math.max(4, (Math.abs(g.total) / max) * 100)}%` }}
+                      style={{
+                        width: `${Math.max(4, (Math.abs(g.total) / max) * 100)}%`,
+                        background:
+                          conditionalColor(
+                            g.total,
+                            valueCol.kind,
+                            valueCol.conditionalFormat,
+                          ) ?? undefined,
+                      }}
                     />
                   </div>
                 </button>
@@ -6296,7 +6606,7 @@ function WidgetCard({
         ) : (
           <MapWidgetBody
             grouped={grouped}
-            valueKind={valueCol.kind}
+            valueColumn={valueCol}
             onSelect={(name) => handleGroupClick(groupCol.key, name)}
           />
         )}
@@ -6324,10 +6634,13 @@ function WidgetCard({
     const values = data.map((r) => Number(r[col.key])).filter((v) => Number.isFinite(v));
     const avg = values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
     const filled = Math.round(avg);
+    const ratingStyle = conditionalStyle(avg, col.kind, col.conditionalFormat);
+    const ratingColor =
+      conditionalColor(avg, col.kind, col.conditionalFormat) ?? "var(--primary)";
     return (
       <article
         className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
-        style={{ animationDelay: `${animationDelay}ms` }}
+        style={{ animationDelay: `${animationDelay}ms`, ...(ratingStyle ?? {}) }}
       >
         <WidgetHead
           title={col.label}
@@ -6375,7 +6688,7 @@ function WidgetCard({
           </label>
         </div>
         <div className="flex flex-col items-start gap-2 p-5">
-          <p className="font-mono text-3xl">
+          <p className="font-mono text-3xl" style={{ color: ratingStyle?.color }}>
             {values.length ? avg.toFixed(1) : "–"}
             <span className="ml-1 text-sm text-muted-foreground">/ {scaleMax}</span>
           </p>
@@ -6386,8 +6699,9 @@ function WidgetCard({
                   key={i}
                   className={cn(
                     "size-4",
-                    i < filled ? "fill-current text-primary" : "text-muted-foreground",
+                    i < filled ? "fill-current" : "text-muted-foreground",
                   )}
+                  style={i < filled ? { color: ratingColor } : undefined}
                 />
               ))}
             </div>
@@ -6395,7 +6709,10 @@ function WidgetCard({
             <div className="oliam-ranking-track w-full max-w-40">
               <div
                 className="oliam-ranking-fill"
-                style={{ width: `${values.length ? Math.min(100, (avg / scaleMax) * 100) : 0}%` }}
+                style={{
+                  width: `${values.length ? Math.min(100, (avg / scaleMax) * 100) : 0}%`,
+                  background: ratingColor,
+                }}
               />
             </div>
           )}
@@ -6447,6 +6764,9 @@ function EmptyWidget({
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
   onRemove?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
+  canPaste?: boolean;
   onMoveBack?: () => void;
   onMoveForward?: () => void;
   disableBack?: boolean;
@@ -6486,6 +6806,16 @@ function FormatRulesEditor({
   const [minColor, setMinColor] = useState("#dbeafe");
   const [maxColor, setMaxColor] = useState("#1d4ed8");
   const rules = column.conditionalFormat ?? [];
+  const canAddRule =
+    adding === "threshold"
+      ? value.trim() !== "" && Number.isFinite(Number(value))
+      : adding === "scale"
+        ? min.trim() !== "" &&
+          max.trim() !== "" &&
+          Number.isFinite(Number(min)) &&
+          Number.isFinite(Number(max)) &&
+          Number(max) > Number(min)
+        : false;
 
   const cancel = () => {
     setAdding(null);
@@ -6496,7 +6826,7 @@ function FormatRulesEditor({
   const addRule = () => {
     if (adding === "threshold") {
       const num = Number(value);
-      if (!Number.isFinite(num)) return;
+      if (!value.trim() || !Number.isFinite(num)) return;
       onChange([
         ...rules,
         { id: crypto.randomUUID(), type: "threshold", operator, value: num, color, background },
@@ -6504,7 +6834,8 @@ function FormatRulesEditor({
     } else if (adding === "scale") {
       const mn = Number(min),
         mx = Number(max);
-      if (!Number.isFinite(mn) || !Number.isFinite(mx) || mn === mx) return;
+      if (!min.trim() || !max.trim() || !Number.isFinite(mn) || !Number.isFinite(mx) || mx <= mn)
+        return;
       onChange([
         ...rules,
         { id: crypto.randomUUID(), type: "scale", min: mn, max: mx, minColor, maxColor },
@@ -6650,7 +6981,7 @@ function FormatRulesEditor({
             <Button variant="ghost" size="sm" onClick={cancel}>
               Cancelar
             </Button>
-            <Button size="sm" onClick={addRule}>
+            <Button size="sm" disabled={!canAddRule} onClick={addRule}>
               Adicionar regra
             </Button>
           </div>
