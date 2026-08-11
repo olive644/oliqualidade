@@ -345,3 +345,48 @@ export function buildLiveDashboardContext(
     ),
   };
 }
+
+/** Sugestões curtas que sempre nascem dos dados e widgets visíveis agora. */
+export function buildLiveSuggestedPrompts(context: LiveDashboardContext): string[] {
+  const prompts: string[] = [];
+  const visibleRowLabel = `${context.visibleRows.toLocaleString("pt-BR")} ${
+    context.visibleRows === 1 ? "registro" : "registros"
+  }`;
+  const add = (prompt: string | undefined) => {
+    if (prompt && !prompts.includes(prompt) && prompts.length < 4) prompts.push(prompt);
+  };
+  const readyWidgets = context.widgets.filter((widget) => widget.status === "ready");
+  const trend = readyWidgets.find((widget) => widget.trend)?.trend;
+  const trendWidget = readyWidgets.find((widget) => widget.trend);
+  if (trend && trendWidget)
+    add(
+      `Explique a variação de ${trend.formattedChange} em ${trendWidget.title}, de ${trend.firstPeriod.label} até ${trend.lastPeriod.label}.`,
+    );
+
+  const ranking = readyWidgets.find(
+    (widget) => widget.type === "ranking" && (widget.series?.items.length ?? 0) > 1,
+  );
+  if (ranking) add(`Quem lidera ${ranking.title} e qual é a diferença para o segundo colocado?`);
+
+  const metric = readyWidgets.find(
+    (widget) => widget.displayedValue && widget.type !== "folder-files" && !widget.trend,
+  );
+  if (metric?.displayedValue)
+    add(
+      `O que o valor ${metric.displayedValue.formatted} de ${metric.title} representa nesta visão?`,
+    );
+
+  const chart = readyWidgets.find(
+    (widget) =>
+      ["bar", "pie", "line", "area", "map"].includes(widget.type) &&
+      (widget.series?.items.length ?? 0) > 0,
+  );
+  if (chart) add(`Quais são os principais destaques de ${chart.title}?`);
+
+  if (context.filters.length || context.search)
+    add(`Resuma ${visibleRowLabel} desta visão filtrada.`);
+  else add(`Resuma os principais resultados de ${visibleRowLabel} visíveis.`);
+
+  add("Há valores atípicos ou sinais de qualidade que merecem atenção?");
+  return prompts;
+}
