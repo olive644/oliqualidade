@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregate,
   applyMissingRules,
+  barChartPresentation,
   detectQualitySignals,
   groupAndAggregate,
   leftJoin,
@@ -23,6 +24,16 @@ describe("sortAllBarCategories", () => {
     expect(sorted).toHaveLength(24);
     expect(sorted[0]?.total).toBe(24);
     expect(sorted.at(-1)?.total).toBe(1);
+  });
+});
+
+describe("barChartPresentation", () => {
+  it("mantém colunas compactas quando há poucas categorias", () => {
+    expect(barChartPresentation(8)).toEqual({ scrollable: false, contentHeight: 256 });
+  });
+
+  it("cria uma linha legível por categoria e habilita rolagem em bases extensas", () => {
+    expect(barChartPresentation(300)).toEqual({ scrollable: true, contentHeight: 9000 });
   });
 });
 

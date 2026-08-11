@@ -11,6 +11,14 @@ export function sortAllBarCategories<T extends { total: number }>(series: T[]): 
   return [...series].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
 }
 
+export function barChartPresentation(categoryCount: number) {
+  const scrollable = categoryCount > 12;
+  return {
+    scrollable,
+    contentHeight: scrollable ? Math.max(288, categoryCount * 30) : 256,
+  };
+}
+
 /**
  * Aplica as regras de dados ausentes configuradas por coluna.
  * - Numéricas: ignore (padrão, mantém null), zero, interpolate, hide-row

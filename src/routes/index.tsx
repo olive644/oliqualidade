@@ -165,6 +165,7 @@ import {
   pieRoundnessFor,
   relevantAggregationOps,
   sortAllBarCategories,
+  barChartPresentation,
   toggleClickFilter,
   type AggregationOp,
   type QualitySignal,
@@ -4548,6 +4549,32 @@ function AxisTick({
   );
 }
 
+function CategoryAxisTick({
+  x,
+  y,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string | number };
+}) {
+  const value = String(payload?.value ?? "");
+  const missing = value === NOT_INFORMED;
+  return (
+    <text
+      x={(x ?? 0) - 8}
+      y={(y ?? 0) + 4}
+      textAnchor="end"
+      fontSize={10}
+      fontStyle={missing ? "italic" : "normal"}
+      fill={missing ? "var(--muted-foreground)" : "var(--foreground)"}
+    >
+      <title>{value}</title>
+      {truncateLabel(value, 24)}
+    </text>
+  );
+}
+
 function compactAxisValue(value: number, kind: Kind) {
   const options: Intl.NumberFormatOptions = {
     notation: "compact",
@@ -5378,6 +5405,7 @@ function WidgetCard({
         ? sortChronologically(grouped)
         : grouped;
     const barSeries = w.type === "bar" ? sortAllBarCategories(series) : series;
+    const barPresentation = barChartPresentation(barSeries.length);
     const pieSeries = (() => {
       if (w.type !== "pie") return series;
       if (series.length <= 6) return series;
@@ -5469,75 +5497,140 @@ function WidgetCard({
           </p>
         ) : w.type === "bar" ? (
           <>
-            <div className="h-64 p-4">
-              <ResponsiveContainer>
-                <BarChart
-                  data={barSeries}
-                  margin={{ top: 20, right: 16, left: 12, bottom: 26 }}
-                  barCategoryGap={
-                    barSeries.length > 20 ? "48%" : barSeries.length > 10 ? "34%" : "18%"
-                  }
-                >
-                  <defs>
-                    <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
-                      <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.55} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.6} />
-                  <XAxis
-                    dataKey="name"
-                    tick={(props) => <AxisTick {...props} />}
-                    tickLine={false}
-                    axisLine={{ stroke: "var(--border)" }}
-                    label={{
-                      value: groupCol.label,
-                      position: "insideBottom",
-                      offset: -16,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      fill: "var(--muted-foreground)",
-                    }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                    tickLine={false}
-                    axisLine={false}
-                    width={66}
-                    tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
-                  />
-                  <ChartTooltip
-                    cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
-                    content={(props) => (
-                      <BarTooltip
-                        active={props.active}
-                        payload={props.payload as { value?: number }[]}
-                        label={props.label as string}
-                        series={barSeries}
-                        kind={valueCol.kind}
-                      />
-                    )}
-                  />
-                  <Bar
-                    dataKey="total"
-                    fill={`url(#bar-grad-${w.id})`}
-                    radius={[6, 6, 0, 0]}
-                    maxBarSize={Math.max(10, Math.min(72, Math.floor(680 / barSeries.length)))}
-                    onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
-                    cursor="pointer"
-                    animationDuration={500}
+            <div
+              className={cn(
+                "p-4",
+                barPresentation.scrollable ? "max-h-[28rem] overflow-y-auto" : "h-64",
+              )}
+            >
+              <div
+                style={
+                  barPresentation.scrollable
+                    ? { height: barPresentation.contentHeight, minWidth: 560 }
+                    : { height: "100%" }
+                }
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={barSeries}
+                    layout={barPresentation.scrollable ? "vertical" : "horizontal"}
+                    margin={
+                      barPresentation.scrollable
+                        ? { top: 4, right: 112, left: 8, bottom: 18 }
+                        : { top: 20, right: 16, left: 12, bottom: 26 }
+                    }
+                    barCategoryGap={
+                      barPresentation.scrollable ? "22%" : barSeries.length > 10 ? "34%" : "18%"
+                    }
                   >
-                    <LabelList
-                      dataKey="total"
-                      position="top"
-                      fontSize={10}
-                      fill="var(--muted-foreground)"
-                      formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                    <defs>
+                      <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
+                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.55} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      vertical={!barPresentation.scrollable}
+                      horizontal={barPresentation.scrollable}
+                      stroke="var(--border)"
+                      strokeOpacity={0.6}
                     />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                    {barPresentation.scrollable ? (
+                      <>
+                        <XAxis
+                          type="number"
+                          tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                          tickLine={false}
+                          axisLine={{ stroke: "var(--border)" }}
+                          tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
+                          label={{
+                            value: valueCol.label,
+                            position: "insideBottom",
+                            offset: -16,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            fill: "var(--muted-foreground)",
+                          }}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          tick={(props) => <CategoryAxisTick {...props} />}
+                          tickLine={false}
+                          axisLine={false}
+                          interval={0}
+                          width={164}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <XAxis
+                          type="category"
+                          dataKey="name"
+                          tick={(props) => <AxisTick {...props} />}
+                          tickLine={false}
+                          axisLine={{ stroke: "var(--border)" }}
+                          label={{
+                            value: groupCol.label,
+                            position: "insideBottom",
+                            offset: -16,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            fill: "var(--muted-foreground)",
+                          }}
+                        />
+                        <YAxis
+                          type="number"
+                          tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={66}
+                          tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
+                        />
+                      </>
+                    )}
+                    <ChartTooltip
+                      cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
+                      content={(props) => (
+                        <BarTooltip
+                          active={props.active}
+                          payload={props.payload as { value?: number }[]}
+                          label={props.label as string}
+                          series={barSeries}
+                          kind={valueCol.kind}
+                        />
+                      )}
+                    />
+                    <Bar
+                      dataKey="total"
+                      fill={`url(#bar-grad-${w.id})`}
+                      radius={barPresentation.scrollable ? [0, 6, 6, 0] : [6, 6, 0, 0]}
+                      maxBarSize={
+                        barPresentation.scrollable
+                          ? 20
+                          : Math.max(10, Math.min(72, Math.floor(680 / barSeries.length)))
+                      }
+                      onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
+                      cursor="pointer"
+                      animationDuration={500}
+                    >
+                      <LabelList
+                        dataKey="total"
+                        position={barPresentation.scrollable ? "right" : "top"}
+                        fontSize={10}
+                        fill="var(--muted-foreground)"
+                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
+            {barPresentation.scrollable && (
+              <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+                {barSeries.length.toLocaleString("pt-BR")} categorias · role para ver todas
+              </p>
+            )}
             <p className="sr-only">
               Tabela alternativa ao gráfico de barras:{" "}
               {barSeries.map((g) => `${g.name}, ${g.total}`).join("; ")}.
