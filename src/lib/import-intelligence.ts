@@ -197,7 +197,7 @@ function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
         address,
         formula: `=${formula}`,
         supported,
-        reason,
+        ...(reason ? { reason } : {}),
         referencesOtherSheet,
         containsRange,
       });
@@ -618,7 +618,13 @@ export function normalizeRows(
     const next: Row = { ...row };
     for (const column of columns) {
       const result = normalizeImportedValue(row[column.key], column.kind);
-      if (result.changed) {
+      if (
+        result.changed &&
+        (result.value === null ||
+          typeof result.value === "string" ||
+          typeof result.value === "number" ||
+          typeof result.value === "boolean")
+      ) {
         next[column.key] = result.value;
         changes++;
         if (result.reason) reasons.add(`${column.key}: ${result.reason}`);

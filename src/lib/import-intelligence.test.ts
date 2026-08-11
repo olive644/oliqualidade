@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import {
   diagnoseImportedSheet,
+  getFormulaSummary,
   normalizeImportedValue,
   normalizeRows,
   sanitizeRowsForAi,
@@ -164,8 +165,8 @@ describe("normalização de valores importados", () => {
         { key: "Ativo", kind: "boolean" },
       ],
     );
-    expect(result.rows[0]?.Valor).toBe(2500);
-    expect(result.rows[0]?.Ativo).toBe(false);
+    expect(result.rows[0]?.["Valor"]).toBe(2500);
+    expect(result.rows[0]?.["Ativo"]).toBe(false);
     expect(result.changes).toBe(2);
   });
 });

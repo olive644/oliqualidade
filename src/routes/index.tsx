@@ -519,7 +519,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         name: s.name,
         rows: s.rows,
         columns: infer(s.rows),
-        diagnostics: s.diagnostics,
+        ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
       })),
     );
     setReviewSheetIndex(0);
@@ -1655,17 +1655,18 @@ function Review(p: {
                   {fmt(rows[0]?.[c.key] ?? null, c.kind) ?? "–"}
                 </span>
               </div>
-              {active.diagnostics?.columns.find((d) => d.key === c.key) && (
+              {active?.diagnostics?.columns.find((d) => d.key === c.key) && (
                 <div className="mt-2 flex items-center gap-2 pl-8 text-[11px] text-muted-foreground">
                   <span>
                     Qualidade:{" "}
-                    {active.diagnostics.columns.find((d) => d.key === c.key)?.qualityScore}%
+                    {active?.diagnostics?.columns.find((d) => d.key === c.key)?.qualityScore}%
                   </span>
                   <span>·</span>
                   <span>
-                    {active.diagnostics.columns.find((d) => d.key === c.key)?.missing ?? 0} ausentes
+                    {active?.diagnostics?.columns.find((d) => d.key === c.key)?.missing ?? 0}{" "}
+                    ausentes
                   </span>
-                  {active.diagnostics.columns.find((d) => d.key === c.key)?.sensitive && (
+                  {active?.diagnostics?.columns.find((d) => d.key === c.key)?.sensitive && (
                     <span className="text-amber-600">· sensível</span>
                   )}
                 </div>

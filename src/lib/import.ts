@@ -738,7 +738,7 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
     const ws = wb.Sheets[name];
     if (!ws) return { name, rows: [], warning: null };
     const { rows, warning, diagnostics } = sheetToRows(ws);
-    return { name, rows, warning, diagnostics };
+    return { name, rows, warning, ...(diagnostics ? { diagnostics } : {}) };
   }).filter((s) => s.rows.length > 0);
 }
 

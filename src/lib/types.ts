@@ -1,4 +1,4 @@
-export type Value = string | number | null;
+export type Value = string | number | boolean | null;
 export type Row = Record<string, Value>;
 export type Kind = "number" | "currency" | "percentage" | "text" | "date" | "category";
 
