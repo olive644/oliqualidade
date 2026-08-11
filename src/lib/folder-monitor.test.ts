@@ -71,6 +71,29 @@ describe("folder monitor", () => {
     await expect(listSupportedWorkbooks(directory)).resolves.toEqual(["custos.CSV", "vendas.xlsx"]);
   });
 
+  it("usa entries do Chrome para contar duas planilhas", async () => {
+    const files = ["janeiro.xlsx", "fevereiro.xlsx", "anotacoes.docx"];
+    const directory = {
+      kind: "directory" as const,
+      name: "Vendas",
+      resolve: async () => null,
+      getFileHandle: async () => {
+        throw new Error("unused");
+      },
+      entries: async function* () {
+        for (const name of files)
+          yield [
+            name,
+            { kind: "file" as const, name, getFile: async () => ({ name }) as File },
+          ] as [string, LocalFileHandle];
+      },
+    };
+    await expect(listSupportedWorkbooks(directory)).resolves.toEqual([
+      "fevereiro.xlsx",
+      "janeiro.xlsx",
+    ]);
+  });
+
   it("informa quando o navegador não oferece acesso seguro a pastas", async () => {
     await expect(pickFolderWorkbook({} as Window)).rejects.toThrow("unsupported");
   });

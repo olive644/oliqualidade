@@ -4882,8 +4882,14 @@ function WidgetCard({
   );
 
   if (w.type === "folder-files") {
+    const monitoredFiles = folderMonitor?.fileNames?.length
+      ? folderMonitor.fileNames
+      : folderMonitor?.fileName
+        ? [folderMonitor.fileName]
+        : [];
+    const monitoredCount = monitoredFiles.length;
     const formats = new Map<string, number>();
-    for (const fileName of folderMonitor?.fileNames ?? []) {
+    for (const fileName of monitoredFiles) {
       const extension = fileName.split(".").pop()?.toUpperCase() ?? "OUTRO";
       formats.set(extension, (formats.get(extension) ?? 0) + 1);
     }
@@ -4902,10 +4908,10 @@ function WidgetCard({
         <div className="grid min-h-40 grid-cols-[auto_1fr] items-center gap-5 p-5">
           <div>
             <p className="font-display text-5xl font-extrabold tracking-tight text-primary">
-              {folderMonitor?.fileCount ?? 0}
+              {monitoredCount}
             </p>
             <p className="mt-1 text-xs font-medium text-muted-foreground">
-              {folderMonitor?.fileCount === 1 ? "planilha compatível" : "planilhas compatíveis"}
+              {monitoredCount === 1 ? "planilha compatível" : "planilhas compatíveis"}
             </p>
             <p className="mt-3 max-w-32 truncate font-mono text-[10px] text-muted-foreground">
               {folderMonitor ? folderMonitor.folderName : "Nenhuma pasta conectada"}

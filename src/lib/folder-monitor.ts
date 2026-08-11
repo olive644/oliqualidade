@@ -28,6 +28,9 @@ export type LocalDirectoryHandle = {
   name: string;
   resolve: (handle: LocalFileHandle) => Promise<string[] | null>;
   getFileHandle: (name: string) => Promise<LocalFileHandle>;
+  entries?: () => AsyncIterableIterator<
+    [string, LocalFileHandle | { kind: "directory"; name: string }]
+  >;
   values?: () => AsyncIterableIterator<LocalFileHandle | { kind: "directory"; name: string }>;
 };
 
@@ -48,11 +51,17 @@ export type FolderWorkbookSelection = {
 };
 
 export async function listSupportedWorkbooks(directory: LocalDirectoryHandle) {
-  if (!directory.values) return [];
-  const names: string[] = [];
-  for await (const entry of directory.values())
-    if (entry.kind === "file" && isSupportedWorkbook(entry.name)) names.push(entry.name);
-  return names.sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const names = new Set<string>();
+  // Chromium expõe `entries()` de forma mais consistente; algumas versões
+  // oferecem apenas `values()`. Aceitar ambos evita a falsa contagem zero.
+  if (directory.entries) {
+    for await (const [name, entry] of directory.entries())
+      if (entry.kind === "file" && isSupportedWorkbook(name)) names.add(name);
+  } else if (directory.values) {
+    for await (const entry of directory.values())
+      if (entry.kind === "file" && isSupportedWorkbook(entry.name)) names.add(entry.name);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
 export async function pickFolderWorkbook(win: Window): Promise<FolderWorkbookSelection> {
