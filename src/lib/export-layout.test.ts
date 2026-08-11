@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captureScale, pdfPageSlices } from "@/lib/export-layout";
+import { captureScale, pdfPageSlices, pdfTablePages } from "@/lib/export-layout";
 
 describe("export layout", () => {
   it("mantém alta resolução sem ultrapassar o limite seguro de pixels", () => {
@@ -22,5 +22,29 @@ describe("export layout", () => {
     const slices = pdfPageSlices(1000, 1900, 700, 500);
     expect(slices.reduce((total, slice) => total + slice.height, 0)).toBe(1900);
     expect(slices[0]).toEqual({ start: 0, height: 714 });
+  });
+
+  it("pagina tabelas largas e longas sem cortar linhas ou colunas", () => {
+    const pages = pdfTablePages(55, 12, 700, 500, {
+      minColumnWidthPt: 100,
+      rowHeightPt: 20,
+      tableHeaderHeightPt: 30,
+      titleHeightPt: 30,
+    });
+
+    expect(pages).toEqual([
+      { columnStart: 0, columnEnd: 7, rowStart: 0, rowEnd: 22 },
+      { columnStart: 0, columnEnd: 7, rowStart: 22, rowEnd: 44 },
+      { columnStart: 0, columnEnd: 7, rowStart: 44, rowEnd: 55 },
+      { columnStart: 7, columnEnd: 12, rowStart: 0, rowEnd: 22 },
+      { columnStart: 7, columnEnd: 12, rowStart: 22, rowEnd: 44 },
+      { columnStart: 7, columnEnd: 12, rowStart: 44, rowEnd: 55 },
+    ]);
+  });
+
+  it("gera uma página de cabeçalho para uma tabela vazia", () => {
+    expect(pdfTablePages(0, 3, 700, 500)).toEqual([
+      { columnStart: 0, columnEnd: 3, rowStart: 0, rowEnd: 0 },
+    ]);
   });
 });
