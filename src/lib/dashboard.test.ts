@@ -148,3 +148,36 @@ describe("mergeReimportedSheets", () => {
     expect(merged.map((s) => s.name)).toEqual(["Vendas"]);
   });
 });
+
+describe("migração de widgets incompatíveis", () => {
+  it("remove métricas antigas baseadas em códigos e mantém a tabela", () => {
+    const migrated = migrateDashboard({
+      id: "controle",
+      name: "Controle",
+      sheets: [
+        {
+          name: "Dados",
+          rows: [{ "Nº 1": "39960", "Data G": "20/05/2026" }],
+          columns: [
+            { key: "Nº 1", label: "Nº 1", kind: "text", visible: true, description: "" },
+            { key: "Data G", label: "Data G", kind: "date", visible: true, description: "" },
+          ],
+          filters: [],
+          widgets: [
+            { id: "bad", type: "metric-trend", metricKey: "Nº 1", span: 1, size: "sm" },
+            { id: "table", type: "table", span: 3, size: "md" },
+          ],
+        },
+      ],
+      activeSheetIndex: 0,
+      createdAt: 0,
+      updatedAt: 0,
+      pinned: false,
+    });
+    expect(migrated.sheets[0]?.widgets?.some((widget) => widget.id === "bad")).toBe(false);
+    expect(migrated.sheets[0]?.widgets?.some((widget) => widget.type === "table")).toBe(true);
+    expect(migrated.sheets[0]?.autoDashboard?.warnings.join(" ")).toContain(
+      "Nenhuma métrica segura",
+    );
+  });
+});

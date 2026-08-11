@@ -8,6 +8,8 @@ import type {
   SheetData,
   Widget,
 } from "@/lib/types";
+import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
+import { numericKinds } from "@/lib/types";
 
 type LegacyDashboard = {
   id: string;
@@ -26,6 +28,47 @@ type LegacyDashboard = {
   activeSheetIndex?: number;
 };
 
+function widgetCompatible(widget: Widget, columns: Column[]): boolean {
+  const byKey = (key: string | undefined) => columns.find((column) => column.key === key);
+  if (widget.type === "table" || widget.type === "folder-files") return true;
+  if (widget.type === "metric" || widget.type === "metric-trend" || widget.type === "rating") {
+    return numericKinds.includes(byKey(widget.metricKey)?.kind ?? "text");
+  }
+  const group = byKey(widget.groupKey);
+  const value = byKey(widget.valueKey);
+  return Boolean(
+    group &&
+    value &&
+    numericKinds.includes(value.kind) &&
+    (widget.type !== "line" || group.kind === "date"),
+  );
+}
+
+function repairInvalidWidgets(sheet: SheetData): SheetData {
+  if (!sheet.widgets?.some((widget) => !widgetCompatible(widget, sheet.columns))) return sheet;
+  const plan = generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows });
+  const recommended = buildRecommendedWidgets(plan, sheet.columns, sheet.rows);
+  const preserved = sheet.widgets.filter((widget) => widgetCompatible(widget, sheet.columns));
+  const signatures = new Set(
+    preserved.map((widget) =>
+      [widget.type, widget.metricKey, widget.groupKey, widget.valueKey, widget.op].join("|"),
+    ),
+  );
+  return {
+    ...sheet,
+    autoDashboard: plan,
+    widgets: [
+      ...preserved,
+      ...recommended.filter(
+        (widget) =>
+          !signatures.has(
+            [widget.type, widget.metricKey, widget.groupKey, widget.valueKey, widget.op].join("|"),
+          ),
+      ),
+    ],
+  };
+}
+
 /**
  * Migra um painel salvo no formato antigo (rows/columns/filters/widgets/
  * bookmarks direto no Dashboard, uma tabela só por painel) para o formato
@@ -39,7 +82,7 @@ type LegacyDashboard = {
 export function migrateDashboard(raw: unknown): Dashboard {
   const d = raw as LegacyDashboard;
   if (Array.isArray(d.sheets)) {
-    const sheets = d.sheets;
+    const sheets = d.sheets.map(repairInvalidWidgets);
     const activeSheetIndex =
       typeof d.activeSheetIndex === "number" &&
       d.activeSheetIndex >= 0 &&
