@@ -1,0 +1,110 @@
+import type {
+  Bookmark,
+  ChartConfig,
+  Column,
+  Dashboard,
+  FilterRule,
+  Row,
+  SheetData,
+  Widget,
+} from "@/lib/types";
+
+type LegacyDashboard = {
+  id: string;
+  name: string;
+  rows?: Row[];
+  columns?: Column[];
+  filters?: FilterRule[];
+  createdAt: number;
+  updatedAt: number;
+  pinned: boolean;
+  previousSnapshot?: SheetData["previousSnapshot"];
+  chartConfig?: ChartConfig;
+  widgets?: Widget[];
+  bookmarks?: Bookmark[];
+  sheets?: SheetData[];
+  activeSheetIndex?: number;
+};
+
+/**
+ * Migra um painel salvo no formato antigo (rows/columns/filters/widgets/
+ * bookmarks direto no Dashboard, uma tabela só por painel) para o formato
+ * novo com múltiplas abas (sheets[]), uma por aba da planilha original —
+ * cada uma com sua própria base, filtros e widgets, como abas do Excel.
+ *
+ * Um painel já no formato novo passa praticamente inalterado, só com
+ * activeSheetIndex garantido dentro dos limites (defensivo contra um
+ * índice salvo que não exista mais, ex: depois de uma aba ser removida).
+ */
+export function migrateDashboard(raw: unknown): Dashboard {
+  const d = raw as LegacyDashboard;
+  if (Array.isArray(d.sheets)) {
+    const sheets = d.sheets;
+    const activeSheetIndex =
+      typeof d.activeSheetIndex === "number" &&
+      d.activeSheetIndex >= 0 &&
+      d.activeSheetIndex < sheets.length
+        ? d.activeSheetIndex
+        : 0;
+    return {
+      id: d.id,
+      name: d.name,
+      sheets,
+      activeSheetIndex,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      pinned: d.pinned,
+    };
+  }
+  const sheet: SheetData = {
+    name: "Dados",
+    rows: d.rows ?? [],
+    columns: d.columns ?? [],
+    filters: d.filters ?? [],
+    ...(d.previousSnapshot ? { previousSnapshot: d.previousSnapshot } : {}),
+    ...(d.chartConfig ? { chartConfig: d.chartConfig } : {}),
+    ...(d.widgets ? { widgets: d.widgets } : {}),
+    ...(d.bookmarks ? { bookmarks: d.bookmarks } : {}),
+  };
+  return {
+    id: d.id,
+    name: d.name,
+    sheets: [sheet],
+    activeSheetIndex: 0,
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+    pinned: d.pinned,
+  };
+}
+
+export function migrateDashboards(list: unknown[]): Dashboard[] {
+  return list.map(migrateDashboard);
+}
+
+/**
+ * Reimportação: casa cada aba recém-importada com uma aba existente do
+ * mesmo nome, preservando os widgets, marcadores e configuração de
+ * gráfico já montados nela, e gravando a versão anterior (previousSnapshot)
+ * para o delta real de cada métrica. Uma aba nova sem correspondente
+ * antiga nasce do zero, como se fosse a primeira importação dela.
+ * Abas antigas sem correspondente na nova importação são descartadas —
+ * reimportar substitui os dados, não soma abas antigas com novas.
+ */
+export function mergeReimportedSheets(
+  oldSheets: SheetData[],
+  newSheets: { name: string; rows: Row[]; columns: Column[] }[],
+): SheetData[] {
+  return newSheets.map((s) => {
+    const old = oldSheets.find((x) => x.name === s.name);
+    return {
+      name: s.name,
+      rows: s.rows,
+      columns: s.columns,
+      filters: [],
+      ...(old ? { previousSnapshot: { rows: old.rows, capturedAt: Date.now() } } : {}),
+      ...(old?.chartConfig ? { chartConfig: old.chartConfig } : {}),
+      ...(old?.widgets ? { widgets: old.widgets } : {}),
+      ...(old?.bookmarks ? { bookmarks: old.bookmarks } : {}),
+    };
+  });
+}

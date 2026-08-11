@@ -1,0 +1,548 @@
+import * as XLSX from "xlsx";
+import type { Row } from "@/lib/types";
+
+export type FormulaDiagnostic = {
+  address: string;
+  formula: string;
+  supported: boolean;
+  reason?: string;
+  referencesOtherSheet: boolean;
+  containsRange: boolean;
+};
+
+
+export type DetectedFieldKind =
+  | "text"
+  | "category"
+  | "integer"
+  | "number"
+  | "currency"
+  | "percentage"
+  | "date"
+  | "datetime"
+  | "boolean"
+  | "cpf"
+  | "cnpj"
+  | "email"
+  | "phone"
+  | "postal-code"
+  | "url"
+  | "id";
+
+export type ColumnDiagnostic = {
+  key: string;
+  label: string;
+  kind: DetectedFieldKind;
+  confidence: number;
+  filled: number;
+  missing: number;
+  unique: number;
+  duplicate: number;
+  examples: string[];
+  sensitive: boolean;
+  warnings: string[];
+  qualityScore: number;
+};
+
+export type TableRegionDiagnostic = {
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+  rows: number;
+  columns: number;
+  confidence: number;
+};
+
+export type ImportDiagnostics = {
+  formulaDiagnostics: FormulaDiagnostic[];
+  confidence: number;
+  rowCount: number;
+  columnCount: number;
+  duplicateRows: number;
+  emptyRows: number;
+  formulaCells: number;
+  mergedRanges: number;
+  hiddenRows: number;
+  hiddenColumns: number;
+  hasAutoFilter: boolean;
+  hasTables: boolean;
+  structuredTableNames: string[];
+  autofilterRange: string | null;
+  formulaExamples: string[];
+  columns: ColumnDiagnostic[];
+  tableRegions: TableRegionDiagnostic[];
+  transformations: string[];
+  warnings: string[];
+  qualityScore: number;
+  suggestedNormalization: string[];
+  header: { row: number; confidence: number };
+};
+
+const SENSITIVE_NAME = /(cpf|cnpj|rg|senha|password|token|secret|api[_ -]?key|telefone|celular|phone|email|e-mail|endereco|endereço|address|pix|conta banc)/i;
+const CPF = /^\d{11}$/;
+const CNPJ = /^\d{14}$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL = /^https?:\/\//i;
+const PHONE = /^(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\d{4}|\d{4})[-\s]?\d{4}$/;
+const CEP = /^\d{5}-?\d{3}$/;
+const CURRENCY = /^(?:R\$|US\$|€|£|¥|\$)\s*[+-]?[\d.]+(?:,\d+)?\s*$/;
+const PERCENTAGE = /^[+-]?(?:\d+(?:[.,]\d+)?)\s*%$/;
+const DATE = /^(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})$/;
+const DATETIME = /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}.*\d{1,2}:\d{2}/;
+
+function normalized(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function nonEmpty(values: unknown[]): string[] {
+  return values.map(normalized).filter(Boolean);
+}
+
+function kindFor(values: unknown[], label: string): { kind: DetectedFieldKind; confidence: number } {
+  const samples = nonEmpty(values).slice(0, 500);
+  if (!samples.length) return { kind: "text", confidence: 0.1 };
+  const name = label.toLowerCase();
+  const scores: Array<[DetectedFieldKind, number]> = [
+    ["cpf", samples.filter((v) => CPF.test(v.replace(/\D/g, "")) && v.replace(/\D/g, "").length === 11).length],
+    ["cnpj", samples.filter((v) => CNPJ.test(v.replace(/\D/g, "")) && v.replace(/\D/g, "").length === 14).length],
+    ["email", samples.filter((v) => EMAIL.test(v)).length],
+    ["url", samples.filter((v) => URL.test(v)).length],
+    ["postal-code", samples.filter((v) => CEP.test(v)).length],
+    ["phone", samples.filter((v) => PHONE.test(v.replace(/[().]/g, ""))).length],
+    ["currency", samples.filter((v) => CURRENCY.test(v)).length],
+    ["percentage", samples.filter((v) => PERCENTAGE.test(v)).length],
+    ["datetime", samples.filter((v) => DATETIME.test(v)).length],
+    ["date", samples.filter((v) => DATE.test(v)).length],
+  ];
+  const [specialKind, specialCount] = scores.sort((a, b) => b[1] - a[1])[0] ?? ["text", 0];
+  if (specialCount / samples.length >= 0.8) return { kind: specialKind, confidence: specialCount / samples.length };
+
+  const lower = samples.map((v) => v.toLowerCase());
+  if (lower.every((v) => ["true", "false", "sim", "não", "nao", "yes", "no"].includes(v))) {
+    return { kind: "boolean", confidence: 0.96 };
+  }
+
+  const numeric = samples.filter((v) => {
+    const s = v.replace(/\s/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
+    return s !== "" && Number.isFinite(Number(s));
+  });
+  if (numeric.length / samples.length >= 0.9) {
+    const integers = numeric.filter((v) => Number.isInteger(Number(v.replace(/\./g, "").replace(",", ".")))).length;
+    return { kind: integers === numeric.length ? "integer" : "number", confidence: numeric.length / samples.length };
+  }
+
+  const unique = new Set(samples.map((v) => v.toLowerCase())).size;
+  if (unique <= Math.max(20, samples.length * 0.15)) return { kind: "category", confidence: 0.82 };
+
+  if (/\b(id|codigo|código|cod|matricula|matrícula|sku|uuid)\b/i.test(name)) {
+    return { kind: "id", confidence: 0.76 };
+  }
+  return { kind: "text", confidence: 0.75 };
+}
+
+
+function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
+  const ref = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
+  if (!ref) return [];
+  const result: FormulaDiagnostic[] = [];
+  for (let r = ref.s.r; r <= ref.e.r; r++) {
+    for (let c = ref.s.c; c <= ref.e.c; c++) {
+      const address = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[address] as XLSX.CellObject | undefined;
+      if (!cell?.f) continue;
+      const formula = String(cell.f);
+      const referencesOtherSheet = /(?:'[^']+'|[A-Za-z_][\w .-]*)!/.test(formula);
+      const containsRange = /(?:\$?[A-Z]{1,3}\$?\d+:\$?[A-Z]{1,3}\$?\d+)/i.test(formula);
+      let reason: string | undefined;
+      let supported = true;
+      if (referencesOtherSheet) {
+        supported = false;
+        reason = "referência a outra aba";
+      } else if (containsRange) {
+        // O resolvedor atual suporta expressões simples, mas não intervalos.
+        supported = false;
+        reason = "intervalo de células ainda não é avaliado pelo resolvedor";
+      } else if (/[A-Z]+\s*\(/i.test(formula)) {
+        const names = [...formula.matchAll(/([A-Z][A-Z0-9_]*)\s*\(/gi)].map((m) => m[1]!.toUpperCase());
+        const supportedNames = new Set(["IFERROR", "ROUND", "ABS", "MIN", "MAX", "SUM"]);
+        const unsupported = names.find((name) => !supportedNames.has(name));
+        if (unsupported) {
+          supported = false;
+          reason = `função ${unsupported} não suportada pelo resolvedor`;
+        }
+      }
+      result.push({ address, formula: `=${formula}`, supported, reason, referencesOtherSheet, containsRange });
+      if (result.length >= 200) return result;
+    }
+  }
+  return result;
+}
+
+function sheetMeta(ws: XLSX.WorkSheet) {
+  const ref = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
+  let formulaCells = 0;
+  if (ref) {
+    for (let r = ref.s.r; r <= ref.e.r; r++) {
+      for (let c = ref.s.c; c <= ref.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined;
+        if (cell?.f) formulaCells++;
+      }
+    }
+  }
+  const rowsHidden = ref
+    ? Array.from({ length: ref.e.r - ref.s.r + 1 }, (_, i) => ws["!rows"]?.[ref.s.r + i]?.hidden === true).filter(Boolean).length
+    : 0;
+  const cols = ws["!cols"] ?? [];
+  const colsHidden = cols.filter((c) => c?.hidden === true).length;
+  const tables = ws["!tables"] as unknown;
+  const structuredTableNames = Array.isArray(tables)
+    ? tables.map((table) => String((table as { name?: unknown }).name ?? "")).filter(Boolean)
+    : [];
+  const formulaExamples: string[] = [];
+  if (ref) {
+    for (let r = ref.s.r; r <= ref.e.r && formulaExamples.length < 10; r++) {
+      for (let c = ref.s.c; c <= ref.e.c && formulaExamples.length < 10; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined;
+        if (cell?.f) formulaExamples.push(`${XLSX.utils.encode_cell({ r, c })}: =${cell.f}`);
+      }
+    }
+  }
+  return {
+    formulaCells,
+    mergedRanges: ws["!merges"]?.length ?? 0,
+    hiddenRows: rowsHidden,
+    hiddenColumns: colsHidden,
+    hasAutoFilter: Boolean(ws["!autofilter"]),
+    hasTables: Array.isArray(tables) ? tables.length > 0 : Boolean(tables),
+    structuredTableNames,
+    autofilterRange: ws["!autofilter"]?.ref ?? null,
+    formulaExamples,
+  };
+}
+
+function detectTableRegions(ws: XLSX.WorkSheet): TableRegionDiagnostic[] {
+  const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+    header: 1,
+    defval: null,
+    raw: true,
+  });
+  if (!aoa.length) return [];
+
+  const occupiedRows = aoa.map((row) => row.some((v) => v !== null && v !== ""));
+  const rowBands: Array<[number, number]> = [];
+  let start = -1;
+  for (let i = 0; i <= occupiedRows.length; i++) {
+    const occupied = i < occupiedRows.length && occupiedRows[i];
+    if (occupied && start === -1) start = i;
+    if (!occupied && start !== -1) {
+      if (i - start >= 2) rowBands.push([start, i - 1]);
+      start = -1;
+    }
+  }
+
+  const regions: TableRegionDiagnostic[] = [];
+  for (const [startRow, endRow] of rowBands) {
+    const columnUsed = new Map<number, number>();
+    for (let r = startRow; r <= endRow; r++) {
+      for (let c = 0; c < (aoa[r]?.length ?? 0); c++) {
+        const value = aoa[r]?.[c];
+        if (value !== null && value !== "") columnUsed.set(c, (columnUsed.get(c) ?? 0) + 1);
+      }
+    }
+    const columns = [...columnUsed.keys()].sort((a, b) => a - b);
+    if (!columns.length) continue;
+
+    let bandStart = columns[0]!;
+    for (let i = 1; i <= columns.length; i++) {
+      const prev = columns[i - 1]!;
+      const current = columns[i];
+      if (current === undefined || current - prev > 1) {
+        const bandEnd = prev;
+        const width = bandEnd - bandStart + 1;
+        const density = [...columnUsed.entries()]
+          .filter(([c]) => c >= bandStart && c <= bandEnd)
+          .reduce((sum, [, count]) => sum + count, 0) / Math.max(1, (endRow - startRow + 1) * width);
+        if (width >= 2 && density >= 0.12) {
+          regions.push({
+            startRow: startRow + 1,
+            endRow: endRow + 1,
+            startColumn: bandStart + 1,
+            endColumn: bandEnd + 1,
+            rows: endRow - startRow + 1,
+            columns: width,
+            confidence: Math.round(Math.min(1, 0.55 + density * 0.45) * 100) / 100,
+          });
+        }
+        if (current !== undefined) bandStart = current;
+      }
+    }
+  }
+
+  return regions.slice(0, 24);
+}
+
+function detectDateLocaleCandidates(values: unknown[]): string[] {
+  const samples = nonEmpty(values).filter((v) => /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(v));
+  if (!samples.length) return [];
+  const ambiguous = samples.some((v) => {
+    const m = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+    return Boolean(m && Number(m[1]) <= 12 && Number(m[2]) <= 12);
+  });
+  if (!ambiguous) return [];
+  return ["DD/MM/AAAA", "MM/DD/AAAA"];
+}
+
+
+function detectHeader(ws: XLSX.WorkSheet): { row: number; confidence: number } {
+  const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+    header: 1,
+    defval: null,
+    raw: true,
+  });
+  const limit = Math.min(40, aoa.length);
+  const width = Math.max(1, ...aoa.slice(0, limit).map((r) => r.length));
+  let best = { row: 0, confidence: 0 };
+  for (let r = 0; r < limit; r++) {
+    const row = aoa[r] ?? [];
+    const filled = row.filter((v) => v !== null && v !== "");
+    if (filled.length < 2) continue;
+    const textRatio = filled.filter((v) => typeof v === "string" && !/^[-+]?\d/.test(String(v).trim())).length / filled.length;
+    const fillRatio = filled.length / width;
+    const next = aoa[r + 1] ?? [];
+    const nextFilled = next.filter((v) => v !== null && v !== "").length;
+    const continuity = nextFilled > 0 ? Math.min(1, nextFilled / filled.length) : 0;
+    const uniqueRatio = new Set(filled.map((v) => String(v).trim().toLowerCase())).size / filled.length;
+    const confidence = Math.min(1, textRatio * 0.4 + fillRatio * 0.25 + continuity * 0.2 + uniqueRatio * 0.15);
+    if (confidence > best.confidence) best = { row: r + 1, confidence: Math.round(confidence * 100) / 100 };
+  }
+  return best;
+}
+
+function normalizationSuggestions(values: unknown[], kind: DetectedFieldKind): string[] {
+  const samples = nonEmpty(values).slice(0, 200);
+  const suggestions: string[] = [];
+  if (["currency", "number", "integer"].includes(kind) && samples.some((v) => /\d[.]\d{3},\d/.test(v))) {
+    suggestions.push("normalizar separadores numéricos brasileiros");
+  }
+  if (kind === "percentage" && samples.some((v) => /\d[,.]+\s*%/.test(v))) {
+    suggestions.push("normalizar percentuais para valor numérico");
+  }
+  if (kind === "date" || kind === "datetime") {
+    suggestions.push("preservar formato de data e normalizar internamente");
+  }
+  if (kind === "cpf" || kind === "cnpj" || kind === "postal-code" || kind === "phone") {
+    suggestions.push("preservar valor original e usar versão normalizada apenas para validação");
+  }
+  return suggestions;
+}
+
+export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDiagnostics {
+  const keys = Object.keys(rows[0] ?? {});
+  const columns: ColumnDiagnostic[] = keys.map((key) => {
+    const values = rows.map((row) => row[key]);
+    const filledValues = values.filter((v) => v !== null && v !== "");
+    const uniqueValues = new Set(filledValues.map((v) => normalized(v).toLowerCase()));
+    const { kind, confidence } = kindFor(filledValues, key);
+    const warnings: string[] = [];
+    const missing = values.length - filledValues.length;
+    if (values.length >= 5 && missing / values.length > 0.2) warnings.push("muitos valores ausentes");
+    if (uniqueValues.size === 1 && filledValues.length > 5) warnings.push("um único valor domina a coluna");
+    const sensitive = SENSITIVE_NAME.test(key) || ["cpf", "cnpj", "email", "phone", "postal-code"].includes(kind);
+    const completenessScore = values.length ? filledValues.length / values.length : 0;
+    const uniquenessScore = filledValues.length ? Math.min(1, uniqueValues.size / filledValues.length) : 0;
+    const qualityScore = Math.round(Math.max(0, Math.min(1, completenessScore * 0.55 + confidence * 0.3 + uniquenessScore * 0.15)) * 100);
+    return {
+      key,
+      label: key.replaceAll("_", " "),
+      kind,
+      confidence: Math.round(confidence * 100) / 100,
+      filled: filledValues.length,
+      missing,
+      unique: uniqueValues.size,
+      duplicate: Math.max(0, filledValues.length - uniqueValues.size),
+      examples: [...new Set(filledValues.map((v) => normalized(v)))].slice(0, 3),
+      sensitive,
+      warnings,
+      qualityScore,
+    };
+  });
+
+  const seenRows = new Set<string>();
+  let duplicateRows = 0;
+  let emptyRows = 0;
+  for (const row of rows) {
+    const values = keys.map((key) => row[key]);
+    if (values.every((v) => v === null || v === "")) {
+      emptyRows++;
+      continue;
+    }
+    const fingerprint = JSON.stringify(values);
+    if (seenRows.has(fingerprint)) duplicateRows++;
+    seenRows.add(fingerprint);
+  }
+
+  const meta = sheetMeta(ws);
+  const formulaDiagnostics = analyzeFormulas(ws);
+  const tableRegions = detectTableRegions(ws);
+  const transformations: string[] = [];
+  const warnings: string[] = [];
+  if (meta.formulaCells) warnings.push(`${meta.formulaCells} célula(s) com fórmula detectada(s)`);
+  const unsupportedFormulaCount = formulaDiagnostics.filter((f) => !f.supported).length;
+  if (unsupportedFormulaCount) {
+    warnings.push(`${unsupportedFormulaCount} fórmula(s) precisam de cálculo pelo Excel/serviço externo ou de suporte adicional`);
+  }
+  if (meta.mergedRanges) warnings.push(`${meta.mergedRanges} intervalo(s) de células mescladas detectado(s)`);
+  if (meta.hiddenRows || meta.hiddenColumns) warnings.push("existem linhas ou colunas ocultas");
+  if (meta.hasAutoFilter) warnings.push("a planilha possui filtro do Excel");
+  if (meta.hasTables) warnings.push(`uma ou mais tabelas estruturadas do Excel foram detectadas${meta.structuredTableNames.length ? ` (${meta.structuredTableNames.join(", ")})` : ""}`);
+  if (meta.autofilterRange) warnings.push(`filtro do Excel aplicado ao intervalo ${meta.autofilterRange}`);
+  if (meta.formulaExamples.length) transformations.push(`exemplos de fórmulas preservados: ${meta.formulaExamples.slice(0, 3).join(" | ")}`);
+  if (formulaDiagnostics.length) {
+    const supportedFormulaCount = formulaDiagnostics.filter((f) => f.supported).length;
+    transformations.push(`${supportedFormulaCount}/${formulaDiagnostics.length} fórmula(s) são compatíveis com o resolvedor local atual`);
+  }
+  if (tableRegions.length > 1) warnings.push(`${tableRegions.length} regiões de dados potencialmente independentes foram detectadas; revise antes de combinar tabelas diferentes`);
+  if (duplicateRows) warnings.push(`${duplicateRows} linha(s) duplicada(s)`);
+  if (columns.some((c) => c.sensitive)) warnings.push("há colunas potencialmente pessoais ou sensíveis; minimize esses dados antes de enviá-los para IA");
+  if (columns.some((c) => c.kind === "date" || c.kind === "datetime")) {
+    for (const column of columns.filter((c) => c.kind === "date" || c.kind === "datetime")) {
+      const candidates = detectDateLocaleCandidates(rows.map((row) => row[column.key]));
+      if (candidates.length) warnings.push(`a coluna "${column.label}" contém datas ambíguas; confirme o formato ${candidates.join(" ou ")}`);
+    }
+  }
+  if (duplicateRows) transformations.push(`${duplicateRows} linha(s) duplicada(s) identificada(s) para revisão`);
+  if (meta.hiddenRows) transformations.push(`${meta.hiddenRows} linha(s) oculta(s) detectada(s)`);
+  if (meta.hiddenColumns) transformations.push(`${meta.hiddenColumns} coluna(s) oculta(s) detectada(s)`);
+  if (meta.mergedRanges) transformations.push(`${meta.mergedRanges} intervalo(s) mesclado(s) detectado(s)`);
+
+  const avgColumnConfidence = columns.length
+    ? columns.reduce((sum, column) => sum + column.confidence, 0) / columns.length
+    : 0;
+  const completeness = rows.length
+    ? columns.length
+      ? columns.reduce((sum, column) => sum + column.filled / Math.max(1, rows.length), 0) / columns.length
+      : 0
+    : 0;
+  const confidence = Math.round(Math.max(0, Math.min(1, avgColumnConfidence * 0.65 + completeness * 0.35)) * 100);
+  const qualityScore = Math.round(columns.length ? columns.reduce((sum, column) => sum + column.qualityScore, 0) / columns.length : 0);
+  const header = detectHeader(ws);
+  const suggestedNormalization = columns.flatMap((column) => normalizationSuggestions(rows.map((row) => row[column.key]), column.kind)).filter((v, i, a) => a.indexOf(v) === i);
+  if (header.row > 1) transformations.push(`cabeçalho detectado na linha ${header.row}`);
+  if (header.confidence < 0.7) warnings.push(`confiança baixa na identificação do cabeçalho (${Math.round(header.confidence * 100)}%)`);
+  if (suggestedNormalization.length) transformations.push(...suggestedNormalization.map((item) => `normalização sugerida: ${item}`));
+
+  return {
+    confidence,
+    rowCount: rows.length,
+    columnCount: keys.length,
+    duplicateRows,
+    emptyRows,
+    ...meta,
+    formulaDiagnostics,
+    columns,
+    tableRegions,
+    transformations,
+    warnings,
+    qualityScore,
+    suggestedNormalization,
+    header,
+  };
+}
+
+
+export type NormalizationResult = {
+  value: unknown;
+  changed: boolean;
+  reason?: string;
+};
+
+function parseBrazilianNumber(raw: string): number | null {
+  const s = raw.trim().replace(/\s/g, "").replace(/^R\$/i, "").replace(/^US\$/i, "");
+  if (!s) return null;
+  const cleaned = s.replace(/\.(?=\d{3}(?:[.,]|$))/g, "").replace(",", ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Converte apenas representações inequívocas/fortemente prováveis para valores
+ * estruturados. O texto original deve continuar disponível no dado de origem.
+ */
+export function normalizeImportedValue(value: unknown, kind: DetectedFieldKind): NormalizationResult {
+  if (value === null || value === undefined || value === "") return { value, changed: false };
+  if (typeof value === "number" || typeof value === "boolean") return { value, changed: false };
+
+  const raw = String(value).trim();
+  if (!raw) return { value: raw, changed: false };
+
+  if (["currency", "number", "integer"].includes(kind)) {
+    const n = parseBrazilianNumber(raw);
+    if (n !== null) return { value: kind === "integer" ? Math.trunc(n) : n, changed: true, reason: "número normalizado" };
+  }
+
+  if (kind === "percentage") {
+    const n = parseBrazilianNumber(raw.replace("%", ""));
+    if (n !== null) return { value: n / 100, changed: true, reason: "percentual normalizado" };
+  }
+
+  if (kind === "cpf" || kind === "cnpj" || kind === "postal-code" || kind === "phone") {
+    const digits = raw.replace(/\D/g, "");
+    if (digits) return { value: digits, changed: digits !== raw, reason: "identificador normalizado apenas para validação" };
+  }
+
+  if (kind === "boolean") {
+    const lower = raw.toLowerCase();
+    if (["true", "sim", "yes"].includes(lower)) return { value: true, changed: true, reason: "booleano normalizado" };
+    if (["false", "não", "nao", "no"].includes(lower)) return { value: false, changed: true, reason: "booleano normalizado" };
+  }
+
+  return { value, changed: false };
+}
+
+export function normalizeRows(
+  rows: Row[],
+  columns: Pick<ColumnDiagnostic, "key" | "kind">[],
+): { rows: Row[]; changes: number; reasons: string[] } {
+  const reasons = new Set<string>();
+  let changes = 0;
+  const normalizedRows = rows.map((row) => {
+    const next: Row = { ...row };
+    for (const column of columns) {
+      const result = normalizeImportedValue(row[column.key], column.kind);
+      if (result.changed) {
+        next[column.key] = result.value;
+        changes++;
+        if (result.reason) reasons.add(`${column.key}: ${result.reason}`);
+      }
+    }
+    return next;
+  });
+  return { rows: normalizedRows, changes, reasons: [...reasons] };
+}
+
+export function sanitizeRowsForAi(rows: Row[], columns: ColumnDiagnostic[], maxRows = 100) {
+  const sensitiveKeys = new Set(columns.filter((column) => column.sensitive).map((column) => column.key));
+  return rows.slice(0, maxRows).map((row) => {
+    const sanitized: Row = {};
+    for (const [key, value] of Object.entries(row)) {
+      sanitized[key] = sensitiveKeys.has(key) ? "[DADO_SENSIVEL_REMOVIDO]" : value;
+    }
+    return sanitized;
+  });
+}
+
+
+export function getFormulaSummary(diagnostics: ImportDiagnostics) {
+  const supported = diagnostics.formulaDiagnostics.filter((item) => item.supported).length;
+  const unsupported = diagnostics.formulaDiagnostics.length - supported;
+  const crossSheet = diagnostics.formulaDiagnostics.filter((item) => item.referencesOtherSheet).length;
+  const ranges = diagnostics.formulaDiagnostics.filter((item) => item.containsRange).length;
+  return {
+    total: diagnostics.formulaDiagnostics.length,
+    supported,
+    unsupported,
+    crossSheet,
+    ranges,
+  };
+}
