@@ -108,6 +108,7 @@ export type SheetData = {
   previousSnapshot?: { rows: Row[]; capturedAt: number };
   chartConfig?: ChartConfig; // legado: usado só para migrar painéis sem "widgets"
   widgets?: Widget[];
+  autoDashboard?: AutoDashboardPlan;
   bookmarks?: Bookmark[];
 };
 
@@ -131,3 +132,4 @@ export const kinds: Record<Kind, string> = {
 };
 
 export const numericKinds: Kind[] = ["number", "currency", "percentage"];
+import type { AutoDashboardPlan } from "@/lib/auto-dashboard";

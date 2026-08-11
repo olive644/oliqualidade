@@ -130,6 +130,15 @@ describe("mergeReimportedSheets", () => {
     expect(merged[0]!.previousSnapshot).toBeUndefined();
   });
 
+  it("mantém widgets automáticos em uma aba realmente nova", () => {
+    const autoWidgets = [{ id: "auto-1" }] as unknown as Widget[];
+    const merged = mergeReimportedSheets(
+      [],
+      [{ name: "Nova", rows, columns, widgets: autoWidgets }],
+    );
+    expect(merged[0]?.widgets).toBe(autoWidgets);
+  });
+
   it("uma aba antiga sem correspondente na nova importação é descartada", () => {
     const oldSheets: SheetData[] = [
       { name: "Vendas", rows, columns, filters: [] },

@@ -92,7 +92,7 @@ export function migrateDashboards(list: unknown[]): Dashboard[] {
  */
 export function mergeReimportedSheets(
   oldSheets: SheetData[],
-  newSheets: { name: string; rows: Row[]; columns: Column[] }[],
+  newSheets: Pick<SheetData, "name" | "rows" | "columns" | "widgets" | "autoDashboard">[],
 ): SheetData[] {
   return newSheets.map((s) => {
     const old = oldSheets.find((x) => x.name === s.name);
@@ -104,6 +104,12 @@ export function mergeReimportedSheets(
       ...(old ? { previousSnapshot: { rows: old.rows, capturedAt: Date.now() } } : {}),
       ...(old?.chartConfig ? { chartConfig: old.chartConfig } : {}),
       ...(old?.widgets ? { widgets: old.widgets } : {}),
+      ...(!old && s.widgets ? { widgets: s.widgets } : {}),
+      ...(old?.autoDashboard
+        ? { autoDashboard: old.autoDashboard }
+        : s.autoDashboard
+          ? { autoDashboard: s.autoDashboard }
+          : {}),
       ...(old?.bookmarks ? { bookmarks: old.bookmarks } : {}),
     };
   });

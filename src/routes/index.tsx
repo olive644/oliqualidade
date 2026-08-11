@@ -165,6 +165,7 @@ import {
   type QualitySignal,
 } from "@/lib/data-pipeline";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
+import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import {
   loadDashboards,
   loadGeocodeCache,
@@ -607,11 +608,20 @@ export function OliAm({ routeId }: { routeId?: string }) {
   };
 
   const confirmReview = () => {
-    const sheets: { name: string; rows: Row[]; columns: Column[] }[] = reviewSheets.map((s) => ({
-      name: s.name,
-      rows: s.rows,
-      columns: s.columns,
-    }));
+    const sheets = reviewSheets.map((s) => {
+      const autoDashboard = generateAutoDashboardPlan({
+        columns: s.columns,
+        rows: s.rows,
+        ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
+      });
+      return {
+        name: s.name,
+        rows: s.rows,
+        columns: s.columns,
+        autoDashboard,
+        widgets: buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
+      };
+    });
     if (reviewTarget === "new") {
       const dash: Dashboard = {
         id: crypto.randomUUID(),
@@ -3007,6 +3017,42 @@ function Dashboard(p: {
                   {data.length} de {sheet.rows.length} linhas na visão atual
                 </p>
               </div>
+              {sheet.autoDashboard && (
+                <div className="border-b border-border p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Dashboard sugerido
+                    </p>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                      {sheet.autoDashboard.confidence}% confiança
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    Criado automaticamente a partir dos tipos, preenchimento e qualidade das
+                    colunas.
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {sheet.autoDashboard.recommendations.slice(0, 5).map((item) => (
+                      <div key={item.id} className="rounded-xl border border-border bg-card p-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-medium leading-snug">{item.title}</p>
+                          <span className="shrink-0 font-mono text-[10px] text-primary">
+                            {item.confidence}%
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                          {item.reasons[0]}
+                        </p>
+                        {item.warnings[0] && (
+                          <p className="mt-1 text-[11px] leading-relaxed text-amber-600">
+                            {item.warnings[0]}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {nums.length > 0 && (
                 <div className="border-b border-border p-4">
                   <p className="mb-3 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
