@@ -4413,6 +4413,22 @@ function AxisTick({
   );
 }
 
+function compactAxisValue(value: number, kind: Kind) {
+  const options: Intl.NumberFormatOptions = {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  };
+  if (kind === "currency") {
+    options.style = "currency";
+    options.currency = "BRL";
+  }
+  if (kind === "percentage") {
+    options.style = "percent";
+    options.maximumFractionDigits = 0;
+  }
+  return new Intl.NumberFormat("pt-BR", options).format(value);
+}
+
 /**
  * Legenda customizada da pizza. O Recharts não desenha rótulo nenhum nas
  * fatias por padrão neste widget (o espaço é compacto demais), então esta
@@ -5304,13 +5320,9 @@ function WidgetCard({
           </p>
         ) : w.type === "bar" ? (
           <>
-            <div className="h-72 p-4">
+            <div className="h-64 p-4">
               <ResponsiveContainer>
-                <BarChart
-                  layout="vertical"
-                  data={barSeries}
-                  margin={{ top: 4, right: 72, left: 8, bottom: 18 }}
-                >
+                <BarChart data={barSeries} margin={{ top: 20, right: 16, left: 12, bottom: 26 }}>
                   <defs>
                     <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
@@ -5319,30 +5331,25 @@ function WidgetCard({
                   </defs>
                   <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.6} />
                   <XAxis
-                    type="number"
-                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    dataKey="name"
+                    tick={(props) => <AxisTick {...props} />}
                     tickLine={false}
                     axisLine={{ stroke: "var(--border)" }}
-                    tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                     label={{
-                      value: `${aggregationLabels[op]} de ${valueCol.label}`,
+                      value: groupCol.label,
                       position: "insideBottom",
-                      offset: -14,
+                      offset: -16,
                       fontSize: 11,
                       fontWeight: 600,
                       fill: "var(--muted-foreground)",
                     }}
                   />
                   <YAxis
-                    type="category"
-                    dataKey="name"
                     tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
-                    width={112}
-                    tickFormatter={(value: string) =>
-                      value.length > 18 ? `${value.slice(0, 16)}…` : value
-                    }
+                    width={66}
+                    tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
                   />
                   <ChartTooltip
                     cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
@@ -5359,14 +5366,15 @@ function WidgetCard({
                   <Bar
                     dataKey="total"
                     fill={`url(#bar-grad-${w.id})`}
-                    radius={[0, 6, 6, 0]}
+                    radius={[6, 6, 0, 0]}
+                    maxBarSize={72}
                     onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
                     cursor="pointer"
                     animationDuration={500}
                   >
                     <LabelList
                       dataKey="total"
-                      position="right"
+                      position="top"
                       fontSize={10}
                       fill="var(--muted-foreground)"
                       formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
