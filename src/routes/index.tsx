@@ -44,6 +44,7 @@ import {
   FileImage,
   FileText,
   Filter,
+  FolderSync,
   GitMerge,
   GripVertical,
   HelpCircle,
@@ -189,6 +190,16 @@ import { mergeReimportedSheets } from "@/lib/dashboard";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import { geocodeMissing } from "@/lib/geocode";
 import { askGemini } from "@/lib/gemini-client";
+import {
+  FOLDER_MONITOR_INTERVAL_MS,
+  fileChanged,
+  fingerprint,
+  pickFolderWorkbook,
+  type FileFingerprint,
+  type FolderMonitorView,
+  type FolderWorkbookSelection,
+  type LocalDirectoryHandle,
+} from "@/lib/folder-monitor";
 import "leaflet/dist/leaflet.css";
 
 const demo: Row[] = [
@@ -446,6 +457,21 @@ export function OliAm({ routeId }: { routeId?: string }) {
   const [importError, setImportError] = useState<string | null>(null);
   const [importWarning, setImportWarning] = useState<string | null>(null);
   const [importProgressLabel, setImportProgressLabel] = useState<string | null>(null);
+  const dashboardsRef = useRef<Dashboard[]>([]);
+  const pendingFolderSelection = useRef<FolderWorkbookSelection | null>(null);
+  const folderRuntimes = useRef(
+    new Map<
+      string,
+      {
+        directory: LocalDirectoryHandle;
+        fileName: string;
+        fingerprint: FileFingerprint;
+        timer: ReturnType<typeof setInterval>;
+        syncing: boolean;
+      }
+    >(),
+  );
+  const [folderMonitors, setFolderMonitors] = useState<Record<string, FolderMonitorView>>({});
 
   useEffect(() => {
     let active = true;
@@ -453,6 +479,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       const list = await loadDashboards();
       if (!active) return;
       setDashboards(list);
+      dashboardsRef.current = list;
       if (routeId) {
         if (list.some((d) => d.id === routeId)) {
           setStage("dashboard");
@@ -473,6 +500,14 @@ export function OliAm({ routeId }: { routeId?: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(
+    () => () => {
+      for (const runtime of folderRuntimes.current.values()) clearInterval(runtime.timer);
+      folderRuntimes.current.clear();
+    },
+    [],
+  );
 
   // Mantém o painel aberto em sincronia quando a URL muda por fora das próprias
   // ações deste componente: botão voltar/avançar do navegador, ou um link direto.
@@ -498,6 +533,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
     localStorage.setItem(ONBOARDING_KEY, "1");
   };
   const persist = (list: Dashboard[]) => {
+    dashboardsRef.current = list;
     setDashboards(list);
     void saveDashboards(list).then((result: SaveResult) => {
       if (result.ok) {
@@ -510,6 +546,18 @@ export function OliAm({ routeId }: { routeId?: string }) {
         setSaveWarning(result.reason);
       }
     });
+  };
+  const readWorkbook = async (file: File) => {
+    const bytes = await file.arrayBuffer();
+    const wb = XLSX.read(bytes, {
+      type: "array",
+      cellDates: true,
+      sheetStubs: true,
+    });
+    if (/\.(xlsx|xlsm|xltx|xltm)$/i.test(file.name)) attachWorkbookFeatures(wb, bytes);
+    const sheets = sheetsWithData(wb);
+    if (!sheets.length) throw new Error("empty-workbook");
+    return sheets;
   };
   const prepare = (
     data: { name: string; rows: Row[]; diagnostics?: ImportDiagnostics }[],
@@ -540,18 +588,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
     // antes do processamento (síncrono e potencialmente pesado) começar.
     await new Promise((r) => setTimeout(r, 30));
     try {
-      const bytes = await file.arrayBuffer();
-      const wb = XLSX.read(bytes, {
-        type: "array",
-        cellDates: true,
-        sheetStubs: true,
-      });
-      if (/\.(xlsx|xlsm|xltx|xltm)$/i.test(file.name)) attachWorkbookFeatures(wb, bytes);
-      const sheets = sheetsWithData(wb);
-      if (!sheets.length) {
-        setImportError("Não encontramos nenhuma aba com dados nesse arquivo.");
-        return;
-      }
+      const sheets = await readWorkbook(file);
       // Todas as abas com dado entram juntas na importação, uma vez só —
       // sem pedir pra escolher qual aba antes: o painel nasce já com todas
       // elas, prontas pra alternar depois numa barra de abas, como no Excel.
@@ -562,6 +599,151 @@ export function OliAm({ routeId }: { routeId?: string }) {
     } finally {
       setLoading(false);
       setImportProgressLabel(null);
+    }
+  };
+
+  const buildImportedSheets = (sheets: SheetOption[]) =>
+    sheets.map((s) => {
+      const columns = infer(s.rows);
+      const autoDashboard = generateAutoDashboardPlan({
+        columns,
+        rows: s.rows,
+        ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
+      });
+      return {
+        name: s.name,
+        rows: s.rows,
+        columns,
+        autoDashboard,
+        widgets: buildRecommendedWidgets(autoDashboard, columns, s.rows),
+      };
+    });
+
+  const syncMonitoredFile = async (dashboardId: string, file: File) => {
+    const sheets = buildImportedSheets(await readWorkbook(file));
+    const currentDashboard = dashboardsRef.current.find((d) => d.id === dashboardId);
+    if (!currentDashboard) return;
+    const merged = mergeReimportedSheets(currentDashboard.sheets, sheets).map((nextSheet) => {
+      const previous = currentDashboard.sheets.find((oldSheet) => oldSheet.name === nextSheet.name);
+      return previous ? { ...nextSheet, filters: previous.filters } : nextSheet;
+    });
+    persist(
+      dashboardsRef.current.map((dashboard) =>
+        dashboard.id === dashboardId
+          ? {
+              ...dashboard,
+              sheets: merged,
+              activeSheetIndex: Math.min(dashboard.activeSheetIndex, merged.length - 1),
+              updatedAt: Date.now(),
+            }
+          : dashboard,
+      ),
+    );
+  };
+
+  const stopFolderMonitor = (dashboardId: string) => {
+    const runtime = folderRuntimes.current.get(dashboardId);
+    if (runtime) clearInterval(runtime.timer);
+    folderRuntimes.current.delete(dashboardId);
+    setFolderMonitors((current) => {
+      const next = { ...current };
+      delete next[dashboardId];
+      return next;
+    });
+  };
+
+  const startFolderMonitor = (
+    dashboardId: string,
+    selection: FolderWorkbookSelection,
+    lastSyncedAt = Date.now(),
+  ) => {
+    stopFolderMonitor(dashboardId);
+    const runtime = {
+      directory: selection.directory,
+      fileName: selection.file.name,
+      fingerprint: fingerprint(selection.file),
+      timer: undefined as unknown as ReturnType<typeof setInterval>,
+      syncing: false,
+    };
+    setFolderMonitors((current) => ({
+      ...current,
+      [dashboardId]: {
+        folderName: selection.directory.name,
+        fileName: selection.file.name,
+        status: "watching",
+        lastSyncedAt,
+      },
+    }));
+    runtime.timer = setInterval(() => {
+      if (runtime.syncing) return;
+      runtime.syncing = true;
+      void (async () => {
+        try {
+          const handle = await runtime.directory.getFileHandle(runtime.fileName);
+          const file = await handle.getFile();
+          if (!fileChanged(runtime.fingerprint, file)) return;
+          setFolderMonitors((current) => {
+            const { error: _error, ...monitor } = current[dashboardId]!;
+            return { ...current, [dashboardId]: { ...monitor, status: "syncing" } };
+          });
+          await syncMonitoredFile(dashboardId, file);
+          runtime.fingerprint = fingerprint(file);
+          setFolderMonitors((current) => {
+            const { error: _error, ...monitor } = current[dashboardId]!;
+            return {
+              ...current,
+              [dashboardId]: { ...monitor, status: "watching", lastSyncedAt: Date.now() },
+            };
+          });
+          toast.success(`${runtime.fileName} foi atualizado automaticamente.`);
+        } catch {
+          setFolderMonitors((current) => ({
+            ...current,
+            [dashboardId]: {
+              ...current[dashboardId]!,
+              status: "error",
+              error: "Não foi possível ler a planilha. Verifique se ela ainda existe na pasta.",
+            },
+          }));
+        } finally {
+          runtime.syncing = false;
+        }
+      })();
+    }, FOLDER_MONITOR_INTERVAL_MS);
+    folderRuntimes.current.set(dashboardId, runtime);
+  };
+
+  const connectFolder = async (dashboardId?: string) => {
+    setImportError(null);
+    try {
+      const selection = await pickFolderWorkbook(window);
+      if (dashboardId) {
+        setFolderMonitors((current) => ({
+          ...current,
+          [dashboardId]: {
+            folderName: selection.directory.name,
+            fileName: selection.file.name,
+            status: "syncing",
+            lastSyncedAt: Date.now(),
+          },
+        }));
+        await syncMonitoredFile(dashboardId, selection.file);
+        startFolderMonitor(dashboardId, selection);
+        toast.success("Pasta conectada. O Oli acompanhará alterações enquanto estiver aberto.");
+      } else {
+        pendingFolderSelection.current = selection;
+        setReviewTarget("new");
+        await parse(selection.file);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (dashboardId) stopFolderMonitor(dashboardId);
+      const message =
+        error instanceof Error && error.message === "unsupported"
+          ? "O monitoramento de pasta requer Chrome ou Edge atualizado."
+          : "Não foi possível conectar essa pasta ou planilha.";
+      setImportError(message);
+      toast.error(message);
     }
   };
   const pasteData = () => {
@@ -638,6 +820,10 @@ export function OliAm({ routeId }: { routeId?: string }) {
       };
       persist([dash, ...dashboards]);
       setCurrentId(dash.id);
+      if (pendingFolderSelection.current) {
+        startFolderMonitor(dash.id, pendingFolderSelection.current);
+        pendingFolderSelection.current = null;
+      }
       void navigate({ to: "/painel/$id", params: { id: dash.id } });
     } else {
       persist(
@@ -670,10 +856,12 @@ export function OliAm({ routeId }: { routeId?: string }) {
     void navigate({ to: "/painel/$id", params: { id } });
   };
   const startNew = () => {
+    pendingFolderSelection.current = null;
     setReviewTarget("new");
     setStage("empty");
   };
   const startReimport = (id: string) => {
+    pendingFolderSelection.current = null;
     setReviewTarget(id);
     input.current?.click();
   };
@@ -721,6 +909,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
           accept=".csv,.xlsx,.xls"
           onChange={(e) => {
             const f = e.target.files?.[0];
+            pendingFolderSelection.current = null;
             // Sem isso, selecionar o MESMO arquivo de novo (comum ao
             // reimportar) não dispara onChange na segunda vez — o navegador
             // só considera que o valor do input "mudou" se o arquivo for
@@ -768,8 +957,15 @@ export function OliAm({ routeId }: { routeId?: string }) {
         )}
         {stage === "empty" && (
           <Empty
-            onUpload={() => input.current?.click()}
-            onDropFile={(f) => void parse(f)}
+            onUpload={() => {
+              pendingFolderSelection.current = null;
+              input.current?.click();
+            }}
+            onDropFile={(f) => {
+              pendingFolderSelection.current = null;
+              void parse(f);
+            }}
+            onFolder={() => void connectFolder()}
             onDemo={() => {
               setReviewTarget("new");
               prepare([{ name: "Dados", rows: demo }], "vendas_2026.xlsx");
@@ -802,7 +998,10 @@ export function OliAm({ routeId }: { routeId?: string }) {
               )
             }
             name={name}
-            back={() => setStage(reviewTarget === "new" ? "empty" : "dashboard")}
+            back={() => {
+              pendingFolderSelection.current = null;
+              setStage(reviewTarget === "new" ? "empty" : "dashboard");
+            }}
             confirm={confirmReview}
             importWarning={importWarning}
           />
@@ -817,6 +1016,9 @@ export function OliAm({ routeId }: { routeId?: string }) {
             update={updateCurrent}
             rename={renameDash}
             reimport={() => startReimport(current.id)}
+            folderMonitor={folderMonitors[current.id]}
+            connectFolder={() => void connectFolder(current.id)}
+            disconnectFolder={() => stopFolderMonitor(current.id)}
             theme={theme}
             toggleTheme={toggle}
           />
@@ -1177,6 +1379,7 @@ function TypewriterLoader({ compact = false }: { compact?: boolean }) {
 function Empty(p: {
   onUpload: () => void;
   onDropFile: (file: File) => void;
+  onFolder: () => void;
   onDemo: () => void;
   url: string;
   setUrl: (v: string) => void;
@@ -1329,6 +1532,14 @@ function Empty(p: {
           >
             Colar dados
             <ChevronDown className={cn("size-3 transition-transform", p.editor && "rotate-180")} />
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+            onClick={p.onFolder}
+          >
+            <FolderSync className="size-3.5" />
+            Pasta monitorada
           </button>
           <button
             type="button"
@@ -1754,6 +1965,9 @@ function Dashboard(p: {
   update: (patch: Partial<Dashboard>) => void;
   rename: (id: string, name: string) => void;
   reimport: () => void;
+  folderMonitor: FolderMonitorView | undefined;
+  connectFolder: () => void;
+  disconnectFolder: () => void;
   theme: string;
   toggleTheme: () => void;
 }) {
@@ -2442,6 +2656,56 @@ function Dashboard(p: {
               <Upload />
               <span className="hidden sm:inline">Nova versão</span>
             </Button>
+            {p.folderMonitor ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "max-w-48",
+                      p.folderMonitor.status === "error" && "border-destructive text-destructive",
+                    )}
+                    onClick={p.disconnectFolder}
+                    aria-label={`Desconectar pasta monitorada: ${p.folderMonitor.fileName}`}
+                  >
+                    {p.folderMonitor.status === "syncing" ? (
+                      <TypewriterLoader compact />
+                    ) : (
+                      <FolderSync className="size-4" />
+                    )}
+                    <span className="hidden truncate lg:inline">
+                      {p.folderMonitor.status === "error"
+                        ? "Falha na pasta"
+                        : p.folderMonitor.fileName}
+                    </span>
+                    <X className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {p.folderMonitor.status === "error"
+                      ? p.folderMonitor.error
+                      : `Monitorando ${p.folderMonitor.folderName}/${p.folderMonitor.fileName}`}
+                  </p>
+                  <p className="text-[10px] opacity-75">
+                    Última leitura:{" "}
+                    {new Date(p.folderMonitor.lastSyncedAt).toLocaleTimeString("pt-BR")}
+                  </p>
+                  <p className="text-[10px] opacity-75">Clique para desconectar.</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden lg:flex"
+                onClick={p.connectFolder}
+              >
+                <FolderSync />
+                Monitorar pasta
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm">
@@ -3324,6 +3588,10 @@ function Dashboard(p: {
               <Upload />
               Importar nova versão
             </CommandItem>
+            <CommandItem onSelect={p.folderMonitor ? p.disconnectFolder : p.connectFolder}>
+              <FolderSync />
+              {p.folderMonitor ? "Desconectar pasta monitorada" : "Monitorar pasta local"}
+            </CommandItem>
             <CommandItem onSelect={exportXlsx}>
               <Download />
               Exportar XLSX
@@ -4143,6 +4411,7 @@ function MapWidgetBody({
   useEffect(() => {
     if (!containerRef.current) return;
     let alive = true;
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
       const mod = await import("leaflet");
       const L = (mod.default ?? mod) as typeof import("leaflet");
@@ -4200,7 +4469,9 @@ function MapWidgetBody({
       });
       layer.addTo(map);
       layerRef.current = layer;
-      setTimeout(() => map.invalidateSize(), 50);
+      resizeTimer = setTimeout(() => {
+        if (alive && mapRef.current === map) map.invalidateSize();
+      }, 50);
       if (resolved.length) {
         const bounds = L.latLngBounds(resolved.map((g) => [g.point.lat, g.point.lng]));
         map.fitBounds(bounds.pad(0.3), { maxZoom: 6 });
@@ -4208,6 +4479,7 @@ function MapWidgetBody({
     })();
     return () => {
       alive = false;
+      clearTimeout(resizeTimer);
     };
   }, [grouped, cache, onSelect, valueKind, isDark]);
 

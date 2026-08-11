@@ -1025,6 +1025,138 @@
       "provenance": "EXTRACTED"
     },
     {
+      "id": "file:src/lib/folder-monitor.test.ts",
+      "label": "src/lib/folder-monitor.test.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.test.ts",
+      "source_location": "src/lib/folder-monitor.test.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "file:src/lib/folder-monitor.ts",
+      "label": "src/lib/folder-monitor.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#FileFingerprint",
+      "label": "FileFingerprint",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:1",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#FolderMonitorStatus",
+      "label": "FolderMonitorStatus",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:6",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#FolderMonitorView",
+      "label": "FolderMonitorView",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:8",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#LocalFileHandle",
+      "label": "LocalFileHandle",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:16",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#LocalDirectoryHandle",
+      "label": "LocalDirectoryHandle",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:22",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#FolderWorkbookSelection",
+      "label": "FolderWorkbookSelection",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:38",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#pickFolderWorkbook",
+      "label": "pickFolderWorkbook",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:44",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#fingerprint",
+      "label": "fingerprint",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:75",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#fileChanged",
+      "label": "fileChanged",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:79",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/folder-monitor.ts#isSupportedWorkbook",
+      "label": "isSupportedWorkbook",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/folder-monitor.ts",
+      "source_location": "src/lib/folder-monitor.ts:83",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
       "id": "file:src/lib/format.test.ts",
       "label": "src/lib/format.test.ts",
       "kind": "file",
@@ -2251,7 +2383,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "tsx",
       "source_file": "src/routes/index.tsx",
-      "source_location": "src/routes/index.tsx:419",
+      "source_location": "src/routes/index.tsx:430",
       "community": "Application Routes",
       "community_name": "Application Routes",
       "provenance": "EXTRACTED"
@@ -2930,6 +3062,72 @@
     {
       "source": "file:src/lib/error-page.ts",
       "target": "symbol:src/lib/error-page.ts#renderErrorPage",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.test.ts",
+      "target": "file:src/lib/folder-monitor.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#FileFingerprint",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#FolderMonitorStatus",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#FolderMonitorView",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#LocalFileHandle",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#LocalDirectoryHandle",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#FolderWorkbookSelection",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#pickFolderWorkbook",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#fingerprint",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#fileChanged",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/folder-monitor.ts",
+      "target": "symbol:src/lib/folder-monitor.ts#isSupportedWorkbook",
       "relationship": "exports",
       "provenance": "EXTRACTED"
     },
@@ -3794,6 +3992,12 @@
     {
       "source": "file:src/routes/index.tsx",
       "target": "file:src/lib/gemini-client.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/routes/index.tsx",
+      "target": "file:src/lib/folder-monitor.ts",
       "relationship": "imports",
       "provenance": "EXTRACTED"
     },
