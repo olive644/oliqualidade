@@ -4974,6 +4974,14 @@ function WidgetCard({
     el.addEventListener("pointerup", onUp);
     el.addEventListener("pointercancel", onUp);
   };
+  const scrollBarChart = (direction: -1 | 1) => {
+    const el = barScrollRef.current;
+    if (!el) return;
+    el.scrollBy({
+      left: direction * Math.max(el.clientWidth * 0.75, 240),
+      behavior: "smooth",
+    });
+  };
   // Indicador "filtrado por X" exibido no cabeçalho de controles do widget
   // quando a coluna de agrupamento dele tem um filtro simples ativo,
   // sincronizado com a barra de filtros do topo (mesmo estado, sheet.filters).
@@ -5505,8 +5513,9 @@ function WidgetCard({
           </p>
         ) : w.type === "bar" ? (
           <>
-            <div
-              ref={barPresentation.scrollable ? barScrollRef : undefined}
+            <div className="relative">
+              <div
+                ref={barPresentation.scrollable ? barScrollRef : undefined}
               className={cn(
                 "h-64 overflow-x-auto overflow-y-hidden p-4",
                 barPresentation.scrollable && "oliam-bar-drag-scroll",
@@ -5523,7 +5532,6 @@ function WidgetCard({
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={barSeries}
-                    layout="horizontal"
                     margin={{ top: 20, right: 16, left: 12, bottom: 26 }}
                     barCategoryGap={barSeries.length > 10 ? "34%" : "18%"}
                   >
@@ -5594,12 +5602,43 @@ function WidgetCard({
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+                </div>
               </div>
+              {barPresentation.scrollable && (
+                <div
+                  className="absolute right-5 top-5 z-10 flex gap-1"
+                  data-export-controls
+                  aria-label="Navegação horizontal do gráfico"
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-8 rounded-full bg-card/90 shadow-sm backdrop-blur"
+                    onClick={() => scrollBarChart(-1)}
+                    aria-label="Rolar gráfico para a esquerda"
+                    title="Rolar para a esquerda"
+                  >
+                    <ArrowLeft className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-8 rounded-full bg-card/90 shadow-sm backdrop-blur"
+                    onClick={() => scrollBarChart(1)}
+                    aria-label="Rolar gráfico para a direita"
+                    title="Rolar para a direita"
+                  >
+                    <ArrowRight className="size-4" />
+                  </Button>
+                </div>
+              )}
             </div>
             {barPresentation.scrollable && (
               <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-                {barSeries.length.toLocaleString("pt-BR")} categorias · arraste para os lados para
-                ver todas
+                {barSeries.length.toLocaleString("pt-BR")} categorias · use as setas, arraste ou
+                role para os lados para ver todas
               </p>
             )}
             <p className="sr-only">
