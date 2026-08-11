@@ -692,14 +692,14 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // não uma coluna real da tabela. Descartamos em vez de expor como
   // "Coluna N" com dado sem sentido. Uma coluna sem nome mas com dados de
   // verdade continua sendo importada normalmente, com um nome genérico.
-  const ghostColumns =
-    rows.length >= 5
-      ? headers.filter((h, i) => {
-          if (!headerWasBlank[i]) return false;
-          const filled = rows.filter((r) => r[h] !== null && r[h] !== "").length;
-          return filled / rows.length < NEAR_EMPTY_RATIO;
-        })
-      : [];
+  const ghostColumns = headers.filter((h, i) => {
+    if (!headerWasBlank[i]) return false;
+    const filled = rows.filter((r) => r[h] !== null && r[h] !== "").length;
+    // Uma coluna sem cabeçalho e 100% vazia é fantasma mesmo em amostras
+    // curtas. Para colunas apenas quase vazias, mantemos a exigência de ao
+    // menos 5 linhas antes de decidir, evitando apagar dado esparso real.
+    return filled === 0 || (rows.length >= 5 && filled / rows.length < NEAR_EMPTY_RATIO);
+  });
   const finalHeaders = ghostColumns.length
     ? headers.filter((h) => !ghostColumns.includes(h))
     : headers;
