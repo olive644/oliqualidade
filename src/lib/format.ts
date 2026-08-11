@@ -205,39 +205,75 @@ export function withCalculatedColumns(rows: Row[], columns: Column[]): Row[] {
  * regra de limite que casar vence; regras de escala (heatmap) misturam a
  * cor mínima e máxima proporcionalmente ao valor dentro do intervalo.
  */
+type ResolvedConditionalFormat = {
+  color: string;
+  background: boolean;
+  type: ConditionalFormatRule["type"];
+};
+
+function resolveConditionalFormat(
+  value: Value,
+  kind: Kind,
+  rules: ConditionalFormatRule[] | undefined,
+): ResolvedConditionalFormat | null {
+  if (!rules?.length || !numericKinds.includes(kind)) return null;
+  if (value === null || value === "") return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+
+  // Limites específicos têm prioridade mesmo se uma escala geral tiver sido
+  // criada antes deles no editor.
+  for (const rule of rules.filter((candidate) => candidate.type === "threshold")) {
+    if (rule.operator === undefined || rule.value === undefined) continue;
+    const hit =
+      rule.operator === "lt"
+        ? num < rule.value
+        : rule.operator === "lte"
+          ? num <= rule.value
+          : rule.operator === "gt"
+            ? num > rule.value
+            : num >= rule.value;
+    if (!hit) continue;
+    const color = rule.color || "var(--destructive)";
+    return { color, background: Boolean(rule.background), type: "threshold" };
+  }
+  const scale = rules.find((rule) => rule.type === "scale");
+  if (scale?.min !== undefined && scale.max !== undefined && scale.max !== scale.min) {
+    const ratio = Math.min(1, Math.max(0, (num - scale.min) / (scale.max - scale.min)));
+    const from = scale.minColor || "var(--chart-1)";
+    const to = scale.maxColor || "var(--chart-4)";
+    return {
+      color: `color-mix(in oklch, ${to} ${ratio * 100}%, ${from})`,
+      background: true,
+      type: "scale",
+    };
+  }
+  return null;
+}
+
+/** Cor resolvida para barras, fatias, pontos, rankings e marcadores de mapa. */
+export function conditionalColor(
+  value: Value,
+  kind: Kind,
+  rules: ConditionalFormatRule[] | undefined,
+): string | null {
+  return resolveConditionalFormat(value, kind, rules)?.color ?? null;
+}
+
 export function conditionalStyle(
   value: Value,
   kind: Kind,
   rules: ConditionalFormatRule[] | undefined,
 ): { color?: string; background?: string } | null {
-  if (!rules?.length || !numericKinds.includes(kind)) return null;
-  const num = Number(value);
-  if (!Number.isFinite(num)) return null;
-
-  for (const rule of rules) {
-    if (rule.type === "threshold") {
-      if (rule.operator === undefined || rule.value === undefined) continue;
-      const hit =
-        rule.operator === "lt"
-          ? num < rule.value
-          : rule.operator === "lte"
-            ? num <= rule.value
-            : rule.operator === "gt"
-              ? num > rule.value
-              : num >= rule.value;
-      if (!hit) continue;
-      const color = rule.color || "var(--destructive)";
-      return rule.background
-        ? { background: `color-mix(in oklch, ${color} 18%, transparent)`, color }
-        : { color };
-    }
-    if (rule.type === "scale") {
-      if (rule.min === undefined || rule.max === undefined || rule.max === rule.min) continue;
-      const ratio = Math.min(1, Math.max(0, (num - rule.min) / (rule.max - rule.min)));
-      const from = rule.minColor || "var(--chart-1)";
-      const to = rule.maxColor || "var(--chart-4)";
-      return { background: `color-mix(in oklch, ${to} ${ratio * 100}%, ${from})` };
-    }
-  }
-  return null;
+  const resolved = resolveConditionalFormat(value, kind, rules);
+  if (!resolved) return null;
+  if (!resolved.background) return { color: resolved.color };
+  // Limites com "aplicar no fundo" mantêm o texto legível na mesma cor;
+  // escalas já representam a cor no próprio fundo e não forçam o texto.
+  return resolved.type === "threshold"
+    ? {
+        background: `color-mix(in oklch, ${resolved.color} 18%, transparent)`,
+        color: resolved.color,
+      }
+    : { background: resolved.color };
 }
