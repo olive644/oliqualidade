@@ -33,6 +33,7 @@ export type LocalDirectoryHandle = {
   >;
   values?: () => AsyncIterableIterator<LocalFileHandle | { kind: "directory"; name: string }>;
   queryPermission?: (options?: { mode?: "read" }) => Promise<PermissionState>;
+  requestPermission?: (options?: { mode?: "read" }) => Promise<PermissionState>;
 };
 
 type LocalPickerWindow = Window & {
@@ -108,7 +109,11 @@ export function fingerprint(file: Pick<File, "lastModified" | "size">): FileFing
   return { lastModified: file.lastModified, size: file.size };
 }
 
-export function fileChanged(previous: FileFingerprint, file: Pick<File, "lastModified" | "size">) {
+export function fileChanged(
+  previous: FileFingerprint | undefined,
+  file: Pick<File, "lastModified" | "size">,
+) {
+  if (!previous) return true;
   return previous.lastModified !== file.lastModified || previous.size !== file.size;
 }
 
