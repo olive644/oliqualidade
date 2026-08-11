@@ -128,6 +128,45 @@ export function migrateDashboards(list: unknown[]): Dashboard[] {
 }
 
 /**
+ * Uma atualização da fonte troca os valores, não as escolhas visuais feitas
+ * pelo usuário. Reaplica rótulo, tipo, visibilidade, regras de dados ausentes
+ * e formatação condicional às colunas que continuam existindo; colunas
+ * calculadas também permanecem disponíveis para os widgets.
+ */
+export function mergeReimportedColumns(oldColumns: Column[], newColumns: Column[]): Column[] {
+  const oldByKey = new Map(oldColumns.map((column) => [column.key, column]));
+  const merged = newColumns.map((column) => {
+    const old = oldByKey.get(column.key);
+    if (!old) return column;
+    return {
+      ...column,
+      label: old.label,
+      kind: old.kind,
+      visible: old.visible,
+      description: old.description,
+      ...(old.missingRule ? { missingRule: old.missingRule } : {}),
+      ...(old.conditionalFormat
+        ? { conditionalFormat: old.conditionalFormat.map((rule) => ({ ...rule })) }
+        : {}),
+    };
+  });
+  const newKeys = new Set(newColumns.map((column) => column.key));
+  return [
+    ...merged,
+    ...oldColumns
+      .filter((column) => column.formula && !newKeys.has(column.key))
+      .map((column) =>
+        column.conditionalFormat
+          ? {
+              ...column,
+              conditionalFormat: column.conditionalFormat.map((rule) => ({ ...rule })),
+            }
+          : { ...column },
+      ),
+  ];
+}
+
+/**
  * Reimportação: casa cada aba recém-importada com uma aba existente do
  * mesmo nome, preservando os widgets, marcadores e configuração de
  * gráfico já montados nela, e gravando a versão anterior (previousSnapshot)
@@ -145,7 +184,7 @@ export function mergeReimportedSheets(
     return {
       name: s.name,
       rows: s.rows,
-      columns: s.columns,
+      columns: old ? mergeReimportedColumns(old.columns, s.columns) : s.columns,
       filters: [],
       ...(old ? { previousSnapshot: { rows: old.rows, capturedAt: Date.now() } } : {}),
       ...(old?.chartConfig ? { chartConfig: old.chartConfig } : {}),
