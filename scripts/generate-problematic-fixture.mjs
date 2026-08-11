@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 
 const rows = [
   ["Relatório de vendas — revisão técnica", null, null, null, null, null],
@@ -33,4 +34,22 @@ const workbook = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(workbook, sheet, "Cabeçalho deslocado");
 XLSX.utils.book_append_sheet(workbook, sideBySide, "Regiões lado a lado");
 mkdirSync("test-fixtures", { recursive: true });
-XLSX.writeFile(workbook, "test-fixtures/problematic-import.xlsx");
+const workbookBytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+const archive = unzipSync(new Uint8Array(workbookBytes));
+const worksheetPart = "xl/worksheets/sheet1.xml";
+archive[worksheetPart] = strToU8(
+  strFromU8(archive[worksheetPart]).replace(
+    "</worksheet>",
+    '<tableParts count="1"><tablePart r:id="rIdTable"/></tableParts><pivotTableDefinition r:id="rIdPivot"/></worksheet>',
+  ),
+);
+archive["xl/worksheets/_rels/sheet1.xml.rels"] = strToU8(
+  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdTable" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/><Relationship Id="rIdPivot" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable" Target="../pivotTables/pivotTable1.xml"/></Relationships>',
+);
+archive["xl/tables/table1.xml"] = strToU8(
+  '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="VendasImportadas" displayName="VendasImportadas" ref="A4:G8"><tableColumns count="7"><tableColumn id="1" name="Data"/><tableColumn id="2" name="Cidade"/><tableColumn id="3" name="CPF"/><tableColumn id="4" name="Categoria"/><tableColumn id="5" name="Faturamento"/><tableColumn id="6" name="Taxa"/><tableColumn id="7" name="Total calculado"><calculatedColumnFormula>Faturamento</calculatedColumnFormula></tableColumn></tableColumns></table>',
+);
+archive["xl/pivotTables/pivotTable1.xml"] = strToU8(
+  '<pivotTableDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="ResumoPorCidade"><location ref="I4:L10"/></pivotTableDefinition>',
+);
+writeFileSync("test-fixtures/problematic-import.xlsx", zipSync(archive));

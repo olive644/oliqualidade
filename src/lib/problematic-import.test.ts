@@ -6,13 +6,16 @@ import * as XLSX from "xlsx";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import { infer } from "@/lib/format";
 import { sheetsWithData } from "@/lib/import";
+import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 
 describe("fluxo integrado com planilha problemática", () => {
-  const workbook = XLSX.read(readFileSync("test-fixtures/problematic-import.xlsx"), {
+  const fixtureBytes = readFileSync("test-fixtures/problematic-import.xlsx");
+  const workbook = XLSX.read(fixtureBytes, {
     type: "buffer",
     cellDates: true,
     sheetStubs: true,
   });
+  attachWorkbookFeatures(workbook, fixtureBytes);
   const sheets = sheetsWithData(workbook);
 
   it("preserva as abas e diagnostica a estrutura ambígua", () => {
@@ -26,6 +29,9 @@ describe("fluxo integrado com planilha problemática", () => {
     expect(first?.diagnostics?.formulaCells).toBe(2);
     expect(first?.diagnostics?.mergedRanges).toBe(1);
     expect(first?.diagnostics?.hasAutoFilter).toBe(true);
+    expect(first?.diagnostics?.structuredTableNames).toEqual(["VendasImportadas"]);
+    expect(first?.diagnostics?.calculatedColumns).toEqual(["Total calculado"]);
+    expect(first?.diagnostics?.pivotTables[0]?.name).toBe("ResumoPorCidade");
     expect(first?.diagnostics?.columns.find((column) => column.key === "CPF")?.sensitive).toBe(
       true,
     );

@@ -1195,7 +1195,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:2",
+      "source_location": "src/lib/import-intelligence.ts:7",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1206,7 +1206,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:11",
+      "source_location": "src/lib/import-intelligence.ts:16",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1217,7 +1217,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:29",
+      "source_location": "src/lib/import-intelligence.ts:34",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1228,7 +1228,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:44",
+      "source_location": "src/lib/import-intelligence.ts:49",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1239,7 +1239,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:54",
+      "source_location": "src/lib/import-intelligence.ts:59",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1250,7 +1250,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:380",
+      "source_location": "src/lib/import-intelligence.ts:401",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1261,7 +1261,7 @@
       "kind": "TypeAliasDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:545",
+      "source_location": "src/lib/import-intelligence.ts:580",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1272,7 +1272,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:559",
+      "source_location": "src/lib/import-intelligence.ts:594",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1283,7 +1283,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:609",
+      "source_location": "src/lib/import-intelligence.ts:644",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1294,7 +1294,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:636",
+      "source_location": "src/lib/import-intelligence.ts:671",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1305,7 +1305,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "ts",
       "source_file": "src/lib/import-intelligence.ts",
-      "source_location": "src/lib/import-intelligence.ts:649",
+      "source_location": "src/lib/import-intelligence.ts:684",
       "community": "Import Intelligence",
       "community_name": "Import Intelligence",
       "provenance": "EXTRACTED"
@@ -1850,6 +1850,94 @@
       "provenance": "EXTRACTED"
     },
     {
+      "id": "file:src/lib/workbook-metadata.test.ts",
+      "label": "src/lib/workbook-metadata.test.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/workbook-metadata.test.ts",
+      "source_location": "src/lib/workbook-metadata.test.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "file:src/lib/workbook-metadata.ts",
+      "label": "src/lib/workbook-metadata.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/workbook-metadata.ts",
+      "source_location": "src/lib/workbook-metadata.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/workbook-metadata.ts#StructuredTableDiagnostic",
+      "label": "StructuredTableDiagnostic",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/workbook-metadata.ts",
+      "source_location": "src/lib/workbook-metadata.ts:2",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/workbook-metadata.ts#PivotTableDiagnostic",
+      "label": "PivotTableDiagnostic",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/workbook-metadata.ts",
+      "source_location": "src/lib/workbook-metadata.ts:9",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/workbook-metadata.ts#AdvancedSheetMetadata",
+      "label": "AdvancedSheetMetadata",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/workbook-metadata.ts",
+      "source_location": "src/lib/workbook-metadata.ts:14",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/workbook-metadata.ts#WorksheetWithAdvancedMetadata",
+      "label": "WorksheetWithAdvancedMetadata",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/workbook-metadata.ts",
+      "source_location": "src/lib/workbook-metadata.ts:19",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/workbook-metadata.ts#inspectWorkbookFeatures",
+      "label": "inspectWorkbookFeatures",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/workbook-metadata.ts",
+      "source_location": "src/lib/workbook-metadata.ts:89",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/workbook-metadata.ts#attachWorkbookFeatures",
+      "label": "attachWorkbookFeatures",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/workbook-metadata.ts",
+      "source_location": "src/lib/workbook-metadata.ts:126",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
       "id": "file:src/routeTree.gen.ts",
       "label": "src/routeTree.gen.ts",
       "kind": "file",
@@ -1954,7 +2042,7 @@
       "kind": "FunctionDeclaration",
       "file_type": "tsx",
       "source_file": "src/routes/index.tsx",
-      "source_location": "src/routes/index.tsx:415",
+      "source_location": "src/routes/index.tsx:416",
       "community": "Application Routes",
       "community_name": "Application Routes",
       "provenance": "EXTRACTED"
@@ -2734,6 +2822,12 @@
     },
     {
       "source": "file:src/lib/import-intelligence.ts",
+      "target": "file:src/lib/workbook-metadata.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/import-intelligence.ts",
       "target": "symbol:src/lib/import-intelligence.ts#FormulaDiagnostic",
       "relationship": "exports",
       "provenance": "EXTRACTED"
@@ -2867,6 +2961,12 @@
     {
       "source": "file:src/lib/problematic-import.test.ts",
       "target": "file:src/lib/import.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/problematic-import.test.ts",
+      "target": "file:src/lib/workbook-metadata.ts",
       "relationship": "imports",
       "provenance": "EXTRACTED"
     },
@@ -3123,6 +3223,54 @@
       "provenance": "EXTRACTED"
     },
     {
+      "source": "file:src/lib/workbook-metadata.test.ts",
+      "target": "file:src/lib/import-intelligence.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/workbook-metadata.test.ts",
+      "target": "file:src/lib/workbook-metadata.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/workbook-metadata.ts",
+      "target": "symbol:src/lib/workbook-metadata.ts#StructuredTableDiagnostic",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/workbook-metadata.ts",
+      "target": "symbol:src/lib/workbook-metadata.ts#PivotTableDiagnostic",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/workbook-metadata.ts",
+      "target": "symbol:src/lib/workbook-metadata.ts#AdvancedSheetMetadata",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/workbook-metadata.ts",
+      "target": "symbol:src/lib/workbook-metadata.ts#WorksheetWithAdvancedMetadata",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/workbook-metadata.ts",
+      "target": "symbol:src/lib/workbook-metadata.ts#inspectWorkbookFeatures",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/workbook-metadata.ts",
+      "target": "symbol:src/lib/workbook-metadata.ts#attachWorkbookFeatures",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
       "source": "file:src/routeTree.gen.ts",
       "target": "file:src/routes/__root.tsx",
       "relationship": "imports",
@@ -3287,6 +3435,12 @@
     {
       "source": "file:src/routes/index.tsx",
       "target": "file:src/lib/dashboard.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/routes/index.tsx",
+      "target": "file:src/lib/workbook-metadata.ts",
       "relationship": "imports",
       "provenance": "EXTRACTED"
     },

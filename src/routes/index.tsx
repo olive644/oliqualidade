@@ -184,6 +184,7 @@ import {
   type SheetOption,
 } from "@/lib/import";
 import { mergeReimportedSheets } from "@/lib/dashboard";
+import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import { geocodeMissing } from "@/lib/geocode";
 import "leaflet/dist/leaflet.css";
 
@@ -536,11 +537,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
     // antes do processamento (síncrono e potencialmente pesado) começar.
     await new Promise((r) => setTimeout(r, 30));
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), {
+      const bytes = await file.arrayBuffer();
+      const wb = XLSX.read(bytes, {
         type: "array",
         cellDates: true,
         sheetStubs: true,
       });
+      if (/\.(xlsx|xlsm|xltx|xltm)$/i.test(file.name)) attachWorkbookFeatures(wb, bytes);
       const sheets = sheetsWithData(wb);
       if (!sheets.length) {
         setImportError("Não encontramos nenhuma aba com dados nesse arquivo.");
@@ -1513,6 +1516,35 @@ function Review(p: {
                 </span>
               )}
             </div>
+            {(active.diagnostics.structuredTables.length > 0 ||
+              active.diagnostics.pivotTables.length > 0 ||
+              active.diagnostics.calculatedColumns.length > 0) && (
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                {active.diagnostics.structuredTables.map((table) => (
+                  <span
+                    key={`${table.name}-${table.range}`}
+                    className="rounded-full border border-primary/25 bg-tint px-2.5 py-1 text-xs text-primary"
+                  >
+                    Tabela {table.name}
+                    {table.range ? ` · ${table.range}` : ""}
+                  </span>
+                ))}
+                {active.diagnostics.pivotTables.map((table) => (
+                  <span
+                    key={`${table.name}-${table.range}`}
+                    className="rounded-full border border-secondary-accent/30 bg-secondary-accent/10 px-2.5 py-1 text-xs text-foreground"
+                  >
+                    Pivot {table.name}
+                    {table.range ? ` · ${table.range}` : ""}
+                  </span>
+                ))}
+                {active.diagnostics.calculatedColumns.length > 0 && (
+                  <span className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+                    Colunas calculadas: {active.diagnostics.calculatedColumns.join(", ")}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
         {active?.diagnostics?.warnings.length ? (
@@ -2092,11 +2124,13 @@ function Dashboard(p: {
   };
   const parseJoinFile = async (file: File) => {
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), {
+      const bytes = await file.arrayBuffer();
+      const wb = XLSX.read(bytes, {
         type: "array",
         cellDates: true,
         sheetStubs: true,
       });
+      if (/\.(xlsx|xlsm|xltx|xltm)$/i.test(file.name)) attachWorkbookFeatures(wb, bytes);
       const sheets = sheetsWithData(wb);
       if (!sheets.length) {
         setJoinError("Essa planilha está vazia ou não foi possível lê-la.");

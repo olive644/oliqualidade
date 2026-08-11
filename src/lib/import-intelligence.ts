@@ -1,5 +1,10 @@
 import * as XLSX from "xlsx";
 import type { Row } from "@/lib/types";
+import type {
+  PivotTableDiagnostic,
+  StructuredTableDiagnostic,
+  WorksheetWithAdvancedMetadata,
+} from "@/lib/workbook-metadata";
 
 export type FormulaDiagnostic = {
   address: string;
@@ -67,6 +72,9 @@ export type ImportDiagnostics = {
   hasAutoFilter: boolean;
   hasTables: boolean;
   structuredTableNames: string[];
+  structuredTables: StructuredTableDiagnostic[];
+  pivotTables: PivotTableDiagnostic[];
+  calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
   columns: ColumnDiagnostic[];
@@ -227,9 +235,18 @@ function sheetMeta(ws: XLSX.WorkSheet) {
   const cols = ws["!cols"] ?? [];
   const colsHidden = cols.filter((c) => c?.hidden === true).length;
   const tables = ws["!tables"] as unknown;
-  const structuredTableNames = Array.isArray(tables)
+  const advanced = (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"];
+  const legacyTableNames = Array.isArray(tables)
     ? tables.map((table) => String((table as { name?: unknown }).name ?? "")).filter(Boolean)
     : [];
+  const structuredTables = advanced?.structuredTables ?? [];
+  const pivotTables = advanced?.pivotTables ?? [];
+  const structuredTableNames = [
+    ...new Set([...legacyTableNames, ...structuredTables.map((table) => table.name)]),
+  ];
+  const calculatedColumns = [
+    ...new Set(structuredTables.flatMap((table) => table.calculatedColumns)),
+  ];
   const formulaExamples: string[] = [];
   if (ref) {
     for (let r = ref.s.r; r <= ref.e.r && formulaExamples.length < 10; r++) {
@@ -245,8 +262,12 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     hiddenRows: rowsHidden,
     hiddenColumns: colsHidden,
     hasAutoFilter: Boolean(ws["!autofilter"]),
-    hasTables: Array.isArray(tables) ? tables.length > 0 : Boolean(tables),
+    hasTables:
+      structuredTables.length > 0 || (Array.isArray(tables) ? tables.length > 0 : Boolean(tables)),
     structuredTableNames,
+    structuredTables,
+    pivotTables,
+    calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
   };
@@ -454,6 +475,14 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     warnings.push(
       `uma ou mais tabelas estruturadas do Excel foram detectadas${meta.structuredTableNames.length ? ` (${meta.structuredTableNames.join(", ")})` : ""}`,
     );
+  if (meta.pivotTables.length)
+    warnings.push(
+      `${meta.pivotTables.length} Pivot Table(s) detectada(s); os valores exibidos são preservados, mas a configuração dinâmica não é recalculada no navegador`,
+    );
+  if (meta.calculatedColumns.length)
+    warnings.push(
+      `${meta.calculatedColumns.length} coluna(s) calculada(s) de tabela detectada(s): ${meta.calculatedColumns.join(", ")}`,
+    );
   if (meta.autofilterRange)
     warnings.push(`filtro do Excel aplicado ao intervalo ${meta.autofilterRange}`);
   if (meta.formulaExamples.length)
@@ -491,6 +520,12 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     transformations.push(`${meta.hiddenColumns} coluna(s) oculta(s) detectada(s)`);
   if (meta.mergedRanges)
     transformations.push(`${meta.mergedRanges} intervalo(s) mesclado(s) detectado(s)`);
+  if (meta.structuredTables.length)
+    transformations.push(
+      `${meta.structuredTables.length} tabela(s) estruturada(s) preservada(s) como dados tabulares`,
+    );
+  if (meta.pivotTables.length)
+    transformations.push(`${meta.pivotTables.length} Pivot Table(s) identificada(s) para revisão`);
 
   const avgColumnConfidence = columns.length
     ? columns.reduce((sum, column) => sum + column.confidence, 0) / columns.length
