@@ -1190,6 +1190,127 @@
       "provenance": "EXTRACTED"
     },
     {
+      "id": "file:src/lib/gemini-security.test.ts",
+      "label": "src/lib/gemini-security.test.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.test.ts",
+      "source_location": "src/lib/gemini-security.test.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "file:src/lib/gemini-security.ts",
+      "label": "src/lib/gemini-security.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.ts",
+      "source_location": "src/lib/gemini-security.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-security.ts#GeminiDashboardInput",
+      "label": "GeminiDashboardInput",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.ts",
+      "source_location": "src/lib/gemini-security.ts:1",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-security.ts#GeminiSafeContext",
+      "label": "GeminiSafeContext",
+      "kind": "TypeAliasDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.ts",
+      "source_location": "src/lib/gemini-security.ts:8",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-security.ts#detectPromptInjection",
+      "label": "detectPromptInjection",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.ts",
+      "source_location": "src/lib/gemini-security.ts:36",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-security.ts#validateChatMessage",
+      "label": "validateChatMessage",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.ts",
+      "source_location": "src/lib/gemini-security.ts:40",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-security.ts#buildSafeDashboardContext",
+      "label": "buildSafeDashboardContext",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.ts",
+      "source_location": "src/lib/gemini-security.ts:63",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-security.ts#checkRateLimit",
+      "label": "checkRateLimit",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.ts",
+      "source_location": "src/lib/gemini-security.ts:112",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-security.ts#resetRateLimitsForTests",
+      "label": "resetRateLimitsForTests",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-security.ts",
+      "source_location": "src/lib/gemini-security.ts:119",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "file:src/lib/gemini-server.ts",
+      "label": "src/lib/gemini-server.ts",
+      "kind": "file",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-server.ts",
+      "source_location": "src/lib/gemini-server.ts",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "id": "symbol:src/lib/gemini-server.ts#handleGeminiChat",
+      "label": "handleGeminiChat",
+      "kind": "FunctionDeclaration",
+      "file_type": "ts",
+      "source_file": "src/lib/gemini-server.ts",
+      "source_location": "src/lib/gemini-server.ts:18",
+      "community": "Shared Libraries",
+      "community_name": "Shared Libraries",
+      "provenance": "EXTRACTED"
+    },
+    {
       "id": "file:src/lib/geocode.ts",
       "label": "src/lib/geocode.ts",
       "kind": "file",
@@ -2870,6 +2991,78 @@
       "provenance": "EXTRACTED"
     },
     {
+      "source": "file:src/lib/gemini-security.test.ts",
+      "target": "file:src/lib/gemini-security.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.test.ts",
+      "target": "file:src/lib/gemini-server.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "file:src/lib/types.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "symbol:src/lib/gemini-security.ts#GeminiDashboardInput",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "symbol:src/lib/gemini-security.ts#GeminiSafeContext",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "symbol:src/lib/gemini-security.ts#detectPromptInjection",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "symbol:src/lib/gemini-security.ts#validateChatMessage",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "symbol:src/lib/gemini-security.ts#buildSafeDashboardContext",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "symbol:src/lib/gemini-security.ts#checkRateLimit",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-security.ts",
+      "target": "symbol:src/lib/gemini-security.ts#resetRateLimitsForTests",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-server.ts",
+      "target": "file:src/lib/gemini-security.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/lib/gemini-server.ts",
+      "target": "symbol:src/lib/gemini-server.ts#handleGeminiChat",
+      "relationship": "exports",
+      "provenance": "EXTRACTED"
+    },
+    {
       "source": "file:src/lib/geocode.ts",
       "target": "file:src/lib/storage.ts",
       "relationship": "imports",
@@ -3562,6 +3755,12 @@
     {
       "source": "file:src/server.ts",
       "target": "file:src/lib/error-page.ts",
+      "relationship": "imports",
+      "provenance": "EXTRACTED"
+    },
+    {
+      "source": "file:src/server.ts",
+      "target": "file:src/lib/gemini-server.ts",
       "relationship": "imports",
       "provenance": "EXTRACTED"
     },
