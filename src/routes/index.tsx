@@ -1261,7 +1261,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
             toggleTheme={toggle}
           />
         )}
-        {onboardingStep !== null && (
+        {stage === "dashboard" && onboardingStep !== null && (
           <Onboarding
             step={onboardingStep}
             setStep={setOnboardingStep}
@@ -1634,48 +1634,15 @@ function OliLoader({ compact = false }: { compact?: boolean }) {
 function OliWelcomeScene({ busy }: { busy: boolean }) {
   return (
     <div className="oli-welcome-scene" data-busy={busy || undefined} aria-hidden="true">
-      <span className="oli-scene-glow" />
-      <span className="oli-scene-clock">
-        <i />
-      </span>
-      <span className="oli-scene-shelf">
-        <i />
-        <i />
-        <i />
-        <b />
-      </span>
-      <span className="oli-scene-paper">
-        <i />
-      </span>
-      <span className="oli-scene-sofa">
-        <i />
-        <b />
-      </span>
-      <span className="oli-scene-character">
-        <span className="oli-scene-ear oli-scene-ear-left" />
-        <span className="oli-scene-ear oli-scene-ear-right" />
-        <span className="oli-scene-body" />
-        <span className="oli-scene-face">
-          <i className="oli-scene-eye oli-scene-eye-left" />
-          <i className="oli-scene-eye oli-scene-eye-right" />
+      <span className="oli-polar-bear">
+        <i className="oli-polar-ear oli-polar-ear-left" />
+        <i className="oli-polar-ear oli-polar-ear-right" />
+        <span className="oli-polar-face">
+          <i className="oli-polar-eye oli-polar-eye-left" />
+          <i className="oli-polar-eye oli-polar-eye-right" />
           <b />
         </span>
-        <span className="oli-scene-paw oli-scene-paw-left" />
-        <span className="oli-scene-paw oli-scene-paw-right" />
       </span>
-      <span className="oli-scene-desk" />
-      <span className="oli-scene-monitor">
-        <span className="oli-scene-chart">
-          <i />
-          <i />
-          <i />
-          <i />
-        </span>
-        <b />
-      </span>
-      <span className="oli-scene-floor" />
-      <span className="oli-scene-spark oli-scene-spark-one">✦</span>
-      <span className="oli-scene-spark oli-scene-spark-two">✦</span>
     </div>
   );
 }
@@ -1764,30 +1731,15 @@ function Empty(p: {
         <section className="oli-welcome-hero">
           <div className="oli-welcome-copy">
             <p className="oli-welcome-badge">
-              <span />
-              Novo painel inteligente
+              Novo painel
             </p>
             <h1>
-              Solte a planilha.
-              <span>O Oli cuida do resto.</span>
+              Seus dados,
+              <span>com clareza.</span>
             </h1>
             <p className="oli-welcome-lead">
-              Transforme CSV e Excel em um painel pronto para explorar. O Oli reconhece a estrutura,
-              confere os tipos e encontra os indicadores que merecem atenção.
+              Importe uma planilha e transforme as informações em um painel simples de acompanhar.
             </p>
-            <div className="oli-welcome-flow" aria-label="Etapas automáticas">
-              <span>
-                <b>01</b> Lê
-              </span>
-              <i />
-              <span>
-                <b>02</b> Organiza
-              </span>
-              <i />
-              <span>
-                <b>03</b> Visualiza
-              </span>
-            </div>
           </div>
           <OliWelcomeScene busy={p.loading} />
         </section>
@@ -1795,8 +1747,8 @@ function Empty(p: {
         <section className="oli-import-shell">
           <div className="oli-import-heading">
             <div>
-              <span className="oli-import-kicker">Comece pelos seus dados</span>
-              <h2>Crie seu próximo relatório</h2>
+              <span className="oli-import-kicker">Importar dados</span>
+              <h2>Escolha uma planilha</h2>
             </div>
             <div className="oli-file-types" aria-label="Formatos aceitos">
               <span>XLSX</span>
@@ -1820,7 +1772,7 @@ function Empty(p: {
                 <OliLoader />
                 <span className="oli-dropzone-copy">
                   <strong>{p.loadingLabel ?? "Lendo sua planilha…"}</strong>
-                  <small>O Oli está organizando os dados e preparando a visualização.</small>
+                  <small>Preparando seus dados.</small>
                 </span>
               </>
             ) : (
@@ -1831,11 +1783,11 @@ function Empty(p: {
                 </span>
                 <span className="oli-dropzone-copy">
                   <strong>
-                    {dragging ? "Pode soltar — o Oli pegou!" : "Arraste sua planilha aqui"}
+                    {dragging ? "Solte o arquivo aqui" : "Arraste sua planilha aqui"}
                   </strong>
                   <small>ou clique para escolher um arquivo no computador</small>
                 </span>
-                <span className="oli-dropzone-action">Selecionar arquivo</span>
+                <span className="oli-dropzone-action">Escolher arquivo</span>
               </>
             )}
           </button>
@@ -4491,34 +4443,9 @@ function GeminiChatPanel({
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<GeminiChatMessage[]>([]);
-  const assistantRootRef = useRef<HTMLDivElement>(null);
-  const mascotRef = useRef<HTMLButtonElement>(null);
   const suggestedPrompts = useMemo(() => buildLiveSuggestedPrompts(liveView), [liveView]);
 
   useEffect(() => setMessages([]), [dashboard.id, sheet.name]);
-  useEffect(() => {
-    let frame = 0;
-    const trackPointer = (event: PointerEvent) => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const root = assistantRootRef.current;
-        const mascot = mascotRef.current;
-        if (!root || !mascot) return;
-        const rect = mascot.getBoundingClientRect();
-        const deltaX = event.clientX - (rect.left + rect.width / 2);
-        const deltaY = event.clientY - (rect.top + rect.height * 0.36);
-        const distance = Math.hypot(deltaX, deltaY) || 1;
-        const reach = Math.min(4, distance / 75);
-        root.style.setProperty("--oli-look-x", `${(deltaX / distance) * reach}px`);
-        root.style.setProperty("--oli-look-y", `${(deltaY / distance) * reach}px`);
-      });
-    };
-    window.addEventListener("pointermove", trackPointer, { passive: true });
-    return () => {
-      window.removeEventListener("pointermove", trackPointer);
-      cancelAnimationFrame(frame);
-    };
-  }, []);
 
   const submit = async (suggestedMessage?: string) => {
     const message = (suggestedMessage ?? draft).trim();
@@ -4543,7 +4470,7 @@ function GeminiChatPanel({
   };
 
   return (
-    <div ref={assistantRootRef} className="oli-assistant-shell">
+    <div className="oli-assistant-shell">
       {open && (
         <section className="oli-chat-panel" aria-label="Conversa com o assistente Oli">
           <header className="oli-chat-header">
@@ -4554,7 +4481,7 @@ function GeminiChatPanel({
               <div>
                 <strong>Oli</strong>
                 <p>
-                  {sheet.name} · {liveView.visibleRows} linhas · visão atual
+                  {sheet.name} · {liveView.visibleRows} linhas
                 </p>
               </div>
             </div>
@@ -4571,10 +4498,8 @@ function GeminiChatPanel({
           <div className="oli-chat-content" aria-live="polite">
             {!messages.length && (
               <div className="oli-chat-welcome">
-                <strong>Oi! Estou acompanhando o que aparece no seu painel.</strong>
-                <span>
-                  Escolha uma pergunta pronta ou escreva a sua. Dados sensíveis não são enviados.
-                </span>
+                <strong>O que você quer entender neste painel?</strong>
+                <span>Use uma sugestão ou escreva sua pergunta.</span>
               </div>
             )}
             {messages.map((message, index) => (
@@ -4593,14 +4518,13 @@ function GeminiChatPanel({
             )}
           </div>
           <div className="oli-chat-suggestions" aria-label="Perguntas sugeridas para esta visão">
-            {suggestedPrompts.map((prompt) => (
+            {suggestedPrompts.slice(0, 2).map((prompt) => (
               <button
                 key={prompt}
                 type="button"
                 disabled={loading}
                 onClick={() => void submit(prompt)}
               >
-                <span aria-hidden="true">✦</span>
                 {prompt}
               </button>
             ))}
@@ -4632,7 +4556,6 @@ function GeminiChatPanel({
       )}
       <div className="oli-mascot-group" data-open={open || undefined}>
         <button
-          ref={mascotRef}
           type="button"
           className="oli-mascot"
           data-state={loading ? "thinking" : open ? "chatting" : "idle"}
@@ -4640,8 +4563,6 @@ function GeminiChatPanel({
           aria-expanded={open}
           aria-label={open ? "Fechar assistente Oli" : "Abrir assistente Oli"}
         >
-          <span className="oli-mascot-spark oli-mascot-spark-one">✦</span>
-          <span className="oli-mascot-spark oli-mascot-spark-two">✦</span>
           <span className="oli-mascot-ear oli-mascot-ear-left" />
           <span className="oli-mascot-ear oli-mascot-ear-right" />
           <span className="oli-mascot-arm oli-mascot-arm-wave" />
@@ -4654,9 +4575,8 @@ function GeminiChatPanel({
           </span>
           <span className="oli-mascot-foot oli-mascot-foot-left" />
           <span className="oli-mascot-foot oli-mascot-foot-right" />
-          <span className="oli-mascot-name">Oli</span>
         </button>
-        <span className="oli-chat-label">{open ? "Estou por aqui!" : "Converse com o Oli"}</span>
+        <span className="oli-chat-label">{open ? "Fechar" : "Perguntar ao Oli"}</span>
       </div>
     </div>
   );

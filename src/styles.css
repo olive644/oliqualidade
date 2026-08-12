@@ -922,6 +922,267 @@
     transition: none;
   }
 }
+
+/* Soft redesign: calm surfaces, direct copy and a minimal polar bear. */
+.oli-welcome {
+  width: min(1080px, 100%);
+  padding-top: 64px;
+}
+.oli-welcome-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.72fr);
+  gap: clamp(48px, 8vw, 96px);
+  min-height: 390px;
+}
+.oli-welcome-badge {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted-foreground);
+  box-shadow: none;
+  text-transform: none;
+}
+.oli-welcome-copy h1 {
+  margin-top: 16px;
+  font-size: clamp(44px, 5.2vw, 68px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+}
+.oli-welcome-copy h1 span {
+  margin-top: 2px;
+  background: none;
+  color: var(--primary);
+}
+.oli-welcome-lead {
+  max-width: 510px;
+  margin-top: 20px;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.oli-welcome-scene {
+  display: grid;
+  width: min(380px, 100%);
+  aspect-ratio: 0.92;
+  place-items: end center;
+  justify-self: end;
+  overflow: hidden;
+  border: 0;
+  border-radius: 32px;
+  background: #b9c7ca;
+  box-shadow: none;
+}
+.oli-welcome-scene::after {
+  display: none;
+}
+.oli-polar-bear {
+  position: relative;
+  width: 76%;
+  height: 82%;
+  background: #fbfbfa;
+  clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%);
+}
+.oli-polar-ear {
+  position: absolute;
+  top: -8px;
+  width: 52px;
+  height: 52px;
+  border: 12px solid #fbfbfa;
+  border-radius: 50%;
+}
+.oli-polar-ear-left { left: -7%; }
+.oli-polar-ear-right { right: -7%; }
+.oli-polar-face {
+  position: absolute;
+  inset: 0;
+}
+.oli-polar-eye {
+  position: absolute;
+  top: 29%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #111318;
+}
+.oli-polar-eye-left { left: 35%; }
+.oli-polar-eye-right { right: 35%; }
+.oli-polar-face b {
+  position: absolute;
+  top: 43%;
+  left: 50%;
+  width: 38px;
+  height: 25px;
+  border-radius: 50% 50% 65% 65%;
+  background: #111318;
+  transform: translateX(-50%);
+}
+.oli-import-shell {
+  margin-top: 52px;
+  border-color: var(--border);
+  border-radius: 24px;
+  box-shadow: 0 14px 40px color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.oli-welcome-dropzone {
+  border-color: var(--border);
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--canvas) 55%, var(--card));
+}
+
+.oli-assistant-shell {
+  --oli-blue: #b9c7ca;
+  --oli-blue-deep: #a9b9bd;
+  --oli-blue-light: #c9d4d6;
+  --oli-cream: #fbfbfa;
+  gap: 8px;
+}
+.oli-mascot-group {
+  width: 92px;
+  filter: drop-shadow(0 10px 16px rgb(20 35 40 / 12%));
+}
+.oli-mascot {
+  width: 80px;
+  height: 98px;
+  animation: none;
+}
+.oli-mascot-body {
+  inset: 15px 10px 0;
+  border: 0;
+  border-radius: 0;
+  background: #fbfbfa;
+  box-shadow: none;
+  clip-path: polygon(20% 0, 80% 0, 100% 100%, 0 100%);
+}
+.oli-mascot-ear {
+  top: 7px;
+  width: 27px;
+  height: 27px;
+  border: 7px solid #fbfbfa;
+  border-radius: 50%;
+  background: transparent;
+}
+.oli-mascot-ear-left { left: 10px; transform: none; }
+.oli-mascot-ear-right { right: 10px; transform: none; }
+.oli-mascot-arm,
+.oli-mascot-foot,
+.oli-mascot-belly,
+.oli-face-patch,
+.oli-mouth {
+  display: none;
+}
+.oli-face {
+  top: 13px;
+  width: 58px;
+  height: 48px;
+}
+.oli-eye {
+  top: 14px;
+  width: 6px;
+  height: 6px;
+  background: #111318;
+  animation: none;
+}
+.oli-eye-left { left: 17px; }
+.oli-eye-right { right: 17px; }
+.oli-eye i { display: none; }
+.oli-muzzle {
+  top: 25px;
+  width: 20px;
+  height: 16px;
+  background: transparent;
+}
+.oli-nose {
+  top: 2px;
+  width: 13px;
+  height: 9px;
+  background: #111318;
+}
+.oli-chat-label {
+  border-color: var(--border);
+  padding: 5px 9px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.oli-chat-panel {
+  width: min(380px, calc(100vw - 32px));
+  height: min(540px, calc(100vh - 150px));
+  min-height: 360px;
+  border-color: var(--border);
+  border-radius: 20px;
+  box-shadow: 0 20px 55px color-mix(in oklab, var(--foreground) 18%, transparent);
+}
+.oli-chat-header {
+  min-height: 62px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+.oli-chat-header::after { display: none; }
+.oli-chat-avatar {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 12px;
+  background: #b9c7ca;
+  box-shadow: none;
+}
+.oli-face-compact {
+  top: 3px;
+  transform: translateX(-50%) scale(0.58);
+}
+.oli-chat-identity p {
+  color: var(--muted-foreground);
+}
+.oli-chat-close { color: var(--muted-foreground) !important; }
+.oli-chat-close:hover { background: var(--muted) !important; }
+.oli-chat-content {
+  padding: 14px;
+  background: var(--card);
+}
+.oli-chat-welcome {
+  gap: 4px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--muted);
+  padding: 12px;
+}
+.oli-chat-message-user {
+  background: var(--foreground);
+  color: var(--background);
+}
+.oli-chat-suggestions {
+  gap: 6px;
+  padding: 8px 12px;
+}
+.oli-chat-suggestions button {
+  border-color: var(--border);
+  border-radius: 10px;
+  background: transparent;
+  padding: 7px 9px;
+}
+.oli-chat-suggestions button:hover:not(:disabled),
+.oli-chat-suggestions button:focus-visible {
+  border-color: var(--muted-foreground);
+  background: var(--muted);
+  transform: none;
+}
+.oli-chat-form input {
+  border-radius: 10px;
+}
+
+@media (max-width: 720px) {
+  .oli-welcome { padding-top: 36px; }
+  .oli-welcome-hero {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    min-height: auto;
+  }
+  .oli-welcome-scene {
+    width: min(310px, 88vw);
+    justify-self: center;
+  }
+}
 .oliam-chart-drag-scroll {
   cursor: grab;
   scrollbar-width: thin;
@@ -3016,5 +3277,125 @@
   .oli-loader-laptop i,
   .oli-loader-data i {
     animation: none;
+  }
+}
+
+/* Landing overrides stay last so the previous illustrated scene cannot leak through. */
+.oli-welcome {
+  width: min(1080px, 100%);
+  padding-top: 64px;
+}
+.oli-welcome-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.72fr);
+  gap: clamp(48px, 8vw, 96px);
+  min-height: 390px;
+}
+.oli-welcome-badge {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted-foreground);
+  box-shadow: none;
+  text-transform: none;
+}
+.oli-welcome-copy h1 {
+  margin-top: 16px;
+  font-size: clamp(44px, 5.2vw, 68px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+}
+.oli-welcome-copy h1 span {
+  margin-top: 2px;
+  background: none;
+  color: var(--primary);
+}
+.oli-welcome-lead {
+  max-width: 510px;
+  margin-top: 20px;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.oli-welcome-scene {
+  display: grid;
+  width: min(380px, 100%);
+  aspect-ratio: 0.92;
+  place-items: end center;
+  justify-self: end;
+  overflow: hidden;
+  border: 0;
+  border-radius: 32px;
+  background: #b9c7ca;
+  box-shadow: none;
+}
+.oli-welcome-scene::after { display: none; }
+.oli-polar-bear {
+  position: relative;
+  width: 76%;
+  height: 82%;
+  background: transparent;
+  clip-path: none;
+}
+.oli-polar-bear::before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #fbfbfa;
+  clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%);
+  content: "";
+}
+.oli-polar-ear {
+  position: absolute;
+  top: -8px;
+  z-index: 2;
+  width: 52px;
+  height: 52px;
+  border: 12px solid #fbfbfa;
+  border-radius: 50%;
+}
+.oli-polar-ear-left { left: -7%; }
+.oli-polar-ear-right { right: -7%; }
+.oli-polar-face { position: absolute; inset: 0; z-index: 3; }
+.oli-polar-eye {
+  position: absolute;
+  top: 29%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #111318;
+}
+.oli-polar-eye-left { left: 35%; }
+.oli-polar-eye-right { right: 35%; }
+.oli-polar-face b {
+  position: absolute;
+  top: 43%;
+  left: 50%;
+  width: 38px;
+  height: 25px;
+  border-radius: 50% 50% 65% 65%;
+  background: #111318;
+  transform: translateX(-50%);
+}
+.oli-import-shell {
+  margin-top: 52px;
+  border-color: var(--border);
+  border-radius: 24px;
+  box-shadow: 0 14px 40px color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.oli-welcome-dropzone {
+  border-color: var(--border);
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--canvas) 55%, var(--card));
+}
+@media (max-width: 720px) {
+  .oli-welcome { padding-top: 36px; }
+  .oli-welcome-hero {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    min-height: auto;
+  }
+  .oli-welcome-scene {
+    width: min(310px, 88vw);
+    justify-self: center;
   }
 }
