@@ -3830,7 +3830,7 @@
 
 
 /* Correção responsiva: cabeçalhos mantêm todas as ações e rolam horizontalmente. */
-@media (max-width: 1180px) {
+@media (max-width: 1400px) {
   .oliam-topbar,
   .oliam-dashboard-topbar {
     justify-content: flex-start;
