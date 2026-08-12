@@ -7,6 +7,7 @@ import {
   resetRateLimitsForTests,
   validateChatHistory,
   validateChatMessage,
+  validateDashboardInput,
 } from "@/lib/gemini-security";
 import { handleGeminiChat } from "@/lib/gemini-server";
 import type { GeminiDashboardInput } from "@/lib/gemini-security";
@@ -143,6 +144,14 @@ describe("segurança do Gemini", () => {
     expect(() => validateChatHistory([{ role: "system", text: "segredo" }])).toThrow(/Histórico/);
   });
 
+  it("valida a forma e os limites do dashboard antes da análise", () => {
+    expect(() => validateDashboardInput({ rows: [], columns: [] })).toThrow(/Contexto/);
+    expect(() =>
+      validateDashboardInput({ ...dashboard, rows: Array.from({ length: 50_001 }, () => ({})) }),
+    ).toThrow(/Contexto/);
+    expect(validateDashboardInput(dashboard)).toBe(dashboard);
+  });
+
   it("aplica limite por cliente", () => {
     for (let index = 0; index < 12; index++) expect(checkRateLimit("cliente", index)).toBe(true);
     expect(checkRateLimit("cliente", 13)).toBe(false);
@@ -168,6 +177,18 @@ describe("segurança do Gemini", () => {
       }),
     );
     expect(response.status).toBe(403);
+  });
+
+  it("falha fechado em produção quando o segredo de sessão não foi configurado", async () => {
+    const response = await handleGeminiChat(
+      new Request("http://localhost/api/gemini/chat", {
+        method: "POST",
+        headers: { origin: "http://localhost" },
+        body: "{}",
+      }),
+      { VERCEL: "1", GEMINI_API_KEY: "unused" },
+    );
+    expect(response.status).toBe(503);
   });
 
   it("rejeita payload excessivo antes de processar o dashboard", async () => {
