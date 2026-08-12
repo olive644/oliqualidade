@@ -191,7 +191,13 @@ import {
   type GeoPoint,
   type SaveResult,
 } from "@/lib/storage";
-import { LARGE_FILE_BYTES, preferredSheetIndex, sheetToRows, type SheetOption } from "@/lib/import";
+import {
+  LARGE_FILE_BYTES,
+  preferredSheetIndex,
+  sheetToRows,
+  type SheetOption,
+  type SourceGrid,
+} from "@/lib/import";
 import { mergeReimportedSheets } from "@/lib/dashboard";
 import {
   decryptDashboardBackup,
@@ -471,7 +477,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
     routeId ? "dashboard" : "empty",
   );
   const [reviewSheets, setReviewSheets] = useState<
-    { name: string; rows: Row[]; columns: Column[]; diagnostics?: ImportDiagnostics }[]
+    {
+      name: string;
+      rows: Row[];
+      columns: Column[];
+      diagnostics?: ImportDiagnostics;
+      sourceGrid?: SourceGrid;
+    }[]
   >([]);
   const [reviewSheetIndex, setReviewSheetIndex] = useState(0);
   const [name, setName] = useState("");
@@ -638,7 +650,12 @@ export function OliAm({ routeId }: { routeId?: string }) {
     return sheets;
   };
   const prepare = (
-    data: { name: string; rows: Row[]; diagnostics?: ImportDiagnostics }[],
+    data: {
+      name: string;
+      rows: Row[];
+      diagnostics?: ImportDiagnostics;
+      sourceGrid?: SourceGrid;
+    }[],
     n: string,
   ) => {
     const nonEmpty = data.filter((s) => s.rows.length > 0);
@@ -649,6 +666,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         rows: s.rows,
         columns: infer(s.rows),
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
+        ...(s.sourceGrid ? { sourceGrid: s.sourceGrid } : {}),
       })),
     );
     setReviewSheetIndex(0);
@@ -1942,6 +1960,7 @@ function ImportWorkbench({
   rows,
   columns,
   diagnostics,
+  sourceGrid,
   selection,
   setSelection,
   apply,
@@ -1952,6 +1971,7 @@ function ImportWorkbench({
   rows: Row[];
   columns: Column[];
   diagnostics?: ImportDiagnostics;
+  sourceGrid?: SourceGrid;
   selection: ImportSelection;
   setSelection: (selection: ImportSelection) => void;
   apply: () => void;
@@ -1962,6 +1982,9 @@ function ImportWorkbench({
   const [tab, setTab] = useState<"preview" | "health">("preview");
   const previewRows = rows.slice(0, 30);
   const previewColumns = columns.slice(0, 12);
+  const sourceSelection = selection.source;
+  const sourceRows = sourceGrid?.rows.slice(0, 30) ?? [];
+  const sourceColumnCount = Math.min(12, sourceGrid?.rows[0]?.length ?? 0);
   const health = diagnostics ? buildSheetHealth(diagnostics) : null;
   const columnDiagnostic = (key: string) => diagnostics?.columns.find((item) => item.key === key);
   const ignored = new Set(selection.ignoredColumns);
@@ -1972,6 +1995,36 @@ function ImportWorkbench({
         ? selection.ignoredColumns.filter((item) => item !== key)
         : [...selection.ignoredColumns, key],
     });
+  const columnLetter = (column: number) => {
+    let value = column;
+    let label = "";
+    while (value > 0) {
+      value--;
+      label = String.fromCharCode(65 + (value % 26)) + label;
+      value = Math.floor(value / 26);
+    }
+    return label;
+  };
+  const enableSourceSelection = () => {
+    if (!sourceGrid) return;
+    const headerRow = Math.min(
+      sourceGrid.startRow + sourceGrid.rows.length - 1,
+      sourceGrid.startRow + Math.max(0, (diagnostics?.header.row ?? 1) - 1),
+    );
+    setSelection({
+      ...selection,
+      startRow: 1,
+      endRow: Math.max(1, sourceGrid.rows.length - 1),
+      ignoredColumns: [],
+      source: {
+        headerRow,
+        startRow: Math.min(headerRow + 1, sourceGrid.startRow + sourceGrid.rows.length - 1),
+        endRow: sourceGrid.startRow + sourceGrid.rows.length - 1,
+        startColumn: sourceGrid.startColumn,
+        endColumn: sourceGrid.startColumn + Math.max(0, sourceColumnCount - 1),
+      },
+    });
+  };
 
   return (
     <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -2027,32 +2080,87 @@ function ImportWorkbench({
             </span>
           </div>
           <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_auto]">
-            <label className="text-xs text-muted-foreground">
-              Primeira linha
-              <input
-                className="oliam-input mt-1"
-                type="number"
-                min={1}
-                max={rows.length}
-                value={selection.startRow}
-                onChange={(event) =>
-                  setSelection({ ...selection, startRow: Number(event.target.value) || 1 })
-                }
-              />
-            </label>
-            <label className="text-xs text-muted-foreground">
-              Última linha
-              <input
-                className="oliam-input mt-1"
-                type="number"
-                min={selection.startRow}
-                max={rows.length}
-                value={selection.endRow}
-                onChange={(event) =>
-                  setSelection({ ...selection, endRow: Number(event.target.value) || rows.length })
-                }
-              />
-            </label>
+            {sourceGrid && (
+              <div className="sm:col-span-2 lg:col-span-4 flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={sourceSelection ? "default" : "outline"}
+                  onClick={
+                    sourceSelection
+                      ? () => setSelection(defaultSelection(rows))
+                      : enableSourceSelection
+                  }
+                >
+                  {sourceSelection ? "Voltar à leitura automática" : "Selecionar na grade original"}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Origem: {sourceGrid.totalRows} linhas × {sourceGrid.totalColumns} colunas
+                  {(sourceGrid.truncatedRows || sourceGrid.truncatedColumns) &&
+                    " · a prévia foi limitada por segurança"}
+                </span>
+              </div>
+            )}
+            {sourceSelection ? (
+              <>
+                {[
+                  ["Cabeçalho", "headerRow"],
+                  ["Primeira linha de dados", "startRow"],
+                  ["Última linha de dados", "endRow"],
+                  ["Primeira coluna", "startColumn"],
+                  ["Última coluna", "endColumn"],
+                ].map(([label, key]) => (
+                  <label key={key} className="text-xs text-muted-foreground">
+                    {label}
+                    <input
+                      className="oliam-input mt-1"
+                      type="number"
+                      value={sourceSelection[key as keyof typeof sourceSelection]}
+                      onChange={(event) =>
+                        setSelection({
+                          ...selection,
+                          source: {
+                            ...sourceSelection,
+                            [key]: Number(event.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                ))}
+              </>
+            ) : (
+              <>
+                <label className="text-xs text-muted-foreground">
+                  Primeira linha
+                  <input
+                    className="oliam-input mt-1"
+                    type="number"
+                    min={1}
+                    max={rows.length}
+                    value={selection.startRow}
+                    onChange={(event) =>
+                      setSelection({ ...selection, startRow: Number(event.target.value) || 1 })
+                    }
+                  />
+                </label>
+                <label className="text-xs text-muted-foreground">
+                  Última linha
+                  <input
+                    className="oliam-input mt-1"
+                    type="number"
+                    min={selection.startRow}
+                    max={rows.length}
+                    value={selection.endRow}
+                    onChange={(event) =>
+                      setSelection({
+                        ...selection,
+                        endRow: Number(event.target.value) || rows.length,
+                      })
+                    }
+                  />
+                </label>
+              </>
+            )}
             <Button className="self-end" variant="outline" onClick={saveProfile}>
               Salvar perfil
             </Button>
@@ -2066,77 +2174,159 @@ function ImportWorkbench({
             </div>
           </div>
           <p className="mb-2 text-xs text-muted-foreground">
-            Clique no nome de uma coluna para incluí-la ou ignorá-la.
+            {sourceSelection
+              ? "Ajuste as coordenadas para escolher exatamente o cabeçalho e a tabela original."
+              : "Clique no nome de uma coluna para incluí-la ou ignorá-la."}
           </p>
           <div className="max-h-[25rem] w-full overflow-auto rounded-xl border border-border">
             <table className="min-w-max border-collapse text-xs">
-              <thead className="sticky top-0 z-10">
-                <tr>
-                  <th className="border border-blue-300 bg-blue-600 px-2 py-2 text-white">#</th>
-                  {previewColumns.map((column) => (
-                    <th
-                      key={column.key}
-                      className={cn(
-                        "border px-3 py-2 text-left text-white",
-                        ignored.has(column.key)
-                          ? "border-slate-400 bg-slate-500"
-                          : "border-blue-300 bg-blue-600",
-                      )}
-                    >
-                      <button
-                        type="button"
-                        className="w-full text-left"
-                        onClick={() => toggleColumn(column.key)}
-                      >
-                        {column.label}
-                      </button>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewRows.map((row, rowIndex) => {
-                  const outside =
-                    rowIndex + 1 < selection.startRow || rowIndex + 1 > selection.endRow;
-                  return (
-                    <tr key={rowIndex}>
-                      <th
-                        className={cn(
-                          "border border-border px-2 py-1.5 font-mono",
-                          outside ? "bg-slate-200 text-slate-500 dark:bg-slate-800" : "bg-muted",
-                        )}
-                      >
-                        {rowIndex + 1}
-                      </th>
-                      {previewColumns.map((column) => {
-                        const value = row[column.key];
-                        const diagnostic = columnDiagnostic(column.key);
-                        const problem =
-                          value == null || value === "" || Boolean(diagnostic?.warnings.length);
-                        const danger = (diagnostic?.qualityScore ?? 100) < 50;
+              {sourceSelection && sourceGrid ? (
+                <>
+                  <thead className="sticky top-0 z-10">
+                    <tr>
+                      <th className="border border-blue-300 bg-blue-600 px-2 py-2 text-white">#</th>
+                      {Array.from({ length: sourceColumnCount }, (_, index) => {
+                        const absoluteColumn = sourceGrid.startColumn + index;
+                        const selected =
+                          absoluteColumn >= sourceSelection.startColumn &&
+                          absoluteColumn <= sourceSelection.endColumn;
                         return (
-                          <td
-                            key={column.key}
+                          <th
+                            key={absoluteColumn}
                             className={cn(
-                              "max-w-56 truncate border border-border px-3 py-1.5",
-                              outside || ignored.has(column.key)
-                                ? "bg-slate-100 text-slate-400 dark:bg-slate-900"
-                                : danger
-                                  ? "bg-red-500/15"
-                                  : problem
-                                    ? "bg-amber-400/15"
-                                    : "bg-emerald-500/10",
+                              "border px-3 py-2 text-white",
+                              selected
+                                ? "border-blue-300 bg-blue-600"
+                                : "border-slate-400 bg-slate-500",
                             )}
-                            title={String(value ?? "")}
                           >
-                            {fmt(value ?? null, column.kind) ?? "—"}
-                          </td>
+                            {columnLetter(absoluteColumn)}
+                          </th>
                         );
                       })}
                     </tr>
-                  );
-                })}
-              </tbody>
+                  </thead>
+                  <tbody>
+                    {sourceRows.map((row, index) => {
+                      const absoluteRow = sourceGrid.startRow + index;
+                      const isHeader = absoluteRow === sourceSelection.headerRow;
+                      const selectedRow =
+                        absoluteRow >= sourceSelection.startRow &&
+                        absoluteRow <= sourceSelection.endRow;
+                      return (
+                        <tr key={absoluteRow}>
+                          <th
+                            className={cn(
+                              "border px-2 py-1.5 font-mono",
+                              isHeader
+                                ? "border-blue-300 bg-blue-600 text-white"
+                                : selectedRow
+                                  ? "border-border bg-muted"
+                                  : "border-border bg-slate-200 text-slate-500 dark:bg-slate-800",
+                            )}
+                          >
+                            {absoluteRow}
+                          </th>
+                          {Array.from({ length: sourceColumnCount }, (_, columnIndex) => {
+                            const absoluteColumn = sourceGrid.startColumn + columnIndex;
+                            const selectedColumn =
+                              absoluteColumn >= sourceSelection.startColumn &&
+                              absoluteColumn <= sourceSelection.endColumn;
+                            return (
+                              <td
+                                key={absoluteColumn}
+                                className={cn(
+                                  "max-w-56 truncate border border-border px-3 py-1.5",
+                                  isHeader && selectedColumn
+                                    ? "bg-blue-500/20 font-medium"
+                                    : selectedRow && selectedColumn
+                                      ? "bg-emerald-500/10"
+                                      : "bg-slate-100 text-slate-400 dark:bg-slate-900",
+                                )}
+                                title={String(row[columnIndex] ?? "")}
+                              >
+                                {String(row[columnIndex] ?? "") || "—"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </>
+              ) : (
+                <>
+                  <thead className="sticky top-0 z-10">
+                    <tr>
+                      <th className="border border-blue-300 bg-blue-600 px-2 py-2 text-white">#</th>
+                      {previewColumns.map((column) => (
+                        <th
+                          key={column.key}
+                          className={cn(
+                            "border px-3 py-2 text-left text-white",
+                            ignored.has(column.key)
+                              ? "border-slate-400 bg-slate-500"
+                              : "border-blue-300 bg-blue-600",
+                          )}
+                        >
+                          <button
+                            type="button"
+                            className="w-full text-left"
+                            onClick={() => toggleColumn(column.key)}
+                          >
+                            {column.label}
+                          </button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row, rowIndex) => {
+                      const outside =
+                        rowIndex + 1 < selection.startRow || rowIndex + 1 > selection.endRow;
+                      return (
+                        <tr key={rowIndex}>
+                          <th
+                            className={cn(
+                              "border border-border px-2 py-1.5 font-mono",
+                              outside
+                                ? "bg-slate-200 text-slate-500 dark:bg-slate-800"
+                                : "bg-muted",
+                            )}
+                          >
+                            {rowIndex + 1}
+                          </th>
+                          {previewColumns.map((column) => {
+                            const value = row[column.key];
+                            const diagnostic = columnDiagnostic(column.key);
+                            const problem =
+                              value == null || value === "" || Boolean(diagnostic?.warnings.length);
+                            const danger = (diagnostic?.qualityScore ?? 100) < 50;
+                            return (
+                              <td
+                                key={column.key}
+                                className={cn(
+                                  "max-w-56 truncate border border-border px-3 py-1.5",
+                                  outside || ignored.has(column.key)
+                                    ? "bg-slate-100 text-slate-400 dark:bg-slate-900"
+                                    : danger
+                                      ? "bg-red-500/15"
+                                      : problem
+                                        ? "bg-amber-400/15"
+                                        : "bg-emerald-500/10",
+                                )}
+                                title={String(value ?? "")}
+                              >
+                                {fmt(value ?? null, column.kind) ?? "—"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </>
+              )}
             </table>
           </div>
           {(rows.length > 30 || columns.length > 12) && (
@@ -2199,7 +2389,13 @@ function ImportWorkbench({
 }
 
 function Review(p: {
-  sheets: { name: string; rows: Row[]; columns: Column[]; diagnostics?: ImportDiagnostics }[];
+  sheets: {
+    name: string;
+    rows: Row[];
+    columns: Column[];
+    diagnostics?: ImportDiagnostics;
+    sourceGrid?: SourceGrid;
+  }[];
   activeIndex: number;
   setActiveIndex: (i: number) => void;
   setColumns: (c: Column[]) => void;
@@ -2447,6 +2643,35 @@ function Review(p: {
                     {region.rows} linhas · {region.columns} colunas ·{" "}
                     {Math.round(region.confidence * 100)}% confiança
                   </div>
+                  {active.sourceGrid && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-2"
+                      onClick={() => {
+                        const rowOffset = active.sourceGrid!.startRow - 1;
+                        const columnOffset = active.sourceGrid!.startColumn - 1;
+                        const headerRow = Math.max(
+                          region.startRow,
+                          active.diagnostics?.header.row ?? region.startRow,
+                        );
+                        setSelection({
+                          startRow: 1,
+                          endRow: Math.max(1, region.endRow - headerRow),
+                          ignoredColumns: [],
+                          source: {
+                            headerRow: headerRow + rowOffset,
+                            startRow: headerRow + rowOffset + 1,
+                            endRow: region.endRow + rowOffset,
+                            startColumn: region.startColumn + columnOffset,
+                            endColumn: region.endColumn + columnOffset,
+                          },
+                        });
+                      }}
+                    >
+                      Usar esta região
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -2505,11 +2730,12 @@ function Review(p: {
           rows={rows}
           columns={columns}
           diagnostics={active?.diagnostics}
+          sourceGrid={active?.sourceGrid}
           selection={selection}
           setSelection={setSelection}
           canUndo={Boolean(undoRows)}
           apply={() => {
-            const next = applyImportSelection(rows, selection);
+            const next = applyImportSelection(rows, selection, active?.sourceGrid);
             if (!next.length || !Object.keys(next[0] ?? {}).length) {
               toast.error("A seleção precisa manter ao menos uma linha e uma coluna.");
               return;

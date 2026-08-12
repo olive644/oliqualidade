@@ -1,10 +1,20 @@
 import type { Row } from "@/lib/types";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
+import type { SourceGrid } from "@/lib/import";
+
+export type SourceSelection = {
+  headerRow: number;
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+};
 
 export type ImportSelection = {
   startRow: number;
   endRow: number;
   ignoredColumns: string[];
+  source?: SourceSelection;
 };
 
 export type ImportProfile = {
@@ -46,12 +56,55 @@ export function defaultSelection(rows: Row[]): ImportSelection {
   return { startRow: 1, endRow: Math.max(1, rows.length), ignoredColumns: [] };
 }
 
-export function applyImportSelection(rows: Row[], selection: ImportSelection): Row[] {
+export function rowsFromSourceGrid(grid: SourceGrid, selection: SourceSelection): Row[] {
+  const headerIndex = selection.headerRow - grid.startRow;
+  const firstRowIndex = selection.startRow - grid.startRow;
+  const lastRowIndex = selection.endRow - grid.startRow;
+  const firstColumnIndex = selection.startColumn - grid.startColumn;
+  const lastColumnIndex = selection.endColumn - grid.startColumn;
+  if (
+    headerIndex < 0 ||
+    firstRowIndex <= headerIndex ||
+    lastRowIndex < firstRowIndex ||
+    firstColumnIndex < 0 ||
+    lastColumnIndex < firstColumnIndex ||
+    lastRowIndex >= grid.rows.length ||
+    lastColumnIndex >= (grid.rows[0]?.length ?? 0)
+  ) {
+    return [];
+  }
+
+  const seen = new Map<string, number>();
+  const headers = Array.from({ length: lastColumnIndex - firstColumnIndex + 1 }, (_, offset) => {
+    const raw = grid.rows[headerIndex]?.[firstColumnIndex + offset];
+    const base = String(raw ?? "").trim() || `coluna_${selection.startColumn + offset}`;
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count ? `${base}_${count + 1}` : base;
+  });
+
+  return grid.rows
+    .slice(firstRowIndex, lastRowIndex + 1)
+    .map((sourceRow) =>
+      Object.fromEntries(
+        headers.map((header, offset) => [header, sourceRow[firstColumnIndex + offset] ?? null]),
+      ),
+    )
+    .filter((row) => Object.values(row).some((value) => value !== null && value !== ""));
+}
+
+export function applyImportSelection(
+  rows: Row[],
+  selection: ImportSelection,
+  sourceGrid?: SourceGrid,
+): Row[] {
+  const selectedRows =
+    selection.source && sourceGrid ? rowsFromSourceGrid(sourceGrid, selection.source) : rows;
   const start = Math.max(0, selection.startRow - 1);
-  const end = Math.max(start, Math.min(rows.length, selection.endRow));
+  const end = Math.max(start, Math.min(selectedRows.length, selection.endRow));
   const ignored = new Set(selection.ignoredColumns);
-  return rows
-    .slice(start, end)
+  return selectedRows
+    .slice(selection.source ? 0 : start, selection.source ? selectedRows.length : end)
     .map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => !ignored.has(key))));
 }
 
