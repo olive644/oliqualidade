@@ -32,6 +32,11 @@ type LegacyDashboard = {
 function widgetCompatible(widget: Widget, columns: Column[]): boolean {
   const byKey = (key: string | undefined) => columns.find((column) => column.key === key);
   if (widget.type === "table" || widget.type === "folder-files") return true;
+  if (widget.type === "schedule-heatmap") {
+    const group = byKey(widget.groupKey);
+    const periods = (widget.periodKeys ?? []).filter((key) => byKey(key));
+    return Boolean(group && periods.length);
+  }
   if (widget.type === "metric" || widget.type === "metric-trend" || widget.type === "rating") {
     return numericKinds.includes(byKey(widget.metricKey)?.kind ?? "text");
   }
