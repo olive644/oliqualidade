@@ -78,9 +78,29 @@ describe("resolveFormulaCell", () => {
     expect(resolveFormulaCell(ws, "A1")).toBeNull();
   });
 
-  it("não tenta avaliar fórmula com intervalo (ex.: SOMA de várias linhas)", () => {
-    const ws = sheetWithFormulas([[1, 2, 3, null]], { D1: "SUM(A1:C1)" });
-    expect(resolveFormulaCell(ws, "D1")).toBeNull();
+  it("avalia intervalos locais em funções agregadoras comuns", () => {
+    const ws = sheetWithFormulas(
+      [
+        [1, 10, null, null, null],
+        [2, null, null, null, null],
+        [3, 30, null, null, null],
+      ],
+      {
+        C1: "SUM(A1:A3)",
+        D1: "AVERAGE(B1:B3)",
+        E1: "COUNT(A1:B3)",
+      },
+    );
+    expect(resolveFormulaCell(ws, "C1")).toBe(6);
+    expect(resolveFormulaCell(ws, "D1")).toBe(20);
+    expect(resolveFormulaCell(ws, "E1")).toBe(5);
+  });
+
+  it("recusa intervalos circulares ou maiores que o limite seguro", () => {
+    const ws = sheetWithFormulas([[1, null]], { B1: "SUM(A1:B1)" });
+    expect(resolveFormulaCell(ws, "B1")).toBeNull();
+    ws["C1"] = { t: "z", f: "SUM(A1:A10001)", v: 0 };
+    expect(resolveFormulaCell(ws, "C1")).toBeNull();
   });
 
   it("não tenta avaliar função não suportada (ex.: SUMIF/VLOOKUP)", () => {
