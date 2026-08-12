@@ -90,7 +90,10 @@ export async function pickFolderWorkbook(win: Window): Promise<FolderWorkbookSel
             ".xltm",
           ],
           "application/vnd.ms-excel": [".xls"],
+          "application/vnd.ms-excel.sheet.binary.macroEnabled.12": [".xlsb"],
+          "application/vnd.oasis.opendocument.spreadsheet": [".ods", ".fods"],
           "text/csv": [".csv"],
+          "text/tab-separated-values": [".tsv"],
         },
       },
     ],
@@ -118,5 +121,5 @@ export function fileChanged(
 }
 
 export function isSupportedWorkbook(name: string) {
-  return /\.(csv|xlsx|xls|xlsm|xltx|xltm)$/i.test(name);
+  return /\.(xlsx|xlsm|xlsb|xls|xltx|xltm|ods|fods|csv|tsv|xml|html|htm|numbers)$/i.test(name);
 }

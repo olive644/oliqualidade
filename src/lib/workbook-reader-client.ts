@@ -7,6 +7,7 @@ type WorkerResponse =
   | { id: string; type: "error"; message: string };
 
 export const MAX_WORKBOOK_BYTES = 100 * 1024 * 1024;
+export const WORKBOOK_READ_TIMEOUT_MS = 60_000;
 
 export async function readWorkbookFile(
   file: File,
@@ -22,21 +23,36 @@ export async function readWorkbookFile(
       type: "module",
     });
     const id = crypto.randomUUID();
-    const finish = () => worker.terminate();
+    let settled = false;
+    const finish = () => {
+      if (settled) return false;
+      settled = true;
+      clearTimeout(timeout);
+      worker.terminate();
+      return true;
+    };
+    const timeout = setTimeout(() => {
+      if (!finish()) return;
+      reject(
+        new Error(
+          "A leitura ultrapassou 60 segundos e foi cancelada. Divida o arquivo ou remova formatações excedentes.",
+        ),
+      );
+    }, WORKBOOK_READ_TIMEOUT_MS);
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       if (event.data.id !== id) return;
       if (event.data.type === "progress") onProgress?.(event.data.progress);
       if (event.data.type === "result") {
-        finish();
+        if (!finish()) return;
         resolve(event.data.sheets);
       }
       if (event.data.type === "error") {
-        finish();
+        if (!finish()) return;
         reject(new Error(event.data.message));
       }
     };
     worker.onerror = (event) => {
-      finish();
+      if (!finish()) return;
       reject(new Error(event.message || "Falha ao processar a planilha."));
     };
     worker.postMessage({ id, bytes, fileName: file.name }, [bytes]);
