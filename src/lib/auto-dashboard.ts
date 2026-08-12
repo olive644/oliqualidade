@@ -1,6 +1,6 @@
 import type { ColumnDiagnostic, ImportDiagnostics } from "@/lib/import-intelligence";
 import type { ChartAggregationOp, Column, Row, Widget, WidgetType } from "@/lib/types";
-import { createWidget } from "@/lib/widgets";
+import { createWidget, schedulePeriodColumns } from "@/lib/widgets";
 
 export type DashboardColumnRole =
   "dimension" | "metric" | "temporal-dimension" | "identifier" | "unsupported";
@@ -396,6 +396,33 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
           }),
         );
       }
+    }
+  }
+
+  const schedulePeriods = schedulePeriodColumns(input.columns);
+  if (schedulePeriods.length >= 3) {
+    const periodKeys = new Set(schedulePeriods.map((column) => column.key));
+    const scheduleGroup =
+      dimensions.find((dimension) => !periodKeys.has(dimension.key)) ??
+      input.columns.find(
+        (column) => !periodKeys.has(column.key) && ["category", "text"].includes(column.kind),
+      );
+    if (scheduleGroup) {
+      recommendations.push(
+        recommendation(input, {
+          id: slug("cronograma", scheduleGroup.key),
+          kind: "visualization",
+          title: "Cronograma visual",
+          widgetType: "schedule-heatmap",
+          groupKey: scheduleGroup.key,
+          columns: [scheduleGroup.key, ...schedulePeriods.map((column) => column.key)],
+          baseConfidence: 96,
+          reasons: [
+            `${schedulePeriods.length} colunas de período foram reconhecidas no cabeçalho.`,
+            "A matriz preserva itens nas linhas e períodos nas colunas.",
+          ],
+        }),
+      );
     }
   }
 
