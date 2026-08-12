@@ -52,6 +52,8 @@ export type GeminiChatHistoryMessage = { role: "user" | "assistant"; text: strin
 
 const SENSITIVE =
   /(cpf|cnpj|rg|email|e-mail|telefone|celular|phone|endereco|endereço|senha|password|token|secret|api.?key|pix|conta.?banc)/i;
+const SENSITIVE_VALUE =
+  /^(?:\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}|[^\s@]+@[^\s@]+\.[^\s@]+|(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\d{4}|\d{4})[-\s]?\d{4})$/i;
 const INJECTION = [
   /ignore\s+(all\s+)?previous/i,
   /ignore\s+(todas?\s+)?instru/i,
@@ -63,6 +65,16 @@ const INJECTION = [
 
 export function detectPromptInjection(message: string) {
   return INJECTION.some((pattern) => pattern.test(message));
+}
+
+export function isSensitiveColumn(column: Column, rows: Row[]): boolean {
+  if (SENSITIVE.test(`${column.key} ${column.label}`)) return true;
+  const samples = rows
+    .map((row) => String(row[column.key] ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 200);
+  if (samples.length < 2) return false;
+  return samples.filter((value) => SENSITIVE_VALUE.test(value)).length / samples.length >= 0.5;
 }
 
 export function validateChatMessage(value: unknown) {
@@ -212,6 +224,7 @@ function buildCrossAnalyses(rows: Row[], columns: Column[]) {
 const safeText = (value: unknown, limit = 160) => {
   const text = typeof value === "string" ? value : String(value ?? "");
   const clean = text
+    // eslint-disable-next-line no-control-regex -- remove controles de entrada não confiável
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .trim()
     .slice(0, limit);
@@ -388,9 +401,7 @@ function sanitizeLiveView(
 
 export function buildSafeDashboardContext(input: GeminiDashboardInput): GeminiSafeContext {
   const rows = input.rows.slice(0, 50_000);
-  const safeColumns = input.columns.filter(
-    (column) => !SENSITIVE.test(`${column.key} ${column.label}`),
-  );
+  const safeColumns = input.columns.filter((column) => !isSensitiveColumn(column, rows));
   const analyses = buildCrossAnalyses(rows, safeColumns);
   const liveView = sanitizeLiveView(input.liveView, safeColumns);
   if (liveView) {
@@ -440,7 +451,15 @@ export function buildSafeDashboardContext(input: GeminiDashboardInput): GeminiSa
 }
 
 const buckets = new Map<string, number[]>();
+const MAX_RATE_LIMIT_BUCKETS = 10_000;
 export function checkRateLimit(key: string, now = Date.now(), limit = 12, windowMs = 60_000) {
+  if (!buckets.has(key) && buckets.size >= MAX_RATE_LIMIT_BUCKETS) {
+    for (const [bucketKey, timestamps] of buckets) {
+      if (!timestamps.some((timestamp) => now - timestamp < windowMs)) buckets.delete(bucketKey);
+      if (buckets.size < MAX_RATE_LIMIT_BUCKETS) break;
+    }
+    if (buckets.size >= MAX_RATE_LIMIT_BUCKETS) buckets.delete(buckets.keys().next().value!);
+  }
   const recent = (buckets.get(key) ?? []).filter((timestamp) => now - timestamp < windowMs);
   if (recent.length >= limit) return false;
   recent.push(now);
