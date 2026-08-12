@@ -17,11 +17,13 @@ import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
  *   recursivamente, se essa célula também for uma fórmula sem valor
  *   guardado.
  * - Operadores aritméticos (+, -, *, /), parênteses, número negativo.
- * - Um punhado de funções comuns: IFERROR, ROUND, ABS, MIN, MAX, SUM (só
- *   com argumentos individuais ou intervalos locais), AVERAGE e COUNT.
+ * - Funções comuns: IF, AND, OR, IFERROR, ROUND, ABS, MIN, MAX, SUM,
+ *   AVERAGE, COUNT, SUMIF e COUNTIF. Intervalos continuam restritos à aba
+ *   atual e a no máximo 10 mil células.
  *
  * Qualquer coisa fora disso — referência a outra aba ("Vendas!P5"),
- * intervalo ("A1:A5"), função não suportada (SUMIF, VLOOKUP etc.) — faz a
+ * intervalo fora das funções permitidas, função não suportada (VLOOKUP,
+ * XLOOKUP etc.) — faz a
  * avaliação falhar e retornar null, deixando a célula vazia exatamente
  * como antes. Isso é proposital: o objetivo aqui é recuperar fórmulas de
  * cálculo simples entre colunas da mesma linha, não ser um motor de
@@ -33,6 +35,11 @@ const RANGE_AT_START = /^\$?([A-Za-z]+)\$?([0-9]+):\$?([A-Za-z]+)\$?([0-9]+)/;
 const MAX_FORMULA_RANGE_CELLS = 10_000;
 const num = (v: number | null | undefined): number | null => v ?? null;
 const FUNCTIONS: Record<string, (args: (number | null | undefined)[]) => number | null> = {
+  IF: ([condition, whenTrue, whenFalse]) =>
+    num(condition) !== null && num(condition) !== 0 ? num(whenTrue) : num(whenFalse),
+  AND: (args) =>
+    args.length && args.every((value) => num(value) !== null && num(value) !== 0) ? 1 : 0,
+  OR: (args) => (args.some((value) => num(value) !== null && num(value) !== 0) ? 1 : 0),
   IFERROR: ([a, b]) => {
     const av = num(a);
     return av !== null && Number.isFinite(av) ? av : num(b);
@@ -91,6 +98,23 @@ class Parser {
     return value;
   }
 
+  parseComparison(): number | null {
+    const left = this.parseExpr();
+    this.skipSpace();
+    const rest = this.src.slice(this.pos);
+    const operator = /^(>=|<=|<>|=|>|<)/.exec(rest)?.[1];
+    if (!operator) return left;
+    this.pos += operator.length;
+    const right = this.parseExpr();
+    if (left === null || right === null) return null;
+    if (operator === ">=") return left >= right ? 1 : 0;
+    if (operator === "<=") return left <= right ? 1 : 0;
+    if (operator === "<>") return left !== right ? 1 : 0;
+    if (operator === "=") return left === right ? 1 : 0;
+    if (operator === ">") return left > right ? 1 : 0;
+    return left < right ? 1 : 0;
+  }
+
   private parseTerm(): number | null {
     let value = this.parseFactor();
     for (;;) {
@@ -113,7 +137,7 @@ class Parser {
     }
     if (ch === "(") {
       this.pos++;
-      const v = this.parseExpr();
+      const v = this.parseComparison();
       if (this.peek() !== ")") throw new Error("parêntese não fechado");
       this.pos++;
       return v;
@@ -155,7 +179,7 @@ class Parser {
   private parseArgument(functionName: string): (number | null)[] {
     this.skipSpace();
     const match = RANGE_AT_START.exec(this.src.slice(this.pos));
-    if (!match) return [this.parseExpr()];
+    if (!match) return [this.parseComparison()];
     if (!["SUM", "MIN", "MAX", "AVERAGE", "COUNT"].includes(functionName))
       throw new Error(`intervalo não permitido em ${functionName}`);
     this.pos += match[0].length;
@@ -168,6 +192,107 @@ class Parser {
     this.skipSpace();
     return this.pos >= this.src.length;
   }
+}
+
+type ConditionalValue = string | number | boolean | null;
+
+function splitFormulaArguments(value: string): string[] | null {
+  const parts: string[] = [];
+  let start = 0;
+  let quoted = false;
+  let depth = 0;
+  for (let index = 0; index < value.length; index++) {
+    const char = value[index]!;
+    if (char === '"') {
+      if (quoted && value[index + 1] === '"') index++;
+      else quoted = !quoted;
+    } else if (!quoted && char === "(") depth++;
+    else if (!quoted && char === ")") depth--;
+    else if (!quoted && depth === 0 && (char === "," || char === ";")) {
+      parts.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  if (quoted || depth !== 0) return null;
+  parts.push(value.slice(start).trim());
+  return parts;
+}
+
+function wildcardPattern(value: string): RegExp {
+  const escaped = value
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+function matchesCriterion(value: ConditionalValue, criterion: ConditionalValue): boolean {
+  if (criterion === null) return value === null || value === "";
+  let operator = "=";
+  let expected: ConditionalValue = criterion;
+  if (typeof criterion === "string") {
+    const parsed = /^(>=|<=|<>|=|>|<)(.*)$/.exec(criterion);
+    if (parsed) {
+      operator = parsed[1]!;
+      expected = parsed[2]!.trim();
+    }
+  }
+  const numericExpected =
+    typeof expected === "number"
+      ? expected
+      : typeof expected === "string" && expected !== "" && Number.isFinite(Number(expected))
+        ? Number(expected)
+        : null;
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value !== "" && Number.isFinite(Number(value))
+        ? Number(value)
+        : null;
+  if (numericExpected !== null && numericValue !== null) {
+    if (operator === ">=") return numericValue >= numericExpected;
+    if (operator === "<=") return numericValue <= numericExpected;
+    if (operator === "<>") return numericValue !== numericExpected;
+    if (operator === ">") return numericValue > numericExpected;
+    if (operator === "<") return numericValue < numericExpected;
+    return numericValue === numericExpected;
+  }
+  const actualText = String(value ?? "");
+  const expectedText = String(expected ?? "");
+  const equal = wildcardPattern(expectedText).test(actualText);
+  return operator === "<>" ? !equal : operator === "=" ? equal : false;
+}
+
+function conditionalAggregate(
+  formula: string,
+  readRange: (reference: string) => ConditionalValue[] | null,
+  readValue: (token: string) => ConditionalValue,
+): number | null | undefined {
+  const match = /^(SUMIF|COUNTIF)\s*\(([\s\S]*)\)$/i.exec(formula.trim());
+  if (!match) return undefined;
+  const name = match[1]!.toUpperCase();
+  const args = splitFormulaArguments(match[2]!);
+  if (!args || (name === "COUNTIF" ? args.length !== 2 : args.length < 2 || args.length > 3))
+    return null;
+  if (args.some((argument) => argument.includes("!"))) return null;
+  const criteriaValues = readRange(args[0]!);
+  if (!criteriaValues) return null;
+  const criterionToken = args[1]!;
+  const criterion = /^"[\s\S]*"$/.test(criterionToken)
+    ? criterionToken.slice(1, -1).replace(/""/g, '"')
+    : readValue(criterionToken);
+  if (criterion === null && criterionToken.trim() !== "") return null;
+  if (name === "COUNTIF")
+    return criteriaValues.filter((value) => matchesCriterion(value, criterion)).length;
+  const sumValues = readRange(args[2] ?? args[0]!);
+  if (!sumValues || sumValues.length !== criteriaValues.length) return null;
+  return criteriaValues.reduce(
+    (sum, value, index) =>
+      matchesCriterion(value, criterion) && typeof sumValues[index] === "number"
+        ? sum + sumValues[index]
+        : sum,
+    0,
+  );
 }
 
 /**
@@ -211,37 +336,82 @@ export function resolveFormulaCell(
   inProgress.add(addr);
   let value: number | null;
   try {
-    const parser = new Parser(
+    const readConditionalRange = (reference: string): ConditionalValue[] | null => {
+      if (!/^\$?[A-Za-z]+\$?\d+:\$?[A-Za-z]+\$?\d+$/.test(reference.trim())) return null;
+      const range = XLSX.utils.decode_range(reference.replace(/\$/g, ""));
+      const size = (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
+      if (size > MAX_FORMULA_RANGE_CELLS) return null;
+      const current = XLSX.utils.decode_cell(addr);
+      if (
+        current.r >= range.s.r &&
+        current.r <= range.e.r &&
+        current.c >= range.s.c &&
+        current.c <= range.e.c
+      )
+        return null;
+      const values: ConditionalValue[] = [];
+      for (let row = range.s.r; row <= range.e.r; row++) {
+        for (let column = range.s.c; column <= range.e.c; column++) {
+          const address = XLSX.utils.encode_cell({ r: row, c: column });
+          const source = worksheetCellAtAddress(ws, address) as
+            { v?: unknown; t?: string; f?: string } | undefined;
+          if (source?.t !== "z" && ["string", "number", "boolean"].includes(typeof source?.v))
+            values.push(source!.v as string | number | boolean);
+          else if (source?.f) values.push(resolveFormulaCell(ws, address, cache, inProgress));
+          else values.push(null);
+        }
+      }
+      return values;
+    };
+    const conditional = conditionalAggregate(
       cell.f,
-      (ref) => resolveFormulaCell(ws, ref, cache, inProgress),
-      (start, end) => {
-        const range = XLSX.utils.decode_range(`${start}:${end}`);
-        const size = (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
-        if (size > MAX_FORMULA_RANGE_CELLS) return null;
-        const current = XLSX.utils.decode_cell(addr);
-        if (
-          current.r >= range.s.r &&
-          current.r <= range.e.r &&
-          current.c >= range.s.c &&
-          current.c <= range.e.c
-        )
-          return null;
-        const values: (number | null)[] = [];
-        for (let row = range.s.r; row <= range.e.r; row++)
-          for (let column = range.s.c; column <= range.e.c; column++)
-            values.push(
-              resolveFormulaCell(
-                ws,
-                XLSX.utils.encode_cell({ r: row, c: column }),
-                cache,
-                inProgress,
-              ),
-            );
-        return values;
+      readConditionalRange,
+      (token): ConditionalValue => {
+        const trimmed = token.trim();
+        if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
+        if (!CELL_REF.test(trimmed)) return null;
+        const reference = trimmed.replace(/\$/g, "").toUpperCase();
+        const source = worksheetCellAtAddress(ws, reference) as
+          { v?: unknown; t?: string; f?: string } | undefined;
+        if (source?.t !== "z" && ["string", "number", "boolean"].includes(typeof source?.v))
+          return source!.v as string | number | boolean;
+        return source?.f ? resolveFormulaCell(ws, reference, cache, inProgress) : null;
       },
     );
-    value = parser.parseExpr();
-    if (!parser.finished()) value = null;
+    if (conditional !== undefined) value = conditional;
+    else {
+      const parser = new Parser(
+        cell.f,
+        (ref) => resolveFormulaCell(ws, ref, cache, inProgress),
+        (start, end) => {
+          const range = XLSX.utils.decode_range(`${start}:${end}`);
+          const size = (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
+          if (size > MAX_FORMULA_RANGE_CELLS) return null;
+          const current = XLSX.utils.decode_cell(addr);
+          if (
+            current.r >= range.s.r &&
+            current.r <= range.e.r &&
+            current.c >= range.s.c &&
+            current.c <= range.e.c
+          )
+            return null;
+          const values: (number | null)[] = [];
+          for (let row = range.s.r; row <= range.e.r; row++)
+            for (let column = range.s.c; column <= range.e.c; column++)
+              values.push(
+                resolveFormulaCell(
+                  ws,
+                  XLSX.utils.encode_cell({ r: row, c: column }),
+                  cache,
+                  inProgress,
+                ),
+              );
+          return values;
+        },
+      );
+      value = parser.parseComparison();
+      if (!parser.finished()) value = null;
+    }
   } catch {
     value = null;
   }
