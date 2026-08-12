@@ -257,7 +257,7 @@ it("classifica fórmulas locais, intervalos e referências entre abas", () => {
   const diagnostics = diagnoseImportedSheet(ws, rows);
   const summary = getFormulaSummary(diagnostics);
   expect(summary.total).toBe(2);
-  expect(summary.supported).toBe(1);
+  expect(summary.supported).toBe(2);
   expect(summary.ranges).toBe(1);
-  expect(summary.unsupported).toBe(1);
+  expect(summary.unsupported).toBe(0);
 });
