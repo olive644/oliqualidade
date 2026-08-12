@@ -149,6 +149,28 @@ describe("sheetToRows", () => {
     expect(warning).toContain("nota");
   });
 
+  it("registra um balanço objetivo das transformações da importação", () => {
+    const ws = sheet([
+      ["Relatório", null, null],
+      ["Produto", "Valor", null],
+      ["A", 10, null],
+      [null, null, null],
+      ["B", "20,50", null],
+      ["Observação final", null, null],
+    ]);
+    ws["!ref"] = "A1:E6";
+    const result = sheetToRows(ws);
+    expect(result.audit).toMatchObject({
+      sourceNonEmptyCells: 8,
+      outputNonEmptyCells: 4,
+      numericCellsConverted: 1,
+      rowsAboveHeaderIgnored: 1,
+      blankRowsIgnored: 1,
+      trailingRowsIgnored: 1,
+      columnsIgnored: 3,
+    });
+  });
+
   it("não deixa uma nota de rodapé mesclada horizontalmente escapar do corte, mesmo cobrindo várias colunas", () => {
     // Reproduz o caso real: a ÚLTIMA linha da planilha é uma frase longa
     // mesclada horizontalmente cobrindo várias colunas (parece "cheia"),
