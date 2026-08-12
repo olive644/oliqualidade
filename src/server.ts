@@ -50,7 +50,7 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const environment = (env ?? {}) as Record<string, string>;
-    const sessionSecret = environment.OLI_SESSION_SECRET ?? process.env["OLI_SESSION_SECRET"];
+    const sessionSecret = environment["OLI_SESSION_SECRET"] ?? process.env["OLI_SESSION_SECRET"];
     try {
       if (new URL(request.url).pathname === "/api/gemini/chat") {
         return withSecurityHeaders(await handleGeminiChat(request, environment));
