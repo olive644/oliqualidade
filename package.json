@@ -1,6 +1,7 @@
 {
-  "name": "tanstack_start_ts",
+  "name": "oliqualidade",
   "private": true,
+  "license": "UNLICENSED",
   "sideEffects": false,
   "type": "module",
   "scripts": {
