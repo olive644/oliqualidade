@@ -22,6 +22,14 @@ const sheetWithDates = (aoa: (string | number | Date | null)[][]) => {
 };
 
 describe("sheetToRows", () => {
+  it("nunca transforma data inválida em cabeçalho NaN/NaN/NaN", () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Produto", "NaN/NaN/NaN", "Valor"],
+      ["A", "x", 10],
+    ]);
+    const result = sheetToRows(ws);
+    expect(Object.keys(result.rows[0] ?? {})).toEqual(["Produto", "coluna_2", "Valor"]);
+  });
   it("converte uma planilha simples em linhas", () => {
     const ws = sheet([
       ["nome", "valor"],

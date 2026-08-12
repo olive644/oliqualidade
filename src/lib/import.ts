@@ -38,6 +38,7 @@ const MERGE_FILL_MAX_LENGTH = 60;
  * que a detecção de tipo de coluna em format.ts reconhece).
  */
 function formatDateCell(d: Date): string {
+  if (!Number.isFinite(d.getTime())) return "";
   // SheetJS 0.20 converte células de data para um instante UTC antes de
   // entregá-las ao sheet_to_json. Reaplicar o deslocamento local preserva o
   // dia civil que aparece no Excel, inclusive em fusos a leste/oeste de UTC.
@@ -57,7 +58,19 @@ function formatDateCell(d: Date): string {
  * horário) em vez de uma data legível.
  */
 function normalizeRawRow(row: (string | number | Date | null)[]): (string | number | null)[] {
-  return row.map((v) => (v instanceof Date ? formatDateCell(v) : v));
+  return row.map((v) => (v instanceof Date ? formatDateCell(v) || null : v));
+}
+
+const INVALID_HEADER_PATTERN = /^(?:nan(?:[\s/.-]*nan)*|invalid date|undefined|null)$/i;
+
+function headerName(raw: string | number | null, index: number) {
+  const value = raw == null ? "" : String(raw).trim();
+  return !value || INVALID_HEADER_PATTERN.test(value) ? `coluna_${index + 1}` : value;
+}
+
+function headerIsInvalid(raw: string | number | null) {
+  const value = raw == null ? "" : String(raw).trim();
+  return !value || INVALID_HEADER_PATTERN.test(value);
 }
 
 const PLAIN_NUMERIC_TEXT_PATTERN = /^[-+]?(?:\d+|\d*[.,]\d+)$/;
@@ -649,8 +662,8 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   let renamed = 0;
   const headerWasBlank: boolean[] = [];
   const headers = headerRow.map((raw, i) => {
-    headerWasBlank[i] = raw === null || raw === "";
-    const base = raw === null || raw === "" ? `coluna_${i + 1}` : String(raw).trim();
+    const base = headerName(raw, i);
+    headerWasBlank[i] = headerIsInvalid(raw);
     const count = seen.get(base) ?? 0;
     seen.set(base, count + 1);
     if (count === 0) return base;
