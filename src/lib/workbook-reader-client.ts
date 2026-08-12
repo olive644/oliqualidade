@@ -6,10 +6,14 @@ type WorkerResponse =
   | { id: string; type: "result"; sheets: SheetOption[] }
   | { id: string; type: "error"; message: string };
 
+export const MAX_WORKBOOK_BYTES = 100 * 1024 * 1024;
+
 export async function readWorkbookFile(
   file: File,
   onProgress?: (progress: WorkbookReadProgress) => void,
 ): Promise<SheetOption[]> {
+  if (file.size > MAX_WORKBOOK_BYTES)
+    throw new Error("A planilha excede o limite de 100 MB. Divida o arquivo antes de importar.");
   const bytes = await file.arrayBuffer();
   if (typeof Worker === "undefined") return readWorkbookBytes(bytes, file.name, onProgress);
 
