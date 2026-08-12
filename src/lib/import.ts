@@ -9,6 +9,19 @@ export type SheetImportResult = {
   warning: string | null; // aviso não bloqueante: colunas renomeadas, linha de cabeçalho deslocada, colunas quase vazias e/ou linhas em branco ignoradas
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
+  audit?: ImportAudit;
+};
+
+export type ImportAudit = {
+  sourceNonEmptyCells: number;
+  outputNonEmptyCells: number;
+  formulaCellsRecovered: number;
+  mergedCellsExpanded: number;
+  numericCellsConverted: number;
+  rowsAboveHeaderIgnored: number;
+  blankRowsIgnored: number;
+  trailingRowsIgnored: number;
+  columnsIgnored: number;
 };
 
 export type SourceGrid = {
@@ -627,6 +640,10 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     defval: null,
   });
   const aoa = rawAoa.map((row, rowIndex) => normalizeRawRow(row, ws, rowIndex, range.s));
+  const sourceNonEmptyCells = aoa.reduce(
+    (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
+    0,
+  );
 
   // Células mescladas: o Excel só guarda o valor na célula de origem
   // (canto superior esquerdo do intervalo mesclado); as demais ficam
@@ -657,6 +674,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // `cache` é compartilhado entre todas as células da aba nesta passagem
   // pra não reavaliar a mesma referência várias vezes.
   const formulaCache = new Map<string, number | null>();
+  let formulaCellsRecovered = 0;
   const width = range.e.c - range.s.c + 1;
   for (let r = 0; r < aoa.length; r++) {
     const row = aoa[r] as (string | number | null)[];
@@ -673,7 +691,10 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       if (v !== null && v !== undefined) continue;
       const addr = XLSX.utils.encode_cell({ r: r + range.s.r, c: c + range.s.c });
       const resolved = resolveFormulaCell(ws, addr, formulaCache);
-      if (resolved !== null) row[c] = resolved;
+      if (resolved !== null) {
+        row[c] = resolved;
+        formulaCellsRecovered++;
+      }
     }
   }
 
@@ -786,6 +807,21 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       warning: blockMessages.join(" "),
       diagnostics: diagnoseImportedSheet(ws, blockRows),
       sourceGrid,
+      audit: {
+        sourceNonEmptyCells,
+        outputNonEmptyCells: blockRows.reduce(
+          (sum, row) =>
+            sum + Object.values(row).filter((value) => value !== null && value !== "").length,
+          0,
+        ),
+        formulaCellsRecovered,
+        mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
+        numericCellsConverted: 0,
+        rowsAboveHeaderIgnored: 0,
+        blankRowsIgnored: 0,
+        trailingRowsIgnored: 0,
+        columnsIgnored: 0,
+      },
     };
   }
 
@@ -952,6 +988,21 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     warning: messages.length ? messages.join(" ") : null,
     diagnostics: diagnoseImportedSheet(ws, normalizedRows),
     sourceGrid,
+    audit: {
+      sourceNonEmptyCells,
+      outputNonEmptyCells: normalizedRows.reduce(
+        (sum, row) =>
+          sum + Object.values(row).filter((value) => value !== null && value !== "").length,
+        0,
+      ),
+      formulaCellsRecovered,
+      mergedCellsExpanded: mergedHeaderCells + mergedCells,
+      numericCellsConverted: numericTextCellsNormalized,
+      rowsAboveHeaderIgnored: headerRowIndex,
+      blankRowsIgnored: blankSkipped,
+      trailingRowsIgnored: trailingNotesTrimmed,
+      columnsIgnored: ghostColumns.length,
+    },
   };
 }
 
@@ -966,6 +1017,7 @@ export type SheetOption = {
   warning: string | null;
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
+  audit?: ImportAudit;
 };
 
 /**
@@ -978,13 +1030,14 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
   return wb.SheetNames.map((name) => {
     const ws = wb.Sheets[name];
     if (!ws) return { name, rows: [], warning: null };
-    const { rows, warning, diagnostics, sourceGrid } = sheetToRows(ws);
+    const { rows, warning, diagnostics, sourceGrid, audit } = sheetToRows(ws);
     return {
       name,
       rows,
       warning,
       ...(diagnostics ? { diagnostics } : {}),
       ...(sourceGrid ? { sourceGrid } : {}),
+      ...(audit ? { audit } : {}),
     };
   }).filter((s) => s.rows.length > 0);
 }
