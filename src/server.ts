@@ -4,6 +4,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleGeminiChat } from "./lib/gemini-server";
 import { withSecurityHeaders } from "./lib/http-security";
+import { withChatSession } from "./lib/chat-session";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -48,15 +49,21 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const environment = (env ?? {}) as Record<string, string>;
+    const sessionSecret = environment.OLI_SESSION_SECRET ?? process.env["OLI_SESSION_SECRET"];
     try {
       if (new URL(request.url).pathname === "/api/gemini/chat") {
-        return withSecurityHeaders(
-          await handleGeminiChat(request, (env ?? {}) as Record<string, string>),
-        );
+        return withSecurityHeaders(await handleGeminiChat(request, environment));
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return withSecurityHeaders(await normalizeCatastrophicSsrResponse(response));
+      return withSecurityHeaders(
+        await withChatSession(
+          await normalizeCatastrophicSsrResponse(response),
+          request,
+          sessionSecret,
+        ),
+      );
     } catch (error) {
       console.error(error);
       return withSecurityHeaders(
