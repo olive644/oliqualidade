@@ -20,9 +20,10 @@ describe("leitor universal de planilhas", () => {
     expect(detectDelimiter('produto;observação;valor\nBolo;"doce, caseiro";12,50')).toBe(";");
     expect(detectDelimiter("produto\tvalor\nBolo\t12")).toBe("\t");
     expect(detectDelimiter("produto|valor\nBolo|12")).toBe("|");
+    expect(detectDelimiter("Produto;Valor\nA;1.234,50\nB;2.000,00")).toBe(";");
   });
 
-  it("lê CSV brasileiro em Windows-1252 preservando acentos e decimal como texto", () => {
+  it("lê CSV brasileiro em Windows-1252 preservando acentos e normalizando decimal", () => {
     const source = "produto;região;valor\r\nAçaí;São Paulo;1.234,50";
     const bytes = Uint8Array.from(
       [...source].map((character) => {
@@ -35,8 +36,37 @@ describe("leitor universal de planilhas", () => {
     expect(sheet?.rows[0]).toMatchObject({
       produto: "Açaí",
       região: "São Paulo",
-      valor: "1.234,50",
+      valor: 1234.5,
     });
+  });
+
+  it("não confunde vírgulas decimais com o separador do CSV brasileiro", () => {
+    const source = "Produto;Valor\nA;1.234,50\nB;2.000,00";
+    const [sheet] = readWorkbookBytes(new TextEncoder().encode(source), "valores.csv");
+    expect(sheet?.rows).toEqual([
+      { Produto: "A", Valor: 1234.5 },
+      { Produto: "B", Valor: 2000 },
+    ]);
+  });
+
+  it("preserva hora do Excel sem convertê-la em 31/12/1899", () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([["Hora"], [0.5]]);
+    worksheet.A2!.z = "hh:mm";
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Horários");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    const [sheet] = readWorkbookBytes(bytes, "horarios.xlsx");
+    expect(sheet?.rows).toEqual([{ Hora: "12:00" }]);
+  });
+
+  it("preserva duração acima de 24 horas usando o formato exibido no Excel", () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([["Duração"], [1.5]]);
+    worksheet.A2!.z = "[h]:mm";
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Durações");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    const [sheet] = readWorkbookBytes(bytes, "duracoes.xlsx");
+    expect(sheet?.rows).toEqual([{ Duração: "36:00" }]);
   });
 
   it.each(["xlsx", "xlsb", "ods"] as const)("lê o formato %s", (bookType) => {
