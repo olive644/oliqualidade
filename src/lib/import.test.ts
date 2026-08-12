@@ -226,6 +226,21 @@ describe("sheetToRows", () => {
     });
   });
 
+  it("aceita anos numéricos como cabeçalhos quando existe um título acima", () => {
+    const ws = sheet([
+      ["Relatório anual", null, null],
+      ["Indicador", 2024, 2025],
+      ["Receita", 10, 20],
+      ["Custo", 5, 8],
+    ]);
+    const { rows, warning } = sheetToRows(ws);
+    expect(rows).toEqual([
+      { Indicador: "Receita", "2024": 10, "2025": 20 },
+      { Indicador: "Custo", "2024": 5, "2025": 8 },
+    ]);
+    expect(warning).toContain("linha 2");
+  });
+
   it("ignora linhas inteiramente em branco no meio dos dados", () => {
     // Uma linha em branco "real" (ex: vinda de um CSV colado) chega como
     // células de string vazia, não como células ausentes.
