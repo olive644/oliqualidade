@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import type { Row } from "@/lib/types";
 import { resolveFormulaCell } from "@/lib/formula";
 import { diagnoseImportedSheet, type ImportDiagnostics } from "@/lib/import-intelligence";
+import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 
 export type SheetImportResult = {
   rows: Row[];
@@ -57,8 +58,35 @@ function formatDateCell(d: Date): string {
  * renderizada com o toString() cru do JS (com dia da semana, hora e fuso
  * horário) em vez de uma data legível.
  */
-function normalizeRawRow(row: (string | number | Date | null)[]): (string | number | null)[] {
-  return row.map((v) => (v instanceof Date ? formatDateCell(v) || null : v));
+function normalizeRawRow(
+  row: (string | number | Date | null)[],
+  worksheet: XLSX.WorkSheet,
+  rowIndex: number,
+  start: XLSX.CellAddress,
+): (string | number | null)[] {
+  return row.map((value, columnIndex) => {
+    if (!(value instanceof Date)) return value;
+
+    const formatted = formatDateCell(value);
+    if (formatted) return formatted;
+
+    // O SheetJS 0.20 pode tentar converter uma célula textual para Date
+    // apenas porque o estilo dela é de data. Nesse caso ele entrega
+    // `Invalid Date` no AOA, apesar de o objeto original ainda preservar o
+    // texto correto. Isso ocorre, por exemplo, com o cabeçalho "Torre de
+    // Processo" no formulário FRS-QA-028. Recuperar somente strings evita
+    // alterar o tratamento normal de datas e números legítimos.
+    const address = XLSX.utils.encode_cell({
+      r: start.r + rowIndex,
+      c: start.c + columnIndex,
+    });
+    const sourceCell = worksheetCellAtAddress(worksheet, address);
+    if ((sourceCell?.t === "s" || sourceCell?.t === "str") && typeof sourceCell.v === "string") {
+      return sourceCell.v;
+    }
+
+    return null;
+  });
 }
 
 const INVALID_HEADER_PATTERN = /^(?:nan(?:[\s/.-]*nan)*|invalid date|undefined|null)$/i;
@@ -485,11 +513,14 @@ function blocksToRows(blocks: Block[]): { rows: Row[]; blockColumnName: string }
  * Um arquivo vazio (sem linhas de dados) retorna rows: [].
  */
 export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
+  const range = ws["!ref"]
+    ? XLSX.utils.decode_range(ws["!ref"])
+    : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
   const rawAoa = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
     header: 1,
     defval: null,
   });
-  const aoa = rawAoa.map(normalizeRawRow);
+  const aoa = rawAoa.map((row, rowIndex) => normalizeRawRow(row, ws, rowIndex, range.s));
 
   // Células mescladas: o Excel só guarda o valor na célula de origem
   // (canto superior esquerdo do intervalo mesclado); as demais ficam
@@ -513,10 +544,6 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // repetidos; ele só não aparecia nos testes porque `aoa_to_sheet` (usado
   // nos testes) sempre cria planilhas começando em A1, onde o offset é
   // zero e o bug fica invisível.
-  const range = ws["!ref"]
-    ? XLSX.utils.decode_range(ws["!ref"])
-    : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
-
   // Células com fórmula mas sem valor calculado guardado no arquivo (comum
   // em planilhas geradas por script, que escrevem a fórmula mas nunca a
   // calculam de verdade): tenta recuperar o valor avaliando a fórmula
