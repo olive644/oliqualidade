@@ -10,8 +10,26 @@ export const WORKBOOK_FORMATS_LABEL = "XLSX, XLSM, XLSB, XLS, ODS, CSV, TSV, XML
 
 const TEXT_EXTENSIONS = /\.(csv|tsv|txt)$/i;
 const ZIP_WORKBOOK_EXTENSIONS = /\.(xlsx|xlsm|xltx|xltm)$/i;
+export const MAX_WORKBOOK_SHEETS = 100;
+export const MAX_WORKBOOK_CELLS = 2_000_000;
 
 export type WorkbookReadProgress = "decoding" | "parsing" | "analyzing";
+
+export function validateWorkbookComplexity(workbook: XLSX.WorkBook): void {
+  if (workbook.SheetNames.length > MAX_WORKBOOK_SHEETS)
+    throw new Error(`A planilha possui mais de ${MAX_WORKBOOK_SHEETS} abas.`);
+  let cells = 0;
+  for (const name of workbook.SheetNames) {
+    const range = workbook.Sheets[name]?.["!ref"];
+    if (!range) continue;
+    const decoded = XLSX.utils.decode_range(range);
+    cells += (decoded.e.r - decoded.s.r + 1) * (decoded.e.c - decoded.s.c + 1);
+    if (cells > MAX_WORKBOOK_CELLS)
+      throw new Error(
+        "A planilha ultrapassa 2 milhões de células. Divida o arquivo para evitar travamentos e perda de dados.",
+      );
+  }
+}
 
 function decodeText(bytes: Uint8Array): string {
   if (bytes[0] === 0xff && bytes[1] === 0xfe)
@@ -98,6 +116,7 @@ export function readWorkbookBytes(
     nodim: true,
     UTC: false,
   });
+  validateWorkbookComplexity(wb);
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) attachWorkbookFeatures(wb, bytes);
   onProgress?.("analyzing");
   return sheetsWithData(wb);
