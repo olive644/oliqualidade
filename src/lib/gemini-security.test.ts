@@ -3,6 +3,7 @@ import {
   buildSafeDashboardContext,
   checkRateLimit,
   detectPromptInjection,
+  isSensitiveColumn,
   resetRateLimitsForTests,
   validateChatHistory,
   validateChatMessage,
@@ -35,6 +36,22 @@ describe("segurança do Gemini", () => {
     expect(context.columns.some((column) => column.key === "CPF")).toBe(false);
     expect(JSON.stringify(context)).not.toContain("12345678900");
     expect(context.columns.find((column) => column.key === "Valor")?.average).toBe(150);
+  });
+
+  it("detecta conteúdo sensível mesmo com cabeçalho genérico", () => {
+    const column = {
+      key: "Informação",
+      label: "Informação",
+      kind: "text",
+      visible: true,
+      description: "",
+    } as const;
+    expect(
+      isSensitiveColumn(column, [
+        { Informação: "123.456.789-00" },
+        { Informação: "987.654.321-00" },
+      ]),
+    ).toBe(true);
   });
 
   it("mantém os cálculos da visão atual e remove widgets de colunas sensíveis", () => {
@@ -135,6 +152,7 @@ describe("segurança do Gemini", () => {
     const response = await handleGeminiChat(
       new Request("http://localhost/api/gemini/chat", {
         method: "POST",
+        headers: { origin: "http://localhost" },
         body: JSON.stringify({ message: "Resumo", dashboard }),
       }),
       { OLI_CHAT_AUTH_TOKEN: "server-secret", GEMINI_API_KEY: "unused" },
@@ -152,6 +170,18 @@ describe("segurança do Gemini", () => {
     expect(response.status).toBe(403);
   });
 
+  it("rejeita payload excessivo antes de processar o dashboard", async () => {
+    const response = await handleGeminiChat(
+      new Request("http://localhost/api/gemini/chat", {
+        method: "POST",
+        headers: { origin: "http://localhost", "content-length": String(5 * 1024 * 1024) },
+        body: "{}",
+      }),
+      { GEMINI_API_KEY: "unused" },
+    );
+    expect(response.status).toBe(413);
+  });
+
   it("mantém a chave no header e nunca no corpo ou URL", async () => {
     const fetchMock = vi.fn(
       async () =>
@@ -166,7 +196,7 @@ describe("segurança do Gemini", () => {
     const response = await handleGeminiChat(
       new Request("http://localhost/api/gemini/chat", {
         method: "POST",
-        headers: { "x-forwarded-for": "10.0.0.1" },
+        headers: { origin: "http://localhost", "x-forwarded-for": "10.0.0.1" },
         body: JSON.stringify({ message: "Resuma", dashboard }),
       }),
       { GEMINI_API_KEY: "test-secret" },
@@ -223,7 +253,7 @@ describe("segurança do Gemini", () => {
     const response = await handleGeminiChat(
       new Request("http://localhost/api/gemini/chat", {
         method: "POST",
-        headers: { "x-forwarded-for": "live-context" },
+        headers: { origin: "http://localhost", "x-forwarded-for": "live-context" },
         body: JSON.stringify({
           message: "O que significa essa porcentagem?",
           history: [{ role: "user", text: "É -40,4% na verdade" }],
@@ -260,7 +290,7 @@ describe("segurança do Gemini", () => {
     const response = await handleGeminiChat(
       new Request("http://localhost/api/gemini/chat", {
         method: "POST",
-        headers: { "x-forwarded-for": "fallback-model" },
+        headers: { origin: "http://localhost", "x-forwarded-for": "fallback-model" },
         body: JSON.stringify({ message: "Resuma", dashboard }),
       }),
       { GEMINI_API_KEY: "test-secret", GEMINI_MODEL: "gemini-2.5-flash" },
@@ -286,7 +316,7 @@ describe("segurança do Gemini", () => {
     const response = await handleGeminiChat(
       new Request("http://localhost/api/gemini/chat", {
         method: "POST",
-        headers: { "x-forwarded-for": `status-${status}` },
+        headers: { origin: "http://localhost", "x-forwarded-for": `status-${status}` },
         body: JSON.stringify({ message: "Resuma", dashboard }),
       }),
       { GEMINI_API_KEY: "test-secret" },
