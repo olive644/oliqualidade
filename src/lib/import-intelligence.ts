@@ -116,6 +116,16 @@ const DATETIME = /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}.*\d{1,2}:\d{2}/;
 const IDENTIFIER_NAME =
   /(^|[\s_-])(id|c[oó]digo|cod|n[º°o]\.?|n[uú]mero|matr[ií]cula|sku|uuid|protocolo)([\s_.-]|\d|$)/i;
 
+function containsSensitiveValues(values: unknown[]): boolean {
+  const samples = values.map(normalized).filter(Boolean).slice(0, 200);
+  if (samples.length < 2) return false;
+  const matches = samples.filter((value) => {
+    const compact = value.replace(/\D/g, "");
+    return CPF.test(compact) || CNPJ.test(compact) || EMAIL.test(value) || PHONE.test(value);
+  }).length;
+  return matches / samples.length >= 0.5;
+}
+
 function normalized(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -453,7 +463,9 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     if (uniqueValues.size === 1 && filledValues.length > 5)
       warnings.push("um único valor domina a coluna");
     const sensitive =
-      SENSITIVE_NAME.test(key) || ["cpf", "cnpj", "email", "phone", "postal-code"].includes(kind);
+      SENSITIVE_NAME.test(key) ||
+      ["cpf", "cnpj", "email", "phone", "postal-code"].includes(kind) ||
+      containsSensitiveValues(filledValues);
     const completenessScore = values.length ? filledValues.length / values.length : 0;
     const uniquenessScore = filledValues.length
       ? Math.min(1, uniqueValues.size / filledValues.length)

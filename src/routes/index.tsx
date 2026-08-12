@@ -185,6 +185,8 @@ import {
   saveGeocodeCache,
   TERM_HINTS_KEY,
   THEME_KEY,
+  isPrivateMode,
+  setPrivateMode,
   type GeocodeCache,
   type GeoPoint,
   type SaveResult,
@@ -192,12 +194,18 @@ import {
 import { LARGE_FILE_BYTES, preferredSheetIndex, sheetToRows, type SheetOption } from "@/lib/import";
 import { mergeReimportedSheets } from "@/lib/dashboard";
 import {
+  decryptDashboardBackup,
+  encryptDashboardBackup,
+  safeRowsForSpreadsheet,
+} from "@/lib/encrypted-backup";
+import {
   applyImportSelection,
   buildSheetHealth,
   defaultSelection,
   matchingImportProfile,
   saveImportProfile,
   workbookSignature,
+  compareVersions,
   type ImportSelection,
 } from "@/lib/import-workbench";
 import { readWorkbookFile } from "@/lib/workbook-reader-client";
@@ -500,6 +508,23 @@ export function OliAm({ routeId }: { routeId?: string }) {
     >(),
   );
   const [folderMonitors, setFolderMonitors] = useState<Record<string, FolderMonitorView>>({});
+  const [privateMode, setPrivateModeState] = useState(() => isPrivateMode());
+
+  const togglePrivateMode = async () => {
+    const next = !privateMode;
+    setPrivateMode(next);
+    setPrivateModeState(next);
+    const list = await loadDashboards();
+    dashboardsRef.current = list;
+    setDashboards(list);
+    setCurrentId(null);
+    setStage(list.length ? "home" : "empty");
+    toast.success(
+      next
+        ? "Modo privado ativado: novos painéis somem ao fechar esta aba."
+        : "Modo privado desativado: seus painéis persistentes voltaram.",
+    );
+  };
 
   useEffect(() => {
     let active = true;
@@ -648,10 +673,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
       setImportWarning(sheets.map((s) => s.warning).find((w) => w) ?? null);
       prepare(sheets, file.name);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "";
       setImportError(
-        error instanceof Error && /password|encrypt|senha/i.test(error.message)
+        /password|encrypt|senha/i.test(message)
           ? "Esta planilha é protegida por senha. Remova a proteção ou informe uma cópia desbloqueada."
-          : `Não foi possível ler esse arquivo. Use um formato válido: ${WORKBOOK_FORMATS_LABEL}.`,
+          : /limite|excede|ultrapassa|milhões de células|mais de \d+ abas/i.test(message)
+            ? message
+            : `Não foi possível ler esse arquivo. Use um formato válido: ${WORKBOOK_FORMATS_LABEL}.`,
       );
     } finally {
       setLoading(false);
@@ -1231,6 +1259,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
             theme={theme}
             toggleTheme={toggle}
             importError={importError}
+            privateMode={privateMode}
+            togglePrivateMode={() => void togglePrivateMode()}
           />
         )}
         {stage === "review" && (
@@ -1679,6 +1709,8 @@ function Empty(p: {
   theme: string;
   toggleTheme: () => void;
   importError: string | null;
+  privateMode: boolean;
+  togglePrivateMode: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -1808,6 +1840,13 @@ function Empty(p: {
             <ShieldAlert />
             <span>
               <strong>Seus dados ficam com você.</strong> O processamento acontece no navegador.
+              <button
+                type="button"
+                className="ml-2 underline underline-offset-2"
+                onClick={p.togglePrivateMode}
+              >
+                {p.privateMode ? "Modo privado ligado" : "Ativar modo privado"}
+              </button>
             </span>
           </div>
 
@@ -2172,7 +2211,7 @@ function Review(p: {
 }) {
   const [lowConfidenceConfirmed, setLowConfidenceConfirmed] = useState(false);
   const active = p.sheets[p.activeIndex] ?? p.sheets[0];
-  const rows = active?.rows ?? [];
+  const rows = useMemo(() => active?.rows ?? [], [active]);
   const columns = active?.columns ?? [];
   const [selection, setSelection] = useState<ImportSelection>(() => defaultSelection(rows));
   const [undoRows, setUndoRows] = useState<Row[] | null>(null);
@@ -2694,6 +2733,7 @@ function Dashboard(p: {
   const [intervalSeconds, setIntervalSeconds] = useState(10);
   const [insightOpen, setInsightOpen] = useState(true);
   const [showTermHint, setShowTermHint] = useState(false);
+  const backupInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
     const usesGrouping = (sheet.widgets ?? []).some((w) =>
@@ -2858,6 +2898,11 @@ function Dashboard(p: {
     }
     return deltas;
   }, [sheet.previousSnapshot, sheet.columns, withCalculated, nums]);
+  const detailedVersionDiff = useMemo(
+    () =>
+      sheet.previousSnapshot ? compareVersions(sheet.previousSnapshot.rows, sheet.rows) : null,
+    [sheet.previousSnapshot, sheet.rows],
+  );
   const primary = nums[0];
   // Colunas candidatas a agrupamento: categoria, texto ou data.
   const groupableCols = sheet.columns.filter((c) => groupableKinds.includes(c.kind));
@@ -2967,10 +3012,50 @@ function Dashboard(p: {
 
   const slug = d.name.toLowerCase().replaceAll(" ", "-");
   const exportXlsx = () => {
-    const ws = XLSX.utils.json_to_sheet(data),
+    const ws = XLSX.utils.json_to_sheet(safeRowsForSpreadsheet(data)),
       wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Relatório");
     XLSX.writeFile(wb, `${slug}.xlsx`);
+  };
+  const exportEncryptedBackup = async () => {
+    const password = window.prompt(
+      "Crie uma senha para proteger este backup (mínimo 12 caracteres)",
+    );
+    if (!password) return;
+    try {
+      const content = await encryptDashboardBackup(d, password);
+      const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${slug}.oli-backup`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast.success("Backup criptografado criado. Guarde a senha separadamente.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível criar o backup.");
+    }
+  };
+  const restoreEncryptedBackup = async (file: File) => {
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error("O backup excede o limite de 50 MB.");
+      return;
+    }
+    const password = window.prompt("Digite a senha deste backup");
+    if (!password) return;
+    try {
+      const restored = await decryptDashboardBackup(await file.text(), password);
+      const copy = {
+        ...restored,
+        id: d.id,
+        name: `${restored.name} (restaurado)`,
+        createdAt: d.createdAt,
+        updatedAt: Date.now(),
+      };
+      p.update(copy);
+      toast.success(`Backup “${copy.name}” restaurado neste painel.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível restaurar o backup.");
+    }
   };
   const settleExportLayout = async () => {
     await document.fonts?.ready;
@@ -3494,6 +3579,17 @@ function Dashboard(p: {
       </aside>
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="oliam-dashboard-topbar">
+          <input
+            ref={backupInput}
+            type="file"
+            accept=".oli-backup,application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void restoreEncryptedBackup(file);
+            }}
+          />
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -3647,6 +3743,14 @@ function Dashboard(p: {
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPdf()}>
                   {exporting === "pdf" ? <OliLoader compact /> : <FileText />}
                   {exporting === "pdf" ? "Gerando PDF…" : "PDF do painel (tabelas completas)"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void exportEncryptedBackup()}>
+                  <ShieldAlert />
+                  Backup criptografado
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => backupInput.current?.click()}>
+                  <Upload />
+                  Restaurar backup protegido
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -4255,6 +4359,48 @@ function Dashboard(p: {
                 </p>
               </div>
             </div>
+            {detailedVersionDiff && (
+              <div className="mb-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <GitMerge className="size-4 text-primary" /> Comparação com a versão anterior
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <span className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                    +{detailedVersionDiff.added} linhas adicionadas
+                  </span>
+                  <span className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                    −{detailedVersionDiff.removed} linhas removidas
+                  </span>
+                  <span className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                    {detailedVersionDiff.changed} possíveis alterações
+                  </span>
+                </div>
+                {(detailedVersionDiff.addedColumns.length > 0 ||
+                  detailedVersionDiff.removedColumns.length > 0 ||
+                  detailedVersionDiff.typeChanges.length > 0) && (
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                    {detailedVersionDiff.addedColumns.map((column) => (
+                      <span key={`add-${column}`} className="rounded-full border px-2.5 py-1">
+                        Nova coluna: {column}
+                      </span>
+                    ))}
+                    {detailedVersionDiff.removedColumns.map((column) => (
+                      <span key={`remove-${column}`} className="rounded-full border px-2.5 py-1">
+                        Coluna removida: {column}
+                      </span>
+                    ))}
+                    {detailedVersionDiff.typeChanges.map((change) => (
+                      <span
+                        key={`type-${change.column}`}
+                        className="rounded-full border px-2.5 py-1"
+                      >
+                        {change.column}: {change.before} → {change.after}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {gridContent}
           </div>
           {insightOpen && (
@@ -4573,6 +4719,14 @@ function Dashboard(p: {
             <CommandItem onSelect={() => void exportPdf()}>
               <FileText />
               Exportar PDF do painel
+            </CommandItem>
+            <CommandItem onSelect={() => void exportEncryptedBackup()}>
+              <ShieldAlert />
+              Criar backup criptografado
+            </CommandItem>
+            <CommandItem onSelect={() => backupInput.current?.click()}>
+              <Upload />
+              Restaurar backup protegido
             </CommandItem>
             <CommandItem onSelect={() => setFormatPanel(true)}>
               <Palette />

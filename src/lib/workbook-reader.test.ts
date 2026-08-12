@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
-import { detectDelimiter, readWorkbookBytes } from "@/lib/workbook-reader";
+import {
+  detectDelimiter,
+  readWorkbookBytes,
+  validateWorkbookComplexity,
+} from "@/lib/workbook-reader";
 
 describe("leitor universal de planilhas", () => {
+  it("bloqueia dimensões abusivas declaradas pelo arquivo", () => {
+    expect(() =>
+      validateWorkbookComplexity({
+        SheetNames: ["Dados"],
+        Sheets: { Dados: { "!ref": "A1:XFD1048576" } },
+      }),
+    ).toThrow("2 milhões de células");
+  });
   it("detecta separadores sem contar delimitadores dentro de campos entre aspas", () => {
     expect(detectDelimiter('produto;observação;valor\nBolo;"doce, caseiro";12,50')).toBe(";");
     expect(detectDelimiter("produto\tvalor\nBolo\t12")).toBe("\t");
