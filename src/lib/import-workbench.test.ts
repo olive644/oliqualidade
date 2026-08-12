@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyImportSelection, compareVersions, workbookSignature } from "./import-workbench";
+import {
+  applyImportSelection,
+  compareVersions,
+  rowsFromSourceGrid,
+  workbookSignature,
+} from "./import-workbench";
 
 describe("import workbench", () => {
   it("aplica intervalo e colunas ignoradas sem alterar a origem", () => {
@@ -13,6 +18,58 @@ describe("import workbench", () => {
       { nome: "C" },
     ]);
     expect(rows[1]).toEqual({ id: 2, nome: "B" });
+  });
+
+  it("reconstrói a tabela escolhendo cabeçalho e região na grade original", () => {
+    const grid = {
+      startRow: 5,
+      startColumn: 2,
+      totalRows: 6,
+      totalColumns: 5,
+      rows: [
+        ["Relatório", null, null, null, null],
+        ["Data", "Poço", "Torre", "Rodapé", null],
+        ["01/08/2026", 1, 2, "ignorar", null],
+        ["02/08/2026", 3, 4, "ignorar", null],
+        [null, null, null, null, null],
+        ["Observação", null, null, null, null],
+      ],
+      truncatedRows: false,
+      truncatedColumns: false,
+    };
+    expect(
+      rowsFromSourceGrid(grid, {
+        headerRow: 6,
+        startRow: 7,
+        endRow: 9,
+        startColumn: 2,
+        endColumn: 4,
+      }),
+    ).toEqual([
+      { Data: "01/08/2026", Poço: 1, Torre: 2 },
+      { Data: "02/08/2026", Poço: 3, Torre: 4 },
+    ]);
+  });
+
+  it("não aplica seleção fora da parte preservada da grade", () => {
+    const grid = {
+      startRow: 1,
+      startColumn: 1,
+      totalRows: 2_000,
+      totalColumns: 2,
+      rows: [["A", "B"]],
+      truncatedRows: true,
+      truncatedColumns: false,
+    };
+    expect(
+      rowsFromSourceGrid(grid, {
+        headerRow: 1,
+        startRow: 2,
+        endRow: 2_000,
+        startColumn: 1,
+        endColumn: 2,
+      }),
+    ).toEqual([]);
   });
 
   it("gera assinatura estável e detecta mudanças de estrutura", () => {
