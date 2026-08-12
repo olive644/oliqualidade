@@ -18,10 +18,11 @@ describe("fluxo integrado com planilha problemática", () => {
   attachWorkbookFeatures(workbook, fixtureBytes);
   const sheets = sheetsWithData(workbook);
 
-  it("preserva as abas e diagnostica a estrutura ambígua", () => {
+  it("preserva as abas e separa regiões independentes confirmadas", () => {
     expect(sheets.map((sheet) => sheet.name)).toEqual([
       "Cabeçalho deslocado",
-      "Regiões lado a lado",
+      "Regiões lado a lado · Região 1",
+      "Regiões lado a lado · Região 2",
     ]);
     const first = sheets[0];
     expect(first?.diagnostics?.header.row).toBe(4);

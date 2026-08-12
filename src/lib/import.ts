@@ -10,6 +10,7 @@ export type SheetImportResult = {
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
   audit?: ImportAudit;
+  tableMode?: "single" | "repeated-blocks";
 };
 
 export type ImportAudit = {
@@ -901,6 +902,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         trailingRowsIgnored: 0,
         columnsIgnored: 0,
       },
+      tableMode: "repeated-blocks",
     };
   }
 
@@ -1111,6 +1113,93 @@ export type SheetOption = {
   audit?: ImportAudit;
 };
 
+function independentRegionWorksheet(
+  ws: XLSX.WorkSheet,
+  region: ImportDiagnostics["tableRegions"][number],
+): XLSX.WorkSheet | null {
+  if (!ws["!ref"]) return null;
+  const used = XLSX.utils.decode_range(ws["!ref"]);
+  const range = {
+    s: {
+      r: used.s.r + region.startRow - 1,
+      c: used.s.c + region.startColumn - 1,
+    },
+    e: {
+      r: used.s.r + region.endRow - 1,
+      c: used.s.c + region.endColumn - 1,
+    },
+  };
+  const sliced: XLSX.WorkSheet = { "!ref": XLSX.utils.encode_range(range) };
+  for (let row = range.s.r; row <= range.e.r; row++) {
+    for (let column = range.s.c; column <= range.e.c; column++) {
+      const address = XLSX.utils.encode_cell({ r: row, c: column });
+      const cell = worksheetCellAtAddress(ws, address);
+      if (cell) sliced[address] = { ...cell };
+    }
+  }
+  const merges = (ws["!merges"] ?? []).filter(
+    (merge) =>
+      merge.s.r >= range.s.r &&
+      merge.s.c >= range.s.c &&
+      merge.e.r <= range.e.r &&
+      merge.e.c <= range.e.c,
+  );
+  if (merges.length) sliced["!merges"] = merges;
+  return sliced;
+}
+
+function regionsAreSafeToSplit(
+  ws: XLSX.WorkSheet,
+  regions: ImportDiagnostics["tableRegions"],
+): boolean {
+  if (!ws["!ref"] || regions.length < 2 || regions.length > 8) return false;
+  if (regions.some((region) => region.rows < 3 || region.columns < 2 || region.confidence < 0.75))
+    return false;
+
+  const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+    header: 1,
+    defval: null,
+    raw: true,
+  });
+  const occupied = aoa.reduce(
+    (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
+    0,
+  );
+  let covered = 0;
+  for (const region of regions) {
+    const rows = aoa.slice(region.startRow - 1, region.endRow);
+    const header = (rows[0] ?? []).slice(region.startColumn - 1, region.endColumn);
+    const headerValues = header.filter((value) => value !== null && value !== "");
+    if (headerValues.length < 2 || headerValues.some((value) => cellLooksNumeric(value)))
+      return false;
+    const dataRows = rows
+      .slice(1)
+      .filter((row) =>
+        row
+          .slice(region.startColumn - 1, region.endColumn)
+          .some((value) => value !== null && value !== ""),
+      );
+    if (dataRows.length < 2) return false;
+    if (
+      !dataRows.some((row) =>
+        row
+          .slice(region.startColumn - 1, region.endColumn)
+          .some((value) => cellLooksNumeric(value) || cellLooksDate(value)),
+      )
+    )
+      return false;
+    covered += rows.reduce(
+      (sum, row) =>
+        sum +
+        row
+          .slice(region.startColumn - 1, region.endColumn)
+          .filter((value) => value !== null && value !== "").length,
+      0,
+    );
+  }
+  return occupied > 0 && covered / occupied >= 0.85;
+}
+
 /**
  * Converte todas as abas de um workbook em opções de importação, pulando
  * automaticamente abas sem nenhuma linha de dado (ex: uma aba "Página1"
@@ -1118,18 +1207,44 @@ export type SheetOption = {
  * quando o arquivo tem mais de uma aba com dado.
  */
 export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
-  return wb.SheetNames.map((name) => {
+  return wb.SheetNames.flatMap((name) => {
     const ws = wb.Sheets[name];
-    if (!ws) return { name, rows: [], warning: null };
-    const { rows, warning, diagnostics, sourceGrid, audit } = sheetToRows(ws);
-    return {
-      name,
-      rows,
-      warning,
-      ...(diagnostics ? { diagnostics } : {}),
-      ...(sourceGrid ? { sourceGrid } : {}),
-      ...(audit ? { audit } : {}),
-    };
+    if (!ws) return [];
+    const result = sheetToRows(ws);
+    if (
+      result.tableMode !== "repeated-blocks" &&
+      result.diagnostics &&
+      regionsAreSafeToSplit(ws, result.diagnostics.tableRegions)
+    ) {
+      const split = result.diagnostics.tableRegions.flatMap((region, index) => {
+        const regionSheet = independentRegionWorksheet(ws, region);
+        if (!regionSheet) return [];
+        const imported = sheetToRows(regionSheet);
+        if (!imported.rows.length) return [];
+        const separationWarning = `A aba "${name}" continha ${result.diagnostics!.tableRegions.length} tabelas independentes e foi separada automaticamente. Esta opção corresponde à região ${index + 1}.`;
+        return [
+          {
+            name: `${name} · Região ${index + 1}`,
+            ...imported,
+            warning: imported.warning
+              ? `${separationWarning} ${imported.warning}`
+              : separationWarning,
+          },
+        ];
+      });
+      if (split.length === result.diagnostics.tableRegions.length) return split;
+    }
+    const { rows, warning, diagnostics, sourceGrid, audit } = result;
+    return [
+      {
+        name,
+        rows,
+        warning,
+        ...(diagnostics ? { diagnostics } : {}),
+        ...(sourceGrid ? { sourceGrid } : {}),
+        ...(audit ? { audit } : {}),
+      },
+    ];
   }).filter((s) => s.rows.length > 0);
 }
 

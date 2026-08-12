@@ -806,6 +806,104 @@ describe("sheetsWithData", () => {
     expect(options[0]?.rows).toEqual([{ nome: "Bolo" }]);
   });
 
+  it("separa tabelas diferentes lado a lado em opções próprias de importação", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet([
+        ["Cliente", "Valor", null, null, "Produto", "Quantidade"],
+        ["Ana", 10, null, null, "Cloro", 2],
+        ["Beto", 20, null, null, "Resina", 3],
+        ["Caio", 30, null, null, "Filme", 4],
+      ]),
+      "Dados",
+    );
+
+    const options = sheetsWithData(wb);
+
+    expect(options.map((option) => option.name)).toEqual(["Dados · Região 1", "Dados · Região 2"]);
+    expect(options[0]?.rows).toEqual([
+      { Cliente: "Ana", Valor: 10 },
+      { Cliente: "Beto", Valor: 20 },
+      { Cliente: "Caio", Valor: 30 },
+    ]);
+    expect(options[1]?.rows).toEqual([
+      { Produto: "Cloro", Quantidade: 2 },
+      { Produto: "Resina", Quantidade: 3 },
+      { Produto: "Filme", Quantidade: 4 },
+    ]);
+    expect(options.every((option) => option.warning?.includes("separada automaticamente"))).toBe(
+      true,
+    );
+  });
+
+  it("separa tabelas diferentes empilhadas quando ambas têm estrutura própria", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet([
+        ["Cliente", "Valor"],
+        ["Ana", 10],
+        ["Beto", 20],
+        ["Caio", 30],
+        [],
+        ["Produto", "Quantidade", "Unidade"],
+        ["Cloro", 2, "kg"],
+        ["Resina", 3, "kg"],
+        ["Filme", 4, "m"],
+      ]),
+      "Dados",
+    );
+
+    const options = sheetsWithData(wb);
+
+    expect(options.map((option) => option.name)).toEqual(["Dados · Região 1", "Dados · Região 2"]);
+    expect(options[0]?.rows).toHaveLength(3);
+    expect(options[1]?.rows).toHaveLength(3);
+    expect(Object.keys(options[1]?.rows[0] ?? {})).toEqual(["Produto", "Quantidade", "Unidade"]);
+  });
+
+  it("não divide uma tabela normal que contém linhas em branco no meio dos dados", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet([["Cliente", "Valor"], ["Ana", 10], ["Beto", 20], [], ["Caio", 30], ["Davi", 40]]),
+      "Dados",
+    );
+
+    const options = sheetsWithData(wb);
+
+    expect(options).toHaveLength(1);
+    expect(options[0]?.name).toBe("Dados");
+    expect(options[0]?.rows).toHaveLength(4);
+  });
+
+  it("mantém blocos repetidos como uma única tabela combinada", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet([
+        ["Núcleo 1"],
+        ["Data", "Total"],
+        ["01/08/2026", 10],
+        ["02/08/2026", 12],
+        [],
+        ["Núcleo 2"],
+        ["Data", "Total"],
+        ["01/08/2026", 8],
+        ["02/08/2026", 9],
+      ]),
+      "Produção",
+    );
+
+    const options = sheetsWithData(wb);
+
+    expect(options).toHaveLength(1);
+    expect(options[0]?.name).toBe("Produção");
+    expect(options[0]?.rows).toHaveLength(4);
+    expect(options[0]?.warning).toContain("blocos de tabela repetidos");
+  });
+
   it("pula abas sem nenhuma linha de dado, mas mantém as abas com dado", () => {
     // Reproduz o caso comum de um arquivo de exemplo com uma aba "Página1"
     // vazia (sobra de template) além das abas de verdade.
