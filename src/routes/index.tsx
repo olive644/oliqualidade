@@ -189,15 +189,10 @@ import {
   type GeoPoint,
   type SaveResult,
 } from "@/lib/storage";
-import {
-  LARGE_FILE_BYTES,
-  preferredSheetIndex,
-  sheetsWithData,
-  sheetToRows,
-  type SheetOption,
-} from "@/lib/import";
+import { LARGE_FILE_BYTES, preferredSheetIndex, sheetToRows, type SheetOption } from "@/lib/import";
 import { mergeReimportedSheets } from "@/lib/dashboard";
-import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
+import { readWorkbookFile } from "@/lib/workbook-reader-client";
+import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { geocodeMissing } from "@/lib/geocode";
 import { askGemini, type GeminiChatMessage } from "@/lib/gemini-client";
 import {
@@ -433,7 +428,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "BI organizado para transformar CSV, XLSX e Google Sheets em relatórios configuráveis, com múltiplos painéis, modo escuro e gráficos interativos.",
+          "BI organizado para transformar Excel, CSV, ODS, Numbers e Google Sheets em relatórios configuráveis, com múltiplos painéis, modo escuro e gráficos interativos.",
       },
       { property: "og:title", content: "Oli.Qualidade, BI para planilhas" },
       {
@@ -597,14 +592,14 @@ export function OliAm({ routeId }: { routeId?: string }) {
     });
   };
   const readWorkbook = async (file: File) => {
-    const bytes = await file.arrayBuffer();
-    const wb = XLSX.read(bytes, {
-      type: "array",
-      cellDates: true,
-      sheetStubs: true,
-    });
-    if (/\.(xlsx|xlsm|xltx|xltm)$/i.test(file.name)) attachWorkbookFeatures(wb, bytes);
-    const sheets = sheetsWithData(wb);
+    const labels = {
+      decoding: "Identificando formato e codificação…",
+      parsing: "Lendo células, fórmulas e formatação…",
+      analyzing: "Analisando cabeçalhos e regiões de dados…",
+    };
+    const sheets = await readWorkbookFile(file, (progress) =>
+      setImportProgressLabel(labels[progress]),
+    );
     if (!sheets.length) throw new Error("empty-workbook");
     return sheets;
   };
@@ -643,8 +638,12 @@ export function OliAm({ routeId }: { routeId?: string }) {
       // elas, prontas pra alternar depois numa barra de abas, como no Excel.
       setImportWarning(sheets.map((s) => s.warning).find((w) => w) ?? null);
       prepare(sheets, file.name);
-    } catch {
-      setImportError("Não foi possível ler esse arquivo. Verifique se é um CSV ou XLSX válido.");
+    } catch (error) {
+      setImportError(
+        error instanceof Error && /password|encrypt|senha/i.test(error.message)
+          ? "Esta planilha é protegida por senha. Remova a proteção ou informe uma cópia desbloqueada."
+          : `Não foi possível ler esse arquivo. Use um formato válido: ${WORKBOOK_FORMATS_LABEL}.`,
+      );
     } finally {
       setLoading(false);
       setImportProgressLabel(null);
@@ -1144,7 +1143,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
           ref={input}
           className="sr-only"
           type="file"
-          accept=".csv,.xlsx,.xls"
+          accept={WORKBOOK_ACCEPT}
           onChange={(e) => {
             const f = e.target.files?.[0];
             pendingFolderSelection.current = null;
@@ -1276,7 +1275,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
 const onboardingSteps = [
   {
     title: "Importe seus dados",
-    text: "Envie um arquivo CSV ou XLSX, cole uma URL de Google Sheets ou cole os dados diretamente. Tudo fica salvo neste navegador.",
+    text: "Envie Excel, CSV, ODS ou Numbers, cole uma URL de Google Sheets ou os dados diretamente. Tudo fica salvo neste navegador.",
   },
   {
     title: "Revise antes de confirmar",
@@ -1632,21 +1631,14 @@ function OliWelcomeScene({ busy }: { busy: boolean }) {
             className="oli-wordmark-outline"
             d="M58 210C53 129 106 60 198 45C286 30 365 75 383 160C403 253 369 330 289 365C210 399 113 374 76 308C59 278 54 244 58 210Z"
           />
-          <path
-            className="oli-wordmark-eye"
-            d="M143 137C149 166 163 176 177 143"
-          />
-          <path
-            className="oli-wordmark-eye"
-            d="M215 126C219 158 235 168 248 132"
-          />
-          <path
-            className="oli-wordmark-smile"
-            d="M121 195C167 234 248 240 300 188"
-          />
+          <path className="oli-wordmark-eye" d="M143 137C149 166 163 176 177 143" />
+          <path className="oli-wordmark-eye" d="M215 126C219 158 235 168 248 132" />
+          <path className="oli-wordmark-smile" d="M121 195C167 234 248 240 300 188" />
         </svg>
       </span>
-      <span className="oli-wordmark-name" aria-hidden="true">li.Qualidade</span>
+      <span className="oli-wordmark-name" aria-hidden="true">
+        li.Qualidade
+      </span>
     </div>
   );
 }
@@ -1734,9 +1726,7 @@ function Empty(p: {
       <main className="oli-welcome">
         <section className="oli-welcome-hero">
           <div className="oli-welcome-copy">
-            <p className="oli-welcome-badge">
-              Novo painel
-            </p>
+            <p className="oli-welcome-badge">Novo painel</p>
             <h1 className="sr-only">Oli.Qualidade</h1>
             <OliWelcomeScene busy={p.loading} />
             <p className="oli-welcome-lead">
@@ -1755,6 +1745,8 @@ function Empty(p: {
               <span>XLSX</span>
               <span>CSV</span>
               <span>XLS</span>
+              <span>ODS</span>
+              <span>XLSB</span>
             </div>
           </div>
           <button
@@ -1783,9 +1775,7 @@ function Empty(p: {
                   <i />
                 </span>
                 <span className="oli-dropzone-copy">
-                  <strong>
-                    {dragging ? "Solte o arquivo aqui" : "Arraste sua planilha aqui"}
-                  </strong>
+                  <strong>{dragging ? "Solte o arquivo aqui" : "Arraste sua planilha aqui"}</strong>
                   <small>ou clique para escolher um arquivo no computador</small>
                 </span>
                 <span className="oli-dropzone-action">Escolher arquivo</span>
@@ -1903,9 +1893,15 @@ function Review(p: {
   confirm: () => void;
   importWarning: string | null;
 }) {
+  const [lowConfidenceConfirmed, setLowConfidenceConfirmed] = useState(false);
   const active = p.sheets[p.activeIndex] ?? p.sheets[0];
   const rows = active?.rows ?? [];
   const columns = active?.columns ?? [];
+  const needsConfirmation =
+    Boolean(active?.diagnostics) &&
+    ((active?.diagnostics?.confidence ?? 100) < 70 ||
+      (active?.diagnostics?.header.confidence ?? 1) < 0.7 ||
+      (active?.diagnostics?.tableRegions.length ?? 0) > 1);
   return (
     <div className="min-h-screen bg-canvas">
       <header className="oliam-topbar">
@@ -1955,6 +1951,11 @@ function Review(p: {
                 <strong className="font-display text-2xl">{active.diagnostics.confidence}%</strong>
                 <span className="pb-0.5 text-xs text-muted-foreground">estrutura detectada</span>
               </div>
+              {active.diagnostics.recoveryGain > 0 && (
+                <div className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  +{active.diagnostics.recoveryGain} pontos após recuperação
+                </div>
+              )}
             </div>
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
@@ -2015,6 +2016,18 @@ function Review(p: {
                 </span>
               )}
             </div>
+            {active.diagnostics.confidenceReasons.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                {active.diagnostics.confidenceReasons.map((reason) => (
+                  <span
+                    key={reason}
+                    className="rounded-full border border-emerald-500/25 bg-emerald-500/5 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300"
+                  >
+                    {reason}
+                  </span>
+                ))}
+              </div>
+            )}
             {(active.diagnostics.structuredTables.length > 0 ||
               active.diagnostics.pivotTables.length > 0 ||
               active.diagnostics.calculatedColumns.length > 0) && (
@@ -2134,6 +2147,24 @@ function Review(p: {
             </div>
           </div>
         ) : null}
+        {needsConfirmation && (
+          <label className="mb-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-primary"
+              checked={lowConfidenceConfirmed}
+              onChange={(event) => setLowConfidenceConfirmed(event.target.checked)}
+            />
+            <span>
+              <strong className="font-medium">Confirmar leitura ambígua</strong>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Revise o cabeçalho, as regiões detectadas e a prévia abaixo. O relatório só será
+                criado depois da sua confirmação para evitar uma interpretação silenciosamente
+                incorreta.
+              </span>
+            </span>
+          </label>
+        )}
         {active?.diagnostics?.columns.some((c) => c.sensitive) && (
           <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
@@ -2250,7 +2281,11 @@ function Review(p: {
           ))}
         </div>
         <div className="mt-8 text-right">
-          <Button className="px-6 shadow-sm" onClick={p.confirm}>
+          <Button
+            className="px-6 shadow-sm"
+            onClick={p.confirm}
+            disabled={needsConfirmation && !lowConfidenceConfirmed}
+          >
             Gerar relatório
           </Button>
         </div>
@@ -2734,12 +2769,18 @@ function Dashboard(p: {
       const tableColumns = widgets.some((widget) => widget.type === "table")
         ? sheet.columns.filter((column) => column.visible)
         : [];
-      const tablePages = pdfTablePages(data.length, tableColumns.length, contentWidth, contentHeight, {
-        minColumnWidthPt: 92,
-        rowHeightPt: 18,
-        tableHeaderHeightPt: 24,
-        titleHeightPt: 24,
-      });
+      const tablePages = pdfTablePages(
+        data.length,
+        tableColumns.length,
+        contentWidth,
+        contentHeight,
+        {
+          minColumnWidthPt: 92,
+          rowHeightPt: 18,
+          tableHeaderHeightPt: 24,
+          titleHeightPt: 24,
+        },
+      );
       const totalPages = slices.length + tablePages.length;
       const drawPageChrome = (index: number, detail: string) => {
         pdf.setFont("helvetica", "bold");
@@ -2829,9 +2870,7 @@ function Dashboard(p: {
         pdf.setFontSize(10);
         pdf.setTextColor(30, 41, 59);
         const rowRange =
-          plan.rowEnd > plan.rowStart
-            ? `linhas ${plan.rowStart + 1}–${plan.rowEnd}`
-            : "sem linhas";
+          plan.rowEnd > plan.rowStart ? `linhas ${plan.rowStart + 1}–${plan.rowEnd}` : "sem linhas";
         pdf.text(
           `Base detalhada · ${rowRange} · colunas ${plan.columnStart + 1}–${plan.columnEnd}`,
           margin,
@@ -2894,14 +2933,7 @@ function Dashboard(p: {
   };
   const parseJoinFile = async (file: File) => {
     try {
-      const bytes = await file.arrayBuffer();
-      const wb = XLSX.read(bytes, {
-        type: "array",
-        cellDates: true,
-        sheetStubs: true,
-      });
-      if (/\.(xlsx|xlsm|xltx|xltm)$/i.test(file.name)) attachWorkbookFeatures(wb, bytes);
-      const sheets = sheetsWithData(wb);
+      const sheets = await readWorkbookFile(file);
       if (!sheets.length) {
         setJoinError("Essa planilha está vazia ou não foi possível lê-la.");
         return;
@@ -2915,7 +2947,9 @@ function Dashboard(p: {
       setJoinSheetPicker({ fileName: file.name, sheets });
       setJoinSheetPickerIndex(preferredSheetIndex(sheets));
     } catch {
-      setJoinError("Não foi possível ler esse arquivo.");
+      setJoinError(
+        `Não foi possível ler esse arquivo. Formatos aceitos: ${WORKBOOK_FORMATS_LABEL}.`,
+      );
     }
   };
   const confirmJoinSheetPicker = () => {
@@ -3286,9 +3320,7 @@ function Dashboard(p: {
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPdf()}>
                   {exporting === "pdf" ? <OliLoader compact /> : <FileText />}
-                  {exporting === "pdf"
-                    ? "Gerando PDF…"
-                    : "PDF do painel (tabelas completas)"}
+                  {exporting === "pdf" ? "Gerando PDF…" : "PDF do painel (tabelas completas)"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -3356,7 +3388,9 @@ function Dashboard(p: {
             variant="outline"
             disabled={!widgetClipboard}
             onClick={() => pasteCopiedWidget()}
-            title={widgetClipboard ? "Colar uma cópia no fim do painel" : "Copie um widget primeiro"}
+            title={
+              widgetClipboard ? "Colar uma cópia no fim do painel" : "Copie um widget primeiro"
+            }
           >
             <ClipboardPaste />
             <span className="hidden sm:inline">Colar widget</span>
@@ -3458,10 +3492,7 @@ function Dashboard(p: {
               </div>
             )}
           </div>
-          <Button
-            variant="outline"
-            onClick={startPresentation}
-          >
+          <Button variant="outline" onClick={startPresentation}>
             <Maximize2 />
             <span className="hidden sm:inline">Apresentação</span>
           </Button>
@@ -4034,8 +4065,7 @@ function Dashboard(p: {
                                     r.total,
                                     primary.kind,
                                     primary.conditionalFormat,
-                                  ) ??
-                                  (active ? "var(--primary)" : "var(--secondary-accent)"),
+                                  ) ?? (active ? "var(--primary)" : "var(--secondary-accent)"),
                               }}
                             />
                           </div>
@@ -4230,9 +4260,7 @@ function Dashboard(p: {
               <Columns3 />
               Configurar colunas
             </CommandItem>
-            <CommandItem
-              onSelect={startPresentation}
-            >
+            <CommandItem onSelect={startPresentation}>
               <Maximize2 />
               Modo apresentação
             </CommandItem>
@@ -4295,7 +4323,7 @@ function Dashboard(p: {
             >
               <Upload className="size-6 text-primary" />
               <strong>{joinDragging ? "Solte o arquivo aqui" : "Enviar segunda planilha"}</strong>
-              <span className="text-sm text-muted-foreground">CSV ou XLSX</span>
+              <span className="text-sm text-muted-foreground">Excel, CSV, ODS ou Numbers</span>
             </button>
           ) : (
             <div className="space-y-3">
@@ -4340,7 +4368,7 @@ function Dashboard(p: {
           <input
             ref={joinInput}
             type="file"
-            accept=".csv,.xlsx,.xls"
+            accept={WORKBOOK_ACCEPT}
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -4401,12 +4429,7 @@ function Dashboard(p: {
           </ul>
         </DialogContent>
       </Dialog>
-      <GeminiChatPanel
-        dashboard={d}
-        sheet={sheet}
-        liveRows={data}
-        liveView={assistantContext}
-      />
+      <GeminiChatPanel dashboard={d} sheet={sheet} liveRows={data} liveView={assistantContext} />
     </div>
   );
 }
@@ -5360,18 +5383,9 @@ function WidgetCard({
       behavior: "smooth",
     });
   };
-  const ChartScrollButtons = ({
-    label,
-    compact = false,
-  }: {
-    label: string;
-    compact?: boolean;
-  }) => (
+  const ChartScrollButtons = ({ label, compact = false }: { label: string; compact?: boolean }) => (
     <div
-      className={cn(
-        "absolute z-10 flex gap-1",
-        compact ? "right-1 top-1" : "right-5 top-5",
-      )}
+      className={cn("absolute z-10 flex gap-1", compact ? "right-1 top-1" : "right-5 top-5")}
       data-export-controls
       aria-label={`Navegação horizontal do ${label}`}
     >
@@ -5552,7 +5566,7 @@ function WidgetCard({
             </div>
           ) : (
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Use “Monitorar pasta” para contar automaticamente arquivos XLSX, XLS e CSV.
+              Use “Monitorar pasta” para contar automaticamente arquivos Excel, ODS e CSV.
             </p>
           )}
         </div>
@@ -5744,44 +5758,47 @@ function WidgetCard({
                         }}
                       >
                         <ResponsiveContainer>
-                      <AreaChart data={sparkline} margin={{ top: 3, right: 3, left: 3, bottom: 3 }}>
-                        <defs>
-                          <linearGradient id={`spark-${w.id}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop
-                              offset="0%"
-                              stopColor={formattedChartColor}
-                              stopOpacity={0.5}
+                          <AreaChart
+                            data={sparkline}
+                            margin={{ top: 3, right: 3, left: 3, bottom: 3 }}
+                          >
+                            <defs>
+                              <linearGradient id={`spark-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop
+                                  offset="0%"
+                                  stopColor={formattedChartColor}
+                                  stopOpacity={0.5}
+                                />
+                                <stop
+                                  offset="100%"
+                                  stopColor={formattedChartColor}
+                                  stopOpacity={0}
+                                />
+                              </linearGradient>
+                            </defs>
+                            <ChartTooltip
+                              contentStyle={{
+                                background: "var(--popover)",
+                                border: "1px solid var(--border)",
+                                borderRadius: 10,
+                                fontSize: 11,
+                              }}
+                              formatter={(value: number) => [
+                                fmt(value, col.kind) ?? String(value),
+                                col.label,
+                              ]}
                             />
-                            <stop
-                              offset="100%"
-                              stopColor={formattedChartColor}
-                              stopOpacity={0}
+                            <Area
+                              type="monotone"
+                              dataKey="total"
+                              stroke={formattedChartColor}
+                              strokeWidth={2}
+                              fill={`url(#spark-${w.id})`}
+                              dot={false}
+                              activeDot={{ r: 3, fill: formattedChartColor }}
+                              isAnimationActive={false}
                             />
-                          </linearGradient>
-                        </defs>
-                        <ChartTooltip
-                          contentStyle={{
-                            background: "var(--popover)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 10,
-                            fontSize: 11,
-                          }}
-                          formatter={(value: number) => [
-                            fmt(value, col.kind) ?? String(value),
-                            col.label,
-                          ]}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="total"
-                          stroke={formattedChartColor}
-                          strokeWidth={2}
-                          fill={`url(#spark-${w.id})`}
-                          dot={false}
-                          activeDot={{ r: 3, fill: formattedChartColor }}
-                          isAnimationActive={false}
-                        />
-                      </AreaChart>
+                          </AreaChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
@@ -5874,11 +5891,11 @@ function WidgetCard({
         ? sortChronologically(grouped)
         : grouped;
     const seriesColor = valueCol
-      ? conditionalColor(
+      ? (conditionalColor(
           series.at(-1)?.total ?? null,
           valueCol.kind,
           valueCol.conditionalFormat,
-        ) ?? "var(--primary)"
+        ) ?? "var(--primary)")
       : "var(--primary)";
     const barSeries = w.type === "bar" ? sortAllBarCategories(series) : series;
     const barPresentation = barChartPresentation(barSeries.length);
@@ -5977,109 +5994,111 @@ function WidgetCard({
             <div className="relative">
               <div
                 ref={barPresentation.scrollable ? chartScrollRef : undefined}
-              className={cn(
-                "h-64 overflow-x-auto overflow-y-hidden p-4",
-                barPresentation.scrollable && "oliam-chart-drag-scroll",
-              )}
-              onPointerDown={barPresentation.scrollable ? handleChartScrollPointerDown : undefined}
-            >
-              <div
-                style={{
-                  height: "100%",
-                  width: barPresentation.scrollable ? barPresentation.contentWidth : "100%",
-                  minWidth: "100%",
-                }}
+                className={cn(
+                  "h-64 overflow-x-auto overflow-y-hidden p-4",
+                  barPresentation.scrollable && "oliam-chart-drag-scroll",
+                )}
+                onPointerDown={
+                  barPresentation.scrollable ? handleChartScrollPointerDown : undefined
+                }
               >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={barSeries}
-                    margin={{ top: 20, right: 16, left: 12, bottom: 26 }}
-                    barCategoryGap={barSeries.length > 10 ? "34%" : "18%"}
-                  >
-                    <defs>
-                      <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
-                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.55} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      vertical={false}
-                      horizontal
-                      stroke="var(--border)"
-                      strokeOpacity={0.6}
-                    />
-                    <XAxis
-                      type="category"
-                      dataKey="name"
-                      tick={(props) => <AxisTick {...props} />}
-                      tickLine={false}
-                      axisLine={{ stroke: "var(--border)" }}
-                      interval={0}
-                      label={{
-                        value: groupCol.label,
-                        position: "insideBottom",
-                        offset: -16,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        fill: "var(--muted-foreground)",
-                      }}
-                    />
-                    <YAxis
-                      type="number"
-                      tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={66}
-                      tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
-                    />
-                    <ChartTooltip
-                      cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
-                      content={(props) => (
-                        <BarTooltip
-                          active={props.active}
-                          payload={props.payload as { value?: number }[]}
-                          label={props.label as string}
-                          series={barSeries}
-                          kind={valueCol.kind}
-                        />
-                      )}
-                    />
-                    <Bar
-                      dataKey="total"
-                      fill={`url(#bar-grad-${w.id})`}
-                      radius={[6, 6, 0, 0]}
-                      maxBarSize={72}
-                      onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
-                      cursor="pointer"
-                      animationDuration={500}
+                <div
+                  style={{
+                    height: "100%",
+                    width: barPresentation.scrollable ? barPresentation.contentWidth : "100%",
+                    minWidth: "100%",
+                  }}
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={barSeries}
+                      margin={{ top: 20, right: 16, left: 12, bottom: 26 }}
+                      barCategoryGap={barSeries.length > 10 ? "34%" : "18%"}
                     >
-                      {barSeries.map((entry) => (
-                        <Cell
-                          key={entry.name}
-                          fill={
-                            conditionalColor(
-                              entry.total,
-                              valueCol.kind,
-                              valueCol.conditionalFormat,
-                            ) ?? `url(#bar-grad-${w.id})`
-                          }
-                        />
-                      ))}
-                      <LabelList
-                        dataKey="total"
-                        position="top"
-                        fontSize={10}
-                        fill="var(--muted-foreground)"
-                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                      <defs>
+                        <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
+                          <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.55} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        vertical={false}
+                        horizontal
+                        stroke="var(--border)"
+                        strokeOpacity={0.6}
                       />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                      <XAxis
+                        type="category"
+                        dataKey="name"
+                        tick={(props) => <AxisTick {...props} />}
+                        tickLine={false}
+                        axisLine={{ stroke: "var(--border)" }}
+                        interval={0}
+                        label={{
+                          value: groupCol.label,
+                          position: "insideBottom",
+                          offset: -16,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          fill: "var(--muted-foreground)",
+                        }}
+                      />
+                      <YAxis
+                        type="number"
+                        tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={66}
+                        tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
+                      />
+                      <ChartTooltip
+                        cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
+                        content={(props) => (
+                          <BarTooltip
+                            active={props.active}
+                            payload={props.payload as { value?: number }[]}
+                            label={props.label as string}
+                            series={barSeries}
+                            kind={valueCol.kind}
+                          />
+                        )}
+                      />
+                      <Bar
+                        dataKey="total"
+                        fill={`url(#bar-grad-${w.id})`}
+                        radius={[6, 6, 0, 0]}
+                        maxBarSize={72}
+                        onClick={(pt) =>
+                          pt?.name && handleGroupClick(groupCol.key, String(pt.name))
+                        }
+                        cursor="pointer"
+                        animationDuration={500}
+                      >
+                        {barSeries.map((entry) => (
+                          <Cell
+                            key={entry.name}
+                            fill={
+                              conditionalColor(
+                                entry.total,
+                                valueCol.kind,
+                                valueCol.conditionalFormat,
+                              ) ?? `url(#bar-grad-${w.id})`
+                            }
+                          />
+                        ))}
+                        <LabelList
+                          dataKey="total"
+                          position="top"
+                          fontSize={10}
+                          fill="var(--muted-foreground)"
+                          formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
-              {barPresentation.scrollable && (
-                <ChartScrollButtons label="gráfico de barras" />
-              )}
+              {barPresentation.scrollable && <ChartScrollButtons label="gráfico de barras" />}
             </div>
             {barPresentation.scrollable && (
               <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
@@ -6251,86 +6270,84 @@ function WidgetCard({
                 >
                   <ResponsiveContainer>
                     <AreaChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
-                  <defs>
-                    <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
-                      <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} stroke="var(--border)" />
-                  <XAxis
-                    dataKey="name"
-                    tick={(props) => <AxisTick {...props} />}
-                    interval={0}
-                    label={{
-                      value: groupCol.label,
-                      position: "insideBottom",
-                      offset: -14,
-                      fontSize: 11,
-                      fill: "var(--muted-foreground)",
-                    }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                    label={{
-                      value: `${aggregationLabels[op]} de ${valueCol.label}`,
-                      angle: -90,
-                      position: "insideLeft",
-                      fontSize: 11,
-                      fill: "var(--muted-foreground)",
-                    }}
-                  />
-                  <ChartTooltip
-                    contentStyle={{
-                      background: "var(--popover)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      fontSize: 12,
-                      padding: "8px 12px",
-                      boxShadow:
-                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
-                    }}
-                    labelStyle={{
-                      color: "var(--popover-foreground)",
-                      fontWeight: 600,
-                      marginBottom: 2,
-                    }}
-                    itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                    formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    stroke={seriesColor}
-                    strokeWidth={2}
-                    fill={`url(#area-${w.id})`}
-                    dot={(dotProps: ChartDotProps) => (
-                      <ChartDot
-                        {...dotProps}
-                        r={3}
-                        groupCol={groupCol}
-                        valueCol={valueCol}
-                        onSelect={handleGroupClick}
+                      <defs>
+                        <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
+                          <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} stroke="var(--border)" />
+                      <XAxis
+                        dataKey="name"
+                        tick={(props) => <AxisTick {...props} />}
+                        interval={0}
+                        label={{
+                          value: groupCol.label,
+                          position: "insideBottom",
+                          offset: -14,
+                          fontSize: 11,
+                          fill: "var(--muted-foreground)",
+                        }}
                       />
-                    )}
-                    activeDot={(dotProps: ChartDotProps) => (
-                      <ChartDot
-                        {...dotProps}
-                        r={5}
-                        groupCol={groupCol}
-                        valueCol={valueCol}
-                        onSelect={handleGroupClick}
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                        label={{
+                          value: `${aggregationLabels[op]} de ${valueCol.label}`,
+                          angle: -90,
+                          position: "insideLeft",
+                          fontSize: 11,
+                          fill: "var(--muted-foreground)",
+                        }}
                       />
-                    )}
-                  />
+                      <ChartTooltip
+                        contentStyle={{
+                          background: "var(--popover)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          padding: "8px 12px",
+                          boxShadow:
+                            "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+                        }}
+                        labelStyle={{
+                          color: "var(--popover-foreground)",
+                          fontWeight: 600,
+                          marginBottom: 2,
+                        }}
+                        itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="total"
+                        stroke={seriesColor}
+                        strokeWidth={2}
+                        fill={`url(#area-${w.id})`}
+                        dot={(dotProps: ChartDotProps) => (
+                          <ChartDot
+                            {...dotProps}
+                            r={3}
+                            groupCol={groupCol}
+                            valueCol={valueCol}
+                            onSelect={handleGroupClick}
+                          />
+                        )}
+                        activeDot={(dotProps: ChartDotProps) => (
+                          <ChartDot
+                            {...dotProps}
+                            r={5}
+                            groupCol={groupCol}
+                            valueCol={valueCol}
+                            onSelect={handleGroupClick}
+                          />
+                        )}
+                      />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
               </div>
-              {timeSeriesPresentation.scrollable && (
-                <ChartScrollButtons label="gráfico de área" />
-              )}
+              {timeSeriesPresentation.scrollable && <ChartScrollButtons label="gráfico de área" />}
             </div>
             {timeSeriesPresentation.scrollable && (
               <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
@@ -6366,79 +6383,77 @@ function WidgetCard({
                 >
                   <ResponsiveContainer>
                     <LineChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
-                  <CartesianGrid vertical={false} stroke="var(--border)" />
-                  <XAxis
-                    dataKey="name"
-                    tick={(props) => <AxisTick {...props} />}
-                    interval={0}
-                    label={{
-                      value: groupCol.label,
-                      position: "insideBottom",
-                      offset: -14,
-                      fontSize: 11,
-                      fill: "var(--muted-foreground)",
-                    }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                    label={{
-                      value: `${aggregationLabels[op]} de ${valueCol.label}`,
-                      angle: -90,
-                      position: "insideLeft",
-                      fontSize: 11,
-                      fill: "var(--muted-foreground)",
-                    }}
-                  />
-                  <ChartTooltip
-                    contentStyle={{
-                      background: "var(--popover)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      fontSize: 12,
-                      padding: "8px 12px",
-                      boxShadow:
-                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
-                    }}
-                    labelStyle={{
-                      color: "var(--popover-foreground)",
-                      fontWeight: 600,
-                      marginBottom: 2,
-                    }}
-                    itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                    formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="total"
-                    stroke={seriesColor}
-                    strokeWidth={2}
-                    dot={(dotProps: ChartDotProps) => (
-                      <ChartDot
-                        {...dotProps}
-                        r={3}
-                        groupCol={groupCol}
-                        valueCol={valueCol}
-                        onSelect={handleGroupClick}
+                      <CartesianGrid vertical={false} stroke="var(--border)" />
+                      <XAxis
+                        dataKey="name"
+                        tick={(props) => <AxisTick {...props} />}
+                        interval={0}
+                        label={{
+                          value: groupCol.label,
+                          position: "insideBottom",
+                          offset: -14,
+                          fontSize: 11,
+                          fill: "var(--muted-foreground)",
+                        }}
                       />
-                    )}
-                    activeDot={(dotProps: ChartDotProps) => (
-                      <ChartDot
-                        {...dotProps}
-                        r={5}
-                        groupCol={groupCol}
-                        valueCol={valueCol}
-                        onSelect={handleGroupClick}
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                        label={{
+                          value: `${aggregationLabels[op]} de ${valueCol.label}`,
+                          angle: -90,
+                          position: "insideLeft",
+                          fontSize: 11,
+                          fill: "var(--muted-foreground)",
+                        }}
                       />
-                    )}
-                  />
+                      <ChartTooltip
+                        contentStyle={{
+                          background: "var(--popover)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          padding: "8px 12px",
+                          boxShadow:
+                            "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+                        }}
+                        labelStyle={{
+                          color: "var(--popover-foreground)",
+                          fontWeight: 600,
+                          marginBottom: 2,
+                        }}
+                        itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="total"
+                        stroke={seriesColor}
+                        strokeWidth={2}
+                        dot={(dotProps: ChartDotProps) => (
+                          <ChartDot
+                            {...dotProps}
+                            r={3}
+                            groupCol={groupCol}
+                            valueCol={valueCol}
+                            onSelect={handleGroupClick}
+                          />
+                        )}
+                        activeDot={(dotProps: ChartDotProps) => (
+                          <ChartDot
+                            {...dotProps}
+                            r={5}
+                            groupCol={groupCol}
+                            valueCol={valueCol}
+                            onSelect={handleGroupClick}
+                          />
+                        )}
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
               </div>
-              {timeSeriesPresentation.scrollable && (
-                <ChartScrollButtons label="linha do tempo" />
-              )}
+              {timeSeriesPresentation.scrollable && <ChartScrollButtons label="linha do tempo" />}
             </div>
             {timeSeriesPresentation.scrollable && (
               <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
@@ -6594,11 +6609,8 @@ function WidgetCard({
                       className="font-mono shrink-0"
                       style={{
                         color:
-                          conditionalColor(
-                            g.total,
-                            valueCol.kind,
-                            valueCol.conditionalFormat,
-                          ) ?? undefined,
+                          conditionalColor(g.total, valueCol.kind, valueCol.conditionalFormat) ??
+                          undefined,
                       }}
                     >
                       {fmt(g.total, valueCol.kind) ?? "–"}
@@ -6610,11 +6622,8 @@ function WidgetCard({
                       style={{
                         width: `${Math.max(4, (Math.abs(g.total) / max) * 100)}%`,
                         background:
-                          conditionalColor(
-                            g.total,
-                            valueCol.kind,
-                            valueCol.conditionalFormat,
-                          ) ?? undefined,
+                          conditionalColor(g.total, valueCol.kind, valueCol.conditionalFormat) ??
+                          undefined,
                       }}
                     />
                   </div>
@@ -6756,8 +6765,7 @@ function WidgetCard({
     const avg = values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
     const filled = Math.round(avg);
     const ratingStyle = conditionalStyle(avg, col.kind, col.conditionalFormat);
-    const ratingColor =
-      conditionalColor(avg, col.kind, col.conditionalFormat) ?? "var(--primary)";
+    const ratingColor = conditionalColor(avg, col.kind, col.conditionalFormat) ?? "var(--primary)";
     return (
       <article
         className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -6818,10 +6826,7 @@ function WidgetCard({
               {Array.from({ length: 5 }).map((_, i) => (
                 <Star
                   key={i}
-                  className={cn(
-                    "size-4",
-                    i < filled ? "fill-current" : "text-muted-foreground",
-                  )}
+                  className={cn("size-4", i < filled ? "fill-current" : "text-muted-foreground")}
                   style={i < filled ? { color: ratingColor } : undefined}
                 />
               ))}
