@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:fixture": "node scripts/generate-problematic-fixture.mjs",
+    "test:security-smoke": "node scripts/security-smoke.mjs",
     "graph:build": "node scripts/build-code-graph.mjs"
   },
   "dependencies": {
