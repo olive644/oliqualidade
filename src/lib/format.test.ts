@@ -86,12 +86,12 @@ describe("infer", () => {
     // o que fazia a tabela mostrar "Não informado" em vez de "–" e perder
     // a formatação de moeda.
     const rows: Row[] = [{ "Total (R$)": null }, { "Total (R$)": null }, { "Total (R$)": null }];
-    expect(infer(rows)[0]?.kind).toBe("currency");
+    expect(infer(rows)[0]).toMatchObject({ kind: "currency", visible: false });
   });
 
   it("cai em número (não categoria) quando a coluna está vazia e o nome não dá pista", () => {
     const rows: Row[] = [{ observacao: null }, { observacao: null }];
-    expect(infer(rows)[0]?.kind).toBe("number");
+    expect(infer(rows)[0]).toMatchObject({ kind: "number", visible: false });
   });
 });
 

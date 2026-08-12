@@ -139,6 +139,7 @@ import {
   groupableKinds,
   pickBestGroupColumn,
   schedulePeriodColumns,
+  scheduleItemColumn,
   scheduleStatusColumn,
   spanClass,
   sizeClass,
@@ -3597,8 +3598,7 @@ function Dashboard(p: {
             const x = margin + columnIndex * columnWidth;
             if (columnIndex > 0) pdf.line(x, y, x, y + 18);
             const raw = row[column.key] ?? null;
-            const shown =
-              fmt(raw, column.kind) ?? (numericKinds.includes(column.kind) ? "–" : NOT_INFORMED);
+            const shown = fmt(raw, column.kind) ?? "—";
             const style = conditionalStyle(raw, column.kind, column.conditionalFormat);
             const textColor = style?.color ? hexRgb(style.color) : null;
             if (textColor) pdf.setTextColor(...textColor);
@@ -4090,12 +4090,13 @@ function Dashboard(p: {
                 Widget
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-60 p-2">
+            <DropdownMenuContent align="start" className="w-72 p-2 sm:w-60">
               <p className="px-1 pb-2 text-[11px] font-medium text-muted-foreground">
-                Escolha pelo ícone
+                <span className="sm:hidden">Escolha o widget</span>
+                <span className="hidden sm:inline">Escolha pelo ícone</span>
               </p>
               <TooltipProvider delayDuration={180}>
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-1 gap-1 sm:grid-cols-4 sm:gap-1.5">
                   {(Object.keys(widgetTypeLabels) as WidgetType[]).map((type) => (
                     <Tooltip key={type}>
                       <TooltipTrigger asChild>
@@ -4103,10 +4104,12 @@ function Dashboard(p: {
                           disabled={!canAdd[type]}
                           onSelect={() => addWidget(type)}
                           aria-label={`${widgetTypeLabels[type]}. ${widgetTypeDescriptions[type]}`}
-                          className="flex size-11 cursor-pointer items-center justify-center rounded-xl border border-transparent p-0 text-muted-foreground hover:border-border hover:text-foreground focus:border-primary focus:text-primary"
+                          className="flex h-11 w-full cursor-pointer items-center justify-start gap-3 rounded-xl border border-transparent px-3 text-muted-foreground hover:border-border hover:text-foreground focus:border-primary focus:text-primary sm:size-11 sm:justify-center sm:p-0"
                         >
                           <WidgetPickerIcon type={type} />
-                          <span className="sr-only">{widgetTypeLabels[type]}</span>
+                          <span className="text-sm font-medium sm:sr-only">
+                            {widgetTypeLabels[type]}
+                          </span>
                         </DropdownMenuItem>
                       </TooltipTrigger>
                       <TooltipContent side="right" className="max-w-64">
@@ -6713,15 +6716,24 @@ function WidgetCard({
     );
     const groupCol =
       columns.find((column) => column.key === w.groupKey && !periodKeys.has(column.key)) ??
-      labelOptions[0];
+      scheduleItemColumn(
+        columns,
+        periodCols.map((column) => column.key),
+        data,
+      );
     const statusCol =
       columns.find((column) => column.key === w.statusKey && !periodKeys.has(column.key)) ??
       scheduleStatusColumn(
         columns,
         periodCols.map((column) => column.key),
       );
-    const scheduleRows = data.filter((row) =>
-      periodCols.some((column) => row[column.key] !== null && row[column.key] !== ""),
+    const scheduleRows = data.filter(
+      (row) =>
+        groupCol &&
+        row[groupCol.key] !== null &&
+        row[groupCol.key] !== "" &&
+        (periodCols.some((column) => row[column.key] !== null && row[column.key] !== "") ||
+          (statusCol && row[statusCol.key] !== null && row[statusCol.key] !== "")),
     );
     const visibleRows = scheduleRows.slice(0, 400);
     const togglePeriod = (key: string) => {
@@ -6838,7 +6850,7 @@ function WidgetCard({
                 </thead>
                 <tbody>
                   {visibleRows.map((row, rowIndex) => {
-                    const item = String(row[groupCol.key] ?? NOT_INFORMED);
+                    const item = String(row[groupCol.key]);
                     const status = statusCol ? row[statusCol.key] : null;
                     return (
                       <tr key={`${item}-${rowIndex}`}>
@@ -6860,7 +6872,8 @@ function WidgetCard({
                         {periodCols.map((column) => {
                           const value = row[column.key];
                           const state = scheduleCellState(value, status);
-                          const label = value === null || value === "" ? "—" : String(value);
+                          const empty = value === null || value === "";
+                          const label = empty ? "Sem registro" : String(value);
                           return (
                             <td
                               key={column.key}
@@ -6870,7 +6883,11 @@ function WidgetCard({
                               )}
                               title={`${item} · ${column.label}: ${label}${status ? ` · ${String(status)}` : ""}`}
                             >
-                              <span className="block truncate">{label}</span>
+                              {empty ? (
+                                <span className="block min-h-4" aria-label="Sem registro" />
+                              ) : (
+                                <span className="block truncate">{label}</span>
+                              )}
                             </td>
                           );
                         })}
@@ -8278,9 +8295,7 @@ function DataTable({
                         "outline outline-1 -outline-offset-1 outline-secondary-accent",
                     )}
                   >
-                    <span className={cn(shown === null && !numeric && "italic")}>
-                      {shown ?? (numeric ? "–" : NOT_INFORMED)}
-                    </span>
+                    <span>{shown ?? "—"}</span>
                   </div>
                 );
               })}

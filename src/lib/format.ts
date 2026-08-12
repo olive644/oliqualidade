@@ -61,7 +61,10 @@ function inferOne(key: string, rows: Row[]): Column {
     key,
     label: key.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase()),
     kind,
-    visible: true,
+    // A coluna continua preservada no modelo (inclusive períodos futuros de
+    // cronogramas), mas uma coluna 100% vazia não ocupa espaço na tabela por
+    // padrão. O usuário ainda pode reativá-la no painel de colunas.
+    visible: vals.length > 0,
     description: "",
   };
 }

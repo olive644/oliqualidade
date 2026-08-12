@@ -185,6 +185,58 @@ describe("sheetToRows", () => {
     ]);
   });
 
+  it("não absorve linhas de dados quando um cabeçalho folha possui uma mesclagem visual", () => {
+    const ws = sheet([
+      ["Objeto", "Ponto", "Frequência", "Análise", "Limite", null, null],
+      ["Produto", "Embalagem", "Trimestral", "Bolores", "< 25", null, null],
+      ["Ar", "Processo", "Trimestral", "Mesófilos", "< 50", null, null],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 4 }, e: { r: 0, c: 6 } },
+      { s: { r: 1, c: 4 }, e: { r: 1, c: 6 } },
+      { s: { r: 2, c: 4 }, e: { r: 2, c: 6 } },
+    ];
+    const { rows } = sheetToRows(ws);
+    expect(rows).toHaveLength(2);
+    expect(Object.keys(rows[0] ?? {})).toEqual([
+      "Objeto",
+      "Ponto",
+      "Frequência",
+      "Análise",
+      "Limite",
+    ]);
+    expect(rows[0]?.Objeto).toBe("Produto");
+  });
+
+  it("renomeia cabeçalhos genéricos de documento e limpa placeholders vazios", () => {
+    const ws = sheet([
+      ["Dados", null, null, "jan", "fev"],
+      ["Água", "Saída do poço", "Planejado", "M", null],
+      [null, null, "Executado", "-", "NaN"],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+      { s: { r: 1, c: 0 }, e: { r: 2, c: 0 } },
+      { s: { r: 1, c: 1 }, e: { r: 2, c: 1 } },
+    ];
+    const { rows, warning } = sheetToRows(ws);
+    expect(Object.keys(rows[0] ?? {})).toEqual([
+      "Categoria",
+      "Item / Ponto",
+      "Situação",
+      "jan",
+      "fev",
+    ]);
+    expect(rows[1]).toMatchObject({
+      Categoria: "Água",
+      "Item / Ponto": "Saída do poço",
+      Situação: "Executado",
+      jan: null,
+      fev: null,
+    });
+    expect(warning).toContain("marcadores vazios");
+  });
+
   it("interrompe a tabela antes de um rodapé institucional longo e mesclado", () => {
     const ws = sheet([
       ["Item", "Status", "jan", "fev"],

@@ -184,6 +184,21 @@ export function scheduleStatusColumn(columns: Column[], periodKeys: string[]): C
   );
 }
 
+export function scheduleItemColumn(
+  columns: Column[],
+  periodKeys: string[],
+  rows: Row[],
+): Column | undefined {
+  const periods = new Set(periodKeys);
+  const candidates = columns.filter(
+    (column) => !periods.has(column.key) && groupableKinds.includes(column.kind),
+  );
+  const explicit = candidates.find((column) =>
+    /(?:item|ponto|material|produto|objeto|m[aá]quina|local|[aá]rea)/i.test(column.label),
+  );
+  return explicit ?? pickBestGroupColumn(candidates, rows) ?? candidates[0];
+}
+
 /**
  * Cria um widget novo com valores padrão sensatos a partir das colunas
  * disponíveis no painel. Usado tanto ao adicionar um widget pela primeira
@@ -219,11 +234,7 @@ export function createWidget(
   } else if (type === "schedule-heatmap") {
     const periods = schedulePeriodColumns(columns);
     widget.periodKeys = periods.map((column) => column.key);
-    const periodSet = new Set(widget.periodKeys);
-    const candidates = columns.filter(
-      (column) => !periodSet.has(column.key) && groupableKinds.includes(column.kind),
-    );
-    const group = pickBestGroupColumn(candidates, rows) ?? candidates[0];
+    const group = scheduleItemColumn(columns, widget.periodKeys, rows);
     const status = scheduleStatusColumn(columns, widget.periodKeys);
     if (group) widget.groupKey = group.key;
     if (status && status.key !== group?.key) widget.statusKey = status.key;
