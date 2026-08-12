@@ -11,7 +11,7 @@ describe("importação real do FRS-QA-028", () => {
     ["Ponto", "Torre de Processo"],
     ...Array.from({ length: 794 }, (_, index) => [`P${index + 1}`, index + 1]),
   ]);
-  worksheet.B1!.z = "d-mmm";
+  worksheet["B1"]!.z = "d-mmm";
   const source = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(source, worksheet, "Anexo FRS-QA-028-Suape");
   const bytes = XLSX.write(source, { type: "buffer", bookType: "xlsx" });
