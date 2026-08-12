@@ -3399,3 +3399,92 @@
     justify-self: center;
   }
 }
+
+
+/* Marca da página inicial: o rosto orgânico da referência forma o “O” de Oli.Qualidade. */
+.oli-welcome-scene.oli-welcome-wordmark {
+  display: flex;
+  width: min(440px, 100%);
+  aspect-ratio: 1.22;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0px, 0.4vw, 4px);
+  overflow: visible;
+  border: 0;
+  border-radius: 36px;
+  background: color-mix(in oklab, var(--primary) 9%, var(--card));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--primary) 18%, var(--border)),
+    0 24px 64px color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.oli-welcome-scene.oli-welcome-wordmark::after {
+  display: none;
+}
+.oli-wordmark-ball {
+  display: block;
+  width: clamp(128px, 17vw, 208px);
+  flex: 0 0 auto;
+  transform: rotate(-2deg);
+}
+.oli-wordmark-ball svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.oli-wordmark-outline {
+  fill: color-mix(in oklab, var(--primary) 14%, var(--card));
+  stroke: var(--primary);
+  stroke-width: 17;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.oli-wordmark-eye,
+.oli-wordmark-smile {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 18;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.oli-wordmark-name {
+  margin-left: clamp(-20px, -1.4vw, -10px);
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: clamp(31px, 3.8vw, 52px);
+  font-weight: 750;
+  letter-spacing: -0.065em;
+  line-height: 0.92;
+  white-space: nowrap;
+}
+.dark .oli-welcome-scene.oli-welcome-wordmark {
+  background: color-mix(in oklab, var(--primary) 10%, var(--card));
+}
+.dark .oli-wordmark-outline {
+  fill: color-mix(in oklab, var(--primary) 12%, var(--card));
+}
+.oli-welcome-scene.oli-welcome-wordmark[data-busy] .oli-wordmark-ball {
+  animation: oli-wordmark-breathe 1.5s ease-in-out infinite;
+}
+@keyframes oli-wordmark-breathe {
+  0%, 100% { transform: rotate(-2deg) scale(1); }
+  50% { transform: rotate(-2deg) scale(1.025); }
+}
+@media (max-width: 720px) {
+  .oli-welcome-scene.oli-welcome-wordmark {
+    width: min(400px, 92vw);
+    min-height: 260px;
+    padding-inline: 14px;
+  }
+  .oli-wordmark-ball {
+    width: clamp(116px, 36vw, 168px);
+  }
+  .oli-wordmark-name {
+    margin-left: -16px;
+    font-size: clamp(27px, 9vw, 42px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oli-welcome-scene.oli-welcome-wordmark[data-busy] .oli-wordmark-ball {
+    animation: none;
+  }
+}
