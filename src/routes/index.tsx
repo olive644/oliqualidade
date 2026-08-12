@@ -1737,15 +1737,12 @@ function Empty(p: {
             <p className="oli-welcome-badge">
               Novo painel
             </p>
-            <h1>
-              Seus dados,
-              <span>com clareza.</span>
-            </h1>
+            <h1 className="sr-only">Oli.Qualidade</h1>
+            <OliWelcomeScene busy={p.loading} />
             <p className="oli-welcome-lead">
               Importe uma planilha e transforme as informações em um painel simples de acompanhar.
             </p>
           </div>
-          <OliWelcomeScene busy={p.loading} />
         </section>
 
         <section className="oli-import-shell">
