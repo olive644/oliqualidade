@@ -49,6 +49,8 @@ export type GeminiSafeContext = {
 };
 
 export type GeminiChatHistoryMessage = { role: "user" | "assistant"; text: string };
+const MAX_AI_ROWS = 50_000;
+const MAX_AI_COLUMNS = 250;
 
 const SENSITIVE =
   /(cpf|cnpj|rg|email|e-mail|telefone|celular|phone|endereco|endereço|senha|password|token|secret|api.?key|pix|conta.?banc)/i;
@@ -102,6 +104,41 @@ export function validateChatHistory(value: unknown): GeminiChatHistoryMessage[] 
       throw new Error("O histórico contém instruções potencialmente inseguras.");
     return { role: candidate.role, text };
   });
+}
+
+export function validateDashboardInput(value: unknown): GeminiDashboardInput {
+  if (!value || typeof value !== "object") throw new Error("Contexto do dashboard inválido.");
+  const input = value as Partial<GeminiDashboardInput>;
+  if (
+    typeof input.name !== "string" ||
+    !input.name.trim() ||
+    input.name.length > 120 ||
+    typeof input.sheetName !== "string" ||
+    !input.sheetName.trim() ||
+    input.sheetName.length > 120 ||
+    !Array.isArray(input.rows) ||
+    input.rows.length > MAX_AI_ROWS ||
+    !Array.isArray(input.columns) ||
+    input.columns.length > MAX_AI_COLUMNS
+  )
+    throw new Error("Contexto do dashboard inválido.");
+  for (const column of input.columns) {
+    if (
+      !column ||
+      typeof column !== "object" ||
+      typeof column.key !== "string" ||
+      !column.key ||
+      column.key.length > 160 ||
+      typeof column.label !== "string" ||
+      column.label.length > 160
+    )
+      throw new Error("Contexto do dashboard inválido.");
+  }
+  for (const row of input.rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row))
+      throw new Error("Contexto do dashboard inválido.");
+  }
+  return input as GeminiDashboardInput;
 }
 
 const asNumber = (value: unknown) => {
@@ -400,7 +437,7 @@ function sanitizeLiveView(
 }
 
 export function buildSafeDashboardContext(input: GeminiDashboardInput): GeminiSafeContext {
-  const rows = input.rows.slice(0, 50_000);
+  const rows = input.rows.slice(0, MAX_AI_ROWS);
   const safeColumns = input.columns.filter((column) => !isSensitiveColumn(column, rows));
   const analyses = buildCrossAnalyses(rows, safeColumns);
   const liveView = sanitizeLiveView(input.liveView, safeColumns);
