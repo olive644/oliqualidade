@@ -211,15 +211,26 @@ function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
       if (referencesOtherSheet) {
         supported = false;
         reason = "referência a outra aba";
-      } else if (containsRange) {
-        // O resolvedor atual suporta expressões simples, mas não intervalos.
+      } else if (
+        containsRange &&
+        !/(?:SUM|MIN|MAX|AVERAGE|COUNT)\s*\([^)]*[A-Z]+\d+:[A-Z]+\d+/i.test(formula)
+      ) {
         supported = false;
-        reason = "intervalo de células ainda não é avaliado pelo resolvedor";
+        reason = "intervalo fora de uma função agregadora suportada";
       } else if (/[A-Z]+\s*\(/i.test(formula)) {
         const names = [...formula.matchAll(/([A-Z][A-Z0-9_]*)\s*\(/gi)].map((m) =>
           m[1]!.toUpperCase(),
         );
-        const supportedNames = new Set(["IFERROR", "ROUND", "ABS", "MIN", "MAX", "SUM"]);
+        const supportedNames = new Set([
+          "IFERROR",
+          "ROUND",
+          "ABS",
+          "MIN",
+          "MAX",
+          "SUM",
+          "AVERAGE",
+          "COUNT",
+        ]);
         const unsupported = names.find((name) => !supportedNames.has(name));
         if (unsupported) {
           supported = false;

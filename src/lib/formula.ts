@@ -18,7 +18,7 @@ import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
  *   guardado.
  * - Operadores aritméticos (+, -, *, /), parênteses, número negativo.
  * - Um punhado de funções comuns: IFERROR, ROUND, ABS, MIN, MAX, SUM (só
- *   com argumentos individuais, não intervalos como "A1:A5").
+ *   com argumentos individuais ou intervalos locais), AVERAGE e COUNT.
  *
  * Qualquer coisa fora disso — referência a outra aba ("Vendas!P5"),
  * intervalo ("A1:A5"), função não suportada (SUMIF, VLOOKUP etc.) — faz a
@@ -29,6 +29,8 @@ import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
  */
 
 const CELL_REF = /^\$?[A-Za-z]+\$?[0-9]+$/;
+const RANGE_AT_START = /^\$?([A-Za-z]+)\$?([0-9]+):\$?([A-Za-z]+)\$?([0-9]+)/;
+const MAX_FORMULA_RANGE_CELLS = 10_000;
 const num = (v: number | null | undefined): number | null => v ?? null;
 const FUNCTIONS: Record<string, (args: (number | null | undefined)[]) => number | null> = {
   IFERROR: ([a, b]) => {
@@ -44,14 +46,19 @@ const FUNCTIONS: Record<string, (args: (number | null | undefined)[]) => number 
     return av === null ? null : Math.abs(av);
   },
   MIN: (args) => {
-    const values = args.map(num);
-    return values.some((a) => a === null) ? null : Math.min(...(values as number[]));
+    const values = args.map(num).filter((value): value is number => value !== null);
+    return values.length ? Math.min(...values) : null;
   },
   MAX: (args) => {
-    const values = args.map(num);
-    return values.some((a) => a === null) ? null : Math.max(...(values as number[]));
+    const values = args.map(num).filter((value): value is number => value !== null);
+    return values.length ? Math.max(...values) : null;
   },
   SUM: (args) => args.reduce<number>((s, a) => s + (num(a) ?? 0), 0),
+  AVERAGE: (args) => {
+    const values = args.map(num).filter((value): value is number => value !== null);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  },
+  COUNT: (args) => args.filter((value) => num(value) !== null).length,
 };
 
 class Parser {
@@ -59,6 +66,7 @@ class Parser {
   constructor(
     private src: string,
     private resolveCell: (addr: string) => number | null,
+    private resolveRange: (start: string, end: string) => (number | null)[] | null,
   ) {}
 
   private skipSpace() {
@@ -121,10 +129,10 @@ class Parser {
       this.pos++;
       const args: (number | null)[] = [];
       if (this.peek() !== ")") {
-        args.push(this.parseExpr());
+        args.push(...this.parseArgument(name));
         while (this.peek() === ",") {
           this.pos++;
-          args.push(this.parseExpr());
+          args.push(...this.parseArgument(name));
         }
       }
       if (this.peek() !== ")") throw new Error("parêntese de função não fechado");
@@ -142,6 +150,18 @@ class Parser {
       return Number(numMatch[0]);
     }
     throw new Error(`token inesperado em "${rest.slice(0, 12)}"`);
+  }
+
+  private parseArgument(functionName: string): (number | null)[] {
+    this.skipSpace();
+    const match = RANGE_AT_START.exec(this.src.slice(this.pos));
+    if (!match) return [this.parseExpr()];
+    if (!["SUM", "MIN", "MAX", "AVERAGE", "COUNT"].includes(functionName))
+      throw new Error(`intervalo não permitido em ${functionName}`);
+    this.pos += match[0].length;
+    const values = this.resolveRange(`${match[1]}${match[2]}`, `${match[3]}${match[4]}`);
+    if (!values) throw new Error("intervalo inválido ou grande demais");
+    return values;
   }
 
   finished(): boolean {
@@ -183,7 +203,7 @@ export function resolveFormulaCell(
     // como operando de fórmula aritmética.
     return null;
   }
-  if (!cell.f || cell.f.includes("!") || cell.f.includes(":")) {
+  if (!cell.f || cell.f.includes("!")) {
     // sem fórmula, ou fórmula fora do escopo suportado (outra aba ou
     // intervalo) — não tentamos.
     return null;
@@ -191,7 +211,35 @@ export function resolveFormulaCell(
   inProgress.add(addr);
   let value: number | null;
   try {
-    const parser = new Parser(cell.f, (ref) => resolveFormulaCell(ws, ref, cache, inProgress));
+    const parser = new Parser(
+      cell.f,
+      (ref) => resolveFormulaCell(ws, ref, cache, inProgress),
+      (start, end) => {
+        const range = XLSX.utils.decode_range(`${start}:${end}`);
+        const size = (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
+        if (size > MAX_FORMULA_RANGE_CELLS) return null;
+        const current = XLSX.utils.decode_cell(addr);
+        if (
+          current.r >= range.s.r &&
+          current.r <= range.e.r &&
+          current.c >= range.s.c &&
+          current.c <= range.e.c
+        )
+          return null;
+        const values: (number | null)[] = [];
+        for (let row = range.s.r; row <= range.e.r; row++)
+          for (let column = range.s.c; column <= range.e.c; column++)
+            values.push(
+              resolveFormulaCell(
+                ws,
+                XLSX.utils.encode_cell({ r: row, c: column }),
+                cache,
+                inProgress,
+              ),
+            );
+        return values;
+      },
+    );
     value = parser.parseExpr();
     if (!parser.finished()) value = null;
   } catch {
