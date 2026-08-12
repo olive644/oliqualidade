@@ -145,6 +145,69 @@ describe("sheetToRows", () => {
     expect(rows).toEqual([{ Amostra: "Ponto 1", "Medições — Cloro": 0.8, "Medições — pH": 7.2 }]);
   });
 
+  it("combina quatro níveis de cabeçalho quando a hierarquia é comprovada por mesclagens", () => {
+    const ws = sheet([
+      ["Cronograma", null, null, null, "Cronograma", null, null, null],
+      ["1ª coleta", null, null, null, "2ª coleta", null, null, null],
+      ["Produto", null, null, null, "Produto", null, null, null],
+      [
+        "Máquina",
+        "Gramatura",
+        "Nº de amostras",
+        "Análise",
+        "Máquina",
+        "Gramatura",
+        "Nº de amostras",
+        "Análise",
+      ],
+      ["IN10", "17 g", 1, "Salmonella/25g", "IN12", "40 g", 1, "E. coli/g"],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+      { s: { r: 0, c: 4 }, e: { r: 0, c: 7 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+      { s: { r: 1, c: 4 }, e: { r: 1, c: 7 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } },
+      { s: { r: 2, c: 4 }, e: { r: 2, c: 7 } },
+    ];
+    const { rows } = sheetToRows(ws);
+    expect(rows).toEqual([
+      {
+        "Cronograma — 1ª coleta — Produto — Máquina": "IN10",
+        "Cronograma — 1ª coleta — Produto — Gramatura": "17 g",
+        "Cronograma — 1ª coleta — Produto — Nº de amostras": 1,
+        "Cronograma — 1ª coleta — Produto — Análise": "Salmonella/25g",
+        "Cronograma — 2ª coleta — Produto — Máquina": "IN12",
+        "Cronograma — 2ª coleta — Produto — Gramatura": "40 g",
+        "Cronograma — 2ª coleta — Produto — Nº de amostras": 1,
+        "Cronograma — 2ª coleta — Produto — Análise": "E. coli/g",
+      },
+    ]);
+  });
+
+  it("interrompe a tabela antes de um rodapé institucional longo e mesclado", () => {
+    const ws = sheet([
+      ["Item", "Status", "jan", "fev"],
+      ["Água", "Planejado", "M", "M"],
+      ["Água", "Executado", null, null],
+      ["Ar", "Planejado", "T", null],
+      ["Ar", "Executado", null, null],
+      [
+        "Observações institucionais muito longas que não pertencem aos dados da tabela e descrevem todo o procedimento de controle",
+        null,
+        null,
+        null,
+      ],
+      ["NÍVEL DE REVISÃO", null, null, null],
+      ["Rev. 01", "Alteração do documento", null, null],
+    ]);
+    ws["!merges"] = [{ s: { r: 5, c: 0 }, e: { r: 5, c: 3 } }];
+    const { rows, warning } = sheetToRows(ws);
+    expect(rows).toHaveLength(4);
+    expect(rows.every((row) => !Object.values(row).includes("NÍVEL DE REVISÃO"))).toBe(true);
+    expect(warning).toContain("rodapé institucional");
+  });
+
   it("preenche células de dados vindas de mesclagem vertical (item cobrindo várias linhas de fornecedores)", () => {
     // Reproduz o padrão real relatado: um item de compra (Descrição,
     // Código, Unidade, Qtd) mesclado verticalmente cobrindo 3 linhas de
@@ -863,6 +926,97 @@ describe("sheetsWithData", () => {
     expect(Object.keys(options[1]?.rows[0] ?? {})).toEqual(["Produto", "Quantidade", "Unidade"]);
   });
 
+  it("separa quadros empilhados que se encostam, usando título e reinício de cabeçalho", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet([
+        ["Bebidas:"],
+        ["Produto", "Quantidade", "Análise"],
+        ["Suco", 1, "Bolores"],
+        ["Refrigerante", 2, "Leveduras"],
+        ["Água Potável:"],
+        ["Material", "Frequência", "Análise"],
+        ["Água", "Diário", "Cloro"],
+        ["Água", "Mensal", "Coliformes"],
+      ]),
+      "Critérios",
+    );
+
+    const options = sheetsWithData(wb);
+
+    expect(options.map((option) => option.name)).toEqual([
+      "Critérios · Bebidas:",
+      "Critérios · Água Potável:",
+    ]);
+    expect(options[0]?.rows).toEqual([
+      { Produto: "Suco", Quantidade: 1, Análise: "Bolores" },
+      { Produto: "Refrigerante", Quantidade: 2, Análise: "Leveduras" },
+    ]);
+    expect(options[1]?.rows).toEqual([
+      { Material: "Água", Frequência: "Diário", Análise: "Cloro" },
+      { Material: "Água", Frequência: "Mensal", Análise: "Coliformes" },
+    ]);
+    expect(options.every((option) => option.warning?.includes("empilhadas"))).toBe(true);
+  });
+
+  it("preserva o período dos grupos laterais ao separar seções trimestrais", () => {
+    const wb = XLSX.utils.book_new();
+    const ws = sheet([
+      ["Cronograma", null, null, null, "Cronograma", null, null, null],
+      ["Março", null, null, null, "Junho", null, null, null],
+      ["Produto", null, null, null, "Produto", null, null, null],
+      [
+        "Máquina",
+        "Gramatura",
+        "Quantidade",
+        "Análise",
+        "Máquina",
+        "Gramatura",
+        "Quantidade",
+        "Análise",
+      ],
+      ["IN01", "10 g", 1, "Salmonella", "IN02", "20 g", 1, "Bolores"],
+      ["Ar ambiente", null, null, null, "Ar ambiente", null, null, null],
+      [
+        "Ponto",
+        "Análise",
+        "Quantidade",
+        "Resultado",
+        "Ponto",
+        "Análise",
+        "Quantidade",
+        "Resultado",
+      ],
+      ["Sala 1", "Mesófilos", 1, "Conforme", "Sala 2", "Bolores", 1, "Conforme"],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+      { s: { r: 0, c: 4 }, e: { r: 0, c: 7 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+      { s: { r: 1, c: 4 }, e: { r: 1, c: 7 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } },
+      { s: { r: 2, c: 4 }, e: { r: 2, c: 7 } },
+      { s: { r: 5, c: 0 }, e: { r: 5, c: 3 } },
+      { s: { r: 5, c: 4 }, e: { r: 5, c: 7 } },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, "Plano");
+
+    const options = sheetsWithData(wb);
+
+    expect(options).toHaveLength(2);
+    expect(Object.keys(options[1]?.rows[0] ?? {})).toEqual([
+      "Cronograma — Março — Ar ambiente — Ponto",
+      "Cronograma — Março — Ar ambiente — Análise",
+      "Cronograma — Março — Ar ambiente — Quantidade",
+      "Cronograma — Março — Ar ambiente — Resultado",
+      "Cronograma — Junho — Ar ambiente — Ponto",
+      "Cronograma — Junho — Ar ambiente — Análise",
+      "Cronograma — Junho — Ar ambiente — Quantidade",
+      "Cronograma — Junho — Ar ambiente — Resultado",
+    ]);
+  });
+
   it("não divide uma tabela normal que contém linhas em branco no meio dos dados", () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
@@ -902,6 +1056,50 @@ describe("sheetsWithData", () => {
     expect(options[0]?.name).toBe("Produção");
     expect(options[0]?.rows).toHaveLength(4);
     expect(options[0]?.warning).toContain("blocos de tabela repetidos");
+  });
+
+  it("preserva a coluna identificadora à esquerda dos meses em blocos repetidos", () => {
+    const wb = XLSX.utils.book_new();
+    const ws = sheet([
+      ["Coliformes", null, null, null, "E. coli", null, null],
+      [null, "jan", "fev", "Máx.", null, "jan", "fev", "Máx."],
+      ["Saída do Poço", 0, 1, 0, "Saída do Poço", 0, 0, 0],
+      ["Torneira", 0, null, 0, "Torneira", 0, null, 0],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+      { s: { r: 0, c: 4 }, e: { r: 0, c: 7 } },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, "Monitoramento");
+    const options = sheetsWithData(wb);
+    expect(options).toHaveLength(1);
+    expect(options[0]?.rows[0]).toMatchObject({
+      Bloco: "Coliformes",
+      "Ponto / Item": "Saída do Poço",
+      jan: 0,
+      fev: 1,
+    });
+  });
+
+  it("ignora a aba automática de relatório de compatibilidade do Excel", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet([
+        ["Nome", "Valor"],
+        ["A", 1],
+      ]),
+      "Dados",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet([
+        [null, "Compatibility Report for arquivo.xls"],
+        [null, "Significant loss of functionality"],
+      ]),
+      "Sheet1",
+    );
+    expect(sheetsWithData(wb).map((option) => option.name)).toEqual(["Dados"]);
   });
 
   it("pula abas sem nenhuma linha de dado, mas mantém as abas com dado", () => {

@@ -380,7 +380,7 @@ function findHierarchicalHeaderEnd(
   const width = Math.max(1, ...aoa.slice(start, start + 4).map((row) => row.length));
   let end = start;
 
-  while (end - start < 2 && end + 1 < aoa.length) {
+  while (end - start < 3 && end + 1 < aoa.length) {
     const horizontal = merges.filter(
       (merge) => merge.s.r === end && merge.e.r === end && merge.e.c > merge.s.c,
     );
@@ -407,9 +407,20 @@ function findHierarchicalHeaderEnd(
     // dados de verdade. É uma trava conservadora contra tabelas comuns com
     // linhas textuais, nas quais uma formatação mesclada isolada não deve
     // deslocar o começo dos dados.
-    const dataEvidence = aoa
+    const numericDataEvidence = aoa
       .slice(end + 2, Math.min(end + 5, aoa.length))
       .some((row) => row.some((value) => cellLooksNumeric(value) || cellLooksDate(value)));
+    const nextHasGroupedMerges = merges.some(
+      (merge) => merge.s.r === end + 1 && merge.e.r === end + 1 && merge.e.c > merge.s.c,
+    );
+    const nextHasHeaderVocabulary = nextFilled.some((value) => {
+      const label = String(value).trim();
+      return label.length <= 50 && SECTION_HEADER_HINT.test(label);
+    });
+    const textualDataBelow =
+      (aoa[end + 2] ?? []).filter((value) => value !== null && value !== "").length >= 2;
+    const dataEvidence =
+      numericDataEvidence || nextHasGroupedMerges || (nextHasHeaderVocabulary && textualDataBelow);
     if (!dataEvidence) break;
 
     end++;
@@ -514,9 +525,19 @@ function findHeaderCandidates(aoa: (string | number | null)[][]): HeaderRun[] {
         .slice(run.startCol, run.endCol + 1)
         .some((c) => c !== null && c !== "");
       if (!hasDataBelow) continue;
-      const headers: string[] = [];
+      // Matrizes de monitoramento frequentemente deixam a primeira célula
+      // do cabeçalho vazia: os meses começam na coluna seguinte, enquanto
+      // a coluna à esquerda contém o ponto de coleta/máquina. Sem incluir
+      // essa coluna, o valor que identifica cada linha era perdido.
+      const includeLeftIdentity =
+        run.startCol > 0 &&
+        (row[run.startCol - 1] === null || row[run.startCol - 1] === "") &&
+        next[run.startCol - 1] !== null &&
+        next[run.startCol - 1] !== "";
+      const startCol = includeLeftIdentity ? run.startCol - 1 : run.startCol;
+      const headers: string[] = includeLeftIdentity ? ["Ponto / Item"] : [];
       for (let c = run.startCol; c <= run.endCol; c++) headers.push(String(row[c]).trim());
-      candidates.push({ row: r, startCol: run.startCol, endCol: run.endCol, headers });
+      candidates.push({ row: r, startCol, endCol: run.endCol, headers });
     }
   }
   return candidates;
@@ -934,8 +955,29 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     return `${base}_${count + 1}`;
   });
 
+  const footerMerge = merges
+    .filter(
+      (merge) =>
+        merge.s.r === merge.e.r &&
+        merge.s.r >= headerRowEnd + 5 &&
+        merge.e.c - merge.s.c + 1 >= Math.max(2, Math.ceil(width * 0.7)) &&
+        originalFilledCount.get(merge.s.r) === 1,
+    )
+    .find((merge) => {
+      const value = aoa[merge.s.r]?.[merge.s.c];
+      return (
+        typeof value === "string" &&
+        value.trim().length > MERGE_FILL_MAX_LENGTH &&
+        /^(?:observa[cç][õo]es?|informa[cç][õo]es adicionais|legenda|n[ií]vel de revis[aã]o)\b/i.test(
+          value.trim(),
+        )
+      );
+    });
+  const footerRowIndex = footerMerge?.s.r ?? aoa.length;
+  const footerRowsIgnored = Math.max(0, aoa.length - footerRowIndex);
+
   const dataRows: Row[] = headers.length
-    ? aoa.slice(headerRowEnd + 1).map((row) => {
+    ? aoa.slice(headerRowEnd + 1, footerRowIndex).map((row) => {
         const obj: Row = {};
         headers.forEach((h, i) => {
           const v = row[i];
@@ -1034,6 +1076,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       `Foi identificado um cabeçalho hierárquico nas linhas ${headerRowIndex + 1} a ${headerRowEnd + 1}. Os nomes dos grupos e das subcolunas foram combinados para preservar o significado de cada medição.`,
     );
   }
+  if (footerRowsIgnored > 0) {
+    messages.push(
+      `${footerRowsIgnored} linha${footerRowsIgnored > 1 ? "s" : ""} de rodapé institucional após a tabela ${footerRowsIgnored > 1 ? "foram ignoradas" : "foi ignorada"}, preservando apenas os registros do cronograma.`,
+    );
+  }
   if (mergedHeaderCells > 0) {
     messages.push(
       `${mergedHeaderCells} coluna${mergedHeaderCells > 1 ? "s" : ""} do cabeçalho vinha${mergedHeaderCells > 1 ? "m" : ""} de célula${mergedHeaderCells > 1 ? "s" : ""} mesclada${mergedHeaderCells > 1 ? "s" : ""} na planilha original. Usamos o nome do grupo pra elas, mas talvez você queira renomeá-las individualmente no painel de colunas.`,
@@ -1093,7 +1140,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       numericCellsConverted: numericTextCellsNormalized,
       rowsAboveHeaderIgnored: headerRowIndex,
       blankRowsIgnored: blankSkipped,
-      trailingRowsIgnored: trailingNotesTrimmed,
+      trailingRowsIgnored: trailingNotesTrimmed + footerRowsIgnored,
       columnsIgnored: ghostColumns.length,
     },
   };
@@ -1115,7 +1162,7 @@ export type SheetOption = {
 
 function independentRegionWorksheet(
   ws: XLSX.WorkSheet,
-  region: ImportDiagnostics["tableRegions"][number],
+  region: { startRow: number; endRow: number; startColumn: number; endColumn: number },
 ): XLSX.WorkSheet | null {
   if (!ws["!ref"]) return null;
   const used = XLSX.utils.decode_range(ws["!ref"]);
@@ -1146,6 +1193,246 @@ function independentRegionWorksheet(
   );
   if (merges.length) sliced["!merges"] = merges;
   return sliced;
+}
+
+type IndependentSection = {
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+  label: string;
+  contextRows: number[];
+};
+
+const SECTION_HEADER_HINT =
+  /^(?:m[eê]s|data|nome|c[oó]digo|item|descri[cç][aã]o|cliente|produto|material|objeto|ponto|m[aá]quina|gramatura|quantidade|amostra|an[aá]lise|refer[eê]ncia|limite|tipo|ferramenta|t[eé]cnica|frequ[eê]ncia|status|valor|pre[cç]o|unidade|resultado)/i;
+const SECTION_TITLE_HINT =
+  /(?:cronograma|anexo|crit[eé]rio|plano|monitoramento|an[aá]lise (?:de|por)|ambiente|processo|superf[ií]cie|manipulador|[aá]gua|bebidas?|produtos? aliment[ií]cios?)/i;
+const INSTITUTIONAL_FOOTER =
+  /^(?:observa[cç][oõ]es|informa[cç][oõ]es adicionais|legenda|n[ií]vel de revis[aã]o)\b/i;
+
+function cellHasValue(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== "";
+}
+
+function independentSectionWorksheet(
+  ws: XLSX.WorkSheet,
+  section: IndependentSection,
+): XLSX.WorkSheet | null {
+  if (!ws["!ref"]) return null;
+  const used = XLSX.utils.decode_range(ws["!ref"]);
+  const relativeRows = [
+    ...section.contextRows,
+    ...Array.from(
+      { length: section.endRow - section.startRow + 1 },
+      (_, index) => section.startRow + index,
+    ),
+  ].filter((row, index, all) => all.indexOf(row) === index);
+  if (!relativeRows.length) return null;
+
+  const sourceToDestination = new Map<number, number>();
+  relativeRows.forEach((relativeRow, destinationRow) => {
+    sourceToDestination.set(used.s.r + relativeRow - 1, destinationRow);
+  });
+  const width = section.endColumn - section.startColumn + 1;
+  const sliced: XLSX.WorkSheet = {
+    "!ref": XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: relativeRows.length - 1, c: width - 1 },
+    }),
+  };
+  for (const [sourceRow, destinationRow] of sourceToDestination) {
+    for (
+      let relativeColumn = section.startColumn;
+      relativeColumn <= section.endColumn;
+      relativeColumn++
+    ) {
+      const sourceColumn = used.s.c + relativeColumn - 1;
+      const sourceAddress = XLSX.utils.encode_cell({ r: sourceRow, c: sourceColumn });
+      const cell = worksheetCellAtAddress(ws, sourceAddress);
+      if (!cell) continue;
+      const destinationAddress = XLSX.utils.encode_cell({
+        r: destinationRow,
+        c: relativeColumn - section.startColumn,
+      });
+      sliced[destinationAddress] = { ...cell };
+    }
+  }
+
+  const translatedMerges = (ws["!merges"] ?? []).flatMap((merge) => {
+    const sourceStartColumn = used.s.c + section.startColumn - 1;
+    const sourceEndColumn = used.s.c + section.endColumn - 1;
+    if (merge.e.c < sourceStartColumn || merge.s.c > sourceEndColumn) return [];
+    const destinationStart = sourceToDestination.get(merge.s.r);
+    const destinationEnd = sourceToDestination.get(merge.e.r);
+    if (destinationStart === undefined || destinationEnd === undefined) return [];
+    if (destinationEnd - destinationStart !== merge.e.r - merge.s.r) return [];
+    return [
+      {
+        s: {
+          r: destinationStart,
+          c: Math.max(merge.s.c, sourceStartColumn) - sourceStartColumn,
+        },
+        e: {
+          r: destinationEnd,
+          c: Math.min(merge.e.c, sourceEndColumn) - sourceStartColumn,
+        },
+      },
+    ];
+  });
+  if (translatedMerges.length) sliced["!merges"] = translatedMerges;
+  return sliced;
+}
+
+/**
+ * Algumas planilhas de qualidade usam uma aba como uma página de documento:
+ * vários quadros com títulos próprios são empilhados sem uma linha vazia entre
+ * eles. A análise de regiões geométricas não consegue separá-los porque os
+ * quadros se tocam. Aqui detectamos somente reinícios fortes de cabeçalho:
+ * linha textual com vocabulário de coluna, dados logo abaixo e um título ou
+ * separador imediatamente acima. Isso evita tratar uma linha comum de dados
+ * como uma nova tabela.
+ */
+function detectIndependentSections(ws: XLSX.WorkSheet): IndependentSection[] {
+  if (!ws["!ref"]) return [];
+  const used = XLSX.utils.decode_range(ws["!ref"]);
+  const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+    header: 1,
+    defval: null,
+    raw: false,
+  });
+  if (aoa.length < 4) return [];
+
+  const filled = (row: (string | number | boolean | null)[] | undefined) =>
+    (row ?? []).filter(cellHasValue);
+  const isBlank = (row: (string | number | boolean | null)[] | undefined) =>
+    filled(row).length === 0;
+  const hasHorizontalMerge = (relativeRow: number) =>
+    (ws["!merges"] ?? []).some(
+      (merge) =>
+        merge.s.r <= used.s.r + relativeRow &&
+        merge.e.r >= used.s.r + relativeRow &&
+        merge.e.c > merge.s.c &&
+        cellHasValue(worksheetCellAtAddress(ws, XLSX.utils.encode_cell(merge.s))?.v),
+    );
+
+  // Não procurar novas tabelas dentro do rodapé de controle do documento.
+  let scanEnd = aoa.length;
+  for (let row = 5; row < aoa.length; row++) {
+    const values = filled(aoa[row]);
+    const first = values.length ? String(values[0]).trim() : "";
+    if (values.length <= 2 && INSTITUTIONAL_FOOTER.test(first)) {
+      scanEnd = row;
+      break;
+    }
+  }
+
+  const candidates: { header: number; titleStart: number; label: string }[] = [];
+  for (let row = 0; row < scanEnd - 1; row++) {
+    const values = filled(aoa[row]);
+    if (values.length < 2) continue;
+    const textual = values.filter((value) => !cellLooksNumeric(value) && !cellLooksDate(value));
+    if (textual.length / values.length < 0.75) continue;
+    if (
+      !textual.some((value) => {
+        const label = String(value).trim();
+        return label.length <= 50 && SECTION_HEADER_HINT.test(label);
+      })
+    )
+      continue;
+    if (textual.filter((value) => String(value).trim().length <= 50).length < 2) continue;
+    if (new Set(textual.map((value) => String(value).trim().toLocaleLowerCase())).size < 2)
+      continue;
+
+    let next = row + 1;
+    while (next < scanEnd && isBlank(aoa[next])) next++;
+    if (next >= scanEnd || filled(aoa[next]).length < 2) continue;
+
+    let titleStart = row;
+    for (let above = row - 1; above >= Math.max(0, row - 3); above--) {
+      const titleValues = filled(aoa[above]);
+      if (!titleValues.length) break;
+      const absoluteAbove = used.s.r + above;
+      const continuesVerticalDataMerge = (ws["!merges"] ?? []).some(
+        (merge) => merge.s.r < absoluteAbove && merge.e.r >= absoluteAbove,
+      );
+      if (continuesVerticalDataMerge) break;
+      const explicitSingleTitle =
+        titleValues.length === 1 && /[:：]\s*$/.test(String(titleValues[0]).trim());
+      const semanticSingleTitle =
+        titleValues.length === 1 &&
+        SECTION_TITLE_HINT.test(String(titleValues[0])) &&
+        hasHorizontalMerge(above);
+      const titleLike =
+        titleValues.every((value) => !cellLooksNumeric(value) && !cellLooksDate(value)) &&
+        (explicitSingleTitle ||
+          semanticSingleTitle ||
+          (titleValues.length >= 2 && titleValues.length <= 4 && hasHorizontalMerge(above)));
+      if (!titleLike) break;
+      titleStart = above;
+    }
+    const separated = row === 0 || isBlank(aoa[row - 1]) || titleStart < row;
+    if (!separated) continue;
+
+    const titleValues = aoa
+      .slice(titleStart, row)
+      .flatMap((titleRow) => filled(titleRow).map((value) => String(value).trim()))
+      .filter((value, index, all) => value && all.indexOf(value) === index);
+    const label = titleValues[0] ?? String(textual[0]).trim();
+    candidates.push({ header: row, titleStart, label });
+  }
+
+  // Tabelas comuns separadas apenas por linhas vazias continuam sob a
+  // estratégia geométrica já existente ("Região N"). Esta estratégia é
+  // reservada ao formato de documento, que possui ao menos um título de
+  // seção explícito antes de um dos cabeçalhos.
+  if (
+    candidates.length < 2 ||
+    !candidates.some((candidate) => candidate.titleStart < candidate.header)
+  )
+    return [];
+  const sharedHierarchicalContext = Array.from(
+    { length: Math.max(0, candidates[0].header - candidates[0].titleStart - 1) },
+    (_, index) => candidates[0].titleStart + index,
+  )
+    .filter((row) => filled(aoa[row]).length >= 2 && hasHorizontalMerge(row))
+    .map((row) => row + 1);
+  return candidates.map((candidate, index) => {
+    const endRow = index + 1 < candidates.length ? candidates[index + 1].titleStart : scanEnd;
+    let firstColumn = Number.POSITIVE_INFINITY;
+    let lastColumn = -1;
+    for (const row of aoa.slice(candidate.titleStart, endRow)) {
+      row.forEach((value, column) => {
+        if (!cellHasValue(value)) return;
+        firstColumn = Math.min(firstColumn, column);
+        lastColumn = Math.max(lastColumn, column);
+      });
+    }
+    let label = candidate.label;
+    if (
+      Number.isFinite(firstColumn) &&
+      lastColumn - firstColumn + 1 < (used.e.c - used.s.c + 1) / 2
+    ) {
+      const localContext = sharedHierarchicalContext
+        .map((contextRow) => aoa[contextRow - 1]?.[firstColumn])
+        .filter(cellHasValue)
+        .map((value) => String(value).trim())
+        .filter((value) => value && !/cronograma/i.test(value));
+      if (localContext.length) label = `${label} — ${localContext.at(-1)}`;
+    }
+    // Incluímos o título local para que cabeçalhos hierárquicos continuem
+    // carregando o significado visual que possuíam no Excel. Quadros que
+    // ocupam só parte da largura (como Legionella) são recortados para não
+    // criar colunas vazias herdadas dos outros trimestres.
+    return {
+      startRow: candidate.titleStart + 1,
+      endRow,
+      startColumn: Number.isFinite(firstColumn) ? firstColumn + 1 : 1,
+      endColumn: lastColumn >= 0 ? lastColumn + 1 : used.e.c - used.s.c + 1,
+      label,
+      contextRows: index === 0 ? [] : sharedHierarchicalContext,
+    };
+  });
 }
 
 function regionsAreSafeToSplit(
@@ -1210,7 +1497,48 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
   return wb.SheetNames.flatMap((name) => {
     const ws = wb.Sheets[name];
     if (!ws) return [];
+    const preview = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+      header: 1,
+      defval: null,
+      raw: false,
+    });
+    const compatibilityText = preview
+      .slice(0, 12)
+      .flat()
+      .filter((value) => value !== null && value !== "")
+      .map(String)
+      .join(" ");
+    if (
+      /Compatibility Report for/i.test(compatibilityText) &&
+      /loss of functionality|loss of fidelity/i.test(compatibilityText)
+    )
+      return [];
     const result = sheetToRows(ws);
+    if (result.tableMode !== "repeated-blocks") {
+      const sections = detectIndependentSections(ws);
+      if (sections.length > 1) {
+        const labelTotals = new Map<string, number>();
+        for (const section of sections)
+          labelTotals.set(section.label, (labelTotals.get(section.label) ?? 0) + 1);
+        const split = sections.flatMap((section, index) => {
+          const sectionSheet = independentSectionWorksheet(ws, section);
+          if (!sectionSheet) return [];
+          const imported = sheetToRows(sectionSheet);
+          if (!imported.rows.length) return [];
+          const separationWarning = `A aba "${name}" continha ${sections.length} tabelas independentes empilhadas e foi separada automaticamente. Esta opção corresponde à tabela ${index + 1}.`;
+          return [
+            {
+              name: `${name} · ${section.label || `Tabela ${index + 1}`}${(labelTotals.get(section.label) ?? 0) > 1 ? ` · Tabela ${index + 1}` : ""}`,
+              ...imported,
+              warning: imported.warning
+                ? `${separationWarning} ${imported.warning}`
+                : separationWarning,
+            },
+          ];
+        });
+        if (split.length === sections.length) return split;
+      }
+    }
     if (
       result.tableMode !== "repeated-blocks" &&
       result.diagnostics &&
