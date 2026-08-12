@@ -49,6 +49,28 @@ function formatDateCell(d: Date): string {
   return `${dd}/${mm}/${calendarDate.getFullYear()}`;
 }
 
+function formatTemporalCell(d: Date, cell?: XLSX.CellObject): string {
+  const numberFormat = String(cell?.z ?? "")
+    .replace(/"[^"]*"/g, "")
+    .replace(/\\./g, "")
+    .replace(/\[(?!h+\]|m+\]|s+\])[^\]]*\]/gi, "");
+  const hasDate = /[dy]/i.test(numberFormat);
+  const hasTime = /h|s|am\/pm|a\/p|\[(?:h+|m+|s+)\]/i.test(numberFormat);
+
+  // Para hora e duração, a representação pronta do SheetJS é mais fiel ao
+  // Excel: preserva segundos, AM/PM e durações acima de 24 h (`[h]:mm`) sem
+  // transformá-las numa data fictícia de 1899.
+  if (hasTime && !hasDate && cell?.w) return cell.w;
+
+  const date = formatDateCell(d);
+  if (!date || !hasTime) return date;
+  const calendarDate = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  const hh = String(calendarDate.getHours()).padStart(2, "0");
+  const mm = String(calendarDate.getMinutes()).padStart(2, "0");
+  const ss = String(calendarDate.getSeconds()).padStart(2, "0");
+  return `${date} ${hh}:${mm}${/s/i.test(numberFormat) ? `:${ss}` : ""}`;
+}
+
 /**
  * Normaliza uma linha crua vinda de sheet_to_json: quando o workbook é lido
  * com `cellDates: true` (ver src/routes/index.tsx), uma célula formatada
@@ -66,8 +88,12 @@ function normalizeRawRow(
 ): (string | number | null)[] {
   return row.map((value, columnIndex) => {
     if (!(value instanceof Date)) return value;
-
-    const formatted = formatDateCell(value);
+    const address = XLSX.utils.encode_cell({
+      r: start.r + rowIndex,
+      c: start.c + columnIndex,
+    });
+    const sourceCell = worksheetCellAtAddress(worksheet, address);
+    const formatted = formatTemporalCell(value, sourceCell);
     if (formatted) return formatted;
 
     // O SheetJS 0.20 pode tentar converter uma célula textual para Date
@@ -76,11 +102,6 @@ function normalizeRawRow(
     // texto correto. Isso ocorre, por exemplo, com o cabeçalho "Torre de
     // Processo" no formulário FRS-QA-028. Recuperar somente strings evita
     // alterar o tratamento normal de datas e números legítimos.
-    const address = XLSX.utils.encode_cell({
-      r: start.r + rowIndex,
-      c: start.c + columnIndex,
-    });
-    const sourceCell = worksheetCellAtAddress(worksheet, address);
     if ((sourceCell?.t === "s" || sourceCell?.t === "str") && typeof sourceCell.v === "string") {
       return sourceCell.v;
     }
@@ -101,9 +122,40 @@ function headerIsInvalid(raw: string | number | null) {
   return !value || INVALID_HEADER_PATTERN.test(value);
 }
 
-const PLAIN_NUMERIC_TEXT_PATTERN = /^[-+]?(?:\d+|\d*[.,]\d+)$/;
 const IDENTIFIER_HEADER_PATTERN =
   /(^|[\s_-])(id|c[oó]digo|cod|n[º°o]\.?|n[uú]mero|sku|protocolo)([\s_.-]|\d|$)/i;
+const QUANTITATIVE_HEADER_PATTERN =
+  /(valor|pre[cç]o|total|quantidade|qtd|receita|custo|saldo|taxa|percentual|porcentagem|medida|medi[cç][aã]o|peso|altura|volume|temperatura|press[aã]o|concentra[cç][aã]o)/i;
+
+function parseLocalizedNumericText(value: string): number | null {
+  let text = value.trim().replace(/[\u00a0\s]/g, "");
+  if (!text) return null;
+  const negative = /^\(.*\)$/.test(text);
+  if (negative) text = text.slice(1, -1);
+  const percentage = /%$/.test(text);
+  text = text
+    .replace(/%$/, "")
+    .replace(/^(?:R\$|US\$|€|£|¥|\$)/i, "")
+    .replace(/(?:R\$|US\$|€|£|¥|\$)$/i, "");
+  if (!/^[-+]?\d+(?:[.,]\d+)*$/.test(text)) return null;
+  if (/^[-+]?0\d+$/.test(text)) return null;
+
+  const comma = text.lastIndexOf(",");
+  const dot = text.lastIndexOf(".");
+  if (comma >= 0 && dot >= 0) {
+    const decimal = comma > dot ? "," : ".";
+    const grouping = decimal === "," ? /\./g : /,/g;
+    text = text.replace(grouping, "").replace(decimal, ".");
+  } else if (comma >= 0) {
+    text = text.replace(/\./g, "").replace(",", ".");
+  } else if (/^[-+]?\d{1,3}(?:\.\d{3})+$/.test(text)) {
+    text = text.replace(/\./g, "");
+  }
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed)) return null;
+  const signed = negative ? -Math.abs(parsed) : parsed;
+  return percentage ? signed / 100 : signed;
+}
 
 /**
  * Alguns formulários reais mudam o tipo de célula no meio da mesma coluna:
@@ -124,13 +176,12 @@ function normalizeMixedNumericColumns(rows: Row[]): { rows: Row[]; changes: numb
   for (const header of headers) {
     if (IDENTIFIER_HEADER_PATTERN.test(header)) continue;
     const values = rows.map((row) => row[header]).filter((value) => value !== null && value !== "");
-    if (!values.some((value) => typeof value === "number")) continue;
+    const hasRealNumber = values.some((value) => typeof value === "number");
+    if (!hasRealNumber && !QUANTITATIVE_HEADER_PATTERN.test(header)) continue;
     const numericLike = values.filter((value) => {
       if (typeof value === "number") return Number.isFinite(value);
       if (typeof value !== "string") return false;
-      const trimmed = value.trim();
-      if (!PLAIN_NUMERIC_TEXT_PATTERN.test(trimmed)) return false;
-      return !/^[-+]?0\d+$/.test(trimmed);
+      return parseLocalizedNumericText(value) !== null;
     }).length;
     if (values.length && numericLike / values.length >= 0.9) numericHeaders.add(header);
   }
@@ -142,10 +193,8 @@ function normalizeMixedNumericColumns(rows: Row[]): { rows: Row[]; changes: numb
     for (const header of numericHeaders) {
       const value = row[header];
       if (typeof value !== "string") continue;
-      const trimmed = value.trim();
-      if (!PLAIN_NUMERIC_TEXT_PATTERN.test(trimmed) || /^[-+]?0\d+$/.test(trimmed)) continue;
-      const parsed = Number(trimmed.replace(",", "."));
-      if (!Number.isFinite(parsed)) continue;
+      const parsed = parseLocalizedNumericText(value);
+      if (parsed === null) continue;
       if (next === row) next = { ...row };
       next[header] = parsed;
       changes++;
@@ -188,6 +237,20 @@ function isClearlyNotHeaderRow(row: (string | number | null)[]): boolean {
   return filled.some(cellLooksNumeric);
 }
 
+function isYearHeaderRow(row: (string | number | null)[]): boolean {
+  const filled = row.filter((cell) => cell !== null && cell !== "");
+  const numeric = filled.filter(cellLooksNumeric);
+  return (
+    filled.length >= 2 &&
+    numeric.length > 0 &&
+    numeric.length < filled.length &&
+    numeric.every((cell) => {
+      const value = Number(cell);
+      return Number.isInteger(value) && value >= 1900 && value <= 2200;
+    })
+  );
+}
+
 /**
  * Acha o índice da linha de cabeçalho real. Por padrão assume a primeira
  * linha (comportamento de sempre). Só procura mais abaixo quando a primeira
@@ -222,7 +285,7 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
   for (let i = 0; i < scanLimit; i++) {
     if (isBanner(i)) continue;
     const row = aoa[i] ?? [];
-    if (isClearlyNotHeaderRow(row)) continue;
+    if (isClearlyNotHeaderRow(row) && !isYearHeaderRow(row)) continue;
     // Cabeçalhos verdadeiros costumam ser seguidos imediatamente por dados.
     // Esse bônus resolve empates com blocos institucionais mesclados
     // (assinaturas/cargos), que podem ter a mesma densidade visual do
