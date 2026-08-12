@@ -197,6 +197,7 @@ import {
   sheetToRows,
   type SheetOption,
   type SourceGrid,
+  type ImportAudit,
 } from "@/lib/import";
 import { mergeReimportedSheets } from "@/lib/dashboard";
 import {
@@ -483,6 +484,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       columns: Column[];
       diagnostics?: ImportDiagnostics;
       sourceGrid?: SourceGrid;
+      audit?: ImportAudit;
     }[]
   >([]);
   const [reviewSheetIndex, setReviewSheetIndex] = useState(0);
@@ -655,6 +657,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       rows: Row[];
       diagnostics?: ImportDiagnostics;
       sourceGrid?: SourceGrid;
+      audit?: ImportAudit;
     }[],
     n: string,
   ) => {
@@ -667,6 +670,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         columns: infer(s.rows),
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
         ...(s.sourceGrid ? { sourceGrid: s.sourceGrid } : {}),
+        ...(s.audit ? { audit: s.audit } : {}),
       })),
     );
     setReviewSheetIndex(0);
@@ -1961,6 +1965,7 @@ function ImportWorkbench({
   columns,
   diagnostics,
   sourceGrid,
+  audit,
   selection,
   setSelection,
   apply,
@@ -1972,6 +1977,7 @@ function ImportWorkbench({
   columns: Column[];
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
+  audit?: ImportAudit;
   selection: ImportSelection;
   setSelection: (selection: ImportSelection) => void;
   apply: () => void;
@@ -2338,6 +2344,31 @@ function ImportWorkbench({
         </div>
       ) : health ? (
         <div className="p-4">
+          {audit && (
+            <div className="mb-4 rounded-xl border border-border bg-background p-4">
+              <div className="text-sm font-medium">Balanço verificável da importação</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Contagens objetivas do arquivo, sem tratar expansões ou cabeçalhos como perda.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ["Células preenchidas na origem", audit.sourceNonEmptyCells],
+                  ["Células preenchidas na saída", audit.outputNonEmptyCells],
+                  ["Fórmulas recuperadas", audit.formulaCellsRecovered],
+                  ["Mesclagens expandidas", audit.mergedCellsExpanded],
+                  ["Números convertidos", audit.numericCellsConverted],
+                  ["Linhas acima do cabeçalho", audit.rowsAboveHeaderIgnored],
+                  ["Linhas vazias ignoradas", audit.blankRowsIgnored],
+                  ["Rodapés/colunas ignorados", audit.trailingRowsIgnored + audit.columnsIgnored],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-lg border border-border px-3 py-2">
+                    <div className="text-[11px] text-muted-foreground">{label}</div>
+                    <strong className="font-display text-lg">{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ["Compatibilidade", health.compatibility],
@@ -2395,6 +2426,7 @@ function Review(p: {
     columns: Column[];
     diagnostics?: ImportDiagnostics;
     sourceGrid?: SourceGrid;
+    audit?: ImportAudit;
   }[];
   activeIndex: number;
   setActiveIndex: (i: number) => void;
@@ -2731,6 +2763,7 @@ function Review(p: {
           columns={columns}
           diagnostics={active?.diagnostics}
           sourceGrid={active?.sourceGrid}
+          audit={active?.audit}
           selection={selection}
           setSelection={setSelection}
           canUndo={Boolean(undoRows)}
