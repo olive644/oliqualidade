@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import {
@@ -72,6 +72,7 @@ import {
   Settings2,
   Sheet as SheetIcon,
   ShieldAlert,
+  Sparkles,
   Star,
   Sun,
   Trash2,
@@ -223,6 +224,13 @@ import { readWorkbookFile } from "@/lib/workbook-reader-client";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { geocodeMissing } from "@/lib/geocode";
 import { askGemini, type GeminiChatMessage } from "@/lib/gemini-client";
+import { analyzeImportWithAi, markSmartImportAutoAnalysis } from "@/lib/smart-import-client";
+import {
+  buildSmartImportInput,
+  smartImportFingerprint,
+  type SmartImportAnalysis,
+  type SmartImportSuggestion,
+} from "@/lib/smart-import";
 import {
   buildLiveDashboardContext,
   buildLiveSuggestedPrompts,
@@ -2446,10 +2454,58 @@ function Review(p: {
   const [lowConfidenceConfirmed, setLowConfidenceConfirmed] = useState(false);
   const active = p.sheets[p.activeIndex] ?? p.sheets[0];
   const rows = useMemo(() => active?.rows ?? [], [active]);
-  const columns = active?.columns ?? [];
+  const columns = useMemo(() => active?.columns ?? [], [active?.columns]);
   const [selection, setSelection] = useState<ImportSelection>(() => defaultSelection(rows));
   const [undoRows, setUndoRows] = useState<Row[] | null>(null);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
+  const [smartAnalysis, setSmartAnalysis] = useState<SmartImportAnalysis | null>(null);
+  const [smartLoading, setSmartLoading] = useState(false);
+  const [smartError, setSmartError] = useState<string | null>(null);
+  const [smartCached, setSmartCached] = useState(false);
+  const [appliedSmartSuggestions, setAppliedSmartSuggestions] = useState<Set<string>>(new Set());
+  const autoAnalyzedSheets = useRef(new Set<string>());
+  const smartInput = useMemo(
+    () =>
+      active?.diagnostics
+        ? buildSmartImportInput(p.name, active.name, columns, active.diagnostics)
+        : null,
+    [active?.diagnostics, active?.name, columns, p.name],
+  );
+  const runSmartAnalysis = useCallback(
+    async (force = false) => {
+      if (!smartInput || smartLoading) return;
+      setSmartLoading(true);
+      setSmartError(null);
+      try {
+        const result = await analyzeImportWithAi(smartInput, { force });
+        setSmartAnalysis(result.analysis);
+        setSmartCached(result.cached);
+      } catch (error) {
+        setSmartError(error instanceof Error ? error.message : "Análise inteligente indisponível.");
+      } finally {
+        setSmartLoading(false);
+      }
+    },
+    [smartInput, smartLoading],
+  );
+  useEffect(() => {
+    setSmartAnalysis(null);
+    setSmartError(null);
+    setSmartCached(false);
+    setAppliedSmartSuggestions(new Set());
+  }, [p.activeIndex]);
+  useEffect(() => {
+    if (!active?.diagnostics || !smartInput) return;
+    const needsAiHelp =
+      active.diagnostics.confidence < 80 ||
+      active.diagnostics.header.confidence < 0.75 ||
+      active.diagnostics.tableRegions.length > 1;
+    const sheetKey = `${p.activeIndex}:${active.name}`;
+    if (!needsAiHelp || autoAnalyzedSheets.current.has(sheetKey)) return;
+    const fingerprint = smartImportFingerprint(smartInput);
+    autoAnalyzedSheets.current.add(sheetKey);
+    if (markSmartImportAutoAnalysis(fingerprint)) void runSmartAnalysis();
+  }, [active?.diagnostics, active?.name, p.activeIndex, runSmartAnalysis, smartInput]);
   useEffect(() => {
     const match = matchingImportProfile(rows, p.name, active?.sourceGrid);
     setSelection(match?.selection ?? defaultSelection(rows));
@@ -2470,6 +2526,68 @@ function Review(p: {
     ((active?.diagnostics?.confidence ?? 100) < 70 ||
       (active?.diagnostics?.header.confidence ?? 1) < 0.7 ||
       (active?.diagnostics?.tableRegions.length ?? 0) > 1);
+  const suggestionKey = (suggestion: SmartImportSuggestion) =>
+    `${suggestion.type}:${suggestion.columnKey}:${suggestion.proposedLabel ?? suggestion.proposedKind ?? ""}`;
+  const applySmartSuggestion = (suggestion: SmartImportSuggestion) => {
+    if (suggestion.type === "rename-column" && suggestion.proposedLabel) {
+      p.setColumns(
+        columns.map((column) =>
+          column.key === suggestion.columnKey
+            ? { ...column, label: suggestion.proposedLabel! }
+            : column,
+        ),
+      );
+    } else if (suggestion.type === "change-kind" && suggestion.proposedKind) {
+      p.setColumns(
+        columns.map((column) =>
+          column.key === suggestion.columnKey
+            ? { ...column, kind: suggestion.proposedKind! }
+            : column,
+        ),
+      );
+    } else if (suggestion.type === "ignore-column") {
+      setSelection((current) => ({
+        ...current,
+        ignoredColumns: current.ignoredColumns.includes(suggestion.columnKey)
+          ? current.ignoredColumns
+          : [...current.ignoredColumns, suggestion.columnKey],
+      }));
+    }
+    setAppliedSmartSuggestions((current) => new Set(current).add(suggestionKey(suggestion)));
+    toast.success("Sugestão da análise inteligente aplicada.");
+  };
+  const applySafeSmartSuggestions = () => {
+    const safe =
+      smartAnalysis?.suggestions.filter(
+        (suggestion) => suggestion.confidence >= 90 && suggestion.type !== "ignore-column",
+      ) ?? [];
+    if (!safe.length) {
+      toast.info("Não há sugestões automáticas com confiança mínima de 90%.");
+      return;
+    }
+    p.setColumns(
+      columns.map((column) => {
+        const rename = safe.find(
+          (suggestion) =>
+            suggestion.columnKey === column.key && suggestion.type === "rename-column",
+        );
+        const kind = safe.find(
+          (suggestion) => suggestion.columnKey === column.key && suggestion.type === "change-kind",
+        );
+        return {
+          ...column,
+          ...(rename?.proposedLabel ? { label: rename.proposedLabel } : {}),
+          ...(kind?.proposedKind ? { kind: kind.proposedKind } : {}),
+        };
+      }),
+    );
+    setAppliedSmartSuggestions((current) => {
+      const next = new Set(current);
+      safe.forEach((suggestion) => next.add(suggestionKey(suggestion)));
+      return next;
+    });
+    toast.success(`${safe.length} sugestão(ões) segura(s) aplicada(s).`);
+  };
   return (
     <div className="min-h-screen bg-canvas">
       <header className="oliam-topbar">
@@ -2516,6 +2634,116 @@ function Review(p: {
             {rows.length} linhas · {columns.length} colunas
           </p>
         </div>
+        <section className="mb-5 overflow-hidden rounded-2xl border border-violet-500/25 bg-card shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-violet-500/5 px-4 py-3">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Sparkles className="size-4 text-violet-600 dark:text-violet-400" />
+                Análise inteligente
+                {smartCached && (
+                  <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted-foreground">
+                    resultado reutilizado
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+                A IA recebe somente estrutura, contagens e exemplos não sensíveis. Ela sugere; você
+                decide o que aplicar. Nenhum valor ausente é inventado.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!smartInput || smartLoading}
+              onClick={() => void runSmartAnalysis(Boolean(smartAnalysis))}
+            >
+              {smartLoading ? <OliLoader compact /> : <Sparkles className="size-3.5" />}
+              {smartAnalysis ? "Analisar novamente" : "Analisar estrutura"}
+            </Button>
+          </div>
+          {smartLoading && (
+            <div className="px-4 py-3 text-xs text-muted-foreground">
+              Comparando cabeçalhos, tipos e regiões da planilha…
+            </div>
+          )}
+          {smartError && (
+            <div className="flex items-start gap-2 border-t border-border px-4 py-3 text-xs text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>{smartError} A leitura normal permanece disponível.</span>
+            </div>
+          )}
+          {smartAnalysis && !smartLoading && (
+            <div className="border-t border-border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">{smartAnalysis.purpose}</div>
+                  <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                    {smartAnalysis.summary}
+                  </p>
+                </div>
+                <span className="rounded-full border border-violet-500/25 bg-violet-500/5 px-2.5 py-1 text-xs text-violet-700 dark:text-violet-300">
+                  {smartAnalysis.confidence}% de confiança
+                </span>
+              </div>
+              {smartAnalysis.suggestions.length ? (
+                <div className="mt-4 space-y-2">
+                  {smartAnalysis.suggestions.map((suggestion) => {
+                    const key = suggestionKey(suggestion);
+                    const applied = appliedSmartSuggestions.has(key);
+                    const action =
+                      suggestion.type === "rename-column"
+                        ? `Renomear “${suggestion.columnKey}” para “${suggestion.proposedLabel}”`
+                        : suggestion.type === "change-kind"
+                          ? `Ler “${suggestion.columnKey}” como ${kinds[suggestion.proposedKind!]}`
+                          : `Ignorar a coluna “${suggestion.columnKey}”`;
+                    return (
+                      <div
+                        key={key}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-background p-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium">{action}</div>
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            {suggestion.reason} · {suggestion.confidence}%
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={applied ? "ghost" : "outline"}
+                          disabled={applied}
+                          onClick={() => applySmartSuggestion(suggestion)}
+                        >
+                          {applied ? (
+                            <Check className="size-3.5" />
+                          ) : (
+                            <Sparkles className="size-3.5" />
+                          )}
+                          {applied ? "Aplicada" : "Aplicar"}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  <div className="pt-1 text-right">
+                    <Button size="sm" variant="secondary" onClick={applySafeSmartSuggestions}>
+                      Aplicar sugestões seguras (≥90%)
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-300">
+                  A IA não encontrou nenhuma mudança estrutural segura para recomendar.
+                </p>
+              )}
+              {smartAnalysis.warnings.length > 0 && (
+                <ul className="mt-3 space-y-1 text-[11px] text-muted-foreground">
+                  {smartAnalysis.warnings.map((warning) => (
+                    <li key={warning}>• {warning}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </section>
         {active?.diagnostics && (
           <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">

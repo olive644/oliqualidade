@@ -9,7 +9,8 @@ import {
   validateChatMessage,
   validateDashboardInput,
 } from "@/lib/gemini-security";
-import { handleGeminiChat } from "@/lib/gemini-server";
+import { handleGeminiChat, handleSmartImportAnalysis } from "@/lib/gemini-server";
+import type { SmartImportInput } from "@/lib/smart-import";
 import type { GeminiDashboardInput } from "@/lib/gemini-security";
 
 const dashboard: GeminiDashboardInput = {
@@ -24,6 +25,42 @@ const dashboard: GeminiDashboardInput = {
     { CPF: "12345678900", Valor: 100, Cidade: "Recife" },
     { CPF: "98765432100", Valor: 200, Cidade: "Recife" },
   ],
+};
+
+const smartImport: SmartImportInput = {
+  fileName: "cronograma.xlsx",
+  sheetName: "Plano",
+  rowCount: 10,
+  columnCount: 2,
+  confidence: 70,
+  interpretationScore: 100,
+  consistencyScore: 100,
+  header: { row: 3, confidence: 0.8 },
+  columns: [
+    {
+      key: "Dados",
+      label: "Dados",
+      kind: "category",
+      filled: 10,
+      missing: 0,
+      unique: 4,
+      examples: ["Água"],
+      sensitive: false,
+    },
+    {
+      key: "jan",
+      label: "jan",
+      kind: "category",
+      filled: 2,
+      missing: 8,
+      unique: 1,
+      examples: ["M"],
+      sensitive: false,
+    },
+  ],
+  regions: [],
+  warnings: [],
+  transformations: [],
 };
 
 afterEach(() => {
@@ -344,5 +381,58 @@ describe("segurança do Gemini", () => {
     );
     const result = (await response.json()) as { error: string };
     expect(result.error).toContain(expectedMessage);
+  });
+
+  it("analisa a importação com contexto compacto e resposta validada", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            steps: [
+              {
+                type: "model_output",
+                content: [
+                  {
+                    type: "text",
+                    text: JSON.stringify({
+                      purpose: "Cronograma",
+                      summary: "Estrutura reconhecida.",
+                      confidence: 95,
+                      suggestions: [
+                        {
+                          type: "rename-column",
+                          columnKey: "Dados",
+                          proposedLabel: "Categoria",
+                          confidence: 94,
+                          reason: "Conteúdo categórico.",
+                        },
+                      ],
+                      warnings: [],
+                    }),
+                  },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await handleSmartImportAnalysis(
+      new Request("http://localhost/api/gemini/import-analysis", {
+        method: "POST",
+        headers: { origin: "http://localhost", "x-forwarded-for": "smart-import" },
+        body: JSON.stringify({ import: smartImport }),
+      }),
+      { GEMINI_API_KEY: "test-secret" },
+    );
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as { analysis: { suggestions: unknown[] } };
+    expect(result.analysis.suggestions).toHaveLength(1);
+    const requestBody = String(
+      (fetchMock.mock.calls as unknown as Array<[string, RequestInit]>)[0]?.[1].body,
+    );
+    expect(requestBody).not.toContain("linhas completas");
+    expect(requestBody).toContain("Não invente valores");
   });
 });
