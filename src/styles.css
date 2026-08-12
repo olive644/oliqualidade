@@ -3488,3 +3488,337 @@
     animation: none;
   }
 }
+
+
+/* Assistente Oli — o mesmo rosto orgânico da marca, agora como botão do chat. */
+.oli-assistant-shell {
+  --oli-blue: var(--primary);
+  --oli-blue-deep: var(--foreground);
+  --oli-blue-light: var(--primary);
+  --oli-cream: var(--card);
+  --oli-mint: var(--secondary-accent);
+  right: 22px;
+  bottom: 20px;
+  gap: 14px;
+}
+.oli-mascot-group {
+  position: relative;
+  display: grid;
+  width: 112px;
+  min-height: 112px;
+  place-items: end center;
+  filter: none;
+}
+.oli-mascot {
+  position: relative;
+  display: grid;
+  width: 96px;
+  height: 92px;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+  border-radius: 42% 46% 44% 40% / 44% 42% 46% 42%;
+  background: color-mix(in oklab, var(--primary) 9%, var(--card));
+  color: var(--foreground);
+  box-shadow:
+    0 16px 34px color-mix(in oklab, var(--foreground) 17%, transparent),
+    inset 0 0 0 5px color-mix(in oklab, var(--card) 72%, transparent);
+  transform: rotate(-2deg);
+  transform-origin: center;
+  animation: oli-face-float 3.6s ease-in-out infinite;
+  transition:
+    border-color 200ms ease,
+    background-color 200ms ease,
+    box-shadow 200ms ease,
+    transform 200ms ease;
+}
+.oli-mascot:hover,
+.oli-mascot:focus-visible,
+.oli-mascot-group[data-open] .oli-mascot {
+  border-color: color-mix(in oklab, var(--primary) 65%, var(--border));
+  background: color-mix(in oklab, var(--primary) 15%, var(--card));
+  box-shadow:
+    0 20px 42px color-mix(in oklab, var(--primary) 24%, transparent),
+    inset 0 0 0 5px color-mix(in oklab, var(--card) 72%, transparent);
+  transform: rotate(0deg) translateY(-3px) scale(1.035);
+}
+.oli-mascot:focus-visible {
+  outline: 3px solid color-mix(in oklab, var(--primary) 35%, transparent);
+  outline-offset: 4px;
+}
+.oli-mascot .oli-face {
+  position: relative;
+  top: auto;
+  left: auto;
+  display: block;
+  width: 82px;
+  height: 78px;
+  transform: none;
+}
+.oli-face svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.oli-face-outline {
+  fill: color-mix(in oklab, var(--primary) 7%, var(--card));
+  stroke: var(--primary);
+  stroke-width: 18;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.oli-face-eye,
+.oli-face-smile {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 19;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.oli-mascot-name {
+  position: absolute;
+  right: -2px;
+  bottom: -5px;
+  z-index: 2;
+  border: 2px solid var(--card);
+  border-radius: 999px;
+  background: var(--primary);
+  padding: 4px 9px;
+  color: var(--primary-foreground);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.oli-chat-invite {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  z-index: 3;
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 9px;
+  width: max-content;
+  max-width: min(220px, calc(100vw - 32px));
+  border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+  border-radius: 15px 15px 5px 15px;
+  background: var(--card);
+  padding: 9px 13px 9px 11px;
+  color: var(--foreground);
+  box-shadow: 0 14px 34px color-mix(in oklab, var(--foreground) 17%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(9px) scale(0.88);
+  transform-origin: right bottom;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+.oli-chat-invite::after {
+  position: absolute;
+  right: 28px;
+  bottom: -6px;
+  width: 11px;
+  height: 11px;
+  border-right: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+  border-bottom: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+  background: var(--card);
+  content: "";
+  transform: rotate(45deg);
+}
+.oli-chat-invite svg {
+  width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  color: var(--primary);
+  transition: transform 200ms ease;
+}
+.oli-chat-invite strong {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.oli-mascot-group:hover .oli-chat-invite,
+.oli-mascot-group:focus-within .oli-chat-invite,
+.oli-mascot-group[data-open] .oli-chat-invite {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.oli-mascot-group:hover .oli-chat-invite svg,
+.oli-mascot-group:focus-within .oli-chat-invite svg {
+  transform: scale(1.12);
+}
+.oli-chat-label,
+.oli-mascot-ear,
+.oli-mascot-arm,
+.oli-mascot-body,
+.oli-mascot-foot,
+.oli-mascot-belly,
+.oli-face-patch,
+.oli-eye,
+.oli-muzzle {
+  display: none;
+}
+
+/* O painel conversa com a linguagem visual da página: calmo, preciso e acolhedor. */
+.oli-chat-panel {
+  width: min(392px, calc(100vw - 32px));
+  height: min(570px, calc(100dvh - 160px));
+  min-height: 380px;
+  border: 1px solid color-mix(in oklab, var(--primary) 24%, var(--border));
+  border-radius: 24px 24px 8px 24px;
+  background: var(--card);
+  box-shadow: 0 26px 70px color-mix(in oklab, var(--foreground) 22%, transparent);
+}
+.oli-chat-header {
+  min-height: 72px;
+  padding: 12px 13px 12px 14px;
+  border-bottom: 1px solid color-mix(in oklab, var(--primary) 18%, var(--border));
+  background:
+    radial-gradient(circle at 12% 10%, color-mix(in oklab, var(--primary) 12%, transparent), transparent 46%),
+    var(--card);
+  color: var(--foreground);
+}
+.oli-chat-header::after {
+  display: none;
+}
+.oli-chat-avatar {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  overflow: visible;
+  border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--primary) 9%, var(--card));
+  box-shadow: none;
+}
+.oli-chat-avatar .oli-face-compact {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: 41px;
+  height: 39px;
+  transform: none;
+}
+.oli-chat-identity strong {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 760;
+}
+.oli-chat-identity p {
+  color: var(--muted-foreground);
+}
+.oli-chat-close {
+  color: var(--muted-foreground) !important;
+}
+.oli-chat-close:hover {
+  background: color-mix(in oklab, var(--primary) 9%, var(--muted)) !important;
+  color: var(--foreground) !important;
+}
+.oli-chat-content {
+  padding: 16px;
+  background:
+    linear-gradient(color-mix(in oklab, var(--primary) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--primary) 3%, transparent) 1px, transparent 1px),
+    var(--card);
+  background-size: 26px 26px;
+}
+.oli-chat-welcome {
+  border: 1px solid color-mix(in oklab, var(--primary) 18%, var(--border));
+  border-radius: 16px 16px 16px 6px;
+  background: color-mix(in oklab, var(--primary) 6%, var(--card));
+  padding: 13px 14px;
+}
+.oli-chat-message-user {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.oli-chat-message-assistant,
+.oli-chat-loading {
+  border: 1px solid color-mix(in oklab, var(--primary) 12%, var(--border));
+  background: color-mix(in oklab, var(--primary) 5%, var(--card));
+}
+.oli-chat-suggestions {
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklab, var(--canvas) 48%, var(--card));
+}
+.oli-chat-suggestions button {
+  min-height: 44px;
+  border-color: color-mix(in oklab, var(--primary) 22%, var(--border));
+  border-radius: 12px;
+  background: var(--card);
+}
+.oli-chat-suggestions button:hover:not(:disabled),
+.oli-chat-suggestions button:focus-visible {
+  border-color: var(--primary);
+  background: color-mix(in oklab, var(--primary) 7%, var(--card));
+}
+.oli-chat-form {
+  padding: 12px;
+  background: var(--card);
+}
+.oli-chat-form input {
+  min-height: 44px;
+  border-color: color-mix(in oklab, var(--primary) 18%, var(--border));
+  border-radius: 13px;
+  background: color-mix(in oklab, var(--canvas) 35%, var(--card));
+}
+.oli-chat-form input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 17%, transparent);
+}
+.oli-chat-form button {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+@keyframes oli-face-float {
+  0%, 100% { transform: rotate(-2deg) translateY(0); }
+  50% { transform: rotate(-1deg) translateY(-4px); }
+}
+@media (max-width: 520px) {
+  .oli-assistant-shell {
+    right: 12px;
+    bottom: 12px;
+  }
+  .oli-mascot-group {
+    width: 94px;
+  }
+  .oli-mascot {
+    width: 82px;
+    height: 80px;
+  }
+  .oli-mascot .oli-face {
+    width: 70px;
+    height: 67px;
+  }
+  .oli-chat-invite {
+    right: 2px;
+  }
+  .oli-chat-panel {
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 148px);
+  }
+}
+@media (hover: none) {
+  .oli-chat-invite {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oli-mascot {
+    animation: none;
+    transition: none;
+  }
+  .oli-chat-invite,
+  .oli-chat-invite svg {
+    transition: none;
+  }
+}
