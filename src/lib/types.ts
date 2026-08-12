@@ -60,6 +60,7 @@ export type WidgetType =
   | "ranking"
   | "rating"
   | "map"
+  | "schedule-heatmap"
   | "table";
 // largura em colunas de uma grade de 3 colunas
 export type WidgetSpan = 1 | 2 | 3;
@@ -77,6 +78,8 @@ export type Widget = {
   size: WidgetSize;
   topN?: number; // ranking: quantos itens exibir (padrão 5)
   scaleMax?: number; // rating: nota máxima da escala (padrão 5)
+  periodKeys?: string[]; // schedule-heatmap: colunas exibidas horizontalmente
+  statusKey?: string; // schedule-heatmap: coluna que distingue planejado/executado/status
 };
 
 export const widgetTypeLabels: Record<WidgetType, string> = {
@@ -90,6 +93,7 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   ranking: "Ranking (Top N)",
   rating: "Indicador de avaliação",
   map: "Mapa por localização",
+  "schedule-heatmap": "Cronograma visual",
   table: "Tabela",
 };
 
