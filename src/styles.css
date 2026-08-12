@@ -4079,3 +4079,63 @@
     animation: none;
   }
 }
+
+
+/* Hero final: a marca substitui o slogan e fica livre, sem cartão ao fundo. */
+.oli-welcome-hero {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 330px;
+}
+.oli-welcome-copy {
+  width: min(920px, 100%);
+}
+.oli-welcome-copy .oli-welcome-scene.oli-welcome-wordmark {
+  display: flex;
+  width: min(820px, 100%);
+  min-height: 0;
+  aspect-ratio: auto;
+  justify-content: flex-start;
+  justify-self: auto;
+  margin-top: 12px;
+  gap: clamp(0px, 0.7vw, 8px);
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+.oli-welcome-copy .oli-wordmark-ball {
+  width: clamp(150px, 17vw, 220px);
+}
+.oli-welcome-copy .oli-wordmark-name {
+  margin-left: clamp(-22px, -1.2vw, -10px);
+  font-size: clamp(52px, 7.2vw, 96px);
+  font-weight: 760;
+}
+.oli-welcome-copy .oli-welcome-lead {
+  max-width: 650px;
+  margin-top: 18px;
+}
+.dark .oli-welcome-copy .oli-welcome-scene.oli-welcome-wordmark {
+  background: transparent;
+}
+@media (max-width: 720px) {
+  .oli-welcome-hero {
+    display: block;
+    min-height: 0;
+  }
+  .oli-welcome-copy .oli-welcome-scene.oli-welcome-wordmark {
+    width: 100%;
+    min-height: 0;
+    margin-top: 10px;
+    padding: 0;
+  }
+  .oli-welcome-copy .oli-wordmark-ball {
+    width: clamp(105px, 31vw, 145px);
+  }
+  .oli-welcome-copy .oli-wordmark-name {
+    margin-left: -16px;
+    font-size: clamp(34px, 11.5vw, 54px);
+  }
+}
