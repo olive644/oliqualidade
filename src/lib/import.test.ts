@@ -44,6 +44,34 @@ describe("sheetToRows", () => {
     expect(warning).toBeNull();
   });
 
+  it("preserva uma grade original limitada com coordenadas reais", () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Título", null],
+      ["Nome", "Valor"],
+      ["A", 10],
+    ]);
+    ws["!ref"] = "B4:C6";
+    ws.B4 = { t: "s", v: "Título" };
+    ws.B5 = { t: "s", v: "Nome" };
+    ws.C5 = { t: "s", v: "Valor" };
+    ws.B6 = { t: "s", v: "A" };
+    ws.C6 = { t: "n", v: 10 };
+    const { sourceGrid } = sheetToRows(ws);
+    expect(sourceGrid).toMatchObject({
+      startRow: 4,
+      startColumn: 2,
+      totalRows: 3,
+      totalColumns: 2,
+      truncatedRows: false,
+      truncatedColumns: false,
+    });
+    expect(sourceGrid?.rows).toEqual([
+      ["Título", null],
+      ["Nome", "Valor"],
+      ["A", 10],
+    ]);
+  });
+
   it("renomeia cabeçalhos duplicados em vez de perder dados", () => {
     const ws = sheet([
       ["nome", "valor", "valor"],
