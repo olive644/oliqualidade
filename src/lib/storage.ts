@@ -10,6 +10,21 @@ export const DASH_KEY = "oliam-dashboards";
 export const THEME_KEY = "oliam-theme";
 export const ONBOARDING_KEY = "oliam-onboarding-seen";
 export const TERM_HINTS_KEY = "oliam-term-hints-seen";
+export const PRIVACY_MODE_KEY = "oliam-private-mode";
+const PRIVATE_DASH_KEY = "oliam-private-dashboards";
+
+export function isPrivateMode(): boolean {
+  return typeof localStorage !== "undefined" && localStorage.getItem(PRIVACY_MODE_KEY) === "1";
+}
+
+export function setPrivateMode(enabled: boolean): void {
+  if (typeof localStorage === "undefined") return;
+  if (enabled) localStorage.setItem(PRIVACY_MODE_KEY, "1");
+  else {
+    localStorage.removeItem(PRIVACY_MODE_KEY);
+    sessionStorage.removeItem(PRIVATE_DASH_KEY);
+  }
+}
 
 const DB_NAME = "oliam";
 const DB_VERSION = 1;
@@ -130,6 +145,15 @@ async function migrateFromLocalStorage(db: IDBDatabase): Promise<Dashboard[]> {
 }
 
 export async function loadDashboards(): Promise<Dashboard[]> {
+  if (isPrivateMode()) {
+    try {
+      return migrateDashboards(
+        JSON.parse(sessionStorage.getItem(PRIVATE_DASH_KEY) ?? "[]") as unknown[],
+      );
+    } catch {
+      return [];
+    }
+  }
   const db = await openDb();
   if (!db) {
     // Sem suporte a IndexedDB no navegador: mantém o comportamento antigo.
@@ -163,6 +187,14 @@ export async function saveDashboards(list: Dashboard[]): Promise<SaveResult> {
       reason:
         "Seus painéis estão perto do limite de armazenamento do navegador. Remova painéis antigos ou exporte os dados antes de continuar.",
     };
+  }
+  if (isPrivateMode()) {
+    try {
+      sessionStorage.setItem(PRIVATE_DASH_KEY, JSON.stringify(list));
+      return { ok: true, usageRatio: bytes / SOFT_LIMIT_BYTES };
+    } catch {
+      return { ok: false, reason: "Não foi possível manter os dados nesta sessão privada." };
+    }
   }
   const db = await openDb();
   if (!db) {
