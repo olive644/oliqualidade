@@ -3812,6 +3812,11 @@
     transform: translateY(0) scale(1);
   }
 }
+.oli-mascot-group[data-open] .oli-chat-invite {
+  opacity: 0;
+  transform: translateY(9px) scale(0.88);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .oli-mascot {
     animation: none;
