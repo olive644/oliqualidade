@@ -17,12 +17,16 @@ export type ImportProfile = {
 };
 
 export type VersionDiff = {
+  status: "ok" | "warning" | "incompatible";
+  reason?: string;
   added: number;
   removed: number;
   changed: number;
   addedColumns: string[];
   removedColumns: string[];
   typeChanges: { column: string; before: string; after: string }[];
+  invalidColumns: string[];
+  comparisonMethod: "key" | "position" | "shared-values" | "none";
 };
 
 export type SheetHealth = {
@@ -85,29 +89,162 @@ export function matchingImportProfile(rows: Row[]): ImportProfile | undefined {
 const valueKind = (value: unknown) =>
   value == null || value === "" ? "empty" : Array.isArray(value) ? "array" : typeof value;
 
+const normalizedColumn = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const invalidColumn = (value: string) =>
+  !normalizedColumn(value) ||
+  /^(?:nan(?: nan)*|invalid date|undefined|null|#n a)$/i.test(normalizedColumn(value));
+
+const normalizedValue = (value: unknown) => {
+  if (value == null) return "";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  return String(value).trim().toLocaleLowerCase("pt-BR");
+};
+
+type ColumnPair = { before: string; after: string; label: string };
+
+function stableIdentity(pairs: ColumnPair[], previous: Row[], next: Row[]) {
+  const candidates = pairs.filter(({ label }) =>
+    /(^|\s)(id|codigo|cod|protocolo|matricula|data|date|numero|n)(\s|$)/i.test(
+      normalizedColumn(label),
+    ),
+  );
+  const ordered = [...candidates, ...pairs.filter((pair) => !candidates.includes(pair))];
+  for (const pair of ordered) {
+    const before = previous.map((row) => normalizedValue(row[pair.before])).filter(Boolean);
+    const after = next.map((row) => normalizedValue(row[pair.after])).filter(Boolean);
+    const coverage = Math.min(
+      before.length / Math.max(1, previous.length),
+      after.length / Math.max(1, next.length),
+    );
+    const uniqueness = Math.min(
+      new Set(before).size / Math.max(1, before.length),
+      new Set(after).size / Math.max(1, after.length),
+    );
+    if (coverage >= 0.9 && uniqueness >= 0.95) return [pair];
+  }
+  // Relatórios frequentemente precisam de duas colunas para identificar
+  // uma linha (por exemplo Data + Ponto de coleta).
+  for (let first = 0; first < Math.min(pairs.length, 8); first++) {
+    for (let second = first + 1; second < Math.min(pairs.length, 8); second++) {
+      const selected = [pairs[first]!, pairs[second]!];
+      const keys = (rows: Row[], side: "before" | "after") =>
+        rows.map((row) => selected.map((pair) => normalizedValue(row[pair[side]])).join("¦"));
+      const before = keys(previous, "before");
+      const after = keys(next, "after");
+      if (
+        new Set(before).size / Math.max(1, before.length) >= 0.95 &&
+        new Set(after).size / Math.max(1, after.length) >= 0.95
+      )
+        return selected;
+    }
+  }
+  return [];
+}
+
+const rowKey = (row: Row, pairs: ColumnPair[], side: "before" | "after") =>
+  pairs.map((pair) => normalizedValue(row[pair[side]])).join("¦");
+
+const rowsDiffer = (before: Row, after: Row, pairs: ColumnPair[]) =>
+  pairs.some((pair) => normalizedValue(before[pair.before]) !== normalizedValue(after[pair.after]));
+
 export function compareVersions(previous: Row[], next: Row[]): VersionDiff {
   const beforeColumns = Object.keys(previous[0] ?? {});
   const afterColumns = Object.keys(next[0] ?? {});
-  const beforeSet = new Set(beforeColumns);
-  const afterSet = new Set(afterColumns);
-  const fingerprint = (row: Row) => JSON.stringify(row);
-  const beforeRows = new Map(previous.map((row) => [fingerprint(row), row]));
-  const afterRows = new Map(next.map((row) => [fingerprint(row), row]));
-  const added = [...afterRows.keys()].filter((key) => !beforeRows.has(key)).length;
-  const removed = [...beforeRows.keys()].filter((key) => !afterRows.has(key)).length;
-  const shared = beforeColumns.filter((column) => afterSet.has(column));
-  const typeChanges = shared.flatMap((column) => {
-    const before = valueKind(previous.find((row) => row[column] != null)?.[column]);
-    const after = valueKind(next.find((row) => row[column] != null)?.[column]);
-    return before !== after ? [{ column, before, after }] : [];
+  const invalidColumns = [...beforeColumns, ...afterColumns].filter(invalidColumn);
+  const validBefore = beforeColumns.filter((column) => !invalidColumn(column));
+  const validAfter = afterColumns.filter((column) => !invalidColumn(column));
+  const afterByNormalized = new Map(validAfter.map((column) => [normalizedColumn(column), column]));
+  const pairs = validBefore.flatMap((column) => {
+    const after = afterByNormalized.get(normalizedColumn(column));
+    return after ? [{ before: column, after, label: column }] : [];
   });
+  const pairedBefore = new Set(pairs.map((pair) => pair.before));
+  const pairedAfter = new Set(pairs.map((pair) => pair.after));
+  const addedColumns = validAfter.filter((column) => !pairedAfter.has(column));
+  const removedColumns = validBefore.filter((column) => !pairedBefore.has(column));
+  const overlap = pairs.length / Math.max(1, validBefore.length, validAfter.length);
+  if (!pairs.length || overlap < 0.5) {
+    return {
+      status: "incompatible",
+      reason: "Os cabeçalhos mudaram demais para comparar as linhas com segurança.",
+      added: 0,
+      removed: 0,
+      changed: 0,
+      addedColumns,
+      removedColumns,
+      typeChanges: [],
+      invalidColumns,
+      comparisonMethod: "none",
+    };
+  }
+  const typeChanges = pairs.flatMap((pair) => {
+    const before = valueKind(previous.find((row) => row[pair.before] != null)?.[pair.before]);
+    const after = valueKind(next.find((row) => row[pair.after] != null)?.[pair.after]);
+    return before !== after ? [{ column: pair.label, before, after }] : [];
+  });
+  const identity = stableIdentity(pairs, previous, next);
+  let added = 0;
+  let removed = 0;
+  let changed = 0;
+  let comparisonMethod: VersionDiff["comparisonMethod"];
+  if (identity.length) {
+    comparisonMethod = "key";
+    const beforeRows = new Map(previous.map((row) => [rowKey(row, identity, "before"), row]));
+    const afterRows = new Map(next.map((row) => [rowKey(row, identity, "after"), row]));
+    added = [...afterRows.keys()].filter((key) => !beforeRows.has(key)).length;
+    removed = [...beforeRows.keys()].filter((key) => !afterRows.has(key)).length;
+    changed = [...afterRows].filter(
+      ([key, row]) => beforeRows.has(key) && rowsDiffer(beforeRows.get(key)!, row, pairs),
+    ).length;
+  } else if (previous.length === next.length) {
+    comparisonMethod = "position";
+    changed = next.filter((row, index) => rowsDiffer(previous[index]!, row, pairs)).length;
+  } else {
+    comparisonMethod = "shared-values";
+    const fingerprint = (row: Row, side: "before" | "after") => rowKey(row, pairs, side);
+    const beforeCounts = new Map<string, number>();
+    const afterCounts = new Map<string, number>();
+    for (const row of previous) {
+      const key = fingerprint(row, "before");
+      beforeCounts.set(key, (beforeCounts.get(key) ?? 0) + 1);
+    }
+    for (const row of next) {
+      const key = fingerprint(row, "after");
+      afterCounts.set(key, (afterCounts.get(key) ?? 0) + 1);
+    }
+    for (const [key, count] of afterCounts)
+      added += Math.max(0, count - (beforeCounts.get(key) ?? 0));
+    for (const [key, count] of beforeCounts)
+      removed += Math.max(0, count - (afterCounts.get(key) ?? 0));
+  }
   return {
+    status: invalidColumns.length || overlap < 0.8 ? "warning" : "ok",
+    ...(invalidColumns.length
+      ? {
+          reason:
+            "Um cabeçalho inválido foi ignorado; confirme a estrutura antes de confiar na comparação.",
+        }
+      : overlap < 0.8
+        ? {
+            reason:
+              "Algumas colunas mudaram; a comparação usou apenas as colunas reconhecidas nas duas versões.",
+          }
+        : {}),
     added,
     removed,
-    changed: Math.min(added, removed),
-    addedColumns: afterColumns.filter((column) => !beforeSet.has(column)),
-    removedColumns: beforeColumns.filter((column) => !afterSet.has(column)),
+    changed,
+    addedColumns,
+    removedColumns,
     typeChanges,
+    invalidColumns,
+    comparisonMethod,
   };
 }
 
