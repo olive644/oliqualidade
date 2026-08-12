@@ -387,11 +387,20 @@ function findHierarchicalHeaderEnd(
     if (!horizontal.length) break;
 
     const current = aoa[end] ?? [];
+    const unmergedLabels = current.filter((value, column) => {
+      if (value === null || value === "") return false;
+      return !horizontal.some((merge) => column >= merge.s.c && column <= merge.e.c);
+    });
     const distinctParents = new Set(
       current
         .filter((value) => value !== null && value !== "")
         .map((value) => String(value).trim()),
     );
+    // Um cabeçalho folha pode conter uma ou duas mesclagens apenas para
+    // ampliar visualmente um rótulo (ex.: "Limites" em F:H). Quando há
+    // vários outros rótulos não mesclados na mesma linha, a próxima linha é
+    // dado, não uma nova camada hierárquica.
+    if (distinctParents.size >= 3 && unmergedLabels.length >= 2) break;
     const isSingleFullWidthGroup =
       horizontal.length === 1 &&
       horizontal[0]!.s.c === 0 &&
@@ -451,6 +460,42 @@ function composeHierarchicalHeaders(
   });
   return { raw, hierarchical: end > start };
 }
+
+function refineGenericDocumentHeaders(
+  headers: string[],
+  dataRows: (string | number | null)[][],
+): string[] {
+  const generic = headers
+    .map((header, index) => ({ header, index, base: header.replace(/_\d+$/, "") }))
+    .filter((item) => /^(?:dados?|informa[cç][oõ]es?)$/i.test(item.base));
+  if (generic.length < 2) return headers;
+
+  const next = [...headers];
+  const remaining: number[] = [];
+  for (const item of generic) {
+    const values = dataRows
+      .map((row) => row[item.index])
+      .filter((value) => value !== null && value !== "")
+      .map((value) => String(value).trim());
+    const statusRatio = values.length
+      ? values.filter((value) =>
+          /^(?:planejad[oa]|executad[oa]|realizad[oa]|pendente|conforme|n[aã]o conforme|status)$/i.test(
+            value,
+          ),
+        ).length / values.length
+      : 0;
+    if (statusRatio >= 0.6) next[item.index] = "Situação";
+    else remaining.push(item.index);
+  }
+  if (remaining[0] !== undefined) next[remaining[0]] = "Categoria";
+  if (remaining[1] !== undefined) next[remaining[1]] = "Item / Ponto";
+  remaining.slice(2).forEach((index, position) => {
+    next[index] = `Detalhe ${position + 1}`;
+  });
+  return next;
+}
+
+const EMPTY_PLACEHOLDER_PATTERN = /^(?:nan(?:[\s/.-]*nan)*|n\/?a|não informado|[-–—])$/i;
 
 function prettyLabel(key: string): string {
   return key.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
@@ -945,7 +990,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   const seen = new Map<string, number>();
   let renamed = 0;
   const headerWasBlank: boolean[] = [];
-  const headers = headerRow.map((raw, i) => {
+  const initialHeaders = headerRow.map((raw, i) => {
     const base = headerName(raw, i);
     headerWasBlank[i] = headerIsInvalid(raw);
     const count = seen.get(base) ?? 0;
@@ -975,13 +1020,19 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     });
   const footerRowIndex = footerMerge?.s.r ?? aoa.length;
   const footerRowsIgnored = Math.max(0, aoa.length - footerRowIndex);
+  const sourceDataRows = aoa.slice(headerRowEnd + 1, footerRowIndex);
+  const headers = refineGenericDocumentHeaders(initialHeaders, sourceDataRows);
+  let placeholderCellsNormalized = 0;
 
   const dataRows: Row[] = headers.length
-    ? aoa.slice(headerRowEnd + 1, footerRowIndex).map((row) => {
+    ? sourceDataRows.map((row) => {
         const obj: Row = {};
         headers.forEach((h, i) => {
           const v = row[i];
-          obj[h] = v === undefined ? null : v;
+          if (typeof v === "string" && EMPTY_PLACEHOLDER_PATTERN.test(v.trim())) {
+            obj[h] = null;
+            placeholderCellsNormalized++;
+          } else obj[h] = v === undefined ? null : v;
         });
         return obj;
       })
@@ -1043,16 +1094,36 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     // menos 5 linhas antes de decidir, evitando apagar dado esparso real.
     return filled === 0 || (rows.length >= 5 && filled / rows.length < NEAR_EMPTY_RATIO);
   });
-  const finalHeaders = ghostColumns.length
+  const headersWithoutGhosts = ghostColumns.length
     ? headers.filter((h) => !ghostColumns.includes(h))
     : headers;
-  const finalRows: Row[] = ghostColumns.length
+  const rowsWithoutGhosts: Row[] = ghostColumns.length
     ? rows.map((r) => {
         const clean: Row = {};
-        for (const h of finalHeaders) clean[h] = r[h] ?? null;
+        for (const h of headersWithoutGhosts) clean[h] = r[h] ?? null;
         return clean;
       })
     : rows;
+
+  // Mesclagens horizontais podem produzir duas colunas com o mesmo rótulo
+  // e exatamente os mesmos valores em todas as linhas. A segunda não traz
+  // informação e só multiplica células vazias/"Não informado" na tabela.
+  const redundantColumns = headersWithoutGhosts.filter((header, index) => {
+    const base = header.replace(/_\d+$/, "");
+    const earlier = headersWithoutGhosts.slice(0, index).find((candidate) => {
+      if (candidate.replace(/_\d+$/, "") !== base) return false;
+      return rowsWithoutGhosts.every(
+        (row) => row[header] === null || row[header] === "" || row[candidate] === row[header],
+      );
+    });
+    return Boolean(earlier);
+  });
+  const finalHeaders = headersWithoutGhosts.filter((header) => !redundantColumns.includes(header));
+  const finalRows: Row[] = redundantColumns.length
+    ? rowsWithoutGhosts.map((row) =>
+        Object.fromEntries(finalHeaders.map((header) => [header, row[header] ?? null])),
+      )
+    : rowsWithoutGhosts;
 
   const { rows: normalizedRows, changes: numericTextCellsNormalized } =
     normalizeMixedNumericColumns(finalRows);
@@ -1106,6 +1177,16 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       `${ghostColumns.length > 1 ? "Foram encontradas colunas" : "Foi encontrada uma coluna"} sem nenhum texto no cabeçalho e quase sem dados (provavelmente um fragmento fora da tabela) e ${ghostColumns.length > 1 ? "elas foram removidas" : "ela foi removida"} automaticamente da importação.`,
     );
   }
+  if (redundantColumns.length > 0) {
+    messages.push(
+      `${redundantColumns.length} coluna${redundantColumns.length > 1 ? "s duplicadas foram removidas" : " duplicada foi removida"}, pois repetia${redundantColumns.length > 1 ? "m" : ""} exatamente os mesmos valores de outra coluna criada por mesclagem horizontal.`,
+    );
+  }
+  if (placeholderCellsNormalized > 0) {
+    messages.push(
+      `${placeholderCellsNormalized} marcador${placeholderCellsNormalized > 1 ? "es vazios" : " vazio"} (como "-" ou "NaN") ${placeholderCellsNormalized > 1 ? "foram tratados" : "foi tratado"} como ausência estrutural, sem aparecer como dado válido.`,
+    );
+  }
   if (nearEmptyColumns.length > 0) {
     const names = nearEmptyColumns.map((h) => `"${prettyLabel(h)}"`).join(", ");
     messages.push(
@@ -1141,7 +1222,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       rowsAboveHeaderIgnored: headerRowIndex,
       blankRowsIgnored: blankSkipped,
       trailingRowsIgnored: trailingNotesTrimmed + footerRowsIgnored,
-      columnsIgnored: ghostColumns.length,
+      columnsIgnored: ghostColumns.length + redundantColumns.length,
     },
   };
 }
