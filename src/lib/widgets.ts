@@ -165,6 +165,25 @@ export function defaultSize(type: WidgetType): WidgetSize {
   return "md";
 }
 
+const PERIOD_COLUMN_PATTERN =
+  /(?:^|\b)(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:[cç]o)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)(?:\b|$)|^\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?$/i;
+
+/** Colunas que representam períodos em planilhas largas de cronograma. */
+export function schedulePeriodColumns(columns: Column[]): Column[] {
+  return columns.filter((column) => PERIOD_COLUMN_PATTERN.test(`${column.label}`.trim()));
+}
+
+export function scheduleStatusColumn(columns: Column[], periodKeys: string[]): Column | undefined {
+  const periods = new Set(periodKeys);
+  return columns.find(
+    (column) =>
+      !periods.has(column.key) &&
+      /^(?:status|situa[cç][aã]o|etapa|planejamento|execu[cç][aã]o|tipo|resultado)$/i.test(
+        column.label.trim(),
+      ),
+  );
+}
+
 /**
  * Cria um widget novo com valores padrão sensatos a partir das colunas
  * disponíveis no painel. Usado tanto ao adicionar um widget pela primeira
@@ -197,6 +216,17 @@ export function createWidget(
       if (trendGroupKey) widget.groupKey = trendGroupKey;
     }
     if (type === "rating") widget.scaleMax = 5;
+  } else if (type === "schedule-heatmap") {
+    const periods = schedulePeriodColumns(columns);
+    widget.periodKeys = periods.map((column) => column.key);
+    const periodSet = new Set(widget.periodKeys);
+    const candidates = columns.filter(
+      (column) => !periodSet.has(column.key) && groupableKinds.includes(column.kind),
+    );
+    const group = pickBestGroupColumn(candidates, rows) ?? candidates[0];
+    const status = scheduleStatusColumn(columns, widget.periodKeys);
+    if (group) widget.groupKey = group.key;
+    if (status && status.key !== group?.key) widget.statusKey = status.key;
   } else if (
     type === "bar" ||
     type === "pie" ||

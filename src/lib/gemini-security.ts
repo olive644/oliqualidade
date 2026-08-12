@@ -290,6 +290,7 @@ function sanitizeLiveWidget(
     "ranking",
     "rating",
     "map",
+    "schedule-heatmap",
     "table",
   ]);
   if (!allowedTypes.has(widget.type)) return null;

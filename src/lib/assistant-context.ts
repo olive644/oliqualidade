@@ -301,6 +301,28 @@ function snapshotWidget(
       ),
     };
   }
+  if (widget.type === "schedule-heatmap") {
+    const group = columns.find((candidate) => candidate.key === widget.groupKey);
+    const periods = (widget.periodKeys ?? [])
+      .map((key) => columns.find((candidate) => candidate.key === key))
+      .filter((column): column is Column => Boolean(column));
+    if (!group || !periods.length) return emptyWidget(widget, "Cronograma visual");
+    const filled = rows.reduce(
+      (total, row) =>
+        total +
+        periods.filter((period) => row[period.key] !== null && row[period.key] !== "").length,
+      0,
+    );
+    return {
+      id: widget.id,
+      type: widget.type,
+      title: widget.title ?? "Cronograma visual",
+      status: "ready",
+      groupBy: { key: group.key, label: group.label, kind: group.kind },
+      rowCount: rows.length,
+      displayedValue: { value: filled, formatted: `${filled.toLocaleString("pt-BR")} marcações` },
+    };
+  }
   return {
     id: widget.id,
     type: widget.type,
