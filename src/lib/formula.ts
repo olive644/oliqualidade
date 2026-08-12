@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 
 /**
  * Avaliador de fórmulas propositalmente limitado: existe só para recuperar
@@ -164,7 +165,8 @@ export function resolveFormulaCell(
 ): number | null {
   if (cache.has(addr)) return cache.get(addr)!;
   if (inProgress.has(addr)) return null;
-  const cell = ws[addr] as { v?: unknown; f?: string; t?: string } | undefined;
+  const cell = worksheetCellAtAddress(ws, addr) as
+    { v?: unknown; f?: string; t?: string } | undefined;
   if (!cell) return null;
   // t === "z" é uma célula "stub" (o SheetJS só a cria porque lemos com
   // sheetStubs: true, pra enxergar fórmulas sem valor calculado) — o "v"

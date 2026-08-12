@@ -6,6 +6,7 @@ import type {
   StructuredTableDiagnostic,
   WorksheetWithAdvancedMetadata,
 } from "@/lib/workbook-metadata";
+import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 
 export type FormulaDiagnostic = {
   address: string;
@@ -59,6 +60,14 @@ export type TableRegionDiagnostic = {
   confidence: number;
 };
 
+export type SourceCellRepresentation = {
+  address: string;
+  rawValue: string | number | boolean | null;
+  displayValue: string;
+  numberFormat?: string;
+  formula?: string;
+};
+
 export type ImportDiagnostics = {
   formulaDiagnostics: FormulaDiagnostic[];
   confidence: number;
@@ -78,6 +87,7 @@ export type ImportDiagnostics = {
   calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
+  sourceCellRepresentations: SourceCellRepresentation[];
   columns: ColumnDiagnostic[];
   tableRegions: TableRegionDiagnostic[];
   transformations: string[];
@@ -178,7 +188,7 @@ function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
   for (let r = ref.s.r; r <= ref.e.r; r++) {
     for (let c = ref.s.c; c <= ref.e.c; c++) {
       const address = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[address] as XLSX.CellObject | undefined;
+      const cell = worksheetCellAtAddress(ws, address);
       if (!cell?.f) continue;
       const formula = String(cell.f);
       const referencesOtherSheet = /(?:'[^']+'|[A-Za-z_][\w .-]*)!/.test(formula);
@@ -223,7 +233,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
   if (ref) {
     for (let r = ref.s.r; r <= ref.e.r; r++) {
       for (let c = ref.s.c; c <= ref.e.c; c++) {
-        const cell = ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined;
+        const cell = worksheetCellAtAddress(ws, XLSX.utils.encode_cell({ r, c }));
         if (cell?.f) formulaCells++;
       }
     }
@@ -250,11 +260,34 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     ...new Set(structuredTables.flatMap((table) => table.calculatedColumns)),
   ];
   const formulaExamples: string[] = [];
+  const sourceCellRepresentations: SourceCellRepresentation[] = [];
   if (ref) {
-    for (let r = ref.s.r; r <= ref.e.r && formulaExamples.length < 10; r++) {
-      for (let c = ref.s.c; c <= ref.e.c && formulaExamples.length < 10; c++) {
-        const cell = ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined;
-        if (cell?.f) formulaExamples.push(`${XLSX.utils.encode_cell({ r, c })}: =${cell.f}`);
+    for (let r = ref.s.r; r <= ref.e.r; r++) {
+      for (let c = ref.s.c; c <= ref.e.c; c++) {
+        const address = XLSX.utils.encode_cell({ r, c });
+        const cell = worksheetCellAtAddress(ws, address);
+        if (cell?.f && formulaExamples.length < 10) formulaExamples.push(`${address}: =${cell.f}`);
+        if (
+          cell &&
+          sourceCellRepresentations.length < 500 &&
+          (cell.f || cell.z || (cell.w != null && cell.w !== String(cell.v ?? "")))
+        ) {
+          const raw =
+            cell.v instanceof Date
+              ? cell.v.toISOString()
+              : typeof cell.v === "string" ||
+                  typeof cell.v === "number" ||
+                  typeof cell.v === "boolean"
+                ? cell.v
+                : null;
+          sourceCellRepresentations.push({
+            address,
+            rawValue: raw,
+            displayValue: cell.w ?? String(raw ?? ""),
+            ...(cell.z ? { numberFormat: String(cell.z) } : {}),
+            ...(cell.f ? { formula: `=${cell.f}` } : {}),
+          });
+        }
       }
     }
   }
@@ -272,6 +305,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
+    sourceCellRepresentations,
   };
 }
 

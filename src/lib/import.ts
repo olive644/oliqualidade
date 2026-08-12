@@ -38,9 +38,13 @@ const MERGE_FILL_MAX_LENGTH = 60;
  * que a detecção de tipo de coluna em format.ts reconhece).
  */
 function formatDateCell(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mm}/${d.getFullYear()}`;
+  // SheetJS 0.20 converte células de data para um instante UTC antes de
+  // entregá-las ao sheet_to_json. Reaplicar o deslocamento local preserva o
+  // dia civil que aparece no Excel, inclusive em fusos a leste/oeste de UTC.
+  const calendarDate = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  const dd = String(calendarDate.getDate()).padStart(2, "0");
+  const mm = String(calendarDate.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${calendarDate.getFullYear()}`;
 }
 
 /**
@@ -126,10 +130,7 @@ function cellLooksNumeric(v: string | number | null): boolean {
 function cellLooksDate(v: unknown): boolean {
   if (v === null || v === undefined || v === "") return false;
   const s = String(v).trim();
-  return (
-    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s) ||
-    /^\d{4}-\d{1,2}-\d{1,2}(?:[T\s].*)?$/.test(s)
-  );
+  return /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s) || /^\d{4}-\d{1,2}-\d{1,2}(?:[T\s].*)?$/.test(s);
 }
 
 /**
