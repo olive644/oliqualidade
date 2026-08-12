@@ -1951,6 +1951,11 @@ function Review(p: {
                 <strong className="font-display text-2xl">{active.diagnostics.confidence}%</strong>
                 <span className="pb-0.5 text-xs text-muted-foreground">estrutura detectada</span>
               </div>
+              {active.diagnostics.recoveryGain > 0 && (
+                <div className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  +{active.diagnostics.recoveryGain} pontos após recuperação
+                </div>
+              )}
             </div>
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
@@ -2011,6 +2016,18 @@ function Review(p: {
                 </span>
               )}
             </div>
+            {active.diagnostics.confidenceReasons.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                {active.diagnostics.confidenceReasons.map((reason) => (
+                  <span
+                    key={reason}
+                    className="rounded-full border border-emerald-500/25 bg-emerald-500/5 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300"
+                  >
+                    {reason}
+                  </span>
+                ))}
+              </div>
+            )}
             {(active.diagnostics.structuredTables.length > 0 ||
               active.diagnostics.pivotTables.length > 0 ||
               active.diagnostics.calculatedColumns.length > 0) && (

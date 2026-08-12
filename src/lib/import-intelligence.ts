@@ -71,6 +71,9 @@ export type SourceCellRepresentation = {
 export type ImportDiagnostics = {
   formulaDiagnostics: FormulaDiagnostic[];
   confidence: number;
+  baseConfidence: number;
+  recoveryGain: number;
+  confidenceReasons: string[];
   rowCount: number;
   columnCount: number;
   duplicateRows: number;
@@ -572,7 +575,7 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
         columns.length
       : 0
     : 0;
-  const confidence = Math.round(
+  const baseConfidence = Math.round(
     Math.max(0, Math.min(1, avgColumnConfidence * 0.65 + completeness * 0.35)) * 100,
   );
   const qualityScore = Math.round(
@@ -586,6 +589,61 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
       `${advancedQuality.totalAnomalies} linha(s) com possível anomalia estatística detectada(s)`,
     );
   const header = detectHeader(ws);
+  const filledPerRow = rows.map(
+    (row) => keys.filter((key) => row[key] !== null && row[key] !== "").length,
+  );
+  const sortedFill = [...filledPerRow].sort((a, b) => a - b);
+  const medianFill = sortedFill.length ? sortedFill[Math.floor(sortedFill.length / 2)]! : 0;
+  const rowStructureConsistency = filledPerRow.length
+    ? filledPerRow.reduce(
+        (sum, filled) =>
+          sum + (1 - Math.min(1, Math.abs(filled - medianFill) / Math.max(1, keys.length))),
+        0,
+      ) / filledPerRow.length
+    : 0;
+  const readableRows = rows.length
+    ? rows.filter((row) => keys.some((key) => row[key] !== null && row[key] !== "")).length /
+      rows.length
+    : 0;
+  const supportedFormulaRatio = formulaDiagnostics.length
+    ? formulaDiagnostics.filter((formula) => formula.supported).length / formulaDiagnostics.length
+    : 1;
+  const independentRegionPenalty = Math.min(0.16, Math.max(0, tableRegions.length - 1) * 0.08);
+  const formulaPenalty = (1 - supportedFormulaRatio) * 0.1;
+  const recoveredStructureBonus = Math.min(
+    0.08,
+    (header.row > 1 ? 0.025 : 0) +
+      (meta.mergedRanges ? 0.02 : 0) +
+      (meta.structuredTables.length ? 0.02 : 0) +
+      (meta.hasAutoFilter ? 0.01 : 0),
+  );
+  const calibratedConfidence =
+    avgColumnConfidence * 0.3 +
+    rowStructureConsistency * 0.25 +
+    header.confidence * 0.2 +
+    completeness * 0.15 +
+    readableRows * 0.1 +
+    recoveredStructureBonus -
+    independentRegionPenalty -
+    formulaPenalty;
+  const confidence = Math.round(Math.max(0, Math.min(1, calibratedConfidence)) * 100);
+  const recoveryGain = Math.max(0, confidence - baseConfidence);
+  const confidenceReasons: string[] = [];
+  if (readableRows >= 0.98) confidenceReasons.push("todas as linhas úteis foram interpretadas");
+  if (rowStructureConsistency >= 0.9)
+    confidenceReasons.push("as linhas seguem uma estrutura consistente");
+  if (header.confidence >= 0.8)
+    confidenceReasons.push(
+      header.row > 1
+        ? `cabeçalho recuperado com segurança na linha ${header.row}`
+        : "cabeçalho identificado com segurança",
+    );
+  if (meta.mergedRanges) confidenceReasons.push("células mescladas foram reconstruídas");
+  if (meta.structuredTables.length)
+    confidenceReasons.push("estrutura de tabela do Excel foi reconhecida");
+  if (tableRegions.length > 1)
+    confidenceReasons.push("há regiões independentes que ainda exigem confirmação");
+  if (unsupportedFormulaCount) confidenceReasons.push("há fórmulas sem cálculo local confirmado");
   const suggestedNormalization = columns
     .flatMap((column) =>
       normalizationSuggestions(
@@ -604,6 +662,9 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
 
   return {
     confidence,
+    baseConfidence,
+    recoveryGain,
+    confidenceReasons,
     rowCount: rows.length,
     columnCount: keys.length,
     duplicateRows,

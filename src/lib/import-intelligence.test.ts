@@ -11,6 +11,47 @@ import {
 const sheet = (aoa: (string | number | null)[][]) => XLSX.utils.aoa_to_sheet(aoa);
 
 describe("import intelligence", () => {
+  it("aumenta a confiança quando uma estrutura defeituosa é recuperada com evidências", () => {
+    const ws = sheet([
+      ["RELATÓRIO DE VENDAS", null, null],
+      [null, null, null],
+      ["Produto", "Região", "Valor"],
+      ["Bolo", "Recife", 40],
+      ["Açaí", "Olinda", 55],
+      ["Café", "Recife", 25],
+    ]);
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+    const diagnostics = diagnoseImportedSheet(ws, [
+      { Produto: "Bolo", Região: "Recife", Valor: 40 },
+      { Produto: "Açaí", Região: "Olinda", Valor: 55 },
+      { Produto: "Café", Região: "Recife", Valor: 25 },
+    ]);
+    expect(diagnostics.confidence).toBeGreaterThan(diagnostics.baseConfidence);
+    expect(diagnostics.recoveryGain).toBeGreaterThan(0);
+    expect(diagnostics.confidenceReasons).toContain(
+      "cabeçalho recuperado com segurança na linha 3",
+    );
+    expect(diagnostics.confidenceReasons).toContain("células mescladas foram reconstruídas");
+  });
+
+  it("não infla a confiança quando ainda existem várias regiões independentes", () => {
+    const ws = sheet([
+      ["Cliente", "Valor", null, null, "Produto", "Qtd"],
+      ["Ana", 10, null, null, "A", 2],
+      ["Beto", 20, null, null, "B", 3],
+      ["Caio", 30, null, null, "C", 4],
+    ]);
+    const diagnostics = diagnoseImportedSheet(ws, [
+      { Cliente: "Ana", Valor: 10 },
+      { Cliente: "Beto", Valor: 20 },
+      { Cliente: "Caio", Valor: 30 },
+    ]);
+    expect(diagnostics.confidenceReasons).toContain(
+      "há regiões independentes que ainda exigem confirmação",
+    );
+    expect(diagnostics.confidence).toBeLessThan(90);
+  });
+
   it("trata números de controle como identificadores, não métricas", () => {
     const ws = sheet([
       ["Código", "Nº 1", "Nº 2", "Data G", "Responsável"],
