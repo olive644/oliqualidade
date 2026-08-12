@@ -102,6 +102,49 @@ describe("sheetToRows", () => {
     expect(warning).toContain("mesclada");
   });
 
+  it("combina cabeçalhos hierárquicos mesclados com os nomes das subcolunas", () => {
+    const ws = sheet([
+      ["Data", "Torre de Processo", null, "Reservatório", null],
+      ["Data", "Cloro", "pH", "Cloro", "pH"],
+      ["01/08/2026", 0.72, 7.1, 0.65, 7.3],
+      ["02/08/2026", 0.69, 7.2, 0.61, 7.4],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+      { s: { r: 0, c: 1 }, e: { r: 0, c: 2 } },
+      { s: { r: 0, c: 3 }, e: { r: 0, c: 4 } },
+    ];
+
+    const { rows, warning } = sheetToRows(ws);
+
+    expect(Object.keys(rows[0] ?? {})).toEqual([
+      "Data",
+      "Torre de Processo — Cloro",
+      "Torre de Processo — pH",
+      "Reservatório — Cloro",
+      "Reservatório — pH",
+    ]);
+    expect(rows[0]?.["Torre de Processo — Cloro"]).toBe(0.72);
+    expect(rows).toHaveLength(2);
+    expect(warning).toContain("cabeçalho hierárquico");
+  });
+
+  it("não inclui duas vezes o mesmo rótulo vindo de mesclagem vertical no cabeçalho", () => {
+    const ws = sheet([
+      ["Amostra", "Medições", null],
+      [null, "Cloro", "pH"],
+      ["Ponto 1", 0.8, 7.2],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+      { s: { r: 0, c: 1 }, e: { r: 0, c: 2 } },
+    ];
+
+    const { rows } = sheetToRows(ws);
+
+    expect(rows).toEqual([{ Amostra: "Ponto 1", "Medições — Cloro": 0.8, "Medições — pH": 7.2 }]);
+  });
+
   it("preenche células de dados vindas de mesclagem vertical (item cobrindo várias linhas de fornecedores)", () => {
     // Reproduz o padrão real relatado: um item de compra (Descrição,
     // Código, Unidade, Qtd) mesclado verticalmente cobrindo 3 linhas de

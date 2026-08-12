@@ -361,6 +361,85 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
   return bestIndex === -1 ? 0 : bestIndex;
 }
 
+type RelativeMerge = { s: XLSX.CellAddress; e: XLSX.CellAddress };
+
+/**
+ * Reconhece camadas adicionais de cabeçalho somente quando existe uma
+ * mesclagem horizontal parcial na camada atual. Esse sinal vem da estrutura
+ * real do XLSX e evita confundir a primeira linha textual de dados com um
+ * segundo cabeçalho. Uma mesclagem única cobrindo toda a largura continua
+ * sendo tratada como título/banner, pois não há informação suficiente para
+ * afirmar que ela nomeia todas as colunas.
+ */
+function findHierarchicalHeaderEnd(
+  aoa: (string | number | null)[][],
+  start: number,
+  merges: RelativeMerge[],
+): number {
+  const width = Math.max(1, ...aoa.slice(start, start + 4).map((row) => row.length));
+  let end = start;
+
+  while (end - start < 2 && end + 1 < aoa.length) {
+    const horizontal = merges.filter(
+      (merge) => merge.s.r === end && merge.e.r === end && merge.e.c > merge.s.c,
+    );
+    if (!horizontal.length) break;
+
+    const current = aoa[end] ?? [];
+    const distinctParents = new Set(
+      current
+        .filter((value) => value !== null && value !== "")
+        .map((value) => String(value).trim()),
+    );
+    const isSingleFullWidthGroup =
+      horizontal.length === 1 &&
+      horizontal[0]!.s.c === 0 &&
+      horizontal[0]!.e.c >= width - 1 &&
+      distinctParents.size === 1;
+    if (isSingleFullWidthGroup) break;
+
+    const next = aoa[end + 1] ?? [];
+    const nextFilled = next.filter((value) => value !== null && value !== "");
+    if (nextFilled.length < 2 || (isClearlyNotHeaderRow(next) && !isYearHeaderRow(next))) break;
+
+    // A camada seguinte só é aceita quando as linhas logo abaixo parecem
+    // dados de verdade. É uma trava conservadora contra tabelas comuns com
+    // linhas textuais, nas quais uma formatação mesclada isolada não deve
+    // deslocar o começo dos dados.
+    const dataEvidence = aoa
+      .slice(end + 2, Math.min(end + 5, aoa.length))
+      .some((row) => row.some((value) => cellLooksNumeric(value) || cellLooksDate(value)));
+    if (!dataEvidence) break;
+
+    end++;
+  }
+
+  return end;
+}
+
+function composeHierarchicalHeaders(
+  aoa: (string | number | null)[][],
+  start: number,
+  end: number,
+): { raw: (string | number | null)[]; hierarchical: boolean } {
+  const layers = aoa.slice(start, end + 1);
+  const width = Math.max(0, ...layers.map((row) => row.length));
+  const raw = Array.from({ length: width }, (_, column) => {
+    const parts: string[] = [];
+    for (const layer of layers) {
+      const value = layer[column];
+      if (headerIsInvalid(value ?? null)) continue;
+      const label = String(value).trim();
+      if (
+        !parts.some((part) => part.toLocaleLowerCase("pt-BR") === label.toLocaleLowerCase("pt-BR"))
+      )
+        parts.push(label);
+    }
+    return parts.length ? parts.join(" — ") : null;
+  });
+  return { raw, hierarchical: end > start };
+}
+
 function prettyLabel(key: string): string {
   return key.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 }
@@ -703,7 +782,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // cabeçalho ou região sem depender da interpretação já reparada.
   const sourceGrid = buildSourceGrid(aoa, range);
 
-  const merges = (ws["!merges"] ?? []).map((m) => ({
+  const merges: RelativeMerge[] = (ws["!merges"] ?? []).map((m) => ({
     s: { r: m.s.r - range.s.r, c: m.s.c - range.s.c },
     e: { r: m.e.r - range.s.r, c: m.e.c - range.s.c },
   }));
@@ -826,11 +905,18 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   }
 
   const headerRowIndex = findHeaderRowIndex(aoa, bannerRows);
-  const headerRow = (aoa[headerRowIndex] ?? []) as (string | number | null)[];
-  const mergedHeaderCells = filledByRow.get(headerRowIndex) ?? 0;
+  const headerRowEnd = findHierarchicalHeaderEnd(aoa, headerRowIndex, merges);
+  const { raw: headerRow, hierarchical: hierarchicalHeader } = composeHierarchicalHeaders(
+    aoa,
+    headerRowIndex,
+    headerRowEnd,
+  );
+  let mergedHeaderCells = 0;
+  for (let row = headerRowIndex; row <= headerRowEnd; row++)
+    mergedHeaderCells += filledByRow.get(row) ?? 0;
   let mergedCells = 0;
   for (const [row, count] of filledByRow) {
-    if (row !== headerRowIndex) mergedCells += count;
+    if (row < headerRowIndex || row > headerRowEnd) mergedCells += count;
   }
 
   const seen = new Map<string, number>();
@@ -847,7 +933,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   });
 
   const dataRows: Row[] = headers.length
-    ? aoa.slice(headerRowIndex + 1).map((row) => {
+    ? aoa.slice(headerRowEnd + 1).map((row) => {
         const obj: Row = {};
         headers.forEach((h, i) => {
           const v = row[i];
@@ -939,6 +1025,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (headerRowIndex > 0) {
     messages.push(
       `O cabeçalho foi identificado na linha ${headerRowIndex + 1} da planilha, porque o conteúdo acima não parecia um cabeçalho válido. Confira se a identificação ficou correta.`,
+    );
+  }
+  if (hierarchicalHeader) {
+    messages.push(
+      `Foi identificado um cabeçalho hierárquico nas linhas ${headerRowIndex + 1} a ${headerRowEnd + 1}. Os nomes dos grupos e das subcolunas foram combinados para preservar o significado de cada medição.`,
     );
   }
   if (mergedHeaderCells > 0) {
