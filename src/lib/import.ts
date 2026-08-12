@@ -8,7 +8,50 @@ export type SheetImportResult = {
   rows: Row[];
   warning: string | null; // aviso não bloqueante: colunas renomeadas, linha de cabeçalho deslocada, colunas quase vazias e/ou linhas em branco ignoradas
   diagnostics?: ImportDiagnostics;
+  sourceGrid?: SourceGrid;
 };
+
+export type SourceGrid = {
+  startRow: number;
+  startColumn: number;
+  totalRows: number;
+  totalColumns: number;
+  rows: (string | number | boolean | null)[][];
+  truncatedRows: boolean;
+  truncatedColumns: boolean;
+};
+
+const SOURCE_GRID_CELL_BUDGET = 50_000;
+const SOURCE_GRID_MAX_ROWS = 1_000;
+const SOURCE_GRID_MAX_COLUMNS = 100;
+
+function buildSourceGrid(
+  aoa: (string | number | boolean | null)[][],
+  range: XLSX.Range,
+): SourceGrid {
+  const totalRows = range.e.r - range.s.r + 1;
+  const totalColumns = range.e.c - range.s.c + 1;
+  const columnLimit = Math.min(totalColumns, SOURCE_GRID_MAX_COLUMNS);
+  const rowLimit = Math.min(
+    totalRows,
+    SOURCE_GRID_MAX_ROWS,
+    Math.max(1, Math.floor(SOURCE_GRID_CELL_BUDGET / Math.max(1, columnLimit))),
+  );
+  return {
+    startRow: range.s.r + 1,
+    startColumn: range.s.c + 1,
+    totalRows,
+    totalColumns,
+    rows: aoa.slice(0, rowLimit).map((row) =>
+      Array.from({ length: columnLimit }, (_, column) => {
+        const value = row[column];
+        return value === undefined ? null : value;
+      }),
+    ),
+    truncatedRows: rowLimit < totalRows,
+    truncatedColumns: columnLimit < totalColumns,
+  };
+}
 
 // Quantas linhas do topo da planilha são avaliadas para achar a linha de
 // cabeçalho de verdade. Generoso de propósito: cobre não só uma linha de
@@ -634,6 +677,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     }
   }
 
+  // Mantém uma cópia limitada antes do preenchimento de mesclagens e dos
+  // cortes automáticos. É essa grade que permite ao usuário escolher outro
+  // cabeçalho ou região sem depender da interpretação já reparada.
+  const sourceGrid = buildSourceGrid(aoa, range);
+
   const merges = (ws["!merges"] ?? []).map((m) => ({
     s: { r: m.s.r - range.s.r, c: m.s.c - range.s.c },
     e: { r: m.e.r - range.s.r, c: m.e.c - range.s.c },
@@ -737,6 +785,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       rows: blockRows,
       warning: blockMessages.join(" "),
       diagnostics: diagnoseImportedSheet(ws, blockRows),
+      sourceGrid,
     };
   }
 
@@ -902,6 +951,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     rows: normalizedRows,
     warning: messages.length ? messages.join(" ") : null,
     diagnostics: diagnoseImportedSheet(ws, normalizedRows),
+    sourceGrid,
   };
 }
 
@@ -915,6 +965,7 @@ export type SheetOption = {
   rows: Row[];
   warning: string | null;
   diagnostics?: ImportDiagnostics;
+  sourceGrid?: SourceGrid;
 };
 
 /**
@@ -927,8 +978,14 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
   return wb.SheetNames.map((name) => {
     const ws = wb.Sheets[name];
     if (!ws) return { name, rows: [], warning: null };
-    const { rows, warning, diagnostics } = sheetToRows(ws);
-    return { name, rows, warning, ...(diagnostics ? { diagnostics } : {}) };
+    const { rows, warning, diagnostics, sourceGrid } = sheetToRows(ws);
+    return {
+      name,
+      rows,
+      warning,
+      ...(diagnostics ? { diagnostics } : {}),
+      ...(sourceGrid ? { sourceGrid } : {}),
+    };
   }).filter((s) => s.rows.length > 0);
 }
 
