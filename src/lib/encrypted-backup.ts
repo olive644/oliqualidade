@@ -17,6 +17,7 @@ type EncryptedEnvelope = {
 const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 const fromBase64 = (value: string) =>
   Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+const cryptoBytes = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => new Uint8Array(bytes);
 
 async function keyFromPassword(password: string, salt: Uint8Array, iterations: number) {
   if (password.length < 12) throw new Error("Use uma senha com pelo menos 12 caracteres.");
@@ -24,7 +25,7 @@ async function keyFromPassword(password: string, salt: Uint8Array, iterations: n
     "deriveKey",
   ]);
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    { name: "PBKDF2", hash: "SHA-256", salt: cryptoBytes(salt), iterations },
     material,
     { name: "AES-GCM", length: 256 },
     false,
@@ -40,7 +41,11 @@ export async function encryptDashboardBackup(dashboard: Dashboard, password: str
     JSON.stringify({ exportedAt: new Date().toISOString(), dashboard }),
   );
   const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext),
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: cryptoBytes(iv) },
+      key,
+      cryptoBytes(plaintext),
+    ),
   );
   const envelope: EncryptedEnvelope = {
     format: "oli-backup",
@@ -78,9 +83,9 @@ export async function decryptDashboardBackup(
     if (salt.byteLength !== 16 || iv.byteLength !== 12) throw new Error();
     const key = await keyFromPassword(password, salt, envelope.iterations);
     const plaintext = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv },
+      { name: "AES-GCM", iv: cryptoBytes(iv) },
       key,
-      fromBase64(envelope.ciphertext),
+      cryptoBytes(fromBase64(envelope.ciphertext)),
     );
     const parsed = JSON.parse(decoder.decode(plaintext)) as { dashboard?: Dashboard };
     if (!parsed.dashboard?.id || !Array.isArray(parsed.dashboard.sheets)) throw new Error();
