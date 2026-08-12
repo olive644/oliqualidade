@@ -22,8 +22,25 @@ export type ImportProfile = {
   name: string;
   signature: string;
   selection: ImportSelection;
+  columns?: { name: string; kind: string }[];
+  rowCount?: number;
+  filePattern?: string;
+  sourceBounds?: { startRow: number; endRow: number; startColumn: number; endColumn: number };
   createdAt: number;
   updatedAt: number;
+};
+
+export type ImportProfileMatch = {
+  profile: ImportProfile;
+  exact: boolean;
+  confidence: number;
+  selection: ImportSelection;
+  changes: {
+    renamedColumns: { before: string; after: string }[];
+    addedColumns: string[];
+    removedColumns: string[];
+    reordered: boolean;
+  };
 };
 
 export type VersionDiff = {
@@ -115,6 +132,193 @@ export function workbookSignature(rows: Row[]): string {
     .join("|");
 }
 
+const normalizeProfileText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+export function filePatternForProfile(fileName: string): string {
+  return normalizeProfileText(fileName.replace(/\.[^.]+$/, ""))
+    .replace(/\d+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const profileColumns = (rows: Row[]) =>
+  Object.keys(rows[0] ?? {}).map((name) => ({
+    name,
+    kind: typeof rows.find((row) => row[name] !== null && row[name] !== undefined)?.[name],
+  }));
+
+export function adaptImportProfile(
+  profile: ImportProfile,
+  rows: Row[],
+  fileName: string,
+  sourceGrid?: SourceGrid,
+): ImportProfile {
+  return {
+    ...profile,
+    signature: workbookSignature(rows),
+    columns: profileColumns(rows),
+    rowCount: rows.length,
+    filePattern: filePatternForProfile(fileName),
+    ...(sourceGrid
+      ? {
+          sourceBounds: {
+            startRow: sourceGrid.startRow,
+            endRow: sourceGrid.startRow + sourceGrid.rows.length - 1,
+            startColumn: sourceGrid.startColumn,
+            endColumn: sourceGrid.startColumn + (sourceGrid.rows[0]?.length ?? 1) - 1,
+          },
+        }
+      : {}),
+  };
+}
+
+const canonicalProfileTokens = (value: string) => {
+  const aliases: Record<string, string> = {
+    qtd: "quantidade",
+    qtde: "quantidade",
+    vlr: "valor",
+    dt: "data",
+    cod: "codigo",
+    desc: "descricao",
+    un: "unidade",
+  };
+  return new Set(
+    normalizeProfileText(value)
+      .split(" ")
+      .filter(Boolean)
+      .map((token) => aliases[token] ?? token),
+  );
+};
+
+function profileColumnSimilarity(before: string, after: string): number {
+  const left = canonicalProfileTokens(before);
+  const right = canonicalProfileTokens(after);
+  if (!left.size || !right.size) return 0;
+  if ([...left].join(" ") === [...right].join(" ")) return 1;
+  const intersection = [...left].filter((token) => right.has(token)).length;
+  const union = new Set([...left, ...right]).size;
+  return intersection / Math.max(1, union);
+}
+
+function profilePairs(profile: ImportProfile, rows: Row[]) {
+  const before = profile.columns ?? [];
+  const after = profileColumns(rows);
+  const used = new Set<number>();
+  const pairs: {
+    before: string;
+    after: string;
+    score: number;
+    beforeIndex: number;
+    afterIndex: number;
+  }[] = [];
+  for (let beforeIndex = 0; beforeIndex < before.length; beforeIndex++) {
+    const column = before[beforeIndex]!;
+    let best: (typeof pairs)[number] | undefined;
+    for (let afterIndex = 0; afterIndex < after.length; afterIndex++) {
+      if (used.has(afterIndex)) continue;
+      const candidate = after[afterIndex]!;
+      const nameScore = profileColumnSimilarity(column.name, candidate.name);
+      const score = nameScore * 0.8 + (column.kind === candidate.kind ? 0.2 : 0);
+      if (score >= 0.55 && (!best || score > best.score))
+        best = { before: column.name, after: candidate.name, score, beforeIndex, afterIndex };
+    }
+    if (best) {
+      used.add(best.afterIndex);
+      pairs.push(best);
+    }
+  }
+  return { before, after, pairs };
+}
+
+export function matchImportProfile(
+  profiles: ImportProfile[],
+  rows: Row[],
+  fileName = "",
+  sourceGrid?: SourceGrid,
+): ImportProfileMatch | undefined {
+  const signature = workbookSignature(rows);
+  const exact = profiles.find((profile) => profile.signature === signature);
+  const candidates = exact ? [exact] : profiles.filter((profile) => profile.columns?.length);
+  let best: ImportProfileMatch | undefined;
+
+  for (const profile of candidates) {
+    const columns = profilePairs(profile, rows);
+    const isExact = profile.signature === signature;
+    const coverage = isExact
+      ? 1
+      : columns.pairs.length / Math.max(1, columns.before.length, columns.after.length);
+    const average = isExact
+      ? 1
+      : columns.pairs.reduce((sum, pair) => sum + pair.score, 0) /
+        Math.max(1, columns.pairs.length);
+    const confidence = isExact ? 1 : coverage * 0.65 + average * 0.35;
+    const sameFilePattern =
+      Boolean(profile.filePattern) && profile.filePattern === filePatternForProfile(fileName);
+    if (!isExact && (confidence < 0.78 || (!sameFilePattern && confidence < 0.9))) continue;
+
+    const mapping = new Map(columns.pairs.map((pair) => [pair.before, pair.after]));
+    const selection: ImportSelection = {
+      ...profile.selection,
+      endRow:
+        profile.rowCount && profile.selection.endRow >= profile.rowCount
+          ? Math.max(1, rows.length)
+          : profile.selection.endRow,
+      ignoredColumns: profile.selection.ignoredColumns.flatMap((column) => {
+        const mapped = mapping.get(column);
+        return mapped ? [mapped] : isExact && Object.hasOwn(rows[0] ?? {}, column) ? [column] : [];
+      }),
+      ...(profile.selection.source
+        ? {
+            source: {
+              ...profile.selection.source,
+              ...(profile.sourceBounds &&
+              sourceGrid &&
+              profile.selection.source.endRow >= profile.sourceBounds.endRow
+                ? { endRow: sourceGrid.startRow + sourceGrid.rows.length - 1 }
+                : {}),
+              ...(profile.sourceBounds &&
+              sourceGrid &&
+              profile.selection.source.endColumn >= profile.sourceBounds.endColumn
+                ? {
+                    endColumn: sourceGrid.startColumn + (sourceGrid.rows[0]?.length ?? 1) - 1,
+                  }
+                : {}),
+            },
+          }
+        : {}),
+    };
+    const beforeNames = new Set(columns.before.map((column) => column.name));
+    const afterNames = new Set(columns.after.map((column) => column.name));
+    const match: ImportProfileMatch = {
+      profile,
+      exact: isExact,
+      confidence: Math.round(confidence * 100),
+      selection,
+      changes: {
+        renamedColumns: columns.pairs
+          .filter((pair) => normalizeProfileText(pair.before) !== normalizeProfileText(pair.after))
+          .map((pair) => ({ before: pair.before, after: pair.after })),
+        addedColumns: [...afterNames].filter(
+          (name) => !columns.pairs.some((pair) => pair.after === name),
+        ),
+        removedColumns: [...beforeNames].filter(
+          (name) => !columns.pairs.some((pair) => pair.before === name),
+        ),
+        reordered: columns.pairs.some((pair) => pair.beforeIndex !== pair.afterIndex),
+      },
+    };
+    if (!best || match.confidence > best.confidence) best = match;
+    if (isExact) break;
+  }
+  return best;
+}
+
 export function loadImportProfiles(): ImportProfile[] {
   if (typeof localStorage === "undefined") return [];
   try {
@@ -134,9 +338,12 @@ export function saveImportProfile(profile: ImportProfile): void {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profiles.slice(0, 50)));
 }
 
-export function matchingImportProfile(rows: Row[]): ImportProfile | undefined {
-  const signature = workbookSignature(rows);
-  return loadImportProfiles().find((profile) => profile.signature === signature);
+export function matchingImportProfile(
+  rows: Row[],
+  fileName = "",
+  sourceGrid?: SourceGrid,
+): ImportProfileMatch | undefined {
+  return matchImportProfile(loadImportProfiles(), rows, fileName, sourceGrid);
 }
 
 const valueKind = (value: unknown) =>
