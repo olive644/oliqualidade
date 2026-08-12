@@ -83,12 +83,17 @@ export function detectDelimiter(text: string): "," | ";" | "\t" | "|" {
     for (const candidate of candidates) counts.get(candidate)!.push(lineCounts[candidate]);
 
   const score = (candidate: (typeof candidates)[number]) => {
-    const nonZero = counts.get(candidate)!.filter(Boolean);
+    const allLines = counts.get(candidate)!;
+    const nonZero = allLines.filter(Boolean);
     if (!nonZero.length) return -1;
     const mode = nonZero
       .map((value) => [value, nonZero.filter((other) => other === value).length] as const)
       .sort((a, b) => b[1] - a[1])[0]!;
-    return mode[0] * (mode[1] / Math.max(1, nonZero.length));
+    // Linhas sem o candidato também contam contra ele. Sem essa penalidade,
+    // as vírgulas decimais de um CSV separado por ponto e vírgula parecem um
+    // delimitador perfeitamente consistente nas linhas de dados, apesar de
+    // não existirem no cabeçalho (ex.: Valor\n1.234,50\n2.000,00).
+    return mode[0] * (mode[1] / Math.max(1, allLines.length));
   };
   return [...candidates].sort((a, b) => score(b) - score(a))[0]!;
 }
