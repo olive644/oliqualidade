@@ -2,7 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
-import { handleGeminiChat } from "./lib/gemini-server";
+import { handleGeminiChat, handleSmartImportAnalysis } from "./lib/gemini-server";
 import { withSecurityHeaders } from "./lib/http-security";
 import { withChatSession } from "./lib/chat-session";
 
@@ -54,6 +54,9 @@ export default {
     try {
       if (new URL(request.url).pathname === "/api/gemini/chat") {
         return withSecurityHeaders(await handleGeminiChat(request, environment));
+      }
+      if (new URL(request.url).pathname === "/api/gemini/import-analysis") {
+        return withSecurityHeaders(await handleSmartImportAnalysis(request, environment));
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
