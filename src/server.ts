@@ -3,6 +3,7 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleGeminiChat } from "./lib/gemini-server";
+import { withSecurityHeaders } from "./lib/http-security";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -49,17 +50,21 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       if (new URL(request.url).pathname === "/api/gemini/chat") {
-        return await handleGeminiChat(request, (env ?? {}) as Record<string, string>);
+        return withSecurityHeaders(
+          await handleGeminiChat(request, (env ?? {}) as Record<string, string>),
+        );
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      return withSecurityHeaders(await normalizeCatastrophicSsrResponse(response));
     } catch (error) {
       console.error(error);
-      return new Response(renderErrorPage(), {
-        status: 500,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      return withSecurityHeaders(
+        new Response(renderErrorPage(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      );
     }
   },
 };
