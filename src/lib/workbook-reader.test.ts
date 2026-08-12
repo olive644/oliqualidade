@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
+import { strToU8, zipSync } from "fflate";
 
 import {
   detectDelimiter,
   readWorkbookBytes,
   validateWorkbookComplexity,
+  validateZipWorkbook,
 } from "@/lib/workbook-reader";
 
 describe("leitor universal de planilhas", () => {
@@ -69,16 +71,57 @@ describe("leitor universal de planilhas", () => {
     expect(sheet?.rows).toEqual([{ Duração: "36:00" }]);
   });
 
-  it.each(["xlsx", "xlsb", "ods"] as const)("lê o formato %s", (bookType) => {
+  it.each(["xlsx", "xlsm", "xlsb", "xls", "ods", "fods"] as const)(
+    "lê o formato %s",
+    (bookType) => {
+      const worksheet = XLSX.utils.aoa_to_sheet([
+        ["Produto", "Valor"],
+        ["Bolo", 42],
+      ]);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+      const bytes = XLSX.write(workbook, { type: "array", bookType });
+      const [sheet] = readWorkbookBytes(bytes, `vendas.${bookType}`);
+      expect(sheet?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
+    },
+  );
+
+  it.each(["xltx", "xltm"] as const)("aceita a extensão de modelo %s", (extension) => {
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["Produto", "Valor"],
       ["Bolo", 42],
     ]);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
-    const bytes = XLSX.write(workbook, { type: "array", bookType });
-    const [sheet] = readWorkbookBytes(bytes, `vendas.${bookType}`);
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    const [sheet] = readWorkbookBytes(bytes, `modelo.${extension}`);
     expect(sheet?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
+  });
+
+  it("lê TSV sem confundir tabulação com conteúdo", () => {
+    const [sheet] = readWorkbookBytes(
+      new TextEncoder().encode("Produto\tValor\nBolo\t42"),
+      "vendas.tsv",
+    );
+    expect(sheet?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
+  });
+
+  it("lê uma tabela HTML exportada como planilha", () => {
+    const html =
+      "<table><tr><th>Produto</th><th>Valor</th></tr><tr><td>Bolo</td><td>42</td></tr></table>";
+    const [sheet] = readWorkbookBytes(new TextEncoder().encode(html), "vendas.html");
+    expect(sheet?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
+  });
+
+  it("aceita um pacote XLSX normal na pré-verificação ZIP", () => {
+    const bytes = zipSync({ "xl/workbook.xml": strToU8("<workbook />") });
+    expect(() => validateZipWorkbook(bytes)).not.toThrow();
+  });
+
+  it("rejeita pacote ZIP truncado antes de tentar analisar a planilha", () => {
+    expect(() => validateZipWorkbook(Uint8Array.of(0x50, 0x4b, 0x03, 0x04))).toThrow(
+      "incompleto ou corrompido",
+    );
   });
 
   it("preserva valor bruto, exibição e formato de células relevantes", () => {

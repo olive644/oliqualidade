@@ -12,8 +12,61 @@ const TEXT_EXTENSIONS = /\.(csv|tsv|txt)$/i;
 const ZIP_WORKBOOK_EXTENSIONS = /\.(xlsx|xlsm|xltx|xltm)$/i;
 export const MAX_WORKBOOK_SHEETS = 100;
 export const MAX_WORKBOOK_CELLS = 2_000_000;
+export const MAX_ZIP_ENTRIES = 10_000;
+export const MAX_ZIP_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024;
+export const MAX_ZIP_ENTRY_BYTES = 512 * 1024 * 1024;
+export const MAX_SUSPICIOUS_COMPRESSION_RATIO = 1_000;
 
 export type WorkbookReadProgress = "decoding" | "parsing" | "analyzing";
+
+/**
+ * Lê somente o diretório central do ZIP, sem descompactar seu conteúdo.
+ * XLSX/XLSM são pacotes ZIP e podem declarar poucos bytes compactados que
+ * expandem para gigabytes. A checagem ocorre antes do SheetJS e do extrator
+ * de metadados para evitar consumo abusivo de memória no navegador.
+ */
+export function validateZipWorkbook(bytes: Uint8Array): void {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const searchStart = Math.max(0, bytes.length - 65_557);
+  let eocd = -1;
+  for (let offset = bytes.length - 22; offset >= searchStart; offset--) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("O pacote da planilha está incompleto ou corrompido.");
+
+  const entries = view.getUint16(eocd + 10, true);
+  const directorySize = view.getUint32(eocd + 12, true);
+  const directoryOffset = view.getUint32(eocd + 16, true);
+  if (entries > MAX_ZIP_ENTRIES) throw new Error("A planilha contém arquivos internos demais.");
+  if (directoryOffset + directorySize > bytes.length)
+    throw new Error("O pacote da planilha possui um diretório interno inválido.");
+
+  let offset = directoryOffset;
+  let totalUncompressed = 0;
+  for (let index = 0; index < entries; index++) {
+    if (offset + 46 > bytes.length || view.getUint32(offset, true) !== 0x02014b50)
+      throw new Error("O pacote da planilha possui uma entrada interna inválida.");
+    const compressed = view.getUint32(offset + 20, true);
+    const uncompressed = view.getUint32(offset + 24, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    if (uncompressed > MAX_ZIP_ENTRY_BYTES)
+      throw new Error("Uma parte interna da planilha é grande demais para leitura segura.");
+    if (
+      uncompressed > 50 * 1024 * 1024 &&
+      uncompressed / Math.max(1, compressed) > MAX_SUSPICIOUS_COMPRESSION_RATIO
+    )
+      throw new Error("A planilha possui uma taxa de compressão potencialmente insegura.");
+    totalUncompressed += uncompressed;
+    if (totalUncompressed > MAX_ZIP_UNCOMPRESSED_BYTES)
+      throw new Error("A planilha ultrapassa o limite seguro após descompactação.");
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+}
 
 export function validateWorkbookComplexity(workbook: XLSX.WorkBook): void {
   if (workbook.SheetNames.length > MAX_WORKBOOK_SHEETS)
@@ -106,6 +159,7 @@ export function readWorkbookBytes(
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   onProgress?.("decoding");
   const textFile = TEXT_EXTENSIONS.test(fileName);
+  if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) validateZipWorkbook(bytes);
   const source = textFile ? decodeText(bytes) : bytes;
   onProgress?.("parsing");
   const wb = XLSX.read(source, {
