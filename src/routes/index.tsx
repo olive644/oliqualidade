@@ -185,6 +185,8 @@ import {
   saveGeocodeCache,
   TERM_HINTS_KEY,
   THEME_KEY,
+  isPrivateMode,
+  setPrivateMode,
   type GeocodeCache,
   type GeoPoint,
   type SaveResult,
@@ -500,6 +502,23 @@ export function OliAm({ routeId }: { routeId?: string }) {
     >(),
   );
   const [folderMonitors, setFolderMonitors] = useState<Record<string, FolderMonitorView>>({});
+  const [privateMode, setPrivateModeState] = useState(() => isPrivateMode());
+
+  const togglePrivateMode = async () => {
+    const next = !privateMode;
+    setPrivateMode(next);
+    setPrivateModeState(next);
+    const list = await loadDashboards();
+    dashboardsRef.current = list;
+    setDashboards(list);
+    setCurrentId(null);
+    setStage(list.length ? "home" : "empty");
+    toast.success(
+      next
+        ? "Modo privado ativado: novos painéis somem ao fechar esta aba."
+        : "Modo privado desativado: seus painéis persistentes voltaram.",
+    );
+  };
 
   useEffect(() => {
     let active = true;
@@ -648,10 +667,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
       setImportWarning(sheets.map((s) => s.warning).find((w) => w) ?? null);
       prepare(sheets, file.name);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "";
       setImportError(
-        error instanceof Error && /password|encrypt|senha/i.test(error.message)
+        /password|encrypt|senha/i.test(message)
           ? "Esta planilha é protegida por senha. Remova a proteção ou informe uma cópia desbloqueada."
-          : `Não foi possível ler esse arquivo. Use um formato válido: ${WORKBOOK_FORMATS_LABEL}.`,
+          : /limite|excede|ultrapassa|milhões de células|mais de \d+ abas/i.test(message)
+            ? message
+            : `Não foi possível ler esse arquivo. Use um formato válido: ${WORKBOOK_FORMATS_LABEL}.`,
       );
     } finally {
       setLoading(false);
@@ -1231,6 +1253,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
             theme={theme}
             toggleTheme={toggle}
             importError={importError}
+            privateMode={privateMode}
+            togglePrivateMode={() => void togglePrivateMode()}
           />
         )}
         {stage === "review" && (
@@ -1679,6 +1703,8 @@ function Empty(p: {
   theme: string;
   toggleTheme: () => void;
   importError: string | null;
+  privateMode: boolean;
+  togglePrivateMode: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -1808,6 +1834,13 @@ function Empty(p: {
             <ShieldAlert />
             <span>
               <strong>Seus dados ficam com você.</strong> O processamento acontece no navegador.
+              <button
+                type="button"
+                className="ml-2 underline underline-offset-2"
+                onClick={p.togglePrivateMode}
+              >
+                {p.privateMode ? "Modo privado ligado" : "Ativar modo privado"}
+              </button>
             </span>
           </div>
 
@@ -2172,7 +2205,7 @@ function Review(p: {
 }) {
   const [lowConfidenceConfirmed, setLowConfidenceConfirmed] = useState(false);
   const active = p.sheets[p.activeIndex] ?? p.sheets[0];
-  const rows = active?.rows ?? [];
+  const rows = useMemo(() => active?.rows ?? [], [active]);
   const columns = active?.columns ?? [];
   const [selection, setSelection] = useState<ImportSelection>(() => defaultSelection(rows));
   const [undoRows, setUndoRows] = useState<Row[] | null>(null);
