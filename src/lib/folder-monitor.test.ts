@@ -22,6 +22,10 @@ describe("folder monitor", () => {
     expect(isSupportedWorkbook("vendas.XLSX")).toBe(true);
     expect(isSupportedWorkbook("dados.csv")).toBe(true);
     expect(isSupportedWorkbook("modelo.xlsm")).toBe(true);
+    expect(isSupportedWorkbook("base.xlsb")).toBe(true);
+    expect(isSupportedWorkbook("dados.ods")).toBe(true);
+    expect(isSupportedWorkbook("dados.tsv")).toBe(true);
+    expect(isSupportedWorkbook("relatorio.html")).toBe(true);
     expect(isSupportedWorkbook("notas.txt")).toBe(false);
   });
 
