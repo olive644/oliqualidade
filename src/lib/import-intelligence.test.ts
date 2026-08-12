@@ -174,6 +174,14 @@ describe("import intelligence", () => {
 });
 
 describe("import intelligence - estrutura e qualidade", () => {
+  it("marca coluna genérica como sensível pelo conteúdo", () => {
+    const ws = XLSX.utils.aoa_to_sheet([["Informação"], ["123.456.789-00"], ["987.654.321-00"]]);
+    const diagnostics = diagnoseImportedSheet(ws, [
+      { Informação: "123.456.789-00" },
+      { Informação: "987.654.321-00" },
+    ]);
+    expect(diagnostics.columns[0]?.sensitive).toBe(true);
+  });
   it("estima linha do cabeçalho quando existem metadados antes da tabela", () => {
     const ws = sheet([
       ["Relatório mensal", null, null],
