@@ -2483,7 +2483,8 @@ function Review(p: {
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               IDs e códigos numéricos devem ser definidos como texto para nunca entrarem em totais.
-              {p.sheets.length > 1 && " Cada aba da planilha original vira uma aba do painel."}
+              {p.sheets.length > 1 &&
+                " Cada aba ou região independente da planilha original vira uma aba do painel."}
             </p>
           </div>
           <p className="whitespace-nowrap rounded-2xl border border-border bg-card px-4 py-3 font-mono text-xs text-muted-foreground shadow-sm">
