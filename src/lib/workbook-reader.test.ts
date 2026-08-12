@@ -53,7 +53,7 @@ describe("leitor universal de planilhas", () => {
 
   it("preserva hora do Excel sem convertê-la em 31/12/1899", () => {
     const worksheet = XLSX.utils.aoa_to_sheet([["Hora"], [0.5]]);
-    worksheet.A2!.z = "hh:mm";
+    worksheet["A2"]!.z = "hh:mm";
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Horários");
     const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
@@ -63,7 +63,7 @@ describe("leitor universal de planilhas", () => {
 
   it("preserva duração acima de 24 horas usando o formato exibido no Excel", () => {
     const worksheet = XLSX.utils.aoa_to_sheet([["Duração"], [1.5]]);
-    worksheet.A2!.z = "[h]:mm";
+    worksheet["A2"]!.z = "[h]:mm";
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Durações");
     const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
@@ -126,13 +126,13 @@ describe("leitor universal de planilhas", () => {
 
   it("preserva valor bruto, exibição e formato de células relevantes", () => {
     const worksheet = XLSX.utils.aoa_to_sheet([["Taxa"], [0.125]]);
-    worksheet.A2!.z = "0.0%";
-    worksheet.A2!.w = "12.5%";
+    worksheet["A2"]!.z = "0.0%";
+    worksheet["A2"]!.w = "12.5%";
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Indicadores");
     const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
     const [sheet] = readWorkbookBytes(bytes, "indicadores.xlsx");
-    expect(sheet?.rows[0]?.Taxa).toBe(0.125);
+    expect(sheet?.rows[0]?.["Taxa"]).toBe(0.125);
     expect(sheet?.diagnostics?.sourceCellRepresentations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

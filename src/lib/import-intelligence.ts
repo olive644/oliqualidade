@@ -96,6 +96,8 @@ export type ImportDiagnostics = {
   transformations: string[];
   warnings: string[];
   qualityScore: number;
+  /** Percentual da origem que pôde ser interpretado, sem confundir células vazias com falha. */
+  interpretationScore?: number;
   advancedQuality?: AdvancedQualityReport;
   suggestedNormalization: string[];
   header: { row: number; confidence: number };
@@ -108,6 +110,8 @@ const CNPJ = /^\d{14}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL = /^https?:\/\//i;
 const PHONE = /^(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\d{4}|\d{4})[-\s]?\d{4}$/;
+const PERIOD_COLUMN_NAME =
+  /^(?:(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)(?:[-/ ]?\d{2,4})?|\d{1,2}\/\d{1,2}\/\d{2,4})$/i;
 const CEP = /^\d{5}-?\d{3}$/;
 const CURRENCY = /^(?:R\$|US\$|€|£|¥|\$)\s*[+-]?[\d.]+(?:,\d+)?\s*$/;
 const PERCENTAGE = /^[+-]?(?:\d+(?:[.,]\d+)?)\s*%$/;
@@ -128,6 +132,26 @@ function containsSensitiveValues(values: unknown[]): boolean {
 
 function normalized(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function representationFamily(
+  value: unknown,
+): "number" | "boolean" | "temporal" | "text" | "error" {
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  const text = normalized(value);
+  if (/^#(?:DIV\/0!|N\/A|REF!|VALUE!|NAME\?|NULL!|NUM!)$/i.test(text)) return "error";
+  if (DATE.test(text) || DATETIME.test(text)) return "temporal";
+  if (["true", "false", "sim", "não", "nao", "yes", "no"].includes(text.toLowerCase()))
+    return "boolean";
+  const numeric = text
+    .replace(/^R\$\s*/i, "")
+    .replace(/%$/, "")
+    .replace(/\s/g, "")
+    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+  if (numeric !== "" && Number.isFinite(Number(numeric))) return "number";
+  return "text";
 }
 
 function nonEmpty(values: unknown[]): string[] {
@@ -474,7 +498,13 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     const { kind, confidence } = kindFor(filledValues, key);
     const warnings: string[] = [];
     const missing = values.length - filledValues.length;
-    if (values.length >= 5 && missing / values.length > 0.2)
+    const periodColumn = PERIOD_COLUMN_NAME.test(key.trim());
+    if (
+      filledValues.length > 0 &&
+      values.length >= 5 &&
+      missing / values.length > 0.2 &&
+      !periodColumn
+    )
       warnings.push("muitos valores ausentes");
     if (uniqueValues.size === 1 && filledValues.length > 5)
       warnings.push("um único valor domina a coluna");
@@ -482,16 +512,27 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
       SENSITIVE_NAME.test(key) ||
       ["cpf", "cnpj", "email", "phone", "postal-code"].includes(kind) ||
       containsSensitiveValues(filledValues);
-    const completenessScore = values.length ? filledValues.length / values.length : 0;
-    const uniquenessScore = filledValues.length
-      ? Math.min(1, uniqueValues.size / filledValues.length)
+    // Consistência mede se os valores presentes respeitam a representação
+    // detectada. Ausência e repetição são métricas diferentes: em cronogramas,
+    // meses futuros vazios e estados repetidos são perfeitamente legítimos.
+    const representationCounts = new Map<string, number>();
+    for (const value of filledValues) {
+      const family = representationFamily(value);
+      representationCounts.set(family, (representationCounts.get(family) ?? 0) + 1);
+    }
+    const representationConsistency = filledValues.length
+      ? Math.max(...representationCounts.values()) / filledValues.length
+      : 1;
+    const excelErrorRatio = filledValues.length
+      ? filledValues.filter((value) =>
+          /^#(?:DIV\/0!|N\/A|REF!|VALUE!|NAME\?|NULL!|NUM!)$/i.test(normalized(value)),
+        ).length / filledValues.length
       : 0;
     const qualityScore = Math.round(
-      Math.max(
-        0,
-        Math.min(1, completenessScore * 0.55 + confidence * 0.3 + uniquenessScore * 0.15),
-      ) * 100,
+      Math.max(0, Math.min(1, representationConsistency - excelErrorRatio)) * 100,
     );
+    if (filledValues.length >= 5 && representationConsistency < 0.9)
+      warnings.push("representações de valor misturadas");
     return {
       key,
       label: key.replaceAll("_", " "),
@@ -636,6 +677,19 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
   const supportedFormulaRatio = formulaDiagnostics.length
     ? formulaDiagnostics.filter((formula) => formula.supported).length / formulaDiagnostics.length
     : 1;
+  const interpretedHeaderRatio = keys.length
+    ? keys.filter((key) => !/^coluna_\d+$/i.test(key) && normalized(key) !== "").length /
+      keys.length
+    : 0;
+  const interpretationScore = Math.round(
+    Math.max(
+      0,
+      Math.min(
+        1,
+        readableRows * 0.5 + interpretedHeaderRatio * 0.25 + supportedFormulaRatio * 0.25,
+      ),
+    ) * 100,
+  );
   const independentRegionPenalty = Math.min(0.16, Math.max(0, tableRegions.length - 1) * 0.08);
   const formulaPenalty = (1 - supportedFormulaRatio) * 0.1;
   const recoveredStructureBonus = Math.min(
@@ -704,6 +758,7 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     transformations,
     warnings,
     qualityScore,
+    interpretationScore,
     advancedQuality,
     suggestedNormalization,
     header,

@@ -2112,19 +2112,21 @@ function ImportWorkbench({
             )}
             {sourceSelection ? (
               <>
-                {[
-                  ["Cabeçalho", "headerRow"],
-                  ["Primeira linha de dados", "startRow"],
-                  ["Última linha de dados", "endRow"],
-                  ["Primeira coluna", "startColumn"],
-                  ["Última coluna", "endColumn"],
-                ].map(([label, key]) => (
+                {(
+                  [
+                    ["Cabeçalho", "headerRow"],
+                    ["Primeira linha de dados", "startRow"],
+                    ["Última linha de dados", "endRow"],
+                    ["Primeira coluna", "startColumn"],
+                    ["Última coluna", "endColumn"],
+                  ] as const
+                ).map(([label, key]) => (
                   <label key={key} className="text-xs text-muted-foreground">
                     {label}
                     <input
                       className="oliam-input mt-1"
                       type="number"
-                      value={sourceSelection[key as keyof typeof sourceSelection]}
+                      value={sourceSelection[key]}
                       onChange={(event) =>
                         setSelection({
                           ...selection,
@@ -2559,11 +2561,20 @@ function Review(p: {
             </div>
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
-                Qualidade
+                Leitura
+              </div>
+              <div className="mt-1 font-display text-2xl">
+                {active.diagnostics.interpretationScore ?? active.diagnostics.confidence}%
+              </div>
+              <div className="text-xs text-muted-foreground">células úteis interpretadas</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <div className="text-[11px] font-mono uppercase tracking-wide text-muted-foreground">
+                Consistência
               </div>
               <div className="mt-1 font-display text-2xl">{active.diagnostics.qualityScore}%</div>
               <div className="text-xs text-muted-foreground">
-                consistência dos dados
+                valores presentes
                 {active.diagnostics.advancedQuality &&
                   ` · robusta ${active.diagnostics.advancedQuality.tableScore}%`}
               </div>
@@ -2783,9 +2794,9 @@ function Review(p: {
         <ImportWorkbench
           rows={rows}
           columns={columns}
-          diagnostics={active?.diagnostics}
-          sourceGrid={active?.sourceGrid}
-          audit={active?.audit}
+          {...(active?.diagnostics ? { diagnostics: active.diagnostics } : {})}
+          {...(active?.sourceGrid ? { sourceGrid: active.sourceGrid } : {})}
+          {...(active?.audit ? { audit: active.audit } : {})}
           selection={selection}
           setSelection={setSelection}
           canUndo={Boolean(undoRows)}
@@ -6782,7 +6793,7 @@ function WidgetCard({
               aria-label="Coluna de situação do cronograma"
               className="oliam-select h-7 max-w-44"
               value={statusCol?.key ?? ""}
-              onChange={(event) => onConfigure({ statusKey: event.target.value || undefined })}
+              onChange={(event) => onConfigure({ statusKey: event.target.value })}
             >
               <option value="">Sem coluna de situação</option>
               {labelOptions

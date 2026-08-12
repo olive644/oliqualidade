@@ -196,7 +196,7 @@ describe("import intelligence - estrutura e qualidade", () => {
     expect(diagnostics.header.confidence).toBeGreaterThan(0.5);
   });
 
-  it("calcula qualidade por coluna e geral", () => {
+  it("separa consistência de preenchimento", () => {
     const ws = sheet([
       ["Cliente", "Valor"],
       ["Ana", "R$ 100,00"],
@@ -209,7 +209,36 @@ describe("import intelligence - estrutura e qualidade", () => {
       { Cliente: "Caio", Valor: "" },
     ]);
     expect(diagnostics.qualityScore).toBeGreaterThan(0);
-    expect(diagnostics.columns.find((c) => c.key === "Valor")?.qualityScore).toBeLessThan(100);
+    expect(diagnostics.columns.find((c) => c.key === "Valor")?.qualityScore).toBe(100);
+  });
+
+  it("reduz a consistência quando uma coluna mistura representações", () => {
+    const ws = sheet([["Valor"], [10], [20], ["erro"]]);
+    const diagnostics = diagnoseImportedSheet(ws, [
+      { Valor: 10 },
+      { Valor: 20 },
+      { Valor: "erro" },
+    ]);
+    expect(diagnostics.columns[0]?.qualityScore).toBe(67);
+  });
+
+  it("não trata períodos futuros vazios de cronograma como inconsistência", () => {
+    const ws = sheet([
+      ["Item", "jan", "fev", "mar"],
+      ["Água", "M", null, null],
+      ["Ar", null, null, "T"],
+      ["Superfície", null, null, null],
+    ]);
+    const diagnostics = diagnoseImportedSheet(ws, [
+      { Item: "Água", jan: "M", fev: null, mar: null },
+      { Item: "Ar", jan: null, fev: null, mar: "T" },
+      { Item: "Superfície", jan: null, fev: null, mar: null },
+    ]);
+    expect(diagnostics.qualityScore).toBe(100);
+    expect(diagnostics.interpretationScore).toBe(100);
+    expect(diagnostics.columns.flatMap((column) => column.warnings)).not.toContain(
+      "muitos valores ausentes",
+    );
   });
 });
 

@@ -51,11 +51,11 @@ describe("sheetToRows", () => {
       ["A", 10],
     ]);
     ws["!ref"] = "B4:C6";
-    ws.B4 = { t: "s", v: "Título" };
-    ws.B5 = { t: "s", v: "Nome" };
-    ws.C5 = { t: "s", v: "Valor" };
-    ws.B6 = { t: "s", v: "A" };
-    ws.C6 = { t: "n", v: 10 };
+    ws["B4"] = { t: "s", v: "Título" };
+    ws["B5"] = { t: "s", v: "Nome" };
+    ws["C5"] = { t: "s", v: "Valor" };
+    ws["B6"] = { t: "s", v: "A" };
+    ws["C6"] = { t: "n", v: 10 };
     const { sourceGrid } = sheetToRows(ws);
     expect(sourceGrid).toMatchObject({
       startRow: 4,
@@ -205,7 +205,7 @@ describe("sheetToRows", () => {
       "Análise",
       "Limite",
     ]);
-    expect(rows[0]?.Objeto).toBe("Produto");
+    expect(rows[0]?.["Objeto"]).toBe("Produto");
   });
 
   it("renomeia cabeçalhos genéricos de documento e limpa placeholders vazios", () => {

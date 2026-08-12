@@ -159,7 +159,7 @@ function normalizeRawRow(
     // texto correto. Isso ocorre, por exemplo, com o cabeçalho "Torre de
     // Processo" no formulário FRS-QA-028. Recuperar somente strings evita
     // alterar o tratamento normal de datas e números legítimos.
-    if ((sourceCell?.t === "s" || sourceCell?.t === "str") && typeof sourceCell.v === "string") {
+    if (sourceCell?.t === "s" && typeof sourceCell.v === "string") {
       return sourceCell.v;
     }
 
@@ -267,7 +267,7 @@ function normalizeMixedNumericColumns(rows: Row[]): { rows: Row[]; changes: numb
 // de célula de dado — nunca o nome de uma coluna.
 const EXCEL_ERROR_PATTERN = /^#(DIV\/0!|N\/A|REF!|VALUE!|NAME\?|NULL!|NUM!|GETTING_DATA)$/;
 
-function cellLooksNumeric(v: string | number | null): boolean {
+function cellLooksNumeric(v: unknown): boolean {
   if (v === null || v === "") return false;
   if (typeof v === "number") return true;
   const s = String(v).trim();
@@ -1472,14 +1472,17 @@ function detectIndependentSections(ws: XLSX.WorkSheet): IndependentSection[] {
     !candidates.some((candidate) => candidate.titleStart < candidate.header)
   )
     return [];
+  const firstCandidate = candidates[0];
+  if (!firstCandidate) return [];
   const sharedHierarchicalContext = Array.from(
-    { length: Math.max(0, candidates[0].header - candidates[0].titleStart - 1) },
-    (_, index) => candidates[0].titleStart + index,
+    { length: Math.max(0, firstCandidate.header - firstCandidate.titleStart - 1) },
+    (_, index) => firstCandidate.titleStart + index,
   )
     .filter((row) => filled(aoa[row]).length >= 2 && hasHorizontalMerge(row))
     .map((row) => row + 1);
   return candidates.map((candidate, index) => {
-    const endRow = index + 1 < candidates.length ? candidates[index + 1].titleStart : scanEnd;
+    const nextCandidate = candidates[index + 1];
+    const endRow = nextCandidate ? nextCandidate.titleStart : scanEnd;
     let firstColumn = Number.POSITIVE_INFINITY;
     let lastColumn = -1;
     for (const row of aoa.slice(candidate.titleStart, endRow)) {

@@ -286,13 +286,10 @@ function conditionalAggregate(
     return criteriaValues.filter((value) => matchesCriterion(value, criterion)).length;
   const sumValues = readRange(args[2] ?? args[0]!);
   if (!sumValues || sumValues.length !== criteriaValues.length) return null;
-  return criteriaValues.reduce(
-    (sum, value, index) =>
-      matchesCriterion(value, criterion) && typeof sumValues[index] === "number"
-        ? sum + sumValues[index]
-        : sum,
-    0,
-  );
+  return criteriaValues.reduce<number>((sum, value, index) => {
+    const summand = sumValues[index];
+    return matchesCriterion(value, criterion) && typeof summand === "number" ? sum + summand : sum;
+  }, 0);
 }
 
 /**

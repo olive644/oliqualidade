@@ -38,6 +38,9 @@ const diagnostic = (
 
 const diagnostics = (columns: ColumnDiagnostic[]): ImportDiagnostics => ({
   confidence: 94,
+  baseConfidence: 94,
+  recoveryGain: 0,
+  confidenceReasons: [],
   qualityScore: 92,
   columns,
   warnings: [],
@@ -57,6 +60,7 @@ const diagnostics = (columns: ColumnDiagnostic[]): ImportDiagnostics => ({
   calculatedColumns: [],
   autofilterRange: null,
   formulaExamples: [],
+  sourceCellRepresentations: [],
   formulaDiagnostics: [],
   tableRegions: [],
   transformations: [],
