@@ -213,7 +213,7 @@ function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
         reason = "referência a outra aba";
       } else if (
         containsRange &&
-        !/(?:SUM|MIN|MAX|AVERAGE|COUNT)\s*\([^)]*[A-Z]+\d+:[A-Z]+\d+/i.test(formula)
+        !/(?:SUM|MIN|MAX|AVERAGE|COUNT|SUMIF|COUNTIF)\s*\([^)]*[A-Z]+\d+:[A-Z]+\d+/i.test(formula)
       ) {
         supported = false;
         reason = "intervalo fora de uma função agregadora suportada";
@@ -223,6 +223,9 @@ function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
         );
         const supportedNames = new Set([
           "IFERROR",
+          "IF",
+          "AND",
+          "OR",
           "ROUND",
           "ABS",
           "MIN",
@@ -230,6 +233,8 @@ function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
           "SUM",
           "AVERAGE",
           "COUNT",
+          "SUMIF",
+          "COUNTIF",
         ]);
         const unsupported = names.find((name) => !supportedNames.has(name));
         if (unsupported) {

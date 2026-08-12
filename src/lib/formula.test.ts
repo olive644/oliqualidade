@@ -46,6 +46,17 @@ describe("resolveFormulaCell", () => {
     expect(resolveFormulaCell(ws, "C1")).toBe(0);
   });
 
+  it("avalia IF com comparações e combinações AND/OR", () => {
+    const ws = sheetWithFormulas([[75, 12, null, null, null]], {
+      C1: "IF(A1>=70,1,0)",
+      D1: "IF(AND(A1>70,B1<15),100,0)",
+      E1: "IF(OR(A1<0,B1=12),1,0)",
+    });
+    expect(resolveFormulaCell(ws, "C1")).toBe(1);
+    expect(resolveFormulaCell(ws, "D1")).toBe(100);
+    expect(resolveFormulaCell(ws, "E1")).toBe(1);
+  });
+
   it("suporta ROUND, ABS, MIN e MAX", () => {
     const ws = sheetWithFormulas([[3.14159, -5, 2, 9]], {
       // Como cada uma é avaliada isoladamente, todas podem ler as mesmas
@@ -103,7 +114,50 @@ describe("resolveFormulaCell", () => {
     expect(resolveFormulaCell(ws, "C1")).toBeNull();
   });
 
-  it("não tenta avaliar função não suportada (ex.: SUMIF/VLOOKUP)", () => {
+  it("avalia SUMIF e COUNTIF em intervalos locais", () => {
+    const ws = sheetWithFormulas(
+      [
+        ["Aprovado", 10, null, null],
+        ["Reprovado", 20, null, null],
+        ["Aprovado", 30, null, null],
+        ["Aprovado parcial", 40, null, null],
+      ],
+      {
+        C1: 'SUMIF(A1:A4,"Aprovado",B1:B4)',
+        D1: 'COUNTIF(A1:A4,"Aprovado*")',
+      },
+    );
+    expect(resolveFormulaCell(ws, "C1")).toBe(40);
+    expect(resolveFormulaCell(ws, "D1")).toBe(3);
+  });
+
+  it("aceita critérios numéricos e operadores em agregações condicionais", () => {
+    const ws = sheetWithFormulas(
+      [
+        [5, 10, null, null],
+        [15, 20, null, null],
+        [25, 30, null, null],
+      ],
+      { C1: 'SUMIF(A1:A3,">=15",B1:B3)', D1: 'COUNTIF(A1:A3,"<>15")' },
+    );
+    expect(resolveFormulaCell(ws, "C1")).toBe(50);
+    expect(resolveFormulaCell(ws, "D1")).toBe(2);
+  });
+
+  it("recusa SUMIF com dimensões diferentes ou intervalo circular", () => {
+    const ws = sheetWithFormulas(
+      [
+        [1, 10, null],
+        [2, 20, null],
+      ],
+      { C1: 'SUMIF(A1:A2,">0",B1:B3)' },
+    );
+    expect(resolveFormulaCell(ws, "C1")).toBeNull();
+    ws["C2"] = { t: "z", f: 'COUNTIF(A1:C2,">0")', v: 0 };
+    expect(resolveFormulaCell(ws, "C2")).toBeNull();
+  });
+
+  it("não tenta avaliar função não suportada (ex.: VLOOKUP)", () => {
     const ws = sheetWithFormulas([[1, null]], { B1: "VLOOKUP(A1,A1,1,0)" });
     expect(resolveFormulaCell(ws, "B1")).toBeNull();
   });

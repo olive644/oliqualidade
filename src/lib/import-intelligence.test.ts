@@ -261,3 +261,18 @@ it("classifica fórmulas locais, intervalos e referências entre abas", () => {
   expect(summary.ranges).toBe(1);
   expect(summary.unsupported).toBe(0);
 });
+
+it("classifica condições e agregações condicionais locais como compatíveis", () => {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["Status", "Valor", "Soma", "Regra"],
+    ["Aprovado", 10, null, null],
+    ["Reprovado", 20, null, null],
+  ]);
+  ws["C2"] = { f: 'SUMIF(A2:A3,"Aprovado",B2:B3)' };
+  ws["D2"] = { f: "IF(AND(B2>0,B2<15),1,0)" };
+  const diagnostics = diagnoseImportedSheet(ws, [
+    { Status: "Aprovado", Valor: 10, Soma: 10, Regra: 1 },
+  ]);
+  const summary = getFormulaSummary(diagnostics);
+  expect(summary).toMatchObject({ total: 2, supported: 2, unsupported: 0 });
+});
