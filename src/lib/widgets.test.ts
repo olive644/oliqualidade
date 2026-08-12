@@ -10,6 +10,7 @@ import {
   groupableKinds,
   newWidgetId,
   pickBestGroupColumn,
+  schedulePeriodColumns,
 } from "@/lib/widgets";
 import { numericKinds } from "@/lib/types";
 import type { Column, Row } from "@/lib/types";
@@ -227,6 +228,34 @@ describe("createWidget, novos tipos", () => {
     const w = createWidget("folder-files", []);
     expect(w.span).toBe(1);
     expect(w.size).toBe("sm");
+  });
+
+  it("cronograma visual detecta meses, item e situação sem depender do nome da planilha", () => {
+    const scheduleColumns: Column[] = [
+      col("ponto", "category"),
+      col("status", "category"),
+      col("jan", "category"),
+      { ...col("jun", "category"), label: "2ª coleta — Junho — Análise" },
+      col("observacao", "text"),
+    ];
+    const rows: Row[] = [
+      { ponto: "Poço", status: "Planejado", jan: "M", jun: "T", observacao: null },
+      { ponto: "Refeitório", status: "Executado", jan: "C", jun: null, observacao: null },
+    ];
+
+    expect(schedulePeriodColumns(scheduleColumns).map((column) => column.key)).toEqual([
+      "jan",
+      "jun",
+    ]);
+    const widget = createWidget("schedule-heatmap", scheduleColumns, undefined, rows);
+    expect(widget).toMatchObject({
+      type: "schedule-heatmap",
+      groupKey: "ponto",
+      statusKey: "status",
+      periodKeys: ["jan", "jun"],
+      span: 3,
+      size: "md",
+    });
   });
 
   it("área usa data como agrupamento padrão, como a linha", () => {
