@@ -33,6 +33,7 @@ import {
   Bookmark as BookmarkIcon,
   BookmarkPlus,
   Calculator,
+  CalendarRange,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -137,6 +138,8 @@ import {
   duplicateWidget,
   groupableKinds,
   pickBestGroupColumn,
+  schedulePeriodColumns,
+  scheduleStatusColumn,
   spanClass,
   sizeClass,
 } from "@/lib/widgets";
@@ -3291,6 +3294,7 @@ function Dashboard(p: {
     ranking: nums.length > 0 && groupableCols.length > 0,
     rating: nums.length > 0,
     map: nums.length > 0 && groupableCols.length > 0,
+    "schedule-heatmap": schedulePeriodColumns(sheet.columns).length > 0,
     table: true,
   };
 
@@ -4086,16 +4090,37 @@ function Dashboard(p: {
                 Widget
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {(Object.keys(widgetTypeLabels) as WidgetType[]).map((type) => (
-                <DropdownMenuItem
-                  key={type}
-                  disabled={!canAdd[type]}
-                  onSelect={() => addWidget(type)}
-                >
-                  {widgetTypeLabels[type]}
-                </DropdownMenuItem>
-              ))}
+            <DropdownMenuContent align="start" className="w-60 p-2">
+              <p className="px-1 pb-2 text-[11px] font-medium text-muted-foreground">
+                Escolha pelo ícone
+              </p>
+              <TooltipProvider delayDuration={180}>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(Object.keys(widgetTypeLabels) as WidgetType[]).map((type) => (
+                    <Tooltip key={type}>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuItem
+                          disabled={!canAdd[type]}
+                          onSelect={() => addWidget(type)}
+                          aria-label={`${widgetTypeLabels[type]}. ${widgetTypeDescriptions[type]}`}
+                          className="flex size-11 cursor-pointer items-center justify-center rounded-xl border border-transparent p-0 text-muted-foreground hover:border-border hover:text-foreground focus:border-primary focus:text-primary"
+                        >
+                          <WidgetPickerIcon type={type} />
+                          <span className="sr-only">{widgetTypeLabels[type]}</span>
+                        </DropdownMenuItem>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-64">
+                        <p className="font-semibold">{widgetTypeLabels[type]}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {canAdd[type]
+                            ? widgetTypeDescriptions[type]
+                            : "Este widget precisa de colunas compatíveis nesta aba."}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                </div>
+              </TooltipProvider>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button
@@ -5593,6 +5618,68 @@ function WidgetHead({
 const widgetSizeLabels: Record<WidgetSize, string> = { sm: "Baixo", md: "Médio", lg: "Alto" };
 const widgetSpanLabels: Record<WidgetSpan, string> = { 1: "1/3", 2: "2/3", 3: "Cheio" };
 
+const widgetTypeDescriptions: Record<WidgetType, string> = {
+  metric: "Resume uma coluna numérica em um único indicador.",
+  "metric-trend": "Mostra um indicador e sua evolução ao longo do tempo.",
+  "folder-files": "Conta e acompanha as planilhas de uma pasta monitorada.",
+  bar: "Compara valores entre categorias usando barras.",
+  pie: "Mostra a participação de cada categoria no total.",
+  line: "Exibe a evolução dos valores por data.",
+  area: "Destaca volume e evolução ao longo de um período.",
+  ranking: "Ordena e exibe os maiores resultados.",
+  rating: "Transforma uma média numérica em uma nota visual.",
+  map: "Distribui os resultados por cidade, estado ou país.",
+  "schedule-heatmap": "Cruza itens e períodos, colorindo o andamento do cronograma.",
+  table: "Exibe os registros detalhados da base.",
+};
+
+function WidgetPickerIcon({ type }: { type: WidgetType }) {
+  const className = "size-5";
+  if (type === "metric") return <Calculator className={className} />;
+  if (type === "metric-trend" || type === "line") return <TrendingUp className={className} />;
+  if (type === "folder-files") return <Files className={className} />;
+  if (type === "bar") return <BarChart3 className={className} />;
+  if (type === "pie") return <PieIcon className={className} />;
+  if (type === "area") return <Activity className={className} />;
+  if (type === "ranking") return <ListOrdered className={className} />;
+  if (type === "rating") return <Star className={className} />;
+  if (type === "map") return <MapPin className={className} />;
+  if (type === "schedule-heatmap") return <CalendarRange className={className} />;
+  return <LayoutGrid className={className} />;
+}
+
+type ScheduleCellState = "empty" | "planned" | "done" | "warning" | "failed" | "neutral";
+
+function scheduleCellState(value: unknown, rowStatus: unknown): ScheduleCellState {
+  const text = String(value ?? "").trim();
+  const context = `${String(rowStatus ?? "")} ${text}`.toLocaleLowerCase("pt-BR");
+  if (!text) return "empty";
+  if (/\b(?:nc|n[aã]o conforme|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(context))
+    return "failed";
+  if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(context))
+    return "warning";
+  if (
+    /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(context) ||
+    /^c$/i.test(text)
+  )
+    return "done";
+  if (
+    /\b(?:planejad[oa]|programad[oa]|previst[oa])\b/i.test(context) ||
+    /^(?:d|s|m|t|a|sm)$/i.test(text)
+  )
+    return "planned";
+  return "neutral";
+}
+
+const scheduleCellClass: Record<ScheduleCellState, string> = {
+  empty: "bg-muted/35 text-muted-foreground",
+  planned: "bg-blue-500/18 text-blue-700 dark:text-blue-300",
+  done: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300",
+  warning: "bg-amber-500/22 text-amber-800 dark:text-amber-300",
+  failed: "bg-destructive/20 text-destructive",
+  neutral: "bg-primary/12 text-foreground",
+};
+
 /**
  * Tick customizado para o eixo X dos gráficos de barra, área e linha.
  * Aplica cor e tipografia consistentes com o tema (inclusive no modo
@@ -6610,6 +6697,213 @@ function WidgetCard({
             </div>
           )}
         </div>
+      </article>
+    );
+  }
+
+  if (w.type === "schedule-heatmap") {
+    const detectedPeriods = schedulePeriodColumns(columns);
+    const configuredPeriods = (w.periodKeys ?? [])
+      .map((key) => columns.find((column) => column.key === key))
+      .filter((column): column is Column => Boolean(column));
+    const periodCols = configuredPeriods.length ? configuredPeriods : detectedPeriods;
+    const periodKeys = new Set(periodCols.map((column) => column.key));
+    const labelOptions = columns.filter(
+      (column) => !periodKeys.has(column.key) && groupableKinds.includes(column.kind),
+    );
+    const groupCol =
+      columns.find((column) => column.key === w.groupKey && !periodKeys.has(column.key)) ??
+      labelOptions[0];
+    const statusCol =
+      columns.find((column) => column.key === w.statusKey && !periodKeys.has(column.key)) ??
+      scheduleStatusColumn(
+        columns,
+        periodCols.map((column) => column.key),
+      );
+    const scheduleRows = data.filter((row) =>
+      periodCols.some((column) => row[column.key] !== null && row[column.key] !== ""),
+    );
+    const visibleRows = scheduleRows.slice(0, 400);
+    const togglePeriod = (key: string) => {
+      const selected = new Set(periodCols.map((column) => column.key));
+      if (selected.has(key) && selected.size > 1) selected.delete(key);
+      else selected.add(key);
+      onConfigure({
+        periodKeys: detectedPeriods
+          .filter((column) => selected.has(column.key))
+          .map((column) => column.key),
+      });
+    };
+
+    return (
+      <article
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <WidgetHead
+          title={w.title || "Cronograma visual"}
+          icon={<CalendarRange className="size-3.5 shrink-0 text-muted-foreground" />}
+          {...dragProps}
+        />
+        <div
+          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+          data-export-controls
+        >
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Item
+            <select
+              aria-label="Coluna dos itens do cronograma"
+              className="oliam-select h-7 max-w-44"
+              value={groupCol?.key ?? ""}
+              onChange={(event) => onConfigure({ groupKey: event.target.value })}
+            >
+              {labelOptions.map((column) => (
+                <option key={column.key} value={column.key}>
+                  {column.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Situação
+            <select
+              aria-label="Coluna de situação do cronograma"
+              className="oliam-select h-7 max-w-44"
+              value={statusCol?.key ?? ""}
+              onChange={(event) => onConfigure({ statusKey: event.target.value || undefined })}
+            >
+              <option value="">Sem coluna de situação</option>
+              {labelOptions
+                .filter((column) => column.key !== groupCol?.key)
+                .map((column) => (
+                  <option key={column.key} value={column.key}>
+                    {column.label}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <div
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+            aria-label="Períodos visíveis"
+          >
+            {detectedPeriods.map((column) => {
+              const selected = periodKeys.has(column.key);
+              return (
+                <button
+                  key={column.key}
+                  type="button"
+                  className={cn(
+                    "shrink-0 rounded-full border px-2 py-1 text-[10px] font-medium transition-colors",
+                    selected
+                      ? "border-primary/40 bg-primary/12 text-primary"
+                      : "border-border bg-card text-muted-foreground",
+                  )}
+                  aria-pressed={selected}
+                  onClick={() => togglePeriod(column.key)}
+                >
+                  {column.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {sizeControls}
+        {!groupCol || !periodCols.length ? (
+          <p className="p-6 text-center text-xs text-muted-foreground">
+            Não encontrei colunas de mês ou data. Escolha uma planilha de cronograma com períodos no
+            cabeçalho.
+          </p>
+        ) : !visibleRows.length ? (
+          <p className="p-6 text-center text-xs text-muted-foreground">
+            Nenhuma marcação encontrada nos períodos selecionados.
+          </p>
+        ) : (
+          <>
+            <div className="max-h-[32rem] overflow-auto">
+              <table className="w-max min-w-full border-separate border-spacing-1 p-3 text-xs">
+                <thead>
+                  <tr>
+                    <th className="sticky left-0 top-0 z-20 min-w-52 rounded-lg bg-card px-3 py-2 text-left font-semibold shadow-[1px_1px_0_var(--border)]">
+                      {groupCol.label}
+                    </th>
+                    {periodCols.map((column) => (
+                      <th
+                        key={column.key}
+                        className="sticky top-0 z-10 min-w-20 rounded-lg bg-card px-2 py-2 text-center font-semibold shadow-[0_1px_0_var(--border)]"
+                      >
+                        {column.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row, rowIndex) => {
+                    const item = String(row[groupCol.key] ?? NOT_INFORMED);
+                    const status = statusCol ? row[statusCol.key] : null;
+                    return (
+                      <tr key={`${item}-${rowIndex}`}>
+                        <th className="sticky left-0 z-10 max-w-64 rounded-lg bg-card px-3 py-2 text-left font-medium shadow-[1px_0_0_var(--border)]">
+                          <button
+                            type="button"
+                            className="w-full text-left hover:text-primary"
+                            onClick={() => handleGroupClick(groupCol.key, item)}
+                            title={`Filtrar por ${item}`}
+                          >
+                            <span className="block truncate">{item}</span>
+                            {status !== null && status !== "" && (
+                              <span className="block truncate text-[10px] font-normal text-muted-foreground">
+                                {String(status)}
+                              </span>
+                            )}
+                          </button>
+                        </th>
+                        {periodCols.map((column) => {
+                          const value = row[column.key];
+                          const state = scheduleCellState(value, status);
+                          const label = value === null || value === "" ? "—" : String(value);
+                          return (
+                            <td
+                              key={column.key}
+                              className={cn(
+                                "max-w-32 rounded-lg px-2 py-2 text-center font-semibold transition-transform hover:scale-[1.04]",
+                                scheduleCellClass[state],
+                              )}
+                              title={`${item} · ${column.label}: ${label}${status ? ` · ${String(status)}` : ""}`}
+                            >
+                              <span className="block truncate">{label}</span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-2 text-[10px] text-muted-foreground">
+              {[
+                ["planned", "Planejado"],
+                ["done", "Executado / conforme"],
+                ["warning", "Pendente / atenção"],
+                ["failed", "Não conforme / atrasado"],
+                ["empty", "Sem registro"],
+              ].map(([state, label]) => (
+                <span key={state} className="inline-flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-sm",
+                      scheduleCellClass[state as ScheduleCellState],
+                    )}
+                  />
+                  {label}
+                </span>
+              ))}
+              {scheduleRows.length > visibleRows.length && (
+                <span>Mostrando 400 de {scheduleRows.length.toLocaleString("pt-BR")} linhas.</span>
+              )}
+            </div>
+          </>
+        )}
       </article>
     );
   }
