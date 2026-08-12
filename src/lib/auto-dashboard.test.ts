@@ -209,4 +209,32 @@ describe("generateAutoDashboardPlan", () => {
     ).toBe(true);
     expect(plan.recommendations.some((item) => item.kind === "kpi")).toBe(false);
   });
+
+  it("recomenda cronograma visual para uma tabela larga com meses", () => {
+    const scheduleColumns = [
+      column("Ponto", "category"),
+      column("Situação", "category"),
+      column("jan", "category"),
+      column("fev", "category"),
+      column("mar", "category"),
+      column("abr", "category"),
+    ];
+    const scheduleRows: Row[] = [
+      { Ponto: "Poço", Situação: "Planejado", jan: "M", fev: null, mar: "T", abr: null },
+      { Ponto: "Poço", Situação: "Executado", jan: "C", fev: null, mar: null, abr: null },
+    ];
+    const plan = generateAutoDashboardPlan({ columns: scheduleColumns, rows: scheduleRows });
+    const recommendation = plan.recommendations.find(
+      (item) => item.widgetType === "schedule-heatmap",
+    );
+    expect(recommendation?.groupKey).toBe("Ponto");
+    const widget = buildRecommendedWidgets(plan, scheduleColumns, scheduleRows).find(
+      (item) => item.type === "schedule-heatmap",
+    );
+    expect(widget).toMatchObject({
+      groupKey: "Ponto",
+      statusKey: "Situação",
+      periodKeys: ["jan", "fev", "mar", "abr"],
+    });
+  });
 });
