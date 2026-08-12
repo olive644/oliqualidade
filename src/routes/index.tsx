@@ -1602,30 +1602,17 @@ function Home(p: {
 
 function OliLoader({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={cn("oliam-loader-wrap", compact && "is-compact")} aria-hidden="true">
-      <div className="oli-loader">
-        <span className="oli-loader-shadow" />
-        <span className="oli-loader-data">
-          <i />
-          <i />
-          <i />
-        </span>
-        <span className="oli-loader-ear oli-loader-ear-left" />
-        <span className="oli-loader-ear oli-loader-ear-right" />
-        <span className="oli-loader-body">
-          <span className="oli-loader-face">
-            <i className="oli-loader-eye oli-loader-eye-left" />
-            <i className="oli-loader-eye oli-loader-eye-right" />
-            <b />
-          </span>
-          <span className="oli-loader-belly" />
-        </span>
-        <span className="oli-loader-arm oli-loader-arm-left" />
-        <span className="oli-loader-arm oli-loader-arm-right" />
-        <span className="oli-loader-laptop">
+    <div
+      className={cn("oliam-loader-wrap", compact && "is-compact")}
+      role="status"
+      aria-label="Carregando"
+    >
+      <div className="oli-typewriter" aria-hidden="true">
+        <span className="oli-typewriter-slide">
           <i />
         </span>
-        <span className="oli-loader-keyboard" />
+        <span className="oli-typewriter-paper" />
+        <span className="oli-typewriter-keyboard" />
       </div>
     </div>
   );
