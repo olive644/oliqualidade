@@ -191,6 +191,15 @@ import {
 } from "@/lib/storage";
 import { LARGE_FILE_BYTES, preferredSheetIndex, sheetToRows, type SheetOption } from "@/lib/import";
 import { mergeReimportedSheets } from "@/lib/dashboard";
+import {
+  applyImportSelection,
+  buildSheetHealth,
+  defaultSelection,
+  matchingImportProfile,
+  saveImportProfile,
+  workbookSignature,
+  type ImportSelection,
+} from "@/lib/import-workbench";
 import { readWorkbookFile } from "@/lib/workbook-reader-client";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { geocodeMissing } from "@/lib/geocode";
@@ -1234,6 +1243,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
                 reviewSheets.map((s, i) => (i === reviewSheetIndex ? { ...s, columns: cols } : s)),
               )
             }
+            setRows={(rows) =>
+              setReviewSheets(
+                reviewSheets.map((s, i) =>
+                  i === reviewSheetIndex ? { ...s, rows, columns: infer(rows) } : s,
+                ),
+              )
+            }
             name={name}
             back={() => {
               pendingFolderSelection.current = null;
@@ -1883,11 +1899,272 @@ function Empty(p: {
   );
 }
 
+function ImportWorkbench({
+  rows,
+  columns,
+  diagnostics,
+  selection,
+  setSelection,
+  apply,
+  undo,
+  canUndo,
+  saveProfile,
+}: {
+  rows: Row[];
+  columns: Column[];
+  diagnostics?: ImportDiagnostics;
+  selection: ImportSelection;
+  setSelection: (selection: ImportSelection) => void;
+  apply: () => void;
+  undo: () => void;
+  canUndo: boolean;
+  saveProfile: () => void;
+}) {
+  const [tab, setTab] = useState<"preview" | "health">("preview");
+  const previewRows = rows.slice(0, 30);
+  const previewColumns = columns.slice(0, 12);
+  const health = diagnostics ? buildSheetHealth(diagnostics) : null;
+  const columnDiagnostic = (key: string) => diagnostics?.columns.find((item) => item.key === key);
+  const ignored = new Set(selection.ignoredColumns);
+  const toggleColumn = (key: string) =>
+    setSelection({
+      ...selection,
+      ignoredColumns: ignored.has(key)
+        ? selection.ignoredColumns.filter((item) => item !== key)
+        : [...selection.ignoredColumns, key],
+    });
+
+  return (
+    <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2 font-medium text-sm">
+            <SheetIcon className="size-4 text-primary" /> Bancada de importação
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Veja o que foi interpretado e corrija a região antes de criar o relatório.
+          </p>
+        </div>
+        <div className="flex gap-1 rounded-lg bg-muted p-1">
+          <Button
+            size="sm"
+            variant={tab === "preview" ? "default" : "ghost"}
+            onClick={() => setTab("preview")}
+          >
+            Prévia visual
+          </Button>
+          <Button
+            size="sm"
+            variant={tab === "health" ? "default" : "ghost"}
+            onClick={() => setTab("health")}
+            disabled={!health}
+          >
+            Saúde da planilha
+          </Button>
+        </div>
+      </div>
+      {tab === "preview" ? (
+        <div className="p-4">
+          <div className="mb-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+            <span>
+              <i className="mr-1 inline-block size-2.5 rounded-sm bg-blue-500" />
+              cabeçalho
+            </span>
+            <span>
+              <i className="mr-1 inline-block size-2.5 rounded-sm bg-emerald-500" />
+              válido
+            </span>
+            <span>
+              <i className="mr-1 inline-block size-2.5 rounded-sm bg-amber-400" />
+              revisar
+            </span>
+            <span>
+              <i className="mr-1 inline-block size-2.5 rounded-sm bg-red-500" />
+              possível perda
+            </span>
+            <span>
+              <i className="mr-1 inline-block size-2.5 rounded-sm bg-slate-400" />
+              ignorado
+            </span>
+          </div>
+          <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_auto]">
+            <label className="text-xs text-muted-foreground">
+              Primeira linha
+              <input
+                className="oliam-input mt-1"
+                type="number"
+                min={1}
+                max={rows.length}
+                value={selection.startRow}
+                onChange={(event) =>
+                  setSelection({ ...selection, startRow: Number(event.target.value) || 1 })
+                }
+              />
+            </label>
+            <label className="text-xs text-muted-foreground">
+              Última linha
+              <input
+                className="oliam-input mt-1"
+                type="number"
+                min={selection.startRow}
+                max={rows.length}
+                value={selection.endRow}
+                onChange={(event) =>
+                  setSelection({ ...selection, endRow: Number(event.target.value) || rows.length })
+                }
+              />
+            </label>
+            <Button className="self-end" variant="outline" onClick={saveProfile}>
+              Salvar perfil
+            </Button>
+            <div className="flex self-end gap-2">
+              <Button variant="ghost" onClick={undo} disabled={!canUndo}>
+                <Undo2 className="size-4" /> Desfazer
+              </Button>
+              <Button onClick={apply}>
+                <Check className="size-4" /> Aplicar seleção
+              </Button>
+            </div>
+          </div>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Clique no nome de uma coluna para incluí-la ou ignorá-la.
+          </p>
+          <div className="max-h-[25rem] w-full overflow-auto rounded-xl border border-border">
+            <table className="min-w-max border-collapse text-xs">
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <th className="border border-blue-300 bg-blue-600 px-2 py-2 text-white">#</th>
+                  {previewColumns.map((column) => (
+                    <th
+                      key={column.key}
+                      className={cn(
+                        "border px-3 py-2 text-left text-white",
+                        ignored.has(column.key)
+                          ? "border-slate-400 bg-slate-500"
+                          : "border-blue-300 bg-blue-600",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => toggleColumn(column.key)}
+                      >
+                        {column.label}
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, rowIndex) => {
+                  const outside =
+                    rowIndex + 1 < selection.startRow || rowIndex + 1 > selection.endRow;
+                  return (
+                    <tr key={rowIndex}>
+                      <th
+                        className={cn(
+                          "border border-border px-2 py-1.5 font-mono",
+                          outside ? "bg-slate-200 text-slate-500 dark:bg-slate-800" : "bg-muted",
+                        )}
+                      >
+                        {rowIndex + 1}
+                      </th>
+                      {previewColumns.map((column) => {
+                        const value = row[column.key];
+                        const diagnostic = columnDiagnostic(column.key);
+                        const problem =
+                          value == null || value === "" || Boolean(diagnostic?.warnings.length);
+                        const danger = (diagnostic?.qualityScore ?? 100) < 50;
+                        return (
+                          <td
+                            key={column.key}
+                            className={cn(
+                              "max-w-56 truncate border border-border px-3 py-1.5",
+                              outside || ignored.has(column.key)
+                                ? "bg-slate-100 text-slate-400 dark:bg-slate-900"
+                                : danger
+                                  ? "bg-red-500/15"
+                                  : problem
+                                    ? "bg-amber-400/15"
+                                    : "bg-emerald-500/10",
+                            )}
+                            title={String(value ?? "")}
+                          >
+                            {fmt(value ?? null, column.kind) ?? "—"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {(rows.length > 30 || columns.length > 12) && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Prévia limitada a 30 linhas e 12 colunas para manter a navegação rápida. A seleção é
+              aplicada ao arquivo completo.
+            </p>
+          )}
+        </div>
+      ) : health ? (
+        <div className="p-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Compatibilidade", health.compatibility],
+              ["Confiança estrutural", health.structuralConfidence],
+              ["Qualidade", health.dataQuality],
+              ["Completude", health.completeness],
+            ].map(([label, value]) => (
+              <div
+                key={String(label)}
+                className="rounded-xl border border-border bg-background p-3"
+              >
+                <div className="text-xs text-muted-foreground">{label}</div>
+                <strong className="font-display text-2xl">{value}%</strong>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-border p-3 text-sm">
+              <strong>{health.duplicateRows}</strong>
+              <span className="ml-2 text-muted-foreground">duplicações</span>
+            </div>
+            <div className="rounded-xl border border-border p-3 text-sm">
+              <strong>{health.brokenFormulas}</strong>
+              <span className="ml-2 text-muted-foreground">fórmulas incompatíveis</span>
+            </div>
+            <div className="rounded-xl border border-border p-3 text-sm">
+              <strong>{health.anomalies}</strong>
+              <span className="ml-2 text-muted-foreground">anomalias</span>
+            </div>
+          </div>
+          <div className="mt-4 rounded-xl border border-border bg-background p-4">
+            <div className="text-sm font-medium">Recomendações para o arquivo original</div>
+            {health.recommendations.length ? (
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {health.recommendations.map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-emerald-600">
+                Nenhuma correção estrutural urgente foi encontrada.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function Review(p: {
   sheets: { name: string; rows: Row[]; columns: Column[]; diagnostics?: ImportDiagnostics }[];
   activeIndex: number;
   setActiveIndex: (i: number) => void;
   setColumns: (c: Column[]) => void;
+  setRows: (rows: Row[]) => void;
   name: string;
   back: () => void;
   confirm: () => void;
@@ -1897,6 +2174,13 @@ function Review(p: {
   const active = p.sheets[p.activeIndex] ?? p.sheets[0];
   const rows = active?.rows ?? [];
   const columns = active?.columns ?? [];
+  const [selection, setSelection] = useState<ImportSelection>(() => defaultSelection(rows));
+  const [undoRows, setUndoRows] = useState<Row[] | null>(null);
+  useEffect(() => {
+    const profile = matchingImportProfile(rows);
+    setSelection(profile?.selection ?? defaultSelection(rows));
+    setUndoRows(null);
+  }, [p.activeIndex, rows]);
   const needsConfirmation =
     Boolean(active?.diagnostics) &&
     ((active?.diagnostics?.confidence ?? 100) < 70 ||
@@ -2178,6 +2462,48 @@ function Review(p: {
             </div>
           </div>
         )}
+        <ImportWorkbench
+          rows={rows}
+          columns={columns}
+          diagnostics={active?.diagnostics}
+          selection={selection}
+          setSelection={setSelection}
+          canUndo={Boolean(undoRows)}
+          apply={() => {
+            const next = applyImportSelection(rows, selection);
+            if (!next.length || !Object.keys(next[0] ?? {}).length) {
+              toast.error("A seleção precisa manter ao menos uma linha e uma coluna.");
+              return;
+            }
+            setUndoRows(rows);
+            p.setRows(next);
+            setSelection(defaultSelection(next));
+            toast.success("Seleção aplicada. Você ainda pode desfazer esta reparação.");
+          }}
+          undo={() => {
+            if (!undoRows) return;
+            p.setRows(undoRows);
+            setSelection(defaultSelection(undoRows));
+            setUndoRows(null);
+          }}
+          saveProfile={() => {
+            const profileName = window.prompt(
+              "Nome do perfil de importação",
+              p.name.replace(/\.[^.]+$/, ""),
+            );
+            if (!profileName) return;
+            const now = Date.now();
+            saveImportProfile({
+              id: crypto.randomUUID(),
+              name: profileName,
+              signature: workbookSignature(rows),
+              selection,
+              createdAt: now,
+              updatedAt: now,
+            });
+            toast.success("Perfil salvo para planilhas com esta mesma estrutura.");
+          }}
+        />
         {p.sheets.length > 1 && (
           <div className="mb-4 flex flex-wrap gap-1.5" role="tablist" aria-label="Abas da planilha">
             {p.sheets.map((s, i) => (
