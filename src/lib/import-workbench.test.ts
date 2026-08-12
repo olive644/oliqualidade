@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  adaptImportProfile,
   applyImportSelection,
   compareVersions,
+  filePatternForProfile,
+  matchImportProfile,
   rowsFromSourceGrid,
   workbookSignature,
 } from "./import-workbench";
@@ -78,6 +81,93 @@ describe("import workbench", () => {
     expect(diff.addedColumns).toEqual(["total"]);
     expect(diff.removedColumns).toEqual(["valor"]);
     expect(diff.typeChanges).toEqual([{ column: "id", before: "number", after: "string" }]);
+  });
+
+  it("reaplica perfil após reordenar colunas sem cortar novas linhas", () => {
+    const savedRows = [
+      { Data: "01/08/2026", Produto: "A", Valor: 10 },
+      { Data: "02/08/2026", Produto: "B", Valor: 20 },
+    ];
+    const profile = adaptImportProfile(
+      {
+        id: "p1",
+        name: "Relatório semanal",
+        signature: workbookSignature(savedRows),
+        selection: { startRow: 1, endRow: 2, ignoredColumns: ["Produto"] },
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      savedRows,
+      "relatorio-vendas-2026-08-02.xlsx",
+    );
+    const nextRows = Array.from({ length: 5 }, (_, index) => ({
+      Valor: index * 10,
+      Data: `0${index + 1}/08/2026`,
+      Produto: `P${index}`,
+    }));
+
+    const match = matchImportProfile([profile], nextRows, "relatorio-vendas-2026-08-09.xlsx");
+
+    expect(match?.exact).toBe(true);
+    expect(match?.selection.endRow).toBe(5);
+    expect(match?.selection.ignoredColumns).toEqual(["Produto"]);
+  });
+
+  it("reconhece coluna renomeada e adapta a regra que a ignorava", () => {
+    const savedRows = [
+      { Data: "01/08/2026", Produto: "A", Valor: 10, Unidade: "kg" },
+      { Data: "02/08/2026", Produto: "B", Valor: 20, Unidade: "kg" },
+    ];
+    const profile = adaptImportProfile(
+      {
+        id: "p2",
+        name: "Recebimento",
+        signature: workbookSignature(savedRows),
+        selection: { startRow: 1, endRow: 2, ignoredColumns: ["Valor"] },
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      savedRows,
+      "recebimento-2026-08-02.xlsx",
+    );
+    const nextRows = [
+      { Produto: "A", Data: "08/08/2026", "Valor total": 12, Unidade: "kg" },
+      { Produto: "B", Data: "09/08/2026", "Valor total": 25, Unidade: "kg" },
+    ];
+
+    const match = matchImportProfile([profile], nextRows, "recebimento-2026-08-09.xlsx");
+
+    expect(match?.exact).toBe(false);
+    expect(match?.selection.ignoredColumns).toEqual(["Valor total"]);
+    expect(match?.changes.renamedColumns).toEqual([{ before: "Valor", after: "Valor total" }]);
+  });
+
+  it("não reaplica perfil em arquivo sem sobreposição estrutural suficiente", () => {
+    const savedRows = [{ Data: "01/08/2026", Produto: "A", Valor: 10 }];
+    const profile = adaptImportProfile(
+      {
+        id: "p3",
+        name: "Vendas",
+        signature: workbookSignature(savedRows),
+        selection: { startRow: 1, endRow: 1, ignoredColumns: [] },
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      savedRows,
+      "vendas-01.xlsx",
+    );
+
+    expect(
+      matchImportProfile(
+        [profile],
+        [{ Funcionário: "Ana", Departamento: "Qualidade", Turno: "A" }],
+        "vendas-02.xlsx",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("normaliza versões e datas no padrão do nome do arquivo", () => {
+    expect(filePatternForProfile("Relatório Vendas 2026-08-12 v3.xlsx")).toBe("relatorio vendas v");
   });
 
   it("não transforma uma troca de cabeçalho em todas as linhas adicionadas e removidas", () => {

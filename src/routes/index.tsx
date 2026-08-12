@@ -206,12 +206,12 @@ import {
   safeRowsForSpreadsheet,
 } from "@/lib/encrypted-backup";
 import {
+  adaptImportProfile,
   applyImportSelection,
   buildSheetHealth,
   defaultSelection,
   matchingImportProfile,
   saveImportProfile,
-  workbookSignature,
   compareVersions,
   type ImportSelection,
 } from "@/lib/import-workbench";
@@ -2443,11 +2443,22 @@ function Review(p: {
   const columns = active?.columns ?? [];
   const [selection, setSelection] = useState<ImportSelection>(() => defaultSelection(rows));
   const [undoRows, setUndoRows] = useState<Row[] | null>(null);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
   useEffect(() => {
-    const profile = matchingImportProfile(rows);
-    setSelection(profile?.selection ?? defaultSelection(rows));
+    const match = matchingImportProfile(rows, p.name, active?.sourceGrid);
+    setSelection(match?.selection ?? defaultSelection(rows));
+    if (!match) setProfileNotice(null);
+    else if (match.exact) setProfileNotice(`Perfil "${match.profile.name}" reaplicado.`);
+    else {
+      const renamed = match.changes.renamedColumns
+        .map((column) => `"${column.before}" → "${column.after}"`)
+        .join(", ");
+      setProfileNotice(
+        `O modelo do arquivo mudou. O perfil "${match.profile.name}" foi adaptado com ${match.confidence}% de confiança${renamed ? `: ${renamed}` : ""}. Revise antes de confirmar.`,
+      );
+    }
     setUndoRows(null);
-  }, [p.activeIndex, rows]);
+  }, [p.activeIndex, p.name, rows, active?.sourceGrid]);
   const needsConfirmation =
     Boolean(active?.diagnostics) &&
     ((active?.diagnostics?.confidence ?? 100) < 70 ||
@@ -2470,6 +2481,12 @@ function Review(p: {
           <p className="mb-6 flex items-center gap-2 rounded-xl border border-primary/30 bg-tint px-3 py-2.5 text-xs text-foreground">
             <AlertTriangle className="size-3.5 shrink-0 text-primary" />
             {p.importWarning}
+          </p>
+        )}
+        {profileNotice && (
+          <p className="mb-6 flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2.5 text-xs text-foreground">
+            <Info className="size-3.5 shrink-0 text-emerald-600" />
+            {profileNotice}
           </p>
         )}
         <div className="mb-8 flex flex-wrap justify-between gap-4">
@@ -2792,14 +2809,21 @@ function Review(p: {
             );
             if (!profileName) return;
             const now = Date.now();
-            saveImportProfile({
-              id: crypto.randomUUID(),
-              name: profileName,
-              signature: workbookSignature(rows),
-              selection,
-              createdAt: now,
-              updatedAt: now,
-            });
+            saveImportProfile(
+              adaptImportProfile(
+                {
+                  id: crypto.randomUUID(),
+                  name: profileName,
+                  signature: "",
+                  selection,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+                rows,
+                p.name,
+                active?.sourceGrid,
+              ),
+            );
             toast.success("Perfil salvo para planilhas com esta mesma estrutura.");
           }}
         />
