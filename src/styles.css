@@ -3827,3 +3827,255 @@
     transition: none;
   }
 }
+
+
+/* Correção responsiva: cabeçalhos mantêm todas as ações e rolam horizontalmente. */
+@media (max-width: 1180px) {
+  .oliam-topbar,
+  .oliam-dashboard-topbar {
+    justify-content: flex-start;
+    gap: 18px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+  .oliam-topbar {
+    padding-inline: 16px;
+  }
+  .oliam-topbar > *,
+  .oliam-dashboard-topbar > * {
+    flex: 0 0 auto;
+  }
+  .oliam-topbar > :last-child,
+  .oliam-dashboard-topbar > :last-child {
+    margin-left: auto;
+  }
+  .oliam-dashboard-topbar > :last-child {
+    min-width: max-content;
+  }
+}
+@media (max-width: 700px) {
+  .oliam-topbar,
+  .oliam-dashboard-topbar {
+    gap: 12px;
+    padding-inline: 12px;
+  }
+  .oliam-topbar {
+    min-height: 64px;
+    height: 64px;
+  }
+  .oliam-topbar > :last-child,
+  .oliam-dashboard-topbar > :last-child {
+    margin-left: 0;
+  }
+  .oliam-topbar strong,
+  .oliam-sidebar strong {
+    white-space: nowrap;
+  }
+  .oliam-toolbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+  .oliam-toolbar > * {
+    flex: 0 0 auto;
+  }
+  .oliam-toolbar > :first-child {
+    width: min(260px, 74vw);
+  }
+}
+
+/* Typewriter único para importação, chat, mapas, monitoramento e exportação. */
+.oliam-loader-wrap {
+  display: grid;
+  width: 148px;
+  height: 116px;
+  place-items: center;
+}
+.oliam-loader-wrap.is-compact {
+  width: 30px;
+  height: 26px;
+  overflow: visible;
+}
+.oli-typewriter {
+  --typewriter-blue: var(--primary);
+  --typewriter-blue-dark: color-mix(in oklab, var(--primary) 54%, var(--foreground));
+  --typewriter-key: var(--primary-foreground);
+  --typewriter-paper: color-mix(in oklab, var(--primary) 7%, var(--card));
+  --typewriter-text: color-mix(in oklab, var(--primary) 30%, var(--border));
+  --typewriter-tool: var(--secondary-accent);
+  --typewriter-duration: 3s;
+  position: relative;
+  width: 120px;
+  height: 76px;
+  animation: oli-typewriter-bounce var(--typewriter-duration) linear infinite;
+}
+.oliam-loader-wrap.is-compact .oli-typewriter {
+  transform: scale(0.24);
+  transform-origin: center;
+  animation-name: oli-typewriter-bounce-compact;
+}
+.oli-typewriter-slide {
+  position: relative;
+  display: block;
+  width: 92px;
+  height: 20px;
+  margin-left: 14px;
+  border-radius: 3px;
+  background: linear-gradient(var(--typewriter-blue), var(--typewriter-blue-dark));
+  transform: translateX(14px);
+  animation: oli-typewriter-slide var(--typewriter-duration) ease infinite;
+}
+.oli-typewriter-slide::before,
+.oli-typewriter-slide::after,
+.oli-typewriter-slide i::before {
+  position: absolute;
+  background: var(--typewriter-tool);
+  content: "";
+}
+.oli-typewriter-slide::before {
+  top: 6px;
+  left: 100%;
+  width: 2px;
+  height: 8px;
+}
+.oli-typewriter-slide::after {
+  top: 3px;
+  left: 94px;
+  width: 6px;
+  height: 14px;
+  border-radius: 3px;
+}
+.oli-typewriter-slide i {
+  position: absolute;
+  top: 4px;
+  right: 100%;
+  display: block;
+  width: 6px;
+  height: 4px;
+  background: var(--typewriter-tool);
+}
+.oli-typewriter-slide i::before {
+  top: -2px;
+  right: 100%;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+}
+.oli-typewriter-paper {
+  position: absolute;
+  top: -26px;
+  left: 24px;
+  width: 40px;
+  height: 46px;
+  border: 1px solid color-mix(in oklab, var(--primary) 12%, var(--border));
+  border-radius: 5px;
+  background: var(--typewriter-paper);
+  transform: translateY(46px);
+  animation: oli-typewriter-paper var(--typewriter-duration) linear infinite;
+}
+.oli-typewriter-paper::before {
+  position: absolute;
+  top: 7px;
+  right: 6px;
+  left: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--typewriter-text);
+  box-shadow:
+    0 12px 0 var(--typewriter-text),
+    0 24px 0 var(--typewriter-text),
+    0 36px 0 var(--typewriter-text);
+  content: "";
+  transform: scaleY(0.8);
+}
+.oli-typewriter-keyboard {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 120px;
+  height: 56px;
+  margin-top: -10px;
+}
+.oli-typewriter-keyboard::before,
+.oli-typewriter-keyboard::after {
+  position: absolute;
+  content: "";
+}
+.oli-typewriter-keyboard::before {
+  inset: 0;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--typewriter-blue), var(--typewriter-blue-dark));
+  transform: perspective(10px) rotateX(2deg);
+  transform-origin: 50% 100%;
+}
+.oli-typewriter-keyboard::after {
+  top: 25px;
+  left: 2px;
+  width: 11px;
+  height: 4px;
+  border-radius: 2px;
+  box-shadow:
+    15px 0 0 var(--typewriter-key),
+    30px 0 0 var(--typewriter-key),
+    45px 0 0 var(--typewriter-key),
+    60px 0 0 var(--typewriter-key),
+    75px 0 0 var(--typewriter-key),
+    90px 0 0 var(--typewriter-key),
+    22px 10px 0 var(--typewriter-key),
+    37px 10px 0 var(--typewriter-key),
+    52px 10px 0 var(--typewriter-key),
+    60px 10px 0 var(--typewriter-key),
+    68px 10px 0 var(--typewriter-key),
+    83px 10px 0 var(--typewriter-key);
+  animation: oli-typewriter-keyboard var(--typewriter-duration) linear infinite;
+}
+@keyframes oli-typewriter-bounce {
+  85%, 92%, 100% { transform: translateY(0); }
+  89% { transform: translateY(-4px); }
+  95% { transform: translateY(2px); }
+}
+@keyframes oli-typewriter-bounce-compact {
+  85%, 92%, 100% { transform: scale(0.24) translateY(0); }
+  89% { transform: scale(0.24) translateY(-4px); }
+  95% { transform: scale(0.24) translateY(2px); }
+}
+@keyframes oli-typewriter-slide {
+  5%, 100% { transform: translateX(14px); }
+  15%, 30% { transform: translateX(6px); }
+  40%, 55% { transform: translateX(0); }
+  65%, 70% { transform: translateX(-4px); }
+  80%, 89% { transform: translateX(-12px); }
+}
+@keyframes oli-typewriter-paper {
+  5%, 92%, 100% { transform: translateY(46px); }
+  20%, 30% { transform: translateY(34px); }
+  40%, 55% { transform: translateY(22px); }
+  65%, 70% { transform: translateY(10px); }
+  80%, 85% { transform: translateY(0); }
+}
+@keyframes oli-typewriter-keyboard {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  9%, 27%, 45%, 63%, 81% {
+    transform: translateY(1px);
+  }
+  18%, 36%, 54%, 72% {
+    transform: translateY(-1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oli-typewriter,
+  .oli-typewriter-slide,
+  .oli-typewriter-paper,
+  .oli-typewriter-keyboard::after {
+    animation: none;
+  }
+}
