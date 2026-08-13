@@ -121,6 +121,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import type {
   Column,
+  ChartDataMode,
   ConditionalFormatRule,
   Dashboard,
   FilterRule,
@@ -175,6 +176,7 @@ import {
   aggregationLabels,
   applyMissingRules,
   detectQualitySignals,
+  chartSeries,
   groupAndAggregate,
   leftJoin,
   matchesRange,
@@ -6299,25 +6301,6 @@ function FieldDropSlot({
   );
 }
 
-function GroupAggHint() {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-          aria-label="O que são agrupamento e agregação"
-        >
-          <Info className="size-3.5" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-56">
-        Agrupamento organiza os dados por uma coluna. Agregação combina os valores de cada grupo:
-        soma, média, contagem, mínimo ou máximo.
-      </TooltipContent>
-    </Tooltip>
-  );
-}
 function WidgetHead({
   title,
   icon,
@@ -6550,17 +6533,22 @@ function BarTooltip({
   label,
   series,
   kind,
+  mode,
 }: {
   active: boolean | undefined;
-  payload: { value?: number }[] | undefined;
+  payload: { value?: number; payload?: { sourceRow?: number } }[] | undefined;
   label: string | undefined;
-  series: { name: string; total: number }[];
+  series: { name: string; total: number; sourceRow?: number }[];
   kind: Kind;
+  mode: ChartDataMode;
 }) {
   if (!active || !payload?.length) return null;
   const value = payload[0]?.value;
   if (typeof value !== "number") return null;
-  const idx = series.findIndex((s) => s.name === label);
+  const sourceRow = payload[0]?.payload?.sourceRow;
+  const idx = sourceRow
+    ? series.findIndex((item) => item.sourceRow === sourceRow)
+    : series.findIndex((item) => item.name === label);
   const prevTotal = idx > 0 ? series[idx - 1]?.total : undefined;
   const pct =
     idx > 0 && typeof prevTotal === "number" && prevTotal !== 0
@@ -6583,6 +6571,11 @@ function BarTooltip({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ color: "var(--popover-foreground)" }}>{fmt(value, kind) ?? value}</span>
+        {mode === "raw" && payload[0]?.payload?.sourceRow && (
+          <span style={{ color: "var(--muted-foreground)", fontSize: 10 }}>
+            linha {payload[0].payload.sourceRow} do Excel
+          </span>
+        )}
         {pct !== null && (
           <span
             style={{
@@ -6645,6 +6638,79 @@ function compactAxisValue(value: number, kind: Kind) {
     options.maximumFractionDigits = 0;
   }
   return new Intl.NumberFormat("pt-BR", options).format(value);
+}
+
+function exceptionGuidance(exception: SpreadsheetException): {
+  impact: string;
+  action: string;
+} {
+  const guidance: Record<SpreadsheetException["kind"], { impact: string; action: string }> = {
+    "duplicate-row": {
+      impact: "A mesma informação pode aparecer mais de uma vez e inflar totais ou contagens.",
+      action: "Compare as linhas indicadas e mantenha apenas os registros realmente distintos.",
+    },
+    "mixed-type": {
+      impact: "A coluna mistura formatos e pode deixar valores fora de cálculos ou filtros.",
+      action: "Abra a origem e padronize o valor conforme o restante da coluna.",
+    },
+    outlier: {
+      impact:
+        "O valor está muito distante do padrão e pode distorcer médias, escalas e tendências.",
+      action:
+        "Confirme na planilha se o valor é real; corrija apenas quando houver erro de digitação.",
+    },
+    formula: {
+      impact:
+        "A fórmula não pôde ser confirmada e o resultado pode estar desatualizado ou ausente.",
+      action:
+        "Recalcule a pasta no Excel e importe novamente, ou confira o resultado na célula de origem.",
+    },
+    "reader-divergence": {
+      impact: "Dois métodos de leitura encontraram resultados diferentes para esta célula.",
+      action: "Abra a origem, confirme o valor visível no Excel e escolha a correção adequada.",
+    },
+    "low-confidence": {
+      impact:
+        "O formato não foi reconhecido com segurança e pode ter sido interpretado incorretamente.",
+      action: "Confira o valor e o tipo da coluna antes de usar este dado em decisões.",
+    },
+    "incompatible-unit": {
+      impact: "Valores com unidades diferentes não podem ser comparados ou somados diretamente.",
+      action: "Converta os valores para a mesma unidade ou mantenha-os em métricas separadas.",
+    },
+  };
+  return guidance[exception.kind];
+}
+
+function ChartReadingGuide({
+  group,
+  metric,
+  mode,
+  operation,
+}: {
+  group: string;
+  metric: string;
+  mode: ChartDataMode;
+  operation: string;
+}) {
+  return (
+    <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-border/70 bg-card px-4 py-2 text-[11px]">
+      <span>
+        <strong className="font-semibold text-foreground">Eixo X:</strong>{" "}
+        <span className="text-muted-foreground">{group}</span>
+      </span>
+      <span>
+        <strong className="font-semibold text-foreground">Eixo Y:</strong>{" "}
+        <span className="text-muted-foreground">{metric}</span>
+      </span>
+      <span>
+        <strong className="font-semibold text-foreground">Leitura:</strong>{" "}
+        <span className="text-muted-foreground">
+          {mode === "raw" ? "cada linha do Excel" : operation}
+        </span>
+      </span>
+    </div>
+  );
 }
 
 /**
@@ -7075,6 +7141,7 @@ function WidgetCard({
   // linha do tempo ao mesmo tempo); clicar de novo no mesmo valor remove o
   // filtro. Usado por barra, pizza, linha, área, ranking e mapa.
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
+  const [selectedPieIndex, setSelectedPieIndex] = useState<number | null>(null);
   const [exceptionView, setExceptionView] = useState<"pending" | "handled" | "audit">("pending");
   const [editingException, setEditingException] = useState<string | null>(null);
   const [correctionValue, setCorrectionValue] = useState("");
@@ -7507,6 +7574,14 @@ function WidgetCard({
           </div>
         ) : (
           <>
+            <div className="border-b border-border bg-blue-500/8 px-4 py-3 text-xs leading-relaxed">
+              <strong>Como usar:</strong>{" "}
+              <span className="text-muted-foreground">
+                cada item explica o que foi detectado, o efeito possível nos resultados e a ação
+                recomendada. “Resolver” confirma que você revisou; “Ignorar” mantém o dado sem
+                alteração; “Corrigir” registra um novo valor e preserva o original no histórico.
+              </span>
+            </div>
             <div className="grid grid-cols-3 gap-2 border-b border-border bg-muted/10 p-3">
               {[
                 ["Críticas", totals.critical, "text-destructive"],
@@ -7530,13 +7605,14 @@ function WidgetCard({
               </div>
             ) : (
               <div className="max-h-[28rem] overflow-auto">
-                <table className="w-full min-w-[42rem] text-left text-xs">
+                <table className="w-full min-w-[68rem] text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-card">
                     <tr className="border-b border-border">
                       <th className="px-4 py-2">Prioridade</th>
-                      <th className="px-4 py-2">Exceção</th>
+                      <th className="px-4 py-2">O que aconteceu</th>
                       <th className="px-4 py-2">Origem</th>
-                      <th className="px-4 py-2">Detalhe</th>
+                      <th className="px-4 py-2">Por que importa</th>
+                      <th className="px-4 py-2">O que fazer</th>
                       <th className="px-4 py-2 text-right">Ações</th>
                     </tr>
                   </thead>
@@ -7562,14 +7638,17 @@ function WidgetCard({
                                   : "Info"}
                             </span>
                           </td>
-                          <td className="px-4 py-2 font-medium">
+                          <td className="max-w-64 px-4 py-2">
                             <button
                               type="button"
-                              className="text-left hover:text-primary hover:underline"
+                              className="text-left font-medium hover:text-primary hover:underline"
                               onClick={() => onTraceException(item)}
                             >
                               {item.title}
                             </button>
+                            <p className="mt-1 leading-relaxed text-muted-foreground">
+                              {item.detail}
+                            </p>
                           </td>
                           <td className="px-4 py-2 font-mono text-[11px] text-muted-foreground">
                             <button
@@ -7583,7 +7662,12 @@ function WidgetCard({
                                   : (item.columnKey ?? "—"))}
                             </button>
                           </td>
-                          <td className="px-4 py-2 text-muted-foreground">{item.detail}</td>
+                          <td className="max-w-64 px-4 py-2 leading-relaxed text-muted-foreground">
+                            {exceptionGuidance(item).impact}
+                          </td>
+                          <td className="max-w-64 px-4 py-2 leading-relaxed text-muted-foreground">
+                            {exceptionGuidance(item).action}
+                          </td>
                           <td className="px-4 py-2">
                             <div className="flex justify-end gap-1">
                               {exceptionView === "handled" ? (
@@ -7642,7 +7726,7 @@ function WidgetCard({
                         </tr>
                         {editingException === item.id && exceptionView === "pending" && (
                           <tr className="border-b border-primary/30 bg-tint/40">
-                            <td colSpan={5} className="px-4 py-3">
+                            <td colSpan={6} className="px-4 py-3">
                               <div className="grid gap-3 md:grid-cols-[minmax(10rem,0.7fr)_minmax(16rem,1.3fr)_auto] md:items-end">
                                 <label className="grid gap-1 text-[11px] font-medium">
                                   Novo valor
@@ -7882,7 +7966,10 @@ function WidgetCard({
         style={{ animationDelay: `${animationDelay}ms` }}
       >
         <WidgetHead
-          title={w.title || (w.type === "pivot-table" ? "Tabela dinâmica" : "Matriz de cruzamento")}
+          title={
+            w.title ||
+            `${w.type === "pivot-table" ? "Tabela dinâmica" : "Matriz de cruzamento"} · ${metric ? `${aggregationLabels[pivotOp]} de ${metric.label}` : "contagem de registros"}`
+          }
           icon={<Columns3 className="size-3.5 text-primary" />}
           {...dragProps}
         />
@@ -7956,6 +8043,23 @@ function WidgetCard({
           </label>
         </div>
         {sizeControls}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border bg-card px-4 py-3 text-xs">
+          <span>
+            <strong>Métrica:</strong> {metric ? metric.label : "Quantidade de registros"}
+          </span>
+          <span>
+            <strong>Cálculo:</strong> {aggregationLabels[pivotOp]}
+          </span>
+          <span>
+            <strong>Total geral:</strong>{" "}
+            <span className="font-mono font-semibold tabular-nums">
+              {fmt(matrix.grandTotal, metricKind)}
+            </span>
+          </span>
+          <span className="text-muted-foreground">
+            Cada célula cruza {rowDimension.label} com {columnDimension.label}.
+          </span>
+        </div>
         <div className="max-h-[32rem] overflow-auto p-3">
           <table className="w-max min-w-full border-separate border-spacing-1 text-xs">
             <thead>
@@ -8384,7 +8488,6 @@ function WidgetCard({
           (statusCol && row[statusCol.key] !== null && row[statusCol.key] !== "") ||
           allDetailCols.some((column) => row[column.key] !== null && row[column.key] !== "")),
     );
-    const visibleRows = scheduleRows.slice(0, 400);
     const scheduleStats = scheduleRows.reduce<{
       reported: number;
       within: number;
@@ -8412,6 +8515,31 @@ function WidgetCard({
       },
       { reported: 0, within: 0, outside: 0, rowsWithoutResult: 0 },
     );
+    const scheduleMode: ChartDataMode = w.dataMode ?? "raw";
+    const scheduleOp: AggregationOp = (
+      ["sum", "avg", "count", "min", "max"] as AggregationOp[]
+    ).includes(w.op ?? "sum")
+      ? (w.op ?? "sum")
+      : "sum";
+    const aggregateScheduleRow: Row = groupCol
+      ? {
+          [groupCol.key]: `${aggregationLabels[scheduleOp]} de todos os itens`,
+          ...Object.fromEntries(
+            periodCols.map((column) => {
+              const values = scheduleRows.flatMap((row) => {
+                const value = row[column.key];
+                if (scheduleOp === "count") return isBlankScheduleValue(value) ? [] : [1];
+                const numeric = Number(value);
+                return Number.isFinite(numeric) ? [numeric] : [];
+              });
+              return [column.key, values.length ? aggregate(values, scheduleOp) : null];
+            }),
+          ),
+        }
+      : {};
+    const visibleRows = (
+      scheduleMode === "aggregate" ? [aggregateScheduleRow] : scheduleRows
+    ).slice(0, 400);
     const togglePeriod = (key: string) => {
       const selected = new Set(periodCols.map((column) => column.key));
       if (selected.has(key) && selected.size > 1) selected.delete(key);
@@ -8498,6 +8626,35 @@ function WidgetCard({
                 ))}
             </select>
           </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Mostrar
+            <select
+              aria-label="Como mostrar os valores do cronograma"
+              className="oliam-select h-7"
+              value={scheduleMode}
+              onChange={(event) => onConfigure({ dataMode: event.target.value as ChartDataMode })}
+            >
+              <option value="raw">Células como no Excel</option>
+              <option value="aggregate">Calcular todos os itens</option>
+            </select>
+          </label>
+          {scheduleMode === "aggregate" && (
+            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              Cálculo
+              <select
+                aria-label="Cálculo do cronograma"
+                className="oliam-select h-7"
+                value={scheduleOp}
+                onChange={(event) => onConfigure({ op: event.target.value as AggregationOp })}
+              >
+                {(["sum", "avg", "count", "min", "max"] as AggregationOp[]).map((operation) => (
+                  <option key={operation} value={operation}>
+                    {aggregationLabels[operation]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div
             className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
             aria-label="Períodos visíveis"
@@ -8556,6 +8713,22 @@ function WidgetCard({
           )}
         </div>
         {sizeControls}
+        <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-border bg-card px-4 py-2 text-[11px]">
+          <span>
+            <strong>Métrica:</strong> resultados dos períodos selecionados
+          </span>
+          <span>
+            <strong>Leitura:</strong>{" "}
+            {scheduleMode === "raw"
+              ? "cada célula original do Excel, sem soma"
+              : `${aggregationLabels[scheduleOp]} de todos os itens em cada período`}
+          </span>
+          {w.blockValue && (
+            <span>
+              <strong>Bloco:</strong> {w.blockValue}
+            </span>
+          )}
+        </div>
         {!groupCol || !periodCols.length ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
             Não encontrei colunas de mês ou data. Escolha uma planilha de cronograma com períodos no
@@ -8778,18 +8951,21 @@ function WidgetCard({
     const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
       ? (w.op ?? "sum")
       : (relevantOps[0] ?? "sum");
+    const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
     const title =
-      op === "count"
-        ? w.type === "pie"
-          ? `Distribuição de registros por ${groupCol?.label ?? ""}`
-          : `Contagem de registros por ${groupCol?.label ?? ""}`
-        : w.type === "line"
-          ? `Evolução de ${valueCol?.label ?? ""}`
-          : w.type === "area"
-            ? `Evolução de ${valueCol?.label ?? ""} (área)`
-            : w.type === "pie"
-              ? "Distribuição"
-              : `${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`;
+      dataMode === "raw" && op !== "count"
+        ? `${valueCol?.label ?? "Valores"} por linha de ${groupCol?.label ?? "categoria"}`
+        : op === "count"
+          ? w.type === "pie"
+            ? `Distribuição de registros por ${groupCol?.label ?? ""}`
+            : `Contagem de registros por ${groupCol?.label ?? ""}`
+          : w.type === "line"
+            ? `Evolução de ${valueCol?.label ?? ""}`
+            : w.type === "area"
+              ? `Evolução de ${valueCol?.label ?? ""} (área)`
+              : w.type === "pie"
+                ? "Distribuição"
+                : `${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`;
     const icon =
       w.type === "line" ? (
         <TrendingUp className="size-3.5 shrink-0 text-muted-foreground" />
@@ -8804,9 +8980,10 @@ function WidgetCard({
       w.type === "line" ? columns.filter((c) => c.kind === "date") : groupableCols;
     const grouped =
       groupCol && valueCol
-        ? groupAndAggregate(data, groupCol.key, valueCol.key, op).map((g) => ({
+        ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode).map((g) => ({
             name: g.name,
             total: g.total,
+            ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
           }))
         : [];
     const series =
@@ -8820,11 +8997,13 @@ function WidgetCard({
           valueCol.conditionalFormat,
         ) ?? "var(--primary)")
       : "var(--primary)";
-    const barSeries = w.type === "bar" ? sortAllBarCategories(series) : series;
+    const barSeries =
+      w.type === "bar" ? (dataMode === "raw" ? series : sortAllBarCategories(series)) : series;
     const barPresentation = barChartPresentation(barSeries.length);
     const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
     const pieSeries = (() => {
       if (w.type !== "pie") return series;
+      if (dataMode === "raw") return series;
       if (series.length <= 6) return series;
       const sorted = [...series].sort((a, b) => b.total - a.total);
       const top = sorted.slice(0, 5),
@@ -8836,6 +9015,20 @@ function WidgetCard({
       return rest ? [...top, { name: "Outros", total: rest, count: restItems.length }] : top;
     })();
     const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
+    const displayedPieIndex = activePieIndex ?? selectedPieIndex;
+    const selectedPie = displayedPieIndex !== null ? pieSeries[displayedPieIndex] : null;
+    const selectedPiePosition = selectedPie
+      ? [...pieSeries].sort((a, b) => b.total - a.total).findIndex((item) => item === selectedPie) +
+        1
+      : null;
+    const selectedPiePrevious =
+      displayedPieIndex !== null && displayedPieIndex > 0
+        ? pieSeries[displayedPieIndex - 1]?.total
+        : undefined;
+    const selectedPieChange =
+      selectedPie && selectedPiePrevious !== undefined && selectedPiePrevious !== 0
+        ? (selectedPie.total - selectedPiePrevious) / Math.abs(selectedPiePrevious)
+        : null;
     const pieLegendItems = pieSeries.map((entry, i) => ({
       ...entry,
       color:
@@ -8857,45 +9050,62 @@ function WidgetCard({
           className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
           data-export-controls
         >
-          <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
             accepts={w.type === "line" ? (["date"] as Kind[]) : groupableKinds}
             onDropColumn={(key) => onConfigure({ groupKey: key })}
           >
-            <select
-              aria-label="Agrupar por"
-              className="oliam-select"
-              value={groupCol?.key ?? ""}
-              onChange={(e) => onConfigure({ groupKey: e.target.value })}
-            >
-              {!groupCol && <option value="">Selecione…</option>}
-              {groupOptions.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              Eixo X
+              <select
+                aria-label="Coluna do eixo X"
+                className="oliam-select"
+                value={groupCol?.key ?? ""}
+                onChange={(e) => onConfigure({ groupKey: e.target.value })}
+              >
+                {!groupCol && <option value="">Selecione…</option>}
+                {groupOptions.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </FieldDropSlot>
           <FieldDropSlot
             accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
             onDropColumn={(key) => onConfigure({ valueKey: key })}
           >
-            <select
-              aria-label={op === "count" ? "Coluna usada para contar" : "Coluna numérica"}
-              className="oliam-select"
-              value={valueCol?.key ?? ""}
-              onChange={(e) => onConfigure({ valueKey: e.target.value })}
-            >
-              {!valueCol && <option value="">Selecione…</option>}
-              {(op === "count" ? columns : numericCols).map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              Métrica
+              <select
+                aria-label={op === "count" ? "Coluna usada para contar" : "Métrica do eixo Y"}
+                className="oliam-select"
+                value={valueCol?.key ?? ""}
+                onChange={(e) => onConfigure({ valueKey: e.target.value })}
+              >
+                {!valueCol && <option value="">Selecione…</option>}
+                {(op === "count" ? columns : numericCols).map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </FieldDropSlot>
-          {w.type !== "line" && relevantOps.length > 1 && (
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Mostrar
+            <select
+              aria-label="Como mostrar os dados"
+              className="oliam-select"
+              value={dataMode}
+              onChange={(e) => onConfigure({ dataMode: e.target.value as ChartDataMode })}
+            >
+              <option value="raw">Cada linha do Excel</option>
+              <option value="aggregate">Agrupar e calcular</option>
+            </select>
+          </label>
+          {dataMode === "aggregate" && relevantOps.length > 1 && (
             <select
               aria-label="Agregação"
               className="oliam-select"
@@ -8913,6 +9123,14 @@ function WidgetCard({
           )}
         </div>
         {sizeControls}
+        {groupCol && valueCol && (
+          <ChartReadingGuide
+            group={groupCol.label}
+            metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+            mode={dataMode}
+            operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+          />
+        )}
         {insufficient || !groupCol || !valueCol ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
             {!groupCol || !valueCol
@@ -8942,7 +9160,7 @@ function WidgetCard({
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={barSeries}
-                      margin={{ top: 20, right: 16, left: 12, bottom: 26 }}
+                      margin={{ top: 20, right: 16, left: 30, bottom: 42 }}
                       barCategoryGap={barSeries.length > 10 ? "34%" : "18%"}
                     >
                       <defs>
@@ -8980,16 +9198,31 @@ function WidgetCard({
                         axisLine={false}
                         width={66}
                         tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
+                        label={{
+                          value: op === "count" ? "Quantidade" : valueCol.label,
+                          angle: -90,
+                          position: "insideLeft",
+                          offset: -18,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          fill: "var(--muted-foreground)",
+                        }}
                       />
                       <ChartTooltip
                         cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
                         content={(props) => (
                           <BarTooltip
                             active={props.active}
-                            payload={props.payload as { value?: number }[]}
+                            payload={
+                              props.payload as {
+                                value?: number;
+                                payload?: { sourceRow?: number };
+                              }[]
+                            }
                             label={props.label as string}
                             series={barSeries}
                             kind={valueCol.kind}
+                            mode={dataMode}
                           />
                         )}
                       />
@@ -9004,9 +9237,9 @@ function WidgetCard({
                         cursor="pointer"
                         animationDuration={500}
                       >
-                        {barSeries.map((entry) => (
+                        {barSeries.map((entry, entryIndex) => (
                           <Cell
-                            key={entry.name}
+                            key={`${entry.name}-${entry.sourceRow ?? entryIndex}`}
                             fill={
                               conditionalColor(
                                 entry.total,
@@ -9090,7 +9323,7 @@ function WidgetCard({
                       cornerRadius={pieCornerRadius}
                       stroke="var(--card)"
                       strokeWidth={3}
-                      onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
+                      onClick={(_, index) => setSelectedPieIndex(index)}
                       onMouseEnter={(_, i) => setActivePieIndex(i)}
                       onMouseLeave={() => setActivePieIndex(null)}
                       cursor="pointer"
@@ -9098,11 +9331,11 @@ function WidgetCard({
                     >
                       {pieSeries.map((entry, i) => (
                         <Cell
-                          key={entry.name}
+                          key={`${entry.name}-${"sourceRow" in entry ? (entry.sourceRow ?? i) : i}`}
                           fill={pieLegendItems[i]?.color}
-                          opacity={activePieIndex === null || activePieIndex === i ? 1 : 0.45}
-                          stroke={activePieIndex === i ? "var(--foreground)" : "var(--card)"}
-                          strokeWidth={activePieIndex === i ? 2 : 3}
+                          opacity={displayedPieIndex === null || displayedPieIndex === i ? 1 : 0.45}
+                          stroke={displayedPieIndex === i ? "var(--foreground)" : "var(--card)"}
+                          strokeWidth={displayedPieIndex === i ? 2 : 3}
                           style={{ transition: "opacity 150ms ease, stroke 150ms ease" }}
                         />
                       ))}
@@ -9111,7 +9344,8 @@ function WidgetCard({
                         content={({ viewBox }) => {
                           const box = viewBox as { cx?: number; cy?: number } | undefined;
                           if (box?.cx === undefined || box?.cy === undefined) return null;
-                          const active = activePieIndex !== null ? pieSeries[activePieIndex] : null;
+                          const active =
+                            displayedPieIndex !== null ? pieSeries[displayedPieIndex] : null;
                           const label = active ? truncateLabel(active.name, 12) : "Total";
                           const value = fmt(active ? active.total : pieTotal, valueCol.kind) ?? "–";
                           return (
@@ -9152,14 +9386,72 @@ function WidgetCard({
               <PieLegend
                 items={pieLegendItems}
                 kind={valueCol.kind}
-                activeIndex={activePieIndex}
+                activeIndex={displayedPieIndex}
                 onHoverIndex={setActivePieIndex}
                 onSelectIndex={(i) => {
-                  const item = pieSeries[i];
-                  if (item) handleGroupClick(groupCol.key, item.name);
+                  setSelectedPieIndex(i);
                 }}
               />
             </div>
+            {selectedPie && (
+              <div className="grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(7rem,0.7fr))_auto] sm:items-center">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold" title={selectedPie.name}>
+                    {selectedPie.name}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    Clique em outra fatia para comparar sem alterar os filtros.
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Métrica
+                  </p>
+                  <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+                    {fmt(selectedPie.total, valueCol.kind)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Participação
+                  </p>
+                  <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+                    {pieTotal
+                      ? (selectedPie.total / pieTotal).toLocaleString("pt-BR", {
+                          style: "percent",
+                          maximumFractionDigits: 1,
+                        })
+                      : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Tendência
+                  </p>
+                  <p
+                    className={cn(
+                      "mt-0.5 font-mono text-sm font-semibold tabular-nums",
+                      selectedPieChange !== null && selectedPieChange < 0
+                        ? "text-destructive"
+                        : "text-emerald-700 dark:text-emerald-300",
+                    )}
+                  >
+                    {selectedPieChange === null
+                      ? `posição ${selectedPiePosition}`
+                      : `${selectedPieChange >= 0 ? "+" : ""}${selectedPieChange.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })} vs. anterior`}
+                  </p>
+                </div>
+                {selectedPie.name !== "Outros" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleGroupClick(groupCol.key, selectedPie.name)}
+                  >
+                    Filtrar por esta fatia
+                  </Button>
+                )}
+              </div>
+            )}
             <p className="sr-only">
               Tabela alternativa à pizza:{" "}
               {pieSeries
@@ -9413,9 +9705,10 @@ function WidgetCard({
     const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
       ? (w.op ?? "sum")
       : (relevantOps[0] ?? "sum");
+    const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
     const topN = w.topN ?? 5;
     const grouped =
-      groupCol && valueCol ? groupAndAggregate(data, groupCol.key, valueCol.key, op) : [];
+      groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
     const ranked = [...grouped].sort((a, b) => b.total - a.total).slice(0, topN);
     const max = ranked.reduce((m, g) => Math.max(m, Math.abs(g.total)), 0) || 1;
     return (
@@ -9436,7 +9729,6 @@ function WidgetCard({
           className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
           data-export-controls
         >
-          <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
             accepts={groupableKinds}
@@ -9474,7 +9766,19 @@ function WidgetCard({
               ))}
             </select>
           </FieldDropSlot>
-          {relevantOps.length > 1 && (
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Mostrar
+            <select
+              aria-label="Como mostrar os dados do ranking"
+              className="oliam-select"
+              value={dataMode}
+              onChange={(e) => onConfigure({ dataMode: e.target.value as ChartDataMode })}
+            >
+              <option value="raw">Cada linha do Excel</option>
+              <option value="aggregate">Agrupar e calcular</option>
+            </select>
+          </label>
+          {dataMode === "aggregate" && relevantOps.length > 1 && (
             <select
               aria-label="Agregação"
               className="oliam-select"
@@ -9507,6 +9811,14 @@ function WidgetCard({
           </label>
         </div>
         {sizeControls}
+        {groupCol && valueCol && (
+          <ChartReadingGuide
+            group={groupCol.label}
+            metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+            mode={dataMode}
+            operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+          />
+        )}
         {!groupCol || !valueCol || ranked.length === 0 ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
             {!groupCol || !valueCol
@@ -9578,8 +9890,9 @@ function WidgetCard({
     const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
       ? (w.op ?? "sum")
       : (relevantOps[0] ?? "sum");
+    const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
     const grouped =
-      groupCol && valueCol ? groupAndAggregate(data, groupCol.key, valueCol.key, op) : [];
+      groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
     return (
       <article
         className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -9598,7 +9911,6 @@ function WidgetCard({
           className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
           data-export-controls
         >
-          <GroupAggHint />
           <FilterChip groupKey={groupCol?.key} />
           <FieldDropSlot
             accepts={groupableKinds}
@@ -9636,7 +9948,19 @@ function WidgetCard({
               ))}
             </select>
           </FieldDropSlot>
-          {relevantOps.length > 1 && (
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Mostrar
+            <select
+              aria-label="Como mostrar os dados do mapa"
+              className="oliam-select"
+              value={dataMode}
+              onChange={(e) => onConfigure({ dataMode: e.target.value as ChartDataMode })}
+            >
+              <option value="raw">Cada linha do Excel</option>
+              <option value="aggregate">Agrupar e calcular</option>
+            </select>
+          </label>
+          {dataMode === "aggregate" && relevantOps.length > 1 && (
             <select
               aria-label="Agregação"
               className="oliam-select"
@@ -9654,6 +9978,14 @@ function WidgetCard({
           )}
         </div>
         {sizeControls}
+        {groupCol && valueCol && (
+          <ChartReadingGuide
+            group={groupCol.label}
+            metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+            mode={dataMode}
+            operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+          />
+        )}
         {!groupCol || !valueCol ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
             Escolha uma coluna com nome de local (cidade, estado ou país) e uma coluna numérica para
