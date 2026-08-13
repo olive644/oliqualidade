@@ -240,5 +240,47 @@ describe("generateAutoDashboardPlan", () => {
       statusKey: "Situação",
       periodKeys: ["jan", "fev", "mar", "abr"],
     });
+    expect(plan.recommendations.some((item) => item.kind === "kpi")).toBe(false);
+  });
+
+  it("em cronogramas por bloco recomenda contagem segura, sem somar resultados", () => {
+    const scheduleColumns = [
+      column("Bloco", "category"),
+      column("Ponto / Item", "category"),
+      column("jun/2025", "number"),
+      column("set/2025", "number"),
+      column("dez/2025", "number"),
+      column("Máx.", "number"),
+    ];
+    const scheduleRows: Row[] = [
+      {
+        Bloco: "Bolores",
+        "Ponto / Item": "Injetora 1",
+        "jun/2025": 4,
+        "set/2025": null,
+        "dez/2025": null,
+        "Máx.": 25,
+      },
+      {
+        Bloco: "Mesófilos",
+        "Ponto / Item": "Injetora 1",
+        "jun/2025": 2,
+        "set/2025": null,
+        "dez/2025": null,
+        "Máx.": 50,
+      },
+    ];
+    const plan = generateAutoDashboardPlan({ columns: scheduleColumns, rows: scheduleRows });
+    expect(plan.recommendations.map((item) => item.widgetType)).toEqual([
+      "schedule-heatmap",
+      "bar",
+      "table",
+    ]);
+    expect(plan.recommendations.find((item) => item.widgetType === "bar")).toMatchObject({
+      groupKey: "Bloco",
+      valueKey: "Ponto / Item",
+      op: "count",
+    });
+    expect(plan.recommendations.some((item) => item.op === "sum")).toBe(false);
   });
 });

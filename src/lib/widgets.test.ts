@@ -12,6 +12,7 @@ import {
   pickBestGroupColumn,
   schedulePeriodColumns,
   scheduleDetailColumns,
+  scheduleSectionColumn,
 } from "@/lib/widgets";
 import { numericKinds } from "@/lib/types";
 import type { Column, Row } from "@/lib/types";
@@ -304,6 +305,31 @@ describe("createWidget, novos tipos", () => {
       "Responsável",
       "Máx.",
     ]);
+  });
+
+  it("cronograma usa Bloco como seção e não repete essa coluna nos detalhes", () => {
+    const scheduleColumns: Column[] = [
+      col("Bloco", "category"),
+      col("Ponto / Item", "category"),
+      col("jun/2025", "number"),
+      col("set/2025", "number"),
+      col("Máx.", "number"),
+    ];
+    const rows: Row[] = [
+      {
+        Bloco: "Ar ambiente",
+        "Ponto / Item": "Laboratório CQ",
+        "jun/2025": 4,
+        "set/2025": null,
+        "Máx.": 25,
+      },
+    ];
+    expect(
+      scheduleSectionColumn(scheduleColumns, ["jun/2025", "set/2025"], "Ponto / Item")?.key,
+    ).toBe("Bloco");
+    const widget = createWidget("schedule-heatmap", scheduleColumns, undefined, rows);
+    expect(widget.sectionKey).toBe("Bloco");
+    expect(widget.detailKeys).toEqual(["Máx."]);
   });
 
   it("área usa data como agrupamento padrão, como a linha", () => {

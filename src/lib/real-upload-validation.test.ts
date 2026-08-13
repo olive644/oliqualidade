@@ -72,4 +72,21 @@ describe("validação local do cronograma real", () => {
       ),
     ).toContain("Máx.");
   });
+
+  it("recupera o bloco físico-químico de Cor sem vazar o título nas células mensais", () => {
+    const sheets = readWorkbookBytes(bytes, fixture);
+    const schedule = sheets.find((sheet) => sheet.name === "Monitoramento - F-Q Mensal");
+    expect(schedule).toBeDefined();
+    const colorRows =
+      schedule?.rows.filter((row) => row["Bloco"] === "Físico- Químico - Cor") ?? [];
+    expect(colorRows).toHaveLength(8);
+    expect(colorRows.some((row) => row["Ponto / Item"] === "Torneira Qualidade")).toBe(true);
+    expect(
+      schedule?.rows.some((row) =>
+        Object.entries(row).some(
+          ([key, value]) => /^\w{3}\/\d{4}$/i.test(key) && value === "Físico- Químico - Cor",
+        ),
+      ),
+    ).toBe(false);
+  });
 });

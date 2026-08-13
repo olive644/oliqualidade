@@ -184,6 +184,36 @@ export function scheduleStatusColumn(columns: Column[], periodKeys: string[]): C
   );
 }
 
+export function scheduleSectionColumn(
+  columns: Column[],
+  periodKeys: string[],
+  groupKey?: string,
+  statusKey?: string,
+): Column | undefined {
+  const periods = new Set(periodKeys);
+  const candidates = columns.filter(
+    (column) =>
+      !periods.has(column.key) &&
+      column.key !== groupKey &&
+      column.key !== statusKey &&
+      groupableKinds.includes(column.kind),
+  );
+  return candidates.find((column) =>
+    /^(?:bloco|se[cç][aã]o|grupo|categoria)$/i.test(column.label.trim()),
+  );
+}
+
+export function scheduleLimitColumn(columns: Column[], periodKeys: string[]): Column | undefined {
+  const periods = new Set(periodKeys);
+  return columns.find(
+    (column) =>
+      !periods.has(column.key) &&
+      /(?:^|\b)(?:m[aá]x(?:imo)?|m[ií]n(?:imo)?|limite|crit[eé]rio|meta)(?:\b|\.)/i.test(
+        `${column.label} ${column.key}`,
+      ),
+  );
+}
+
 const SCHEDULE_DETAIL_HINT =
   /(?:m[aá]x(?:imo)?|m[ií]n(?:imo)?|limite|meta|crit[eé]rio|frequ[eê]ncia|periodicidade|an[aá]lise|ensaio|m[eé]todo|respons[aá]vel|prestador|registro|laudo|unidade|resultado|observa[cç][aã]o|produto|material|gramatura|amostra)/i;
 
@@ -271,15 +301,19 @@ export function createWidget(
     widget.periodKeys = periods.map((column) => column.key);
     const group = scheduleItemColumn(columns, widget.periodKeys, rows);
     const status = scheduleStatusColumn(columns, widget.periodKeys);
+    const section = scheduleSectionColumn(columns, widget.periodKeys, group?.key, status?.key);
     if (group) widget.groupKey = group.key;
     if (status && status.key !== group?.key) widget.statusKey = status.key;
+    if (section) widget.sectionKey = section.key;
     widget.detailKeys = scheduleDetailColumns(
       columns,
       widget.periodKeys,
       rows,
       group?.key,
       status?.key,
-    ).map((column) => column.key);
+    )
+      .filter((column) => column.key !== section?.key)
+      .map((column) => column.key);
   } else if (
     type === "bar" ||
     type === "pie" ||

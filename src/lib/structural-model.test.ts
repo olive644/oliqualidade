@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { scheduleToLong } from "@/lib/schedule-normalizer";
+import {
+  evaluateScheduleValue,
+  parseScheduleCriterion,
+  parseScheduleNumber,
+  scheduleToLong,
+} from "@/lib/schedule-normalizer";
 import { classifyRows } from "@/lib/structural-model";
 
 describe("estrutura e cronograma canônico", () => {
@@ -24,5 +29,15 @@ describe("estrutura e cronograma canônico", () => {
       dimensions: { Item: "Injetora N04" },
     });
     expect(long.some((item) => item.value === null)).toBe(true);
+  });
+
+  it("interpreta decimal brasileiro, máximos, faixas e ausência", () => {
+    expect(parseScheduleNumber("0,46 uT")).toBe(0.46);
+    expect(evaluateScheduleValue(4, parseScheduleCriterion(25))).toBe("within");
+    expect(evaluateScheduleValue(60, parseScheduleCriterion("Máx. 25"))).toBe("outside");
+    expect(evaluateScheduleValue("6,7", parseScheduleCriterion("6,0 a 9,5"))).toBe("within");
+    expect(evaluateScheduleValue("4,9", parseScheduleCriterion("6,0 a 9,5"))).toBe("outside");
+    expect(evaluateScheduleValue(0, parseScheduleCriterion("Ausência"))).toBe("within");
+    expect(evaluateScheduleValue(1, parseScheduleCriterion("Ausência"))).toBe("outside");
   });
 });
