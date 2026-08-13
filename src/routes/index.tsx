@@ -140,7 +140,6 @@ import {
   pickBestGroupColumn,
   schedulePeriodColumns,
   scheduleItemColumn,
-  scheduleLimitColumn,
   scheduleSectionColumn,
   scheduleStatusColumn,
   scheduleDetailColumns,
@@ -149,7 +148,7 @@ import {
 } from "@/lib/widgets";
 import {
   evaluateScheduleValue,
-  parseScheduleCriterion,
+  scheduleCriterionForRow,
   type ScheduleCriterion,
 } from "@/lib/schedule-normalizer";
 import {
@@ -7086,10 +7085,6 @@ function WidgetCard({
             groupCol?.key,
             statusCol?.key,
           ));
-    const limitCol = scheduleLimitColumn(
-      columns,
-      periodCols.map((column) => column.key),
-    );
     const allDetailCols = columns.filter(
       (column) =>
         !periodKeys.has(column.key) &&
@@ -7130,7 +7125,11 @@ function WidgetCard({
       rowsWithoutResult: number;
     }>(
       (stats, row) => {
-        const criterion = parseScheduleCriterion(limitCol ? row[limitCol.key] : null);
+        const criterion = scheduleCriterionForRow(
+          row,
+          columns,
+          periodCols.map((column) => column.key),
+        );
         let rowHasResult = false;
         for (const column of periodCols) {
           const value = row[column.key];
@@ -7371,7 +7370,11 @@ function WidgetCard({
                       sectionCol && rowIndex > 0
                         ? String(visibleRows[rowIndex - 1]?.[sectionCol.key] ?? "")
                         : "";
-                    const criterion = parseScheduleCriterion(limitCol ? row[limitCol.key] : null);
+                    const criterion = scheduleCriterionForRow(
+                      row,
+                      columns,
+                      periodCols.map((column) => column.key),
+                    );
                     return (
                       <Fragment key={`${section}-${item}-${rowIndex}`}>
                         {section && section !== previousSection && (

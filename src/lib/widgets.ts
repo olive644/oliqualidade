@@ -178,7 +178,8 @@ export function scheduleStatusColumn(columns: Column[], periodKeys: string[]): C
   return columns.find(
     (column) =>
       !periods.has(column.key) &&
-      /^(?:status|situa[cç][aã]o|etapa|planejamento|execu[cç][aã]o|tipo|resultado)$/i.test(
+      groupableKinds.includes(column.kind) &&
+      /^(?:status|situa[cç][aã]o|etapa|andamento|planejamento|execu[cç][aã]o|prioridade)$/i.test(
         column.label.trim(),
       ),
   );
