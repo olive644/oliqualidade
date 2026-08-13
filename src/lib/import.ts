@@ -11,7 +11,13 @@ export type SheetImportResult = {
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
   audit?: ImportAudit;
-  tableMode?: "single" | "repeated-blocks";
+  tableMode?:
+    | "single"
+    | "repeated-blocks"
+    | "validation-matrix"
+    | "measurement-series"
+    | "laboratory-series"
+    | "attendance-roster";
 };
 
 export type ImportAudit = {
@@ -355,7 +361,8 @@ function normalizeMixedNumericColumns(rows: Row[]): { rows: Row[]; changes: numb
 // calcular (ex: divisão por zero num "Ticket médio" antes de ter vendas).
 // Sintaticamente são texto, mas semanticamente são um valor quebrado, típico
 // de célula de dado — nunca o nome de uma coluna.
-const EXCEL_ERROR_PATTERN = /^#(DIV\/0!|N\/A|REF!|VALUE!|NAME\?|NULL!|NUM!|GETTING_DATA)$/;
+const EXCEL_ERROR_PATTERN =
+  /^#(?:ERROR!|NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/?A|GETTING_DATA|SPILL!|CALC!|FIELD!|BLOCKED!|UNKNOWN!|CONNECT!|BUSY!)$/i;
 
 function cellLooksNumeric(v: unknown): boolean {
   if (v === null || v === "") return false;
@@ -366,8 +373,15 @@ function cellLooksNumeric(v: unknown): boolean {
 
 function cellLooksDate(v: unknown): boolean {
   if (v === null || v === undefined || v === "") return false;
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return true;
   const s = String(v).trim();
-  return /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s) || /^\d{4}-\d{1,2}-\d{1,2}(?:[T\s].*)?$/.test(s);
+  return (
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s) ||
+    /^\d{4}-\d{1,2}-\d{1,2}(?:[T\s].*)?$/.test(s) ||
+    /^\d{1,2}[-/](?:jan|feb|fev|mar|apr|abr|may|mai|jun|jul|aug|ago|sep|set|oct|out|nov|dec|dez)(?:[-/]\d{2,4})?$/i.test(
+      s,
+    )
+  );
 }
 
 /**
@@ -398,6 +412,21 @@ function isYearHeaderRow(row: (string | number | null)[]): boolean {
   );
 }
 
+function isMetadataRow(row: (string | number | null)[]): boolean {
+  const labels = [
+    ...new Set(
+      row
+        .filter((cell) => cell !== null && cell !== "")
+        .map((cell) => String(cell).trim())
+        .filter(Boolean),
+    ),
+  ];
+  return (
+    labels.length > 0 &&
+    labels.filter((label) => /^[^:]{1,50}:/.test(label)).length / labels.length >= 0.6
+  );
+}
+
 /**
  * Acha o índice da linha de cabeçalho real. Por padrão assume a primeira
  * linha (comportamento de sempre). Só procura mais abaixo quando a primeira
@@ -421,6 +450,7 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
   const firstRow = aoa[0] ?? [];
   if (
     !isBanner(0) &&
+    !isMetadataRow(firstRow) &&
     !isClearlyNotHeaderRow(firstRow) &&
     fillRatio(firstRow) >= SPARSE_HEADER_RATIO
   ) {
@@ -432,6 +462,7 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
   for (let i = 0; i < scanLimit; i++) {
     if (isBanner(i)) continue;
     const row = aoa[i] ?? [];
+    if (isMetadataRow(row)) continue;
     if (isClearlyNotHeaderRow(row) && !isYearHeaderRow(row)) continue;
     // Cabeçalhos verdadeiros costumam ser seguidos imediatamente por dados.
     // Esse bônus resolve empates com blocos institucionais mesclados
@@ -454,6 +485,63 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
 
 type RelativeMerge = { s: XLSX.CellAddress; e: XLSX.CellAddress };
 
+function findHierarchicalHeaderStart(
+  aoa: (string | number | null)[][],
+  selected: number,
+  merges: RelativeMerge[],
+): number {
+  let start = selected;
+  while (start > 0 && selected - start < 3) {
+    const previous = start - 1;
+    const horizontal = merges.filter(
+      (merge) => merge.s.r === previous && merge.e.r === previous && merge.e.c > merge.s.c,
+    );
+    const row = aoa[previous] ?? [];
+    const filled = row.filter((value) => value !== null && value !== "");
+    if (!filled.length || filled.some((value) => cellLooksNumeric(value) || cellLooksDate(value)))
+      break;
+    const distinctLabels = [
+      ...new Set(filled.map((value) => String(value).trim()).filter(Boolean)),
+    ];
+    // Linhas de formulário como "Instrutor:", "Entidade Promotora: X" e
+    // "Carga horária: Y" são metadados acima da tabela, não grupos do
+    // cabeçalho. Mesclagens usadas só para dar espaço a esses campos não
+    // podem arrastá-los para o nome de todas as colunas.
+    if (distinctLabels.length > 0 && distinctLabels.every((label) => /^[^:]{1,50}:/.test(label)))
+      break;
+    const width = Math.max(1, row.length, aoa[start]?.length ?? 0);
+    const isSingleFullWidthGroup =
+      horizontal.length === 1 && horizontal[0]!.s.c === 0 && horizontal[0]!.e.c >= width - 1;
+    const childLabels = (aoa[start] ?? []).filter((value) => value !== null && value !== "");
+    if (childLabels.length < 2) break;
+
+    // Alguns relatórios gerados por ERP usam uma linha esparsa de grupos
+    // acima de dezenas de colunas diárias, mas não gravam as mesclagens que
+    // visualmente delimitam esses grupos. A repetição de rótulos/data na
+    // linha folha, somada a dados numéricos logo abaixo, é um sinal forte o
+    // bastante para preservar a camada pai sem transformar uma linha comum
+    // de texto em cabeçalho.
+    const child = aoa[start] ?? [];
+    const normalizedChildren = childLabels.map((value) => String(value).trim().toLowerCase());
+    const duplicateChildren = normalizedChildren.length - new Set(normalizedChildren).size;
+    const temporalChildren = childLabels.filter(cellLooksDate).length;
+    const dataBelow = aoa
+      .slice(start + 1, Math.min(start + 4, aoa.length))
+      .some((candidate) => candidate.some((value) => cellLooksNumeric(value)));
+    const sparseUnmergedParent =
+      horizontal.length === 0 &&
+      filled.length >= 2 &&
+      filled.length < childLabels.length &&
+      dataBelow &&
+      (duplicateChildren >= 2 || temporalChildren >= 3);
+
+    if (!horizontal.length && !sparseUnmergedParent) break;
+    if (isSingleFullWidthGroup) break;
+    start = previous;
+  }
+  return start;
+}
+
 /**
  * Reconhece camadas adicionais de cabeçalho somente quando existe uma
  * mesclagem horizontal parcial na camada atual. Esse sinal vem da estrutura
@@ -474,7 +562,6 @@ function findHierarchicalHeaderEnd(
     const horizontal = merges.filter(
       (merge) => merge.s.r === end && merge.e.r === end && merge.e.c > merge.s.c,
     );
-    if (!horizontal.length) break;
 
     const current = aoa[end] ?? [];
     const unmergedLabels = current.filter((value, column) => {
@@ -486,11 +573,27 @@ function findHierarchicalHeaderEnd(
         .filter((value) => value !== null && value !== "")
         .map((value) => String(value).trim()),
     );
+    const next = aoa[end + 1] ?? [];
+    const currentFilled = current.filter((value) => value !== null && value !== "");
+    const nextFilled = next.filter((value) => value !== null && value !== "");
+    const normalizedNext = nextFilled.map((value) => String(value).trim().toLowerCase());
+    const duplicateNext = normalizedNext.length - new Set(normalizedNext).size;
+    const temporalNext = nextFilled.filter(cellLooksDate).length;
+    const numericBelow = aoa
+      .slice(end + 2, Math.min(end + 5, aoa.length))
+      .some((row) => row.some((value) => cellLooksNumeric(value)));
+    const sparseUnmergedParent =
+      horizontal.length === 0 &&
+      currentFilled.length >= 2 &&
+      currentFilled.length < nextFilled.length &&
+      numericBelow &&
+      (duplicateNext >= 2 || temporalNext >= 3);
+    if (!horizontal.length && !sparseUnmergedParent) break;
     // Um cabeçalho folha pode conter uma ou duas mesclagens apenas para
     // ampliar visualmente um rótulo (ex.: "Limites" em F:H). Quando há
     // vários outros rótulos não mesclados na mesma linha, a próxima linha é
     // dado, não uma nova camada hierárquica.
-    if (distinctParents.size >= 3 && unmergedLabels.length >= 2) break;
+    if (!sparseUnmergedParent && distinctParents.size >= 3 && unmergedLabels.length >= 2) break;
     const isSingleFullWidthGroup =
       horizontal.length === 1 &&
       horizontal[0]!.s.c === 0 &&
@@ -498,8 +601,6 @@ function findHierarchicalHeaderEnd(
       distinctParents.size === 1;
     if (isSingleFullWidthGroup) break;
 
-    const next = aoa[end + 1] ?? [];
-    const nextFilled = next.filter((value) => value !== null && value !== "");
     if (nextFilled.length < 2 || (isClearlyNotHeaderRow(next) && !isYearHeaderRow(next))) break;
 
     // A camada seguinte só é aceita quando as linhas logo abaixo parecem
@@ -535,9 +636,21 @@ function composeHierarchicalHeaders(
 ): { raw: (string | number | null)[]; hierarchical: boolean } {
   const layers = aoa.slice(start, end + 1);
   const width = Math.max(0, ...layers.map((row) => row.length));
+  const expandedParents = layers.slice(0, -1).map((layer) => {
+    let parent: string | number | null = null;
+    return Array.from({ length: width }, (_, column) => {
+      const value = layer[column];
+      if (!headerIsInvalid(value ?? null)) parent = value ?? null;
+      return parent;
+    });
+  });
+  const leaf = layers.at(-1) ?? [];
   const raw = Array.from({ length: width }, (_, column) => {
+    // Uma coluna vazia na camada folha é separador visual, mesmo que fique
+    // sob o alcance horizontal do último grupo da camada pai.
+    if (headerIsInvalid(leaf[column] ?? null)) return null;
     const parts: string[] = [];
-    for (const layer of layers) {
+    for (const layer of [...expandedParents, leaf]) {
       const value = layer[column];
       if (headerIsInvalid(value ?? null)) continue;
       const label = String(value).trim();
@@ -586,6 +699,7 @@ function refineGenericDocumentHeaders(
 }
 
 const EMPTY_PLACEHOLDER_PATTERN = /^(?:nan(?:[\s/.-]*nan)*|n\/?a|não informado|[-–—])$/i;
+const FORMULA_ERROR_PATTERN = EXCEL_ERROR_PATTERN;
 
 function prettyLabel(key: string): string {
   return key.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
@@ -616,6 +730,291 @@ type Block = {
   dataRows: (string | number | null)[][];
 };
 
+function compactCellValues(values: (string | number | null)[]): string | number | null {
+  const present = values.filter((value) => value !== null && value !== "");
+  if (!present.length) return null;
+  const distinct = [...new Map(present.map((value) => [String(value), value])).values()];
+  return distinct.length === 1 ? distinct[0]! : distinct.map(String).join(" | ");
+}
+
+function attendanceRosterRows(aoa: (string | number | null)[][]): Row[] | null {
+  const normalize = (value: unknown) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+  const headerIndex = aoa.findIndex((row) => {
+    const labels = row.map(normalize);
+    return labels.includes("n°") && labels.includes("matricula") && labels.includes("nome");
+  });
+  if (headerIndex < 0) return null;
+  const header = aoa[headerIndex] ?? [];
+  const indexOf = (pattern: RegExp) => header.findIndex((value) => pattern.test(normalize(value)));
+  const numberColumn = indexOf(/^n[°ºo]\.?$/);
+  const registrationColumn = indexOf(/^matricula$/);
+  const nameColumn = indexOf(/^nome$/);
+  const departmentColumn = indexOf(/^setor$/);
+  const shiftColumn = indexOf(/^turno$/);
+  const signatureColumn = header.findIndex((value) =>
+    /^(?:dia:|assinatura)/i.test(String(value ?? "").trim()),
+  );
+  if (Math.min(numberColumn, registrationColumn, nameColumn) < 0) return null;
+
+  const contextValues = aoa.slice(0, headerIndex).flat();
+  const context = (pattern: RegExp) => {
+    const value = contextValues.find((candidate) => pattern.test(String(candidate ?? "").trim()));
+    if (value === undefined || value === null) return null;
+    return String(value).replace(pattern, "").trim() || null;
+  };
+  const event = context(/^nome do evento:\s*/i);
+  const promoter = context(/^entidade promotora:\s*/i);
+  const workload = context(/^carga hor[aá]ria:\s*/i);
+  const instructor = context(/^instrutor:\s*/i);
+  const dateText =
+    String(header[signatureColumn] ?? "")
+      .replace(/^dia:\s*/i, "")
+      .trim() || null;
+  const nameEnd =
+    [departmentColumn, shiftColumn, signatureColumn]
+      .filter((column) => column > nameColumn)
+      .sort((a, b) => a - b)[0] ?? nameColumn + 1;
+  const signatureEnd = Math.max(signatureColumn + 1, header.length);
+
+  const rows: Row[] = [];
+  for (const source of aoa.slice(headerIndex + 1)) {
+    const sequence = source[numberColumn];
+    if (typeof sequence !== "number" && !/^\d+$/.test(String(sequence ?? "").trim())) continue;
+    rows.push({
+      Evento: event,
+      "Entidade promotora": promoter,
+      "Carga horária": workload,
+      Instrutor: instructor,
+      "N°": sequence ?? null,
+      Matrícula: source[registrationColumn] ?? null,
+      Nome: compactCellValues(source.slice(nameColumn, nameEnd)),
+      Setor: departmentColumn >= 0 ? (source[departmentColumn] ?? null) : null,
+      Turno: shiftColumn >= 0 ? (source[shiftColumn] ?? null) : null,
+      Data: dateText,
+      Assinatura:
+        signatureColumn >= 0
+          ? compactCellValues(source.slice(signatureColumn, signatureEnd))
+          : null,
+    });
+  }
+  return rows.length >= 5 ? rows : null;
+}
+
+/**
+ * Normaliza formulários de validação compostos por blocos horários. Cada
+ * bloco traz HORA, REFERÊNCIA, as subcolunas Aceita/Rejeita e campos de
+ * resultado. Em vez de escolher uma dessas linhas como cabeçalho global,
+ * produz uma linha por horário e conserva os campos operacionais.
+ */
+function inspectorValidationRows(aoa: (string | number | null)[][]): Row[] | null {
+  const hourRows = aoa
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => /^hora$/i.test(String(row[0] ?? "").trim()));
+  if (hourRows.length < 2) return null;
+
+  const output: Row[] = [];
+  for (let blockIndex = 0; blockIndex < hourRows.length; blockIndex++) {
+    const { row: hourRow, index: hourIndex } = hourRows[blockIndex]!;
+    const referenceRow = aoa[hourIndex + 1] ?? [];
+    const subheaderRow = aoa[hourIndex + 2] ?? [];
+    if (!/^refer[eê]ncia$/i.test(String(referenceRow[0] ?? "").trim())) return null;
+
+    const acceptedColumns = subheaderRow
+      .map((value, column) => ({ value, column }))
+      .filter(({ value, column }) => column > 0 && /^aceit[ao]$/i.test(String(value ?? "").trim()))
+      .map(({ column }) => column);
+    if (acceptedColumns.length < 2) return null;
+
+    const blockEnd = hourRows[blockIndex + 1]?.index ?? aoa.length;
+    const bodyStart = hourIndex + 3;
+    const summaryRows = new Map<string, number>();
+    for (let rowIndex = bodyStart; rowIndex < blockEnd; rowIndex++) {
+      const label = String(aoa[rowIndex]?.[0] ?? "").trim();
+      if (/^(?:resultado|aviso\s*#?|inspetor)$/i.test(label)) summaryRows.set(label, rowIndex);
+    }
+    const firstSummary = Math.min(...summaryRows.values(), blockEnd);
+
+    for (const acceptedColumn of acceptedColumns) {
+      const rejectedColumn = acceptedColumn + 1;
+      if (!/^rejeit[ao]$/i.test(String(subheaderRow[rejectedColumn] ?? "").trim())) continue;
+      const row: Row = {
+        Hora: compactCellValues([hourRow[acceptedColumn] ?? null, hourRow[rejectedColumn] ?? null]),
+        Referência: compactCellValues([
+          referenceRow[acceptedColumn] ?? null,
+          referenceRow[rejectedColumn] ?? null,
+        ]),
+        Aceita: compactCellValues(
+          aoa.slice(bodyStart, firstSummary).map((candidate) => candidate[acceptedColumn] ?? null),
+        ),
+        Rejeita: compactCellValues(
+          aoa.slice(bodyStart, firstSummary).map((candidate) => candidate[rejectedColumn] ?? null),
+        ),
+      };
+      for (const [label, rowIndex] of summaryRows) {
+        const key = /^aviso/i.test(label)
+          ? "Aviso #"
+          : /^inspetor/i.test(label)
+            ? "Inspetor"
+            : "Resultado";
+        row[key] = compactCellValues([
+          aoa[rowIndex]?.[acceptedColumn] ?? null,
+          aoa[rowIndex]?.[rejectedColumn] ?? null,
+        ]);
+      }
+      if (row["Hora"] !== null) output.push(row);
+    }
+  }
+  return output.length ? output : null;
+}
+
+function measurementSeriesRows(aoa: (string | number | null)[][]): Row[] | null {
+  const headerIndex = aoa.findIndex((row) => {
+    const first = String(row[0] ?? "").trim();
+    const metrics = row.slice(3).filter((value) => value !== null && value !== "");
+    return /dimensiona(?:l|is)|funciona(?:l|is)/i.test(first) && metrics.length >= 4;
+  });
+  if (headerIndex < 0) return null;
+
+  const header = aoa[headerIndex] ?? [];
+  const unitRow = aoa[headerIndex + 1] ?? [];
+  const metricColumns = header
+    .map((value, column) => ({ value, column }))
+    .filter(({ value, column }) => column >= 3 && value !== null && value !== "");
+  if (metricColumns.length < 4) return null;
+
+  const measurementStart = aoa.findIndex((row, index) => {
+    if (index <= headerIndex) return false;
+    const time = String(row[0] ?? "").trim();
+    return /^\d{1,2}:\d{2}(?::\d{2})?$/.test(time) && cellLooksNumeric(row[1]);
+  });
+  if (measurementStart < 0) return null;
+  const measurementRows = aoa.slice(measurementStart).filter((row) => {
+    const time = String(row[0] ?? "").trim();
+    return /^\d{1,2}:\d{2}(?::\d{2})?$/.test(time) && cellLooksNumeric(row[1]);
+  });
+  if (measurementRows.length < 5) return null;
+
+  const metricKeys = metricColumns.map(({ value, column }) => {
+    const unit = String(unitRow[column] ?? "").trim();
+    return unit ? `${String(value).trim()} ${unit}` : String(value).trim();
+  });
+  const rows: Row[] = [];
+  let currentCategory: string | null = null;
+  for (let index = headerIndex + 2; index < measurementStart; index++) {
+    const source = aoa[index] ?? [];
+    const category = String(source[0] ?? "").trim();
+    if (category) currentCategory = category;
+    const statistic = String(source[2] ?? "").trim();
+    if (!statistic) continue;
+    const row: Row = {
+      Categoria: currentCategory,
+      Estatística: statistic,
+      Hora: null,
+      Amostra: null,
+      Data: null,
+    };
+    metricColumns.forEach(({ column }, metricIndex) => {
+      row[metricKeys[metricIndex]!] = source[column] ?? null;
+    });
+    rows.push(row);
+  }
+  for (const source of measurementRows) {
+    const row: Row = {
+      Categoria: "Medição",
+      Estatística: null,
+      Hora: source[0] ?? null,
+      Amostra: source[1] ?? null,
+      Data: source[2] ?? null,
+    };
+    metricColumns.forEach(({ column }, metricIndex) => {
+      row[metricKeys[metricIndex]!] = source[column] ?? null;
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function laboratorySeriesRows(aoa: (string | number | null)[][]): Row[] | null {
+  const sectionRows = aoa
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row.some((value) => /^viscosidade\s*-/i.test(String(value ?? "").trim())));
+  if (sectionRows.length < 2) return null;
+
+  const groupStarts = [
+    ...new Set(
+      sectionRows.flatMap(({ row }) =>
+        row
+          .map((value, column) => ({ value, column }))
+          .filter(({ value }) => /^viscosidade\s*-/i.test(String(value ?? "").trim()))
+          .map(({ column }) => column),
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  if (groupStarts.length < 2) return null;
+
+  const rows: Row[] = [];
+  const sheetWidth = Math.max(0, ...aoa.map((row) => row.length));
+  for (let sectionIndex = 0; sectionIndex < sectionRows.length; sectionIndex++) {
+    const { row: section, index: start } = sectionRows[sectionIndex]!;
+    const end = sectionRows[sectionIndex + 1]?.index ?? aoa.length;
+    for (let groupIndex = 0; groupIndex < groupStarts.length; groupIndex++) {
+      const groupStart = groupStarts[groupIndex]!;
+      const groupEnd = groupStarts[groupIndex + 1] ?? sheetWidth ?? groupStart + 6;
+      const groupName =
+        aoa
+          .slice(0, start)
+          .map((candidate) => candidate[groupStart])
+          .find((value) => value !== null && value !== "" && value !== undefined) ??
+        `Grupo ${groupIndex + 1}`;
+      const assay = String(section[groupStart] ?? "")
+        .replace(/^viscosidade\s*-\s*/i, "")
+        .trim();
+      if (!assay) continue;
+      for (let rowIndex = start + 1; rowIndex < end; rowIndex++) {
+        const source = aoa[rowIndex] ?? [];
+        const sample = source[groupStart];
+        if (sample === null || sample === "" || sample === undefined) continue;
+        const result = [...source.slice(groupStart + 1, groupEnd)]
+          .reverse()
+          .find((value) => value !== null && value !== "" && value !== undefined);
+        if (result === undefined) continue;
+        rows.push({
+          Amostra: groupName,
+          Ensaio: assay,
+          Identificação: sample,
+          Resultado: result,
+        });
+      }
+    }
+  }
+
+  for (let rowIndex = 0; rowIndex < aoa.length - 1; rowIndex++) {
+    const source = aoa[rowIndex] ?? [];
+    source.forEach((value, column) => {
+      const label = String(value ?? "").trim();
+      if (!/^especifica[cç][aã]o t[eé]cnica/i.test(label)) return;
+      const next = aoa[rowIndex + 1] ?? [];
+      const assay = next[column];
+      const result = next
+        .slice(column + 1)
+        .find((candidate) => candidate !== null && candidate !== "" && candidate !== undefined);
+      if (assay === null || assay === "" || assay === undefined || result === undefined) return;
+      rows.push({
+        Amostra: label.replace(/^especifica[cç][aã]o t[eé]cnica\s*/i, "").trim(),
+        Ensaio: assay,
+        Identificação: "Especificação",
+        Resultado: result,
+      });
+    });
+  }
+  return rows.length >= 6 ? rows : null;
+}
+
 /**
  * Acha, dentro de uma linha, todas as sequências de pelo menos 2 células
  * preenchidas e não-numéricas seguidas (candidatas a cabeçalho de um
@@ -629,11 +1028,22 @@ function headerRunsInRow(row: (string | number | null)[]): { startCol: number; e
   let c = 0;
   while (c < row.length) {
     const cell = row[c] ?? null;
-    if (cell !== null && cell !== "" && !cellLooksNumeric(cell)) {
+    if (
+      cell !== null &&
+      cell !== "" &&
+      !cellLooksNumeric(cell) &&
+      !FORMULA_ERROR_PATTERN.test(String(cell).trim())
+    ) {
       const start = c;
       while (c + 1 < row.length) {
         const next = row[c + 1] ?? null;
-        if (next === null || next === "" || cellLooksNumeric(next)) break;
+        if (
+          next === null ||
+          next === "" ||
+          cellLooksNumeric(next) ||
+          FORMULA_ERROR_PATTERN.test(String(next).trim())
+        )
+          break;
         c++;
       }
       if (c - start + 1 >= 2) runs.push({ startCol: start, endCol: c });
@@ -720,7 +1130,9 @@ function findBlockLabel(
     // título isolado.
     const distinct = new Set(filled.map((v) => String(v).trim()));
     if (distinct.size !== 1) return null;
-    return { label: [...distinct][0]!, row: rowIndex };
+    const label = [...distinct][0]!;
+    if (cellLooksNumeric(label) || FORMULA_ERROR_PATTERN.test(label)) return null;
+    return { label, row: rowIndex };
   }
   return null;
 }
@@ -1019,6 +1431,110 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     }
   }
 
+  const attendanceRows = attendanceRosterRows(aoa);
+  if (attendanceRows) {
+    return {
+      rows: attendanceRows,
+      warning: `Esta aba foi reconhecida como lista de presença. ${attendanceRows.length} posições numeradas foram preservadas com evento, identificação, turno, data e assinatura.`,
+      diagnostics: diagnoseImportedSheet(ws, attendanceRows),
+      sourceGrid,
+      audit: {
+        sourceNonEmptyCells,
+        outputNonEmptyCells: attendanceRows.reduce(
+          (sum, row) =>
+            sum + Object.values(row).filter((value) => value !== null && value !== "").length,
+          0,
+        ),
+        formulaCellsRecovered,
+        mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
+        numericCellsConverted: 0,
+        rowsAboveHeaderIgnored: 0,
+        blankRowsIgnored: 0,
+        trailingRowsIgnored: 0,
+        columnsIgnored: 0,
+      },
+      tableMode: "attendance-roster",
+    };
+  }
+
+  const laboratoryRows = laboratorySeriesRows(aoa);
+  if (laboratoryRows) {
+    return {
+      rows: laboratoryRows,
+      warning: `Esta aba contém ensaios laboratoriais em blocos. ${laboratoryRows.length} resultados foram normalizados com amostra, ensaio, identificação e resultado, mantendo as especificações separadas.`,
+      diagnostics: diagnoseImportedSheet(ws, laboratoryRows),
+      sourceGrid,
+      audit: {
+        sourceNonEmptyCells,
+        outputNonEmptyCells: laboratoryRows.reduce(
+          (sum, row) =>
+            sum + Object.values(row).filter((value) => value !== null && value !== "").length,
+          0,
+        ),
+        formulaCellsRecovered,
+        mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
+        numericCellsConverted: 0,
+        rowsAboveHeaderIgnored: 0,
+        blankRowsIgnored: 0,
+        trailingRowsIgnored: 0,
+        columnsIgnored: 0,
+      },
+      tableMode: "laboratory-series",
+    };
+  }
+
+  const measurementRows = measurementSeriesRows(aoa);
+  if (measurementRows) {
+    return {
+      rows: measurementRows,
+      warning: `Esta aba combina especificações, estatísticas e medições dimensionais. ${measurementRows.length} linhas foram normalizadas sem misturar limites, resumos e amostras.`,
+      diagnostics: diagnoseImportedSheet(ws, measurementRows),
+      sourceGrid,
+      audit: {
+        sourceNonEmptyCells,
+        outputNonEmptyCells: measurementRows.reduce(
+          (sum, row) =>
+            sum + Object.values(row).filter((value) => value !== null && value !== "").length,
+          0,
+        ),
+        formulaCellsRecovered,
+        mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
+        numericCellsConverted: 0,
+        rowsAboveHeaderIgnored: 0,
+        blankRowsIgnored: 0,
+        trailingRowsIgnored: 0,
+        columnsIgnored: 0,
+      },
+      tableMode: "measurement-series",
+    };
+  }
+
+  const validationRows = inspectorValidationRows(aoa);
+  if (validationRows) {
+    return {
+      rows: validationRows,
+      warning: `Esta aba usa uma matriz de validação por horário. ${validationRows.length} horários foram normalizados, preservando referência, aceita, rejeita, resultado, aviso e inspetor.`,
+      diagnostics: diagnoseImportedSheet(ws, validationRows),
+      sourceGrid,
+      audit: {
+        sourceNonEmptyCells,
+        outputNonEmptyCells: validationRows.reduce(
+          (sum, row) =>
+            sum + Object.values(row).filter((value) => value !== null && value !== "").length,
+          0,
+        ),
+        formulaCellsRecovered,
+        mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
+        numericCellsConverted: 0,
+        rowsAboveHeaderIgnored: 0,
+        blankRowsIgnored: 0,
+        trailingRowsIgnored: 0,
+        columnsIgnored: 0,
+      },
+      tableMode: "validation-matrix",
+    };
+  }
+
   // Planilhas com várias mini-tabelas repetidas na mesma aba (ex: um bloco
   // "Núcleo 1", "Núcleo 2"... cada um com seu próprio cabeçalho e linhas)
   // seguem um caminho totalmente diferente do resto da função: não existe
@@ -1026,7 +1542,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // `detectBlocks` para o critério de detecção (conservador o bastante pra
   // nunca disparar numa aba de tabela única normal).
   const blocks = detectBlocks(aoa);
-  if (blocks && blocks.length >= MIN_BLOCKS_FOR_MULTI_BLOCK_MODE) {
+  if (
+    blocks &&
+    blocks.length >= MIN_BLOCKS_FOR_MULTI_BLOCK_MODE &&
+    blocks.every((block) => block.dataRows.length > 0)
+  ) {
     const { rows: blockRows, blockColumnName } = blocksToRows(blocks);
     const dataHeaders = blocks[0]!.headers;
 
@@ -1076,7 +1596,8 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     };
   }
 
-  const headerRowIndex = findHeaderRowIndex(aoa, bannerRows);
+  const selectedHeaderRowIndex = findHeaderRowIndex(aoa, bannerRows);
+  const headerRowIndex = findHierarchicalHeaderStart(aoa, selectedHeaderRowIndex, merges);
   const headerRowEnd = findHierarchicalHeaderEnd(aoa, headerRowIndex, merges);
   const { raw: headerRow, hierarchical: hierarchicalHeader } = composeHierarchicalHeaders(
     aoa,
@@ -1164,6 +1685,10 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   const TRAILING_NOTE_FILL_RATIO = 0.25;
   const MAX_TRAILING_TRIM = 10;
   const rows = [...nonBlankRows];
+  const activeTrailingHeaders = headers.filter((header, index) => {
+    if (!headerWasBlank[index]) return true;
+    return nonBlankRows.some((row) => row[header] !== null && row[header] !== "");
+  });
   let trailingNotesTrimmed = 0;
   while (
     rows.length > 1 &&
@@ -1178,7 +1703,17 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     // válido, não uma nota de rodapé, então o corte deve parar aqui.
     const firstHeader = headers[0];
     if (firstHeader && cellLooksDate(last[firstHeader])) break;
-    if (filled / headers.length >= TRAILING_NOTE_FILL_RATIO) break;
+    const onlyValue = Object.values(last).find((value) => value !== null && value !== "");
+    if (
+      filled === 1 &&
+      activeTrailingHeaders.length >= 2 &&
+      typeof onlyValue === "string" &&
+      /^(?:observa[cç][aã]o|nota|total\b|resumo\b|fonte\b|legenda\b)/i.test(onlyValue.trim())
+    ) {
+      trailingNotesTrimmed++;
+      continue;
+    }
+    if (filled / Math.max(1, activeTrailingHeaders.length) >= TRAILING_NOTE_FILL_RATIO) break;
     trailingNotesTrimmed++;
   }
   if (trailingNotesTrimmed > 0) rows.length -= trailingNotesTrimmed;
@@ -1212,20 +1747,52 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // Mesclagens horizontais podem produzir duas colunas com o mesmo rótulo
   // e exatamente os mesmos valores em todas as linhas. A segunda não traz
   // informação e só multiplica células vazias/"Não informado" na tabela.
+  const redundantToCanonical = new Map<string, string>();
   const redundantColumns = headersWithoutGhosts.filter((header, index) => {
     const base = header.replace(/_\d+$/, "");
+    if (/^coluna$/i.test(base)) return false;
     const earlier = headersWithoutGhosts.slice(0, index).find((candidate) => {
       if (candidate.replace(/_\d+$/, "") !== base) return false;
-      return rowsWithoutGhosts.every(
-        (row) => row[header] === null || row[header] === "" || row[candidate] === row[header],
-      );
+      return rowsWithoutGhosts.every((row) => {
+        const current = row[header];
+        const previous = row[candidate];
+        return (
+          current === null ||
+          current === "" ||
+          previous === null ||
+          previous === "" ||
+          previous === current
+        );
+      });
     });
+    if (earlier) redundantToCanonical.set(header, earlier);
     return Boolean(earlier);
   });
   const finalHeaders = headersWithoutGhosts.filter((header) => !redundantColumns.includes(header));
   const finalRows: Row[] = redundantColumns.length
     ? rowsWithoutGhosts.map((row) =>
-        Object.fromEntries(finalHeaders.map((header) => [header, row[header] ?? null])),
+        Object.fromEntries(
+          finalHeaders.map((header) => {
+            const resolvesTo = (candidate: string) => {
+              let current = candidate;
+              const seen = new Set<string>();
+              while (redundantToCanonical.has(current) && !seen.has(current)) {
+                seen.add(current);
+                current = redundantToCanonical.get(current)!;
+              }
+              return current;
+            };
+            const equivalents = headersWithoutGhosts.filter(
+              (candidate) => resolvesTo(candidate) === header,
+            );
+            const value = equivalents
+              .map((candidate) => row[candidate])
+              .find(
+                (candidate) => candidate !== null && candidate !== "" && candidate !== undefined,
+              );
+            return [header, value ?? null];
+          }),
+        ),
       )
     : rowsWithoutGhosts;
 
@@ -1636,12 +2203,43 @@ function regionsAreSafeToSplit(
   const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
     header: 1,
     defval: null,
-    raw: true,
+    raw: false,
   });
   const occupied = aoa.reduce(
     (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
     0,
   );
+
+  // Colunas identificadoras à esquerda e uma matriz de períodos à direita
+  // continuam sendo uma única tabela quando o autor deixou apenas uma
+  // coluna vazia como respiro visual. Separá-las perderia a relação entre
+  // máquina/item e seus valores diários.
+  const ordered = [...regions].sort(
+    (left, right) => left.startRow - right.startRow || left.startColumn - right.startColumn,
+  );
+  for (let index = 0; index < ordered.length - 1; index++) {
+    const left = ordered[index]!;
+    const right = ordered[index + 1]!;
+    const gap = right.startColumn - left.endColumn - 1;
+    if (
+      left.startRow !== right.startRow ||
+      left.endRow !== right.endRow ||
+      gap < 0 ||
+      gap > 1 ||
+      left.columns < 2 ||
+      left.columns > 5 ||
+      right.columns < 4
+    )
+      continue;
+    const rightHeader = (aoa[right.startRow - 1] ?? [])
+      .slice(right.startColumn - 1, right.endColumn)
+      .filter((value) => value !== null && value !== "");
+    const temporalRatio = rightHeader.length
+      ? rightHeader.filter(cellLooksDate).length / rightHeader.length
+      : 0;
+    if (temporalRatio >= 0.6) return false;
+  }
+
   let covered = 0;
   for (const region of regions) {
     const rows = aoa.slice(region.startRow - 1, region.endRow);
