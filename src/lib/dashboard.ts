@@ -73,13 +73,21 @@ function widgetCompatible(widget: Widget, columns: Column[]): boolean {
 const AUTOMATIC_OPERATIONAL_TYPES = new Set<Widget["type"]>([
   "schedule-heatmap",
   "attendance-overview",
-  "validation-overview",
   "control-chart",
   "plan-vs-actual",
 ]);
+const AUTOMATIC_WIDGET_POLICY_VERSION = 2;
 
 function refreshAutomaticWidgets(sheet: SheetData): SheetData {
-  const existing = sheet.widgets ?? [];
+  const previousPolicy = sheet.automaticWidgetPolicyVersion ?? 0;
+  const originalWidgets = sheet.widgets ?? [];
+  const cleanedWidgets = originalWidgets.filter(
+    (widget) =>
+      previousPolicy >= AUTOMATIC_WIDGET_POLICY_VERSION ||
+      (widget.type !== "exception-panel" && widget.type !== "validation-overview"),
+  );
+  const removedLegacyAutomaticWidget = cleanedWidgets.length !== originalWidgets.length;
+  const existing = removedLegacyAutomaticWidget ? cleanedWidgets : originalWidgets;
   const plan = generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows });
   const freshAutomatic = buildRecommendedWidgets(plan, sheet.columns, sheet.rows).filter((widget) =>
     AUTOMATIC_OPERATIONAL_TYPES.has(widget.type),
@@ -101,10 +109,16 @@ function refreshAutomaticWidgets(sheet: SheetData): SheetData {
     currentSignature.length === freshSignature.length &&
     currentSignature.every((value, index) => value === freshSignature[index])
   )
-    return { ...sheet, autoDashboard: plan };
+    return {
+      ...sheet,
+      autoDashboard: plan,
+      ...(sheet.widgets !== undefined || removedLegacyAutomaticWidget ? { widgets: existing } : {}),
+      automaticWidgetPolicyVersion: AUTOMATIC_WIDGET_POLICY_VERSION,
+    };
   return {
     ...sheet,
     autoDashboard: plan,
+    automaticWidgetPolicyVersion: AUTOMATIC_WIDGET_POLICY_VERSION,
     widgets: [
       ...freshAutomatic.map(
         (widget) =>
@@ -273,6 +287,9 @@ export function mergeReimportedSheets(
       ...(old?.exceptionDecisions ? { exceptionDecisions: old.exceptionDecisions } : {}),
       ...(old?.auditTrail ? { auditTrail: old.auditTrail } : {}),
       ...(old?.bookmarks ? { bookmarks: old.bookmarks } : {}),
+      ...(old?.automaticWidgetPolicyVersion
+        ? { automaticWidgetPolicyVersion: old.automaticWidgetPolicyVersion }
+        : {}),
     };
     if (old?.semanticOverrides) {
       merged.intelligence = analyzeSpreadsheet(
