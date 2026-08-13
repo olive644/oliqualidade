@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import {
   Area,
@@ -121,6 +120,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { decodeCellAddress } from "@/lib/cell-address";
+import { createLatestTaskQueue, type LatestTaskQueue } from "@/lib/latest-task-queue";
 import type {
   Column,
   ChartDataMode,
@@ -181,6 +182,7 @@ import {
   chartSeries,
   groupAndAggregate,
   leftJoin,
+  limitChartSeriesForRendering,
   matchesRange,
   NOT_INFORMED,
   pieRoundnessFor,
@@ -290,7 +292,6 @@ import {
 } from "@/lib/data-review";
 import {
   auditExportRows,
-  buildCorrectedWorkbook,
   comparisonExportRows,
   reviewReportSections,
   rowsToCsv,
@@ -308,116 +309,18 @@ import {
 } from "@/lib/folder-monitor";
 import "leaflet/dist/leaflet.css";
 
-const demo: Row[] = [
-  {
-    data: "02/01/2026",
-    região: "Sudeste",
-    canal: "Enterprise",
-    receita: 284500,
-    custo: 171800,
-    pedidos: 42,
-    margem: 0.396,
-  },
-  {
-    data: "09/01/2026",
-    região: "Sul",
-    canal: "Direto",
-    receita: 176200,
-    custo: 108900,
-    pedidos: 31,
-    margem: 0.382,
-  },
-  {
-    data: "16/01/2026",
-    região: "Nordeste",
-    canal: "Parceiros",
-    receita: 128900,
-    custo: 84700,
-    pedidos: 27,
-    margem: 0.343,
-  },
-  {
-    data: "23/01/2026",
-    região: "Sudeste",
-    canal: "Direto",
-    receita: 232700,
-    custo: 139400,
-    pedidos: 38,
-    margem: 0.401,
-  },
-  {
-    data: "30/01/2026",
-    região: "Centro-Oeste",
-    canal: "Enterprise",
-    receita: 154600,
-    custo: 99800,
-    pedidos: 22,
-    margem: 0.354,
-  },
-  {
-    data: "06/02/2026",
-    região: "Sul",
-    canal: "Parceiros",
-    receita: 198400,
-    custo: 121600,
-    pedidos: 35,
-    margem: 0.387,
-  },
-  {
-    data: "13/02/2026",
-    região: "Sudeste",
-    canal: "Enterprise",
-    receita: 311800,
-    custo: 183900,
-    pedidos: 49,
-    margem: 0.41,
-  },
-  {
-    data: "20/02/2026",
-    região: "Nordeste",
-    canal: "Direto",
-    receita: 141300,
-    custo: 93200,
-    pedidos: 29,
-    margem: 0.34,
-  },
-  {
-    data: "27/02/2026",
-    região: "Norte",
-    canal: "Parceiros",
-    receita: null,
-    custo: 74100,
-    pedidos: 18,
-    margem: null,
-  },
-  {
-    data: "06/03/2026",
-    região: "Sul",
-    canal: "Enterprise",
-    receita: 218900,
-    custo: 127500,
-    pedidos: 36,
-    margem: 0.418,
-  },
-  {
-    data: "13/03/2026",
-    região: "Sudeste",
-    canal: "Direto",
-    receita: 267400,
-    custo: 161200,
-    pedidos: 44,
-    margem: 0.397,
-  },
-  {
-    data: "20/03/2026",
-    região: null,
-    canal: "Parceiros",
-    receita: 119800,
-    custo: 80300,
-    pedidos: 24,
-    margem: 0.33,
-  },
-];
+// Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
+// código uma tabela com aparência de dado empresarial real e ainda exercita
+// datas, categorias, números, percentuais, ausências e metas na demonstração.
+const demo: Row[] = Array.from({ length: 12 }, (_, index) => ({
+  data: `${String(2 + index * 2).padStart(2, "0")}/01/2026`,
+  unidade: ["Linha A", "Linha B", "Linha C"][index % 3] ?? "Linha A",
+  turno: ["Manhã", "Tarde", "Noite"][index % 3] ?? "Manhã",
+  resultado: index === 8 ? null : 91 + ((index * 7) % 11),
+  meta: 95,
+  amostras: 18 + ((index * 5) % 17),
+  conformidade: index === 8 ? null : (91 + ((index * 7) % 11)) / 100,
+}));
 
 function Mark() {
   return <img className="oliam-mark" src="/oli-mark.svg" alt="" aria-hidden="true" />;
@@ -562,6 +465,20 @@ export function OliAm({ routeId }: { routeId?: string }) {
   const [saveState, setSaveState] = useState<"idle" | "saved" | "warning">("idle");
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const dashboardSaveQueue = useRef<LatestTaskQueue<Dashboard[]> | null>(null);
+  if (!dashboardSaveQueue.current) {
+    dashboardSaveQueue.current = createLatestTaskQueue(saveDashboards, (result: SaveResult) => {
+      if (result.ok) {
+        setSaveState("saved");
+        setSaveWarning(null);
+        clearTimeout(savedTimer.current);
+        savedTimer.current = setTimeout(() => setSaveState("idle"), 1800);
+      } else {
+        setSaveState("warning");
+        setSaveWarning(result.reason);
+      }
+    });
+  }
   const [onboardingStep, setOnboardingStep] = useState<number | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importWarning, setImportWarning] = useState<string | null>(null);
@@ -692,17 +609,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
   const persist = (list: Dashboard[]) => {
     dashboardsRef.current = list;
     setDashboards(list);
-    void saveDashboards(list).then((result: SaveResult) => {
-      if (result.ok) {
-        setSaveState("saved");
-        setSaveWarning(null);
-        clearTimeout(savedTimer.current);
-        savedTimer.current = setTimeout(() => setSaveState("idle"), 1800);
-      } else {
-        setSaveState("warning");
-        setSaveWarning(result.reason);
-      }
-    });
+    dashboardSaveQueue.current?.push(list);
   };
   const readWorkbook = async (file: File, signal?: AbortSignal) => {
     const labels = {
@@ -1118,9 +1025,10 @@ export function OliAm({ routeId }: { routeId?: string }) {
     // A restauração deve ocorrer uma única vez após a carga local.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
-  const pasteData = () => {
+  const pasteData = async () => {
     setImportError(null);
     setImportWarning(null);
+    const XLSX = await import("xlsx");
     const wb = XLSX.read(paste, { type: "string" }),
       ws = wb.Sheets[wb.SheetNames[0] ?? ""];
     if (!ws) {
@@ -1144,6 +1052,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
     try {
       const res = await fetch(`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv`);
       if (!res.ok) throw new Error();
+      const XLSX = await import("xlsx");
       const text = await res.text(),
         wb = XLSX.read(text, { type: "string" }),
         ws = wb.Sheets[wb.SheetNames[0] ?? ""];
@@ -3838,9 +3747,9 @@ function Dashboard(p: {
     let rowIndex = exception.rowIndex ?? 1;
     if (exception.address) {
       try {
-        const decoded = XLSX.utils.decode_cell(exception.address);
-        columnKey ??= sheet.columns[decoded.c]?.key;
-        if (!exception.rowIndex) rowIndex = Math.max(1, decoded.r);
+        const decoded = decodeCellAddress(exception.address);
+        columnKey ??= sheet.columns[decoded.column]?.key;
+        if (!exception.rowIndex) rowIndex = Math.max(1, decoded.row);
       } catch {
         // Endereço textual continua visível no painel mesmo quando não é uma célula A1 válida.
       }
@@ -3915,7 +3824,8 @@ function Dashboard(p: {
   };
 
   const slug = d.name.toLowerCase().replaceAll(" ", "-");
-  const exportXlsx = () => {
+  const exportXlsx = async () => {
+    const XLSX = await import("xlsx");
     const ws = XLSX.utils.json_to_sheet(safeRowsForSpreadsheet(data)),
       wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Relatório");
@@ -3947,7 +3857,11 @@ function Dashboard(p: {
     downloadText(rowsToCsv(rows), `${slug}-comparacao.csv`);
     toast.success("Comparação exportada célula por célula.");
   };
-  const exportCorrectedWorkbook = () => {
+  const exportCorrectedWorkbook = async () => {
+    const [{ buildCorrectedWorkbook }, XLSX] = await Promise.all([
+      import("@/lib/review-workbook"),
+      import("xlsx"),
+    ]);
     XLSX.writeFile(buildCorrectedWorkbook(d), `${slug}-copia-corrigida.xlsx`, {
       compression: true,
     });
@@ -9088,10 +9002,22 @@ function WidgetCard({
             ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
           }))
         : [];
-    const series =
+    const completeSeries =
       w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
         ? sortChronologically(grouped)
         : grouped;
+    const orderedSeries =
+      w.type === "bar" && dataMode !== "raw"
+        ? sortAllBarCategories(completeSeries)
+        : completeSeries;
+    const renderableSeries =
+      w.type === "pie" && dataMode === "aggregate"
+        ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
+        : limitChartSeriesForRendering(
+            orderedSeries,
+            w.type === "pie" && dataMode === "raw" ? 120 : undefined,
+          );
+    const series = renderableSeries.items;
     const seriesColor = valueCol
       ? (conditionalColor(
           series.at(-1)?.total ?? null,
@@ -9099,15 +9025,14 @@ function WidgetCard({
           valueCol.conditionalFormat,
         ) ?? "var(--primary)")
       : "var(--primary)";
-    const barSeries =
-      w.type === "bar" ? (dataMode === "raw" ? series : sortAllBarCategories(series)) : series;
+    const barSeries = series;
     const barPresentation = barChartPresentation(barSeries.length);
     const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
     const pieSeries = (() => {
       if (w.type !== "pie") return series;
       if (dataMode === "raw") return series;
-      if (series.length <= 6) return series;
-      const sorted = [...series].sort((a, b) => b.total - a.total);
+      if (completeSeries.length <= 6) return completeSeries;
+      const sorted = [...completeSeries].sort((a, b) => b.total - a.total);
       const top = sorted.slice(0, 5),
         restItems = sorted.slice(5),
         rest = restItems.reduce((s, x) => s + x.total, 0);
@@ -9214,6 +9139,13 @@ function WidgetCard({
             mode={dataMode}
             operation={`${aggregationLabels[op]} por ${groupCol.label}`}
           />
+        )}
+        {renderableSeries.omitted > 0 && (
+          <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
+            Prévia otimizada: {renderableSeries.items.length.toLocaleString("pt-BR")} de{" "}
+            {renderableSeries.total.toLocaleString("pt-BR")} pontos, distribuídos por toda a série.
+            Os dados completos e sem amostragem permanecem na tabela detalhada.
+          </p>
         )}
         {insufficient || !groupCol || !valueCol ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
