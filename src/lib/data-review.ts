@@ -1,4 +1,4 @@
-import type { Column, Value } from "@/lib/types";
+import type { Column, Row, Value } from "@/lib/types";
 import type { SpreadsheetException } from "@/lib/spreadsheet-intelligence";
 
 export type AuditEntry = {
@@ -18,6 +18,22 @@ export type CorrectionSuggestion = {
   value: string;
   reason: string;
 };
+
+export const SOURCE_ROW_INDEX = Symbol("source-row-index");
+export type TraceableRow = Row & { [SOURCE_ROW_INDEX]?: number };
+
+export function markSourceRows(rows: Row[]): TraceableRow[] {
+  return rows.map((row, sourceRowIndex) => {
+    const traceable = { ...row } as TraceableRow;
+    Object.defineProperty(traceable, SOURCE_ROW_INDEX, {
+      value: sourceRowIndex,
+      enumerable: true,
+    });
+    return traceable;
+  });
+}
+
+export const sourceRowIndexOf = (row: Row) => (row as TraceableRow)[SOURCE_ROW_INDEX] ?? null;
 
 export function parseEditedValue(input: string, column?: Column): Value {
   const trimmed = input.trim();
@@ -68,4 +84,38 @@ export function auditEntry(
   timestamp = Date.now(),
 ): AuditEntry {
   return { ...entry, id: `${entry.exceptionId}-${timestamp}`, timestamp };
+}
+
+export function applyCellEdit(
+  rows: Row[],
+  rowIndex: number,
+  columnKey: string,
+  value: Value,
+): Row[] {
+  if (rowIndex < 0 || rowIndex >= rows.length) return rows;
+  return rows.map((row, index) => (index === rowIndex ? { ...row, [columnKey]: value } : row));
+}
+
+export type UndoHistory<T> = { undo: T[]; redo: T[] };
+
+export function recordUndo<T>(history: UndoHistory<T>, current: T, limit = 50): UndoHistory<T> {
+  return { undo: [...history.undo, current].slice(-limit), redo: [] };
+}
+
+export function stepUndo<T>(history: UndoHistory<T>, current: T) {
+  const next = history.undo.at(-1);
+  if (!next) return null;
+  return {
+    next,
+    history: { undo: history.undo.slice(0, -1), redo: [...history.redo, current] },
+  };
+}
+
+export function stepRedo<T>(history: UndoHistory<T>, current: T) {
+  const next = history.redo.at(-1);
+  if (!next) return null;
+  return {
+    next,
+    history: { undo: [...history.undo, current], redo: history.redo.slice(0, -1) },
+  };
 }

@@ -61,6 +61,7 @@ import {
   Moon,
   Palette,
   Pause,
+  Pencil,
   PanelRight,
   Pin,
   PieChart as PieIcon,
@@ -125,6 +126,7 @@ import type {
   Kind,
   Row,
   SheetData,
+  Value,
   Widget,
   WidgetSize,
   WidgetSpan,
@@ -235,9 +237,12 @@ import {
   semanticRoleLabels,
   semanticUnitOptions,
   type ExceptionDecision,
+  type ExceptionDecisions,
   type ColumnSemanticProfile,
+  type SemanticOverrides,
   type SemanticRole,
   type SpreadsheetException,
+  type SpreadsheetIntelligence,
 } from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFile } from "@/lib/workbook-reader-client";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
@@ -263,10 +268,17 @@ import {
 } from "@/lib/export-layout";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
 import {
+  applyCellEdit,
   auditEntry,
+  markSourceRows,
   parseEditedValue,
+  recordUndo,
+  stepRedo,
+  stepUndo,
+  sourceRowIndexOf,
   suggestCorrection,
   type AuditEntry,
+  type UndoHistory,
 } from "@/lib/data-review";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
@@ -3433,56 +3445,62 @@ function Dashboard(p: {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
-  // Pilha de desfazer/refazer, com escopo no painel atual: cobre filtros,
-  // ordem/config de colunas (inclui regras de formatação) e widgets (posição,
-  // tamanho, configuração). Reinicia sempre que o painel muda.
-  const historyRef = useRef<{
-    undo: Array<
-      Pick<
-        SheetData,
-        "filters" | "columns" | "widgets" | "semanticOverrides" | "exceptionDecisions"
-      >
-    >;
-    redo: Array<
-      Pick<
-        SheetData,
-        "filters" | "columns" | "widgets" | "semanticOverrides" | "exceptionDecisions"
-      >
-    >;
-  }>({ undo: [], redo: [] });
+  // Pilha de desfazer/refazer, com escopo na aba atual. Inclui dados e
+  // auditoria para que uma correção nunca seja parcialmente desfeita.
+  type HistorySnapshot = {
+    rows: Row[];
+    filters: FilterRule[];
+    columns: Column[];
+    widgets: Widget[];
+    intelligence?: SpreadsheetIntelligence;
+    semanticOverrides: SemanticOverrides;
+    exceptionDecisions: ExceptionDecisions;
+    auditTrail: AuditEntry[];
+  };
+  const historyRef = useRef<UndoHistory<HistorySnapshot>>({ undo: [], redo: [] });
   const [, forceHistoryUpdate] = useState(0);
   useEffect(() => {
     historyRef.current = { undo: [], redo: [] };
     forceHistoryUpdate((t) => t + 1);
-  }, [d.id]);
-  const dashboardSnapshot = (): Pick<
-    SheetData,
-    "filters" | "columns" | "widgets" | "semanticOverrides" | "exceptionDecisions"
-  > => ({
+  }, [d.id, activeSheetIndex]);
+  const dashboardSnapshot = (): HistorySnapshot => ({
+    rows: sheet.rows,
     filters: sheet.filters,
     columns: sheet.columns,
     widgets: sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows),
-    ...(sheet.semanticOverrides ? { semanticOverrides: sheet.semanticOverrides } : {}),
-    ...(sheet.exceptionDecisions ? { exceptionDecisions: sheet.exceptionDecisions } : {}),
+    ...(sheet.intelligence ? { intelligence: sheet.intelligence } : {}),
+    semanticOverrides: sheet.semanticOverrides ?? {},
+    exceptionDecisions: sheet.exceptionDecisions ?? {},
+    auditTrail: sheet.auditTrail ?? [],
   });
   const recordHistory = () => {
-    historyRef.current.undo.push(dashboardSnapshot());
-    if (historyRef.current.undo.length > 50) historyRef.current.undo.shift();
-    historyRef.current.redo = [];
+    historyRef.current = recordUndo(historyRef.current, dashboardSnapshot());
     forceHistoryUpdate((t) => t + 1);
   };
   const undo = () => {
-    const prev = historyRef.current.undo.pop();
-    if (!prev) return;
-    historyRef.current.redo.push(dashboardSnapshot());
-    updateSheet(prev);
+    const result = stepUndo(historyRef.current, dashboardSnapshot());
+    if (!result) return;
+    historyRef.current = result.history;
+    const prev = result.next;
+    updateSheet({
+      ...prev,
+      intelligence:
+        prev.intelligence ??
+        analyzeSpreadsheet(prev.rows, prev.columns, undefined, prev.semanticOverrides),
+    });
     forceHistoryUpdate((t) => t + 1);
   };
   const redo = () => {
-    const next = historyRef.current.redo.pop();
-    if (!next) return;
-    historyRef.current.undo.push(dashboardSnapshot());
-    updateSheet(next);
+    const result = stepRedo(historyRef.current, dashboardSnapshot());
+    if (!result) return;
+    historyRef.current = result.history;
+    const next = result.next;
+    updateSheet({
+      ...next,
+      intelligence:
+        next.intelligence ??
+        analyzeSpreadsheet(next.rows, next.columns, undefined, next.semanticOverrides),
+    });
     forceHistoryUpdate((t) => t + 1);
   };
   useEffect(() => {
@@ -3553,9 +3571,12 @@ function Dashboard(p: {
     const column = sheet.columns.find((item) => item.key === exception.columnKey);
     const before = sheet.rows[rowOffset]?.[exception.columnKey] ?? null;
     const after = parseEditedValue(input, column);
-    const rows = sheet.rows.map((row, index) =>
-      index === rowOffset ? { ...row, [exception.columnKey!]: after } : row,
-    );
+    if (Object.is(before, after)) {
+      toast.info("O valor informado é igual ao valor atual.");
+      return;
+    }
+    recordHistory();
+    const rows = applyCellEdit(sheet.rows, rowOffset, exception.columnKey, after);
     const nextDecisions = {
       ...(sheet.exceptionDecisions ?? {}),
       [exception.id]: { status: "resolved" as const, updatedAt: Date.now() },
@@ -3586,11 +3607,54 @@ function Dashboard(p: {
     });
     toast.success("Célula corrigida e registrada no histórico.");
   };
+  const editTableCell = (
+    sourceRowIndex: number,
+    columnKey: string,
+    input: string,
+    reason: string,
+  ) => {
+    const column = sheet.columns.find((item) => item.key === columnKey);
+    if (!column || column.formula || sourceRowIndex < 0 || sourceRowIndex >= sheet.rows.length)
+      return;
+    const before = sheet.rows[sourceRowIndex]?.[columnKey] ?? null;
+    const after = parseEditedValue(input, column);
+    if (Object.is(before, after)) {
+      toast.info("O valor informado é igual ao valor atual.");
+      return;
+    }
+    recordHistory();
+    const rows = applyCellEdit(sheet.rows, sourceRowIndex, columnKey, after);
+    const intelligence = analyzeSpreadsheet(
+      rows,
+      sheet.columns,
+      undefined,
+      sheet.semanticOverrides,
+    );
+    updateSheet({
+      rows,
+      intelligence,
+      auditTrail: [
+        ...(sheet.auditTrail ?? []),
+        auditEntry({
+          action: "cell-correction",
+          exceptionId: `manual-${sourceRowIndex + 1}-${columnKey}`,
+          rowIndex: sourceRowIndex + 1,
+          columnKey,
+          before,
+          after,
+          reason: reason.trim(),
+        }),
+      ].slice(-1000),
+    });
+    setFocusedCell({ rowIndex: sourceRowIndex + 1, columnKey });
+    toast.success("Célula atualizada. Use Ctrl+Z para desfazer.");
+  };
 
   // Colunas calculadas recalculam ao vivo antes de qualquer filtro.
+  const traceableRows = useMemo(() => markSourceRows(sheet.rows), [sheet.rows]);
   const withCalculated = useMemo(
-    () => withCalculatedColumns(sheet.rows, sheet.columns),
-    [sheet.rows, sheet.columns],
+    () => withCalculatedColumns(traceableRows, sheet.columns),
+    [traceableRows, sheet.columns],
   );
   // Regras de dados ausentes (ignorar/zero/interpolar/ocultar linha) rodam em seguida.
   const { rows: rulesApplied, interpolated } = useMemo(
@@ -4270,6 +4334,7 @@ function Dashboard(p: {
             auditTrail={sheet.auditTrail ?? []}
             onExceptionDecision={setExceptionDecision}
             onCorrectException={correctException}
+            onEditCell={editTableCell}
             onTraceException={traceException}
             focusedCell={focusedCell}
             folderMonitor={p.folderMonitor}
@@ -6756,6 +6821,7 @@ function WidgetCard({
   auditTrail,
   onExceptionDecision,
   onCorrectException,
+  onEditCell,
   onTraceException,
   focusedCell,
   folderMonitor,
@@ -6789,6 +6855,7 @@ function WidgetCard({
   auditTrail: AuditEntry[];
   onExceptionDecision: (exceptionId: string, status: ExceptionDecision["status"] | null) => void;
   onCorrectException: (exception: SpreadsheetException, value: string, reason: string) => void;
+  onEditCell: (sourceRowIndex: number, columnKey: string, value: string, reason: string) => void;
   onTraceException: (exception: SpreadsheetException) => void;
   focusedCell: { rowIndex: number; columnKey?: string; address?: string } | null;
   folderMonitor: FolderMonitorView | undefined;
@@ -9491,6 +9558,7 @@ function WidgetCard({
         setSort={setSort}
         interpolated={interpolated}
         focusedCell={focusedCell}
+        onEditCell={onEditCell}
       />
     </article>
   );
@@ -9750,6 +9818,7 @@ function DataTable({
   setSort,
   interpolated,
   focusedCell,
+  onEditCell,
 }: {
   rows: Row[];
   columns: Column[];
@@ -9757,7 +9826,15 @@ function DataTable({
   setSort: (s: { key: string; dir: "asc" | "desc" }) => void;
   interpolated?: Set<string>;
   focusedCell?: { rowIndex: number; columnKey?: string; address?: string } | null;
+  onEditCell: (sourceRowIndex: number, columnKey: string, value: string, reason: string) => void;
 }) {
+  const [editing, setEditing] = useState<{
+    sourceRowIndex: number;
+    columnKey: string;
+    value: string;
+    reason: string;
+    before: Value;
+  } | null>(null);
   const parent = useRef<HTMLDivElement>(null),
     visible = columns.filter((c) => c.visible),
     v = useVirtualizer({
@@ -9768,90 +9845,204 @@ function DataTable({
     });
   useEffect(() => {
     if (!focusedCell) return;
-    v.scrollToIndex(Math.max(0, Math.min(rows.length - 1, focusedCell.rowIndex - 1)), {
+    const visibleIndex = rows.findIndex(
+      (row) => sourceRowIndexOf(row) === focusedCell.rowIndex - 1,
+    );
+    if (visibleIndex < 0) return;
+    v.scrollToIndex(visibleIndex, {
       align: "center",
     });
-  }, [focusedCell, rows.length, v]);
+  }, [focusedCell, rows, v]);
+  const beginEdit = (row: Row, column: Column) => {
+    if (column.formula) return;
+    const sourceRowIndex = sourceRowIndexOf(row);
+    if (sourceRowIndex === null) return;
+    const before = row[column.key] ?? null;
+    setEditing({
+      sourceRowIndex,
+      columnKey: column.key,
+      value: before === null ? "" : String(before),
+      reason: "",
+      before,
+    });
+  };
+  const editingColumn = editing
+    ? columns.find((column) => column.key === editing.columnKey)
+    : undefined;
   return (
-    <div ref={parent} className="h-[360px] overflow-auto">
-      <div className="sticky top-0 z-10 flex min-w-max border-b border-border bg-muted/60 backdrop-blur-sm">
-        {visible.map((c) => {
-          const header = (
-            <button
-              key={c.key}
-              className="flex w-44 items-center gap-2 border-r border-border px-3 py-2.5 text-left font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              onClick={() =>
-                setSort({
-                  key: c.key,
-                  dir: sort?.key === c.key && sort.dir === "asc" ? "desc" : "asc",
-                })
-              }
-            >
-              <span className="truncate">{c.label}</span>
-              {c.formula && (
-                <Calculator className="size-3 shrink-0 text-secondary-accent" aria-hidden="true" />
-              )}
-              {sort?.key === c.key &&
-                (sort.dir === "asc" ? (
-                  <ArrowUp className="size-3 shrink-0 text-primary" />
-                ) : (
-                  <ArrowDown className="size-3 shrink-0 text-primary" />
-                ))}
-            </button>
-          );
-          if (!c.description) return header;
-          return (
-            <Tooltip key={c.key}>
-              <TooltipTrigger asChild>{header}</TooltipTrigger>
-              <TooltipContent>{c.description}</TooltipContent>
-            </Tooltip>
-          );
-        })}
+    <div>
+      <div className="flex items-center gap-2 border-b border-border bg-muted/15 px-3 py-2 text-[11px] text-muted-foreground">
+        <Pencil className="size-3.5" />
+        Duplo clique ou pressione Enter em uma célula para editar. Colunas calculadas são
+        protegidas.
       </div>
-      <div className="relative min-w-max" style={{ height: v.getTotalSize() }}>
-        {v.getVirtualItems().map((item) => {
-          const row = rows[item.index] ?? {};
-          return (
-            <div
-              key={item.key}
-              className={cn(
-                "absolute left-0 flex border-b border-border transition-colors hover:bg-accent/60",
-                item.index % 2 === 1 && "bg-muted/25",
-                focusedCell?.rowIndex === item.index + 1 && "bg-primary/8",
-              )}
-              style={{ height: item.size, transform: `translateY(${item.start}px)` }}
-            >
-              {visible.map((c) => {
-                const shown = fmt(row[c.key] ?? null, c.kind),
-                  numeric = numericKinds.includes(c.kind),
-                  isInterpolated = interpolated?.has(`${item.index}-${c.key}`),
-                  cellStyle = conditionalStyle(row[c.key] ?? null, c.kind, c.conditionalFormat);
-                return (
-                  <div
-                    key={c.key}
-                    title={
-                      isInterpolated ? "Valor estimado por interpolação" : (shown ?? undefined)
-                    }
-                    style={cellStyle ?? undefined}
-                    className={cn(
-                      "w-44 truncate border-r border-border px-3 py-2 text-xs",
-                      numeric && "text-right font-mono",
-                      shown === null && "text-muted-foreground",
-                      isInterpolated &&
-                        "outline outline-1 -outline-offset-1 outline-secondary-accent",
-                      focusedCell?.rowIndex === item.index + 1 &&
-                        (!focusedCell.columnKey || focusedCell.columnKey === c.key) &&
-                        "relative z-[1] bg-primary/12 outline outline-2 -outline-offset-2 outline-primary",
-                    )}
-                  >
-                    <span>{shown ?? "—"}</span>
-                  </div>
-                );
-              })}
+      <div ref={parent} className="h-[360px] overflow-auto">
+        <div className="sticky top-0 z-10 flex min-w-max border-b border-border bg-muted/60 backdrop-blur-sm">
+          {visible.map((c) => {
+            const header = (
+              <button
+                key={c.key}
+                className="flex w-44 items-center gap-2 border-r border-border px-3 py-2.5 text-left font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                onClick={() =>
+                  setSort({
+                    key: c.key,
+                    dir: sort?.key === c.key && sort.dir === "asc" ? "desc" : "asc",
+                  })
+                }
+              >
+                <span className="truncate">{c.label}</span>
+                {c.formula && (
+                  <Calculator
+                    className="size-3 shrink-0 text-secondary-accent"
+                    aria-hidden="true"
+                  />
+                )}
+                {sort?.key === c.key &&
+                  (sort.dir === "asc" ? (
+                    <ArrowUp className="size-3 shrink-0 text-primary" />
+                  ) : (
+                    <ArrowDown className="size-3 shrink-0 text-primary" />
+                  ))}
+              </button>
+            );
+            if (!c.description) return header;
+            return (
+              <Tooltip key={c.key}>
+                <TooltipTrigger asChild>{header}</TooltipTrigger>
+                <TooltipContent>{c.description}</TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+        <div className="relative min-w-max" style={{ height: v.getTotalSize() }}>
+          {v.getVirtualItems().map((item) => {
+            const row = rows[item.index] ?? {};
+            const sourceRowIndex = sourceRowIndexOf(row);
+            const isFocusedRow =
+              focusedCell && sourceRowIndex !== null && focusedCell.rowIndex === sourceRowIndex + 1;
+            return (
+              <div
+                key={item.key}
+                className={cn(
+                  "absolute left-0 flex border-b border-border transition-colors hover:bg-accent/60",
+                  item.index % 2 === 1 && "bg-muted/25",
+                  isFocusedRow && "bg-primary/8",
+                )}
+                style={{ height: item.size, transform: `translateY(${item.start}px)` }}
+              >
+                {visible.map((c) => {
+                  const shown = fmt(row[c.key] ?? null, c.kind),
+                    numeric = numericKinds.includes(c.kind),
+                    isInterpolated = interpolated?.has(`${item.index}-${c.key}`),
+                    cellStyle = conditionalStyle(row[c.key] ?? null, c.kind, c.conditionalFormat);
+                  return (
+                    <div
+                      key={c.key}
+                      role={c.formula ? undefined : "button"}
+                      tabIndex={c.formula ? undefined : 0}
+                      aria-label={
+                        c.formula
+                          ? undefined
+                          : `Editar ${c.label}, linha ${(sourceRowIndex ?? item.index) + 1}`
+                      }
+                      onDoubleClick={() => beginEdit(row, c)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" || c.formula) return;
+                        event.preventDefault();
+                        beginEdit(row, c);
+                      }}
+                      title={
+                        isInterpolated ? "Valor estimado por interpolação" : (shown ?? undefined)
+                      }
+                      style={cellStyle ?? undefined}
+                      className={cn(
+                        "w-44 truncate border-r border-border px-3 py-2 text-xs",
+                        numeric && "text-right font-mono",
+                        shown === null && "text-muted-foreground",
+                        isInterpolated &&
+                          "outline outline-1 -outline-offset-1 outline-secondary-accent",
+                        isFocusedRow &&
+                          (!focusedCell.columnKey || focusedCell.columnKey === c.key) &&
+                          "relative z-[1] bg-primary/12 outline outline-2 -outline-offset-2 outline-primary",
+                        editing?.sourceRowIndex === sourceRowIndex &&
+                          editing.columnKey === c.key &&
+                          "relative z-[1] bg-tint outline outline-2 -outline-offset-2 outline-primary",
+                        !c.formula &&
+                          "cursor-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
+                      )}
+                    >
+                      <span>{shown ?? "—"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {editing && editingColumn && (
+        <div className="border-t border-primary/30 bg-tint/35 p-3" aria-live="polite">
+          <div className="grid gap-3 lg:grid-cols-[minmax(10rem,0.7fr)_minmax(16rem,1.3fr)_auto] lg:items-end">
+            <label className="grid gap-1 text-[11px] font-medium">
+              {editingColumn.label} · linha {editing.sourceRowIndex + 1}
+              <input
+                autoFocus
+                className="oliam-input h-9"
+                value={editing.value}
+                onChange={(event) =>
+                  setEditing((current) =>
+                    current ? { ...current, value: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-[11px] font-medium">
+              Justificativa da alteração
+              <input
+                className="oliam-input h-9"
+                value={editing.reason}
+                onChange={(event) =>
+                  setEditing((current) =>
+                    current ? { ...current, reason: event.target.value } : current,
+                  )
+                }
+                placeholder="Ex.: valor conferido no laudo original"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={!editing.reason.trim()}
+                onClick={() => {
+                  onEditCell(
+                    editing.sourceRowIndex,
+                    editing.columnKey,
+                    editing.value,
+                    editing.reason,
+                  );
+                  setEditing(null);
+                }}
+              >
+                Salvar alteração
+              </Button>
             </div>
-          );
-        })}
-      </div>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Prévia:{" "}
+            <span className="font-mono text-destructive line-through">
+              {String(editing.before ?? "vazio")}
+            </span>{" "}
+            →{" "}
+            <span className="font-mono text-emerald-700 dark:text-emerald-300">
+              {String(parseEditedValue(editing.value, editingColumn) ?? "vazio")}
+            </span>
+            . O valor anterior e a justificativa ficarão no histórico.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
