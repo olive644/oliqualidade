@@ -1,5 +1,5 @@
-import * as XLSX from "xlsx";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
+import { encodeCellAddress } from "@/lib/cell-address";
 import type { Column, Row, Value } from "@/lib/types";
 
 export type SemanticRole =
@@ -371,7 +371,7 @@ const valueFamily = (value: Value) => {
 
 function canonicalAddress(columnIndex: number, rowIndex: number, diagnostics?: ImportDiagnostics) {
   const headerRow = diagnostics?.header.row ?? 1;
-  return XLSX.utils.encode_cell({ r: headerRow + rowIndex, c: columnIndex });
+  return encodeCellAddress(headerRow + rowIndex, columnIndex);
 }
 
 export function buildCanonicalCells(

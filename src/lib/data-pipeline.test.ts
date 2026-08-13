@@ -8,6 +8,7 @@ import {
   detectQualitySignals,
   groupAndAggregate,
   leftJoin,
+  limitChartSeriesForRendering,
   NOT_INFORMED,
   pieRoundnessFor,
   relevantAggregationOps,
@@ -36,6 +37,23 @@ describe("chartSeries", () => {
       { name: "A", total: 30 },
       { name: "B", total: 5 },
     ]);
+  });
+});
+
+describe("limite seguro para SVGs de gráficos", () => {
+  it("não altera séries que já cabem na renderização", () => {
+    const items = [{ total: 1 }, { total: 2 }];
+    expect(limitChartSeriesForRendering(items, 5)).toEqual({ items, omitted: 0, total: 2 });
+  });
+
+  it("distribui a prévia por toda a série e preserva as extremidades", () => {
+    const items = Array.from({ length: 10_000 }, (_, index) => index);
+    const result = limitChartSeriesForRendering(items, 100);
+    expect(result.items).toHaveLength(100);
+    expect(result.items[0]).toBe(0);
+    expect(result.items.at(-1)).toBe(9_999);
+    expect(result.omitted).toBe(9_900);
+    expect(result.total).toBe(10_000);
   });
 });
 

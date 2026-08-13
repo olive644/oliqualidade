@@ -17,7 +17,9 @@
     "test:fixture": "node scripts/generate-problematic-fixture.mjs",
     "test:corpus:generate": "node scripts/generate-workbook-corpus.mjs",
     "test:security-smoke": "node scripts/security-smoke.mjs",
-    "graph:build": "node scripts/build-code-graph.mjs"
+    "graph:build": "node scripts/build-code-graph.mjs",
+    "performance:check": "node scripts/check-performance-budget.mjs",
+    "verify": "npm test && npm run build && npm run performance:check"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

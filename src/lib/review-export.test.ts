@@ -1,12 +1,8 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
-import {
-  auditExportRows,
-  buildCorrectedWorkbook,
-  comparisonExportRows,
-  rowsToCsv,
-} from "@/lib/review-export";
+import { auditExportRows, comparisonExportRows, rowsToCsv } from "@/lib/review-export";
+import { buildCorrectedWorkbook } from "@/lib/review-workbook";
 import type { Dashboard } from "@/lib/types";
 
 const dashboard: Dashboard = {

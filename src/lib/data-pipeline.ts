@@ -272,6 +272,33 @@ export function chartSeries(
   });
 }
 
+export const MAX_RENDERED_CHART_POINTS = 600;
+
+export type RenderableChartSeries<T> = {
+  items: T[];
+  omitted: number;
+  total: number;
+};
+
+/**
+ * Mantém o conjunto completo fora do DOM e cria uma prévia distribuída ao
+ * longo de toda a série. Primeiro e último pontos sempre são preservados;
+ * nenhum valor é recalculado. A tabela detalhada continua sendo a fonte para
+ * consultar as linhas que não cabem com segurança no SVG do gráfico.
+ */
+export function limitChartSeriesForRendering<T>(
+  items: T[],
+  limit = MAX_RENDERED_CHART_POINTS,
+): RenderableChartSeries<T> {
+  const safeLimit = Math.max(2, Math.floor(limit));
+  if (items.length <= safeLimit) return { items, omitted: 0, total: items.length };
+  const sampled = Array.from({ length: safeLimit }, (_, index) => {
+    const sourceIndex = Math.round((index * (items.length - 1)) / (safeLimit - 1));
+    return items[sourceIndex]!;
+  });
+  return { items: sampled, omitted: items.length - sampled.length, total: items.length };
+}
+
 /**
  * Quando cada grupo tem no máximo 1 valor numérico válido na coluna
  * agregada (ex: uma aba "Resumo" com uma linha por vendedor, já
