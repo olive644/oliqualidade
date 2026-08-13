@@ -141,6 +141,7 @@ import {
   schedulePeriodColumns,
   scheduleItemColumn,
   scheduleStatusColumn,
+  scheduleDetailColumns,
   spanClass,
   sizeClass,
 } from "@/lib/widgets";
@@ -505,6 +506,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
     [editor, setEditor] = useState(false),
     [loading, setLoading] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const importAbort = useRef<AbortController | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saved" | "warning">("idle");
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -650,14 +652,16 @@ export function OliAm({ routeId }: { routeId?: string }) {
       }
     });
   };
-  const readWorkbook = async (file: File) => {
+  const readWorkbook = async (file: File, signal?: AbortSignal) => {
     const labels = {
       decoding: "Identificando formato e codificação…",
       parsing: "Lendo células, fórmulas e formatação…",
       analyzing: "Analisando cabeçalhos e regiões de dados…",
     };
-    const sheets = await readWorkbookFile(file, (progress) =>
-      setImportProgressLabel(labels[progress]),
+    const sheets = await readWorkbookFile(
+      file,
+      (progress) => setImportProgressLabel(labels[progress]),
+      signal,
     );
     if (!sheets.length) throw new Error("empty-workbook");
     return sheets;
@@ -689,6 +693,9 @@ export function OliAm({ routeId }: { routeId?: string }) {
     setStage("review");
   };
   const parse = async (file: File) => {
+    importAbort.current?.abort();
+    const controller = new AbortController();
+    importAbort.current = controller;
     setLoading(true);
     setImportError(null);
     setImportWarning(null);
@@ -699,13 +706,17 @@ export function OliAm({ routeId }: { routeId?: string }) {
     // antes do processamento (síncrono e potencialmente pesado) começar.
     await new Promise((r) => setTimeout(r, 30));
     try {
-      const sheets = await readWorkbook(file);
+      const sheets = await readWorkbook(file, controller.signal);
       // Todas as abas com dado entram juntas na importação, uma vez só —
       // sem pedir pra escolher qual aba antes: o painel nasce já com todas
       // elas, prontas pra alternar depois numa barra de abas, como no Excel.
       setImportWarning(sheets.map((s) => s.warning).find((w) => w) ?? null);
       prepare(sheets, file.name);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setImportError("Importação cancelada. O arquivo original não foi alterado.");
+        return;
+      }
       const message = error instanceof Error ? error.message : "";
       setImportError(
         /password|encrypt|senha/i.test(message)
@@ -715,6 +726,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
             : `Não foi possível ler esse arquivo. Use um formato válido: ${WORKBOOK_FORMATS_LABEL}.`,
       );
     } finally {
+      if (importAbort.current === controller) importAbort.current = null;
       setLoading(false);
       setImportProgressLabel(null);
     }
@@ -1282,6 +1294,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
             sheet={() => void sheet()}
             loading={loading}
             loadingLabel={importProgressLabel}
+            cancelImport={() => importAbort.current?.abort()}
             editor={editor}
             setEditor={setEditor}
             paste={paste}
@@ -1732,6 +1745,7 @@ function Empty(p: {
   sheet: () => void;
   loading: boolean;
   loadingLabel: string | null;
+  cancelImport: () => void;
   editor: boolean;
   setEditor: (v: boolean) => void;
   paste: string;
@@ -1863,6 +1877,13 @@ function Empty(p: {
               </>
             )}
           </button>
+          {p.loading && (
+            <div className="mt-3 flex justify-center">
+              <Button type="button" variant="outline" size="sm" onClick={p.cancelImport}>
+                Cancelar importação
+              </Button>
+            </div>
+          )}
           {p.importError && (
             <p className="oli-import-error">
               <AlertTriangle />
@@ -2357,6 +2378,59 @@ function ImportWorkbench({
         </div>
       ) : health ? (
         <div className="p-4">
+          {diagnostics && (
+            <div className="mb-4 grid gap-3 md:grid-cols-[1.2fr_1fr]">
+              <div className="rounded-xl border border-border bg-background p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-medium">Leitura estrutural</div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      O Oli mostra a interpretação e os pontos que ainda exigem confirmação.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-primary/25 bg-primary/8 px-2.5 py-1 text-xs font-medium text-primary">
+                    {diagnostics.structuralClassification?.type ?? "tabela"} ·{" "}
+                    {diagnostics.interpretationScore ?? diagnostics.confidence}%
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-lg bg-muted/50 p-2">
+                    <strong className="block text-base">
+                      {diagnostics.readerDivergences?.length ?? 0}
+                    </strong>
+                    divergências
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2">
+                    <strong className="block text-base">{diagnostics.formulaCells}</strong>
+                    fórmulas
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2">
+                    <strong className="block text-base">
+                      {diagnostics.qualityAudit?.intentionalBlankCells ?? 0}
+                    </strong>
+                    vazios legítimos
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-background p-4">
+                <div className="text-sm font-medium">Decisão da importação</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {diagnostics.confidence >= 85 && !(diagnostics.readerDivergences?.length ?? 0)
+                    ? "Estrutura consistente. Você pode confirmar ou revisar a grade original."
+                    : "Há pontos de atenção. Revise as células marcadas antes de confirmar."}
+                </p>
+                {diagnostics.formulaDiagnostics.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                    {diagnostics.formulaDiagnostics.slice(0, 3).map((formula, index) => (
+                      <li key={`${formula.address}-${index}`}>
+                        • {formula.address}: {formula.reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
           {audit && (
             <div className="mb-4 rounded-xl border border-border bg-background p-4">
               <div className="text-sm font-medium">Balanço verificável da importação</div>
@@ -6976,13 +7050,36 @@ function WidgetCard({
         columns,
         periodCols.map((column) => column.key),
       );
+    const allDetailCols = columns.filter(
+      (column) =>
+        !periodKeys.has(column.key) &&
+        column.key !== groupCol?.key &&
+        column.key !== statusCol?.key &&
+        data.some((row) => row[column.key] !== null && row[column.key] !== ""),
+    );
+    const defaultDetailCols = scheduleDetailColumns(
+      columns,
+      periodCols.map((column) => column.key),
+      data,
+      groupCol?.key,
+      statusCol?.key,
+    );
+    const detailCols = (
+      w.detailKeys === undefined
+        ? defaultDetailCols
+        : w.detailKeys
+            .map((key) => allDetailCols.find((column) => column.key === key))
+            .filter((column): column is Column => Boolean(column))
+    ).slice(0, 8);
+    const detailKeys = new Set(detailCols.map((column) => column.key));
     const scheduleRows = data.filter(
       (row) =>
         groupCol &&
         row[groupCol.key] !== null &&
         row[groupCol.key] !== "" &&
         (periodCols.some((column) => row[column.key] !== null && row[column.key] !== "") ||
-          (statusCol && row[statusCol.key] !== null && row[statusCol.key] !== "")),
+          (statusCol && row[statusCol.key] !== null && row[statusCol.key] !== "") ||
+          allDetailCols.some((column) => row[column.key] !== null && row[column.key] !== "")),
     );
     const visibleRows = scheduleRows.slice(0, 400);
     const togglePeriod = (key: string) => {
@@ -6991,6 +7088,16 @@ function WidgetCard({
       else selected.add(key);
       onConfigure({
         periodKeys: detectedPeriods
+          .filter((column) => selected.has(column.key))
+          .map((column) => column.key),
+      });
+    };
+    const toggleDetail = (key: string) => {
+      const selected = new Set(detailCols.map((column) => column.key));
+      if (selected.has(key)) selected.delete(key);
+      else if (selected.size < 8) selected.add(key);
+      onConfigure({
+        detailKeys: allDetailCols
           .filter((column) => selected.has(column.key))
           .map((column) => column.key),
       });
@@ -7067,6 +7174,38 @@ function WidgetCard({
               );
             })}
           </div>
+          {allDetailCols.length > 0 && (
+            <div className="flex basis-full items-center gap-2 border-t border-border/60 pt-2">
+              <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Informações extras
+              </span>
+              <div
+                className="flex min-w-0 flex-1 gap-1 overflow-x-auto"
+                aria-label="Informações extras visíveis"
+              >
+                {allDetailCols.map((column) => {
+                  const selected = detailKeys.has(column.key);
+                  return (
+                    <button
+                      key={column.key}
+                      type="button"
+                      className={cn(
+                        "shrink-0 rounded-full border px-2 py-1 text-[10px] font-medium transition-colors",
+                        selected
+                          ? "border-secondary-accent/45 bg-secondary-accent/12 text-foreground"
+                          : "border-border bg-card text-muted-foreground",
+                      )}
+                      aria-pressed={selected}
+                      onClick={() => toggleDetail(column.key)}
+                      title={selected ? `Ocultar ${column.label}` : `Mostrar ${column.label}`}
+                    >
+                      {column.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
         {sizeControls}
         {!groupCol || !periodCols.length ? (
@@ -7087,6 +7226,14 @@ function WidgetCard({
                     <th className="sticky left-0 top-0 z-20 min-w-52 rounded-lg bg-card px-3 py-2 text-left font-semibold shadow-[1px_1px_0_var(--border)]">
                       {groupCol.label}
                     </th>
+                    {detailCols.map((column) => (
+                      <th
+                        key={column.key}
+                        className="sticky top-0 z-10 min-w-28 max-w-48 rounded-lg bg-card px-3 py-2 text-left font-semibold shadow-[0_1px_0_var(--border)]"
+                      >
+                        {column.label}
+                      </th>
+                    ))}
                     {periodCols.map((column) => (
                       <th
                         key={column.key}
@@ -7118,6 +7265,29 @@ function WidgetCard({
                             )}
                           </button>
                         </th>
+                        {detailCols.map((column) => {
+                          const value = row[column.key];
+                          const empty = value === null || value === "";
+                          const label = empty
+                            ? "—"
+                            : (fmt(value ?? null, column.kind) ?? String(value));
+                          return (
+                            <td
+                              key={column.key}
+                              className="max-w-48 rounded-lg bg-muted/30 px-3 py-2 text-left text-[11px] text-foreground"
+                              title={`${column.label}: ${label}`}
+                            >
+                              <span
+                                className={cn(
+                                  "block",
+                                  empty ? "text-muted-foreground" : "break-words",
+                                )}
+                              >
+                                {label}
+                              </span>
+                            </td>
+                          );
+                        })}
                         {periodCols.map((column) => {
                           const value = row[column.key];
                           const state = scheduleCellState(value, status);
@@ -7147,6 +7317,11 @@ function WidgetCard({
               </table>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-2 text-[10px] text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {scheduleRows.length.toLocaleString("pt-BR")} item(ns) · {periodCols.length}{" "}
+                período(s)
+                {detailCols.length ? ` · ${detailCols.length} informação(ões) extra(s)` : ""}
+              </span>
               {[
                 ["planned", "Planejado"],
                 ["done", "Executado / conforme"],

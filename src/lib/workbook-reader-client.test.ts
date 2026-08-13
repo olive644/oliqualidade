@@ -43,4 +43,26 @@ describe("limite de arquivo", () => {
     await result;
     expect(terminate).toHaveBeenCalledOnce();
   });
+
+  it("permite cancelar manualmente uma importação pesada", async () => {
+    const terminate = vi.fn();
+    class StalledWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      postMessage() {}
+      terminate = terminate;
+    }
+    vi.stubGlobal("Worker", StalledWorker);
+    const file = {
+      name: "grande.xlsx",
+      size: 4,
+      arrayBuffer: async () => new ArrayBuffer(4),
+    } as unknown as File;
+    const controller = new AbortController();
+    const result = readWorkbookFile(file, undefined, controller.signal);
+    await Promise.resolve();
+    controller.abort();
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+    expect(terminate).toHaveBeenCalledOnce();
+  });
 });

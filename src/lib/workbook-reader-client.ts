@@ -12,10 +12,13 @@ export const WORKBOOK_READ_TIMEOUT_MS = 60_000;
 export async function readWorkbookFile(
   file: File,
   onProgress?: (progress: WorkbookReadProgress) => void,
+  signal?: AbortSignal,
 ): Promise<SheetOption[]> {
   if (file.size > MAX_WORKBOOK_BYTES)
     throw new Error("A planilha excede o limite de 100 MB. Divida o arquivo antes de importar.");
+  if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
   const bytes = await file.arrayBuffer();
+  if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
   if (typeof Worker === "undefined") return readWorkbookBytes(bytes, file.name, onProgress);
 
   return new Promise((resolve, reject) => {
@@ -29,7 +32,12 @@ export async function readWorkbookFile(
       settled = true;
       clearTimeout(timeout);
       worker.terminate();
+      signal?.removeEventListener("abort", abort);
       return true;
+    };
+    const abort = () => {
+      if (!finish()) return;
+      reject(new DOMException("Importação cancelada.", "AbortError"));
     };
     const timeout = setTimeout(() => {
       if (!finish()) return;
@@ -55,6 +63,7 @@ export async function readWorkbookFile(
       if (!finish()) return;
       reject(new Error(event.message || "Falha ao processar a planilha."));
     };
+    signal?.addEventListener("abort", abort, { once: true });
     worker.postMessage({ id, bytes, fileName: file.name }, [bytes]);
   });
 }

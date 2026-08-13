@@ -80,6 +80,7 @@ export type Widget = {
   scaleMax?: number; // rating: nota máxima da escala (padrão 5)
   periodKeys?: string[]; // schedule-heatmap: colunas exibidas horizontalmente
   statusKey?: string; // schedule-heatmap: coluna que distingue planejado/executado/status
+  detailKeys?: string[]; // schedule-heatmap: contexto preservado (limite, análise, responsável etc.)
 };
 
 export const widgetTypeLabels: Record<WidgetType, string> = {
