@@ -245,6 +245,8 @@ import {
   type SpreadsheetIntelligence,
 } from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFile } from "@/lib/workbook-reader-client";
+import { analyzeReviewInBackground } from "@/lib/review-analysis-client";
+import type { ReviewAnalysisProgress, ReviewAnalysisResult } from "@/lib/review-analysis";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { geocodeMissing } from "@/lib/geocode";
 import { askGemini, type GeminiChatMessage } from "@/lib/gemini-client";
@@ -280,6 +282,13 @@ import {
   type AuditEntry,
   type UndoHistory,
 } from "@/lib/data-review";
+import {
+  auditExportRows,
+  buildCorrectedWorkbook,
+  comparisonExportRows,
+  reviewReportSections,
+  rowsToCsv,
+} from "@/lib/review-export";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
@@ -1176,6 +1185,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         pinned: false,
+        sourceFileName: name,
       };
       persist([dash, ...dashboards]);
       setCurrentId(dash.id);
@@ -1191,6 +1201,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
           if (d.id !== reviewTarget) return d;
           return {
             ...d,
+            sourceFileName: name,
             sheets: mergeReimportedSheets(d.sheets, sheets),
             activeSheetIndex: 0,
             updatedAt: Date.now(),
@@ -3337,8 +3348,11 @@ function Dashboard(p: {
     [editingName, setEditingName] = useState(false),
     [draftName, setDraftName] = useState(d.name);
   const [missingPanel, setMissingPanel] = useState(false);
-  const [exporting, setExporting] = useState<"png" | "pdf" | null>(null);
+  const [exporting, setExporting] = useState<"png" | "pdf" | "review" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [backgroundReview, setBackgroundReview] = useState<ReviewAnalysisResult | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<ReviewAnalysisProgress | null>(null);
+  const analysisAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     if (!exportError) return;
     const id = setTimeout(() => setExportError(null), 5000);
@@ -3395,12 +3409,40 @@ function Dashboard(p: {
   const contentRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    analysisAbort.current?.abort();
+    const controller = new AbortController();
+    analysisAbort.current = controller;
+    setBackgroundReview(null);
+    setAnalysisProgress({ percent: 0, phase: "preparing" });
+    void analyzeReviewInBackground(
+      {
+        rows: sheet.rows,
+        columns: sheet.columns,
+        ...(sheet.semanticOverrides ? { semanticOverrides: sheet.semanticOverrides } : {}),
+        ...(sheet.previousSnapshot ? { previousRows: sheet.previousSnapshot.rows } : {}),
+      },
+      setAnalysisProgress,
+      controller.signal,
+    )
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setBackgroundReview(result);
+        setAnalysisProgress(null);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setAnalysisProgress(null);
+      });
+    return () => controller.abort();
+  }, [sheet.rows, sheet.columns, sheet.semanticOverrides, sheet.previousSnapshot]);
   const effectiveIntelligence = useMemo(
     () =>
-      sheet.semanticOverrides
+      backgroundReview?.intelligence ??
+      (sheet.semanticOverrides
         ? analyzeSpreadsheet(sheet.rows, sheet.columns, undefined, sheet.semanticOverrides)
-        : (sheet.intelligence ?? analyzeSpreadsheet(sheet.rows, sheet.columns)),
-    [sheet.rows, sheet.columns, sheet.intelligence, sheet.semanticOverrides],
+        : (sheet.intelligence ?? analyzeSpreadsheet(sheet.rows, sheet.columns))),
+    [backgroundReview, sheet.rows, sheet.columns, sheet.intelligence, sheet.semanticOverrides],
   );
   const semanticProfilesByKey = useMemo(
     () => new Map(effectiveIntelligence.columns.map((profile) => [profile.key, profile])),
@@ -3713,9 +3755,8 @@ function Dashboard(p: {
     return deltas;
   }, [sheet.previousSnapshot, sheet.columns, withCalculated, nums]);
   const detailedVersionDiff = useMemo(
-    () =>
-      sheet.previousSnapshot ? compareVersions(sheet.previousSnapshot.rows, sheet.rows) : null,
-    [sheet.previousSnapshot, sheet.rows],
+    () => (sheet.previousSnapshot ? (backgroundReview?.versionDiff ?? null) : null),
+    [backgroundReview, sheet.previousSnapshot],
   );
   const primary = nums[0];
   // Colunas candidatas a agrupamento: categoria, texto ou data.
@@ -3865,6 +3906,90 @@ function Dashboard(p: {
       wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Relatório");
     XLSX.writeFile(wb, `${slug}.xlsx`);
+  };
+  const downloadText = (content: string, fileName: string, type = "text/csv;charset=utf-8") => {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2_000);
+  };
+  const exportAuditCsv = () => {
+    const rows = auditExportRows(d);
+    if (!rows.length) {
+      toast.info("Ainda não há ajustes registrados para exportar.");
+      return;
+    }
+    downloadText(rowsToCsv(rows), `${slug}-auditoria.csv`);
+    toast.success("Auditoria exportada com origem, antes, depois e motivo.");
+  };
+  const exportComparisonCsv = () => {
+    const rows = comparisonExportRows(d);
+    if (!rows.length) {
+      toast.info("Importe uma nova versão para gerar o comparador.");
+      return;
+    }
+    downloadText(rowsToCsv(rows), `${slug}-comparacao.csv`);
+    toast.success("Comparação exportada célula por célula.");
+  };
+  const exportCorrectedWorkbook = () => {
+    XLSX.writeFile(buildCorrectedWorkbook(d), `${slug}-copia-corrigida.xlsx`, {
+      compression: true,
+    });
+    toast.success("Cópia corrigida criada. O arquivo original permaneceu intacto.");
+  };
+  const exportReviewPdf = async () => {
+    setExporting("review");
+    try {
+      const { jsPDF } = await import("jspdf");
+      const report = reviewReportSections(d);
+      if (!report.audit.length && !report.comparison.length) {
+        toast.info("Ainda não há auditoria nem comparação para incluir no relatório.");
+        return;
+      }
+      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      const margin = 36;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      let y = margin;
+      const newPage = () => {
+        pdf.addPage();
+        y = margin;
+      };
+      const line = (text: string, indent = 0, bold = false) => {
+        pdf.setFont("helvetica", bold ? "bold" : "normal");
+        pdf.setFontSize(bold ? 11 : 8);
+        const parts = pdf.splitTextToSize(text, pageWidth - margin * 2 - indent) as string[];
+        if (y + parts.length * 11 > pageHeight - margin) newPage();
+        pdf.text(parts, margin + indent, y);
+        y += parts.length * 11 + (bold ? 5 : 2);
+      };
+      line(`Relatório de revisão — ${d.name}`, 0, true);
+      line(
+        `Origem: ${d.sourceFileName ?? d.name} · Gerado em ${new Date(report.generatedAt).toLocaleString("pt-BR")}`,
+      );
+      y += 8;
+      line(`Auditoria (${report.audit.length})`, 0, true);
+      for (const item of report.audit)
+        line(
+          `${item.Aba} · ${item.Local || "sem endereço"} · ${item.Ação} · ${String(item.Antes)} → ${String(item.Depois)} · ${item.Motivo}`,
+          10,
+        );
+      y += 8;
+      line(`Comparação de versões (${report.comparison.length})`, 0, true);
+      for (const item of report.comparison)
+        line(
+          `${item.Aba} · ${item.Tipo}${item.Coluna ? ` · ${item.Coluna}` : ""}${item.Linha ? ` · linha ${item.Linha}` : ""} · ${String(item.Antes)} → ${String(item.Depois)} · ${item.Observação}`,
+          10,
+        );
+      pdf.save(`${slug}-relatorio-revisao.pdf`);
+      toast.success("Relatório PDF de revisão criado.");
+    } catch {
+      toast.error("Não foi possível gerar o relatório de revisão.");
+    } finally {
+      setExporting(null);
+    }
   };
   const exportEncryptedBackup = async () => {
     const password = window.prompt(
@@ -4481,6 +4606,27 @@ function Dashboard(p: {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {analysisProgress && sheet.rows.length > 500 && (
+              <div
+                className="hidden items-center gap-2 rounded-full border border-border bg-background px-2.5 py-1 text-[10px] text-muted-foreground lg:flex"
+                role="status"
+                aria-live="polite"
+              >
+                <OliLoader compact />
+                Analisando {analysisProgress.percent}%
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 hover:bg-accent"
+                  aria-label="Cancelar análise em segundo plano"
+                  onClick={() => {
+                    analysisAbort.current?.abort();
+                    setAnalysisProgress(null);
+                  }}
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            )}
             <ThemeToggle theme={p.theme} toggle={p.toggleTheme} />
             <Button
               variant="ghost"
@@ -4593,6 +4739,25 @@ function Dashboard(p: {
                 <DropdownMenuItem onSelect={exportXlsx}>
                   <SheetIcon />
                   Planilha XLSX
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={exportCorrectedWorkbook}>
+                  <SheetIcon />
+                  Cópia corrigida (todas as abas)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={exportAuditCsv}>
+                  <History />
+                  Auditoria CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={exportComparisonCsv}>
+                  <GitMerge />
+                  Comparação CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={exporting !== null}
+                  onSelect={() => void exportReviewPdf()}
+                >
+                  {exporting === "review" ? <OliLoader compact /> : <FileText />}
+                  {exporting === "review" ? "Gerando relatório…" : "Relatório de revisão PDF"}
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={exporting !== null} onSelect={() => void exportPng()}>
                   {exporting === "png" ? <OliLoader compact /> : <FileImage />}
@@ -5656,6 +5821,22 @@ function Dashboard(p: {
             <CommandItem onSelect={exportXlsx}>
               <Download />
               Exportar XLSX
+            </CommandItem>
+            <CommandItem onSelect={exportCorrectedWorkbook}>
+              <SheetIcon />
+              Gerar cópia corrigida
+            </CommandItem>
+            <CommandItem onSelect={exportAuditCsv}>
+              <History />
+              Exportar auditoria CSV
+            </CommandItem>
+            <CommandItem onSelect={exportComparisonCsv}>
+              <GitMerge />
+              Exportar comparação CSV
+            </CommandItem>
+            <CommandItem onSelect={() => void exportReviewPdf()}>
+              <FileText />
+              Exportar relatório de revisão PDF
             </CommandItem>
             <CommandItem onSelect={() => void exportPng()}>
               <FileImage />

@@ -12,6 +12,8 @@ export type AuditEntry = {
   before?: Value;
   after?: Value;
   reason: string;
+  actor?: string;
+  interpreterVersion?: string;
 };
 
 export type CorrectionSuggestion = {

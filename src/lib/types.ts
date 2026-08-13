@@ -143,6 +143,7 @@ export type Dashboard = {
   createdAt: number;
   updatedAt: number;
   pinned: boolean;
+  sourceFileName?: string;
   folderMonitor?: import("@/lib/folder-monitor").FolderMonitorView;
 };
 
