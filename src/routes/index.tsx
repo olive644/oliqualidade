@@ -84,6 +84,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OperationalWidgetBody } from "@/components/operational-widget-body";
+import { FolderMonitorWidget } from "@/components/folder-monitor-widget";
 import {
   CommandDialog,
   CommandEmpty,
@@ -7423,18 +7424,6 @@ function WidgetCard({
   }
 
   if (w.type === "folder-files") {
-    const monitoredFiles = folderMonitor?.fileNames?.length
-      ? folderMonitor.fileNames
-      : folderMonitor?.fileName
-        ? [folderMonitor.fileName]
-        : [];
-    const monitoredCount = monitoredFiles.length;
-    const formats = new Map<string, number>();
-    for (const fileName of monitoredFiles) {
-      const extension = fileName.split(".").pop()?.toUpperCase() ?? "OUTRO";
-      formats.set(extension, (formats.get(extension) ?? 0) + 1);
-    }
-    const formatSeries = [...formats].map(([name, total]) => ({ name, total }));
     return (
       <article
         className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -7446,53 +7435,7 @@ function WidgetCard({
           {...dragProps}
         />
         {sizeControls}
-        <div className="grid min-h-40 grid-cols-[auto_1fr] items-center gap-5 p-5">
-          <div>
-            <p className="font-display text-5xl font-extrabold tracking-tight text-primary">
-              {monitoredCount}
-            </p>
-            <p className="mt-1 text-xs font-medium text-muted-foreground">
-              {monitoredCount === 1 ? "planilha compatível" : "planilhas compatíveis"}
-            </p>
-            <p className="mt-3 max-w-32 truncate font-mono text-[10px] text-muted-foreground">
-              {folderMonitor ? folderMonitor.folderName : "Nenhuma pasta conectada"}
-            </p>
-          </div>
-          {formatSeries.length ? (
-            <div className="h-28 min-w-0" aria-label="Arquivos por formato">
-              <ResponsiveContainer>
-                <BarChart data={formatSeries} margin={{ top: 16, right: 4, left: 4, bottom: 0 }}>
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis hide allowDecimals={false} />
-                  <ChartTooltip
-                    cursor={{ fill: "var(--accent)", fillOpacity: 0.35 }}
-                    formatter={(value: number) => [
-                      `${value} arquivo${value === 1 ? "" : "s"}`,
-                      "Total",
-                    ]}
-                  />
-                  <Bar dataKey="total" fill="var(--primary)" radius={[6, 6, 2, 2]}>
-                    <LabelList
-                      dataKey="total"
-                      position="top"
-                      fontSize={10}
-                      fill="var(--foreground)"
-                    />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Use “Monitorar pasta” para contar automaticamente arquivos Excel, ODS e CSV.
-            </p>
-          )}
-        </div>
+        <FolderMonitorWidget monitor={folderMonitor} />
       </article>
     );
   }

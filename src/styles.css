@@ -1395,6 +1395,593 @@
   }
 }
 
+/* Pasta monitorada — o gesto de abrir revela os mesmos arquivos que o
+   monitor local encontrou; não há nomes ou contagens decorativas. */
+.oli-folder-widget {
+  --folder-blue: color-mix(in oklab, var(--primary) 82%, #1878d0);
+  --folder-blue-deep: color-mix(in oklab, var(--primary) 66%, #062946);
+  --folder-blue-soft: color-mix(in oklab, var(--primary) 70%, #78c6ff);
+  padding: 12px 16px 16px;
+}
+
+.oli-folder-trigger {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(118px, 148px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(12px, 3vw, 24px);
+  border-radius: 14px;
+  padding: 10px;
+  text-align: start;
+  color: var(--foreground);
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.oli-folder-trigger:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 34%, transparent);
+}
+
+.oli-folder-scene {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 148px;
+  aspect-ratio: 1.32;
+  perspective: 900px;
+  transform-style: preserve-3d;
+  transition: transform 440ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oli-folder-trigger:hover .oli-folder-scene {
+  transform: translateY(-2px) rotateY(-2deg);
+}
+
+.oli-folder-back,
+.oli-folder-front {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 5px;
+  display: block;
+  height: 75%;
+}
+
+.oli-folder-back {
+  overflow: hidden;
+  border-radius: 14px 14px 12px 12px;
+  background: var(--folder-blue-deep);
+  box-shadow: 0 14px 26px -14px color-mix(in oklab, var(--foreground) 42%, transparent);
+}
+
+.oli-folder-tab {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  width: 46%;
+  height: 24%;
+  border-radius: 12px 12px 5px 0;
+  background: var(--folder-blue-deep);
+  transform: translateY(-28%);
+}
+
+.oli-folder-documents {
+  position: absolute;
+  inset: 0 9px 24px;
+  display: block;
+  transform-style: preserve-3d;
+}
+
+.oli-folder-document {
+  --sheet-color: color-mix(in oklab, var(--secondary-accent) 70%, var(--card));
+  position: absolute;
+  inset-inline: 8%;
+  bottom: 0;
+  z-index: calc(20 - var(--document-index));
+  display: flex;
+  height: 68%;
+  align-items: flex-start;
+  justify-content: space-between;
+  overflow: hidden;
+  border-radius: 8px;
+  padding: 9px;
+  color: color-mix(in oklab, var(--foreground) 84%, var(--sheet-color));
+  background:
+    linear-gradient(
+        90deg,
+        transparent 0 47%,
+        color-mix(in oklab, white 36%, transparent) 54%,
+        transparent 62%
+      ) -120px
+      0 / 80px 100% no-repeat,
+    var(--sheet-color);
+  box-shadow: 0 7px 17px -10px color-mix(in oklab, var(--foreground) 60%, transparent);
+  transform: translateY(calc(var(--document-index) * 3px))
+    scale(calc(1 - var(--document-index) * 0.025));
+  transform-origin: bottom center;
+  transition:
+    transform 500ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-position 650ms ease,
+    filter 180ms ease;
+}
+
+.oli-folder-document:nth-child(2) {
+  --sheet-color: color-mix(in oklab, var(--primary) 54%, var(--card));
+}
+
+.oli-folder-document:nth-child(3) {
+  --sheet-color: color-mix(in oklab, #53d7bc 54%, var(--card));
+}
+
+.oli-folder-document:nth-child(4) {
+  --sheet-color: color-mix(in oklab, #f2bd5d 56%, var(--card));
+}
+
+.oli-folder-document:nth-child(5) {
+  --sheet-color: color-mix(in oklab, #b49af4 56%, var(--card));
+}
+
+.oli-folder-document svg {
+  width: 15px;
+  height: 15px;
+  opacity: 0.62;
+}
+
+.oli-folder-document > span {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.oli-folder-document-empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+  background: color-mix(in oklab, var(--muted) 82%, var(--card));
+}
+
+.oli-folder-document-empty svg {
+  width: 24px;
+  height: 24px;
+}
+
+.oli-folder-front {
+  z-index: 60;
+  height: 60%;
+  overflow: hidden;
+  border-radius: 10px 10px 14px 14px;
+  background: linear-gradient(
+    150deg,
+    color-mix(in oklab, var(--folder-blue-soft) 92%, white),
+    var(--folder-blue)
+  );
+  box-shadow:
+    inset 0 1px color-mix(in oklab, white 34%, transparent),
+    0 12px 24px -14px color-mix(in oklab, var(--foreground) 50%, transparent);
+  transform-origin: bottom center;
+  transition: transform 430ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oli-folder-grip {
+  position: absolute;
+  inset-block-start: 13px;
+  inset-inline-start: 13px;
+  width: 29px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, white 58%, transparent);
+}
+
+.oli-folder-counter {
+  position: absolute;
+  inset-inline-end: 10px;
+  inset-block-end: 10px;
+  display: inline-flex;
+  min-width: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: white;
+  background: color-mix(in oklab, #06131c 62%, transparent);
+  box-shadow: 0 7px 13px -8px #06131c;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oli-folder-status-dot {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+}
+
+.oli-folder-widget[data-status="watching"] .oli-folder-status-dot {
+  background: #36d399;
+  box-shadow: 0 0 0 3px color-mix(in oklab, #36d399 20%, transparent);
+}
+
+.oli-folder-widget[data-status="watching"] .oli-folder-status-dot::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  content: "";
+  animation: oli-folder-pulse 2.2s ease-out infinite;
+}
+
+.oli-folder-widget[data-status="syncing"] .oli-folder-status-dot {
+  background: #f2bd5d;
+}
+
+.oli-folder-widget[data-status="error"] .oli-folder-status-dot {
+  background: var(--destructive);
+}
+
+.oli-folder-summary {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.oli-folder-summary-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted-foreground);
+}
+
+.oli-folder-status-copy {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.oli-folder-status-copy svg,
+.oli-folder-chevron {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.oli-folder-widget[data-status="watching"] .oli-folder-status-copy {
+  color: color-mix(in oklab, #36d399 78%, var(--foreground));
+}
+
+.oli-folder-widget[data-status="syncing"] .oli-folder-status-copy {
+  color: color-mix(in oklab, #f2bd5d 82%, var(--foreground));
+}
+
+.oli-folder-widget[data-status="error"] .oli-folder-status-copy {
+  color: var(--destructive);
+}
+
+.oli-folder-chevron {
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oli-folder-summary > strong {
+  overflow: hidden;
+  margin-block-start: 7px;
+  font-family: var(--font-display);
+  font-size: clamp(16px, 2vw, 22px);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oli-folder-summary > span:last-child {
+  margin-block-start: 5px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.oli-folder-widget.is-open .oli-folder-chevron {
+  transform: rotate(180deg);
+}
+
+.oli-folder-widget.is-open .oli-folder-front {
+  transform: rotateX(-52deg) translateY(5px);
+}
+
+.oli-folder-widget.is-open .oli-folder-document {
+  background-position: 210px 0;
+}
+
+.oli-folder-widget.is-open .oli-folder-document:nth-child(1) {
+  transform: translateY(-35px) translateX(-8px) rotate(-6deg) translateZ(18px);
+}
+
+.oli-folder-widget.is-open .oli-folder-document:nth-child(2) {
+  transform: translateY(-29px) translateX(9px) rotate(5deg) translateZ(14px);
+}
+
+.oli-folder-widget.is-open .oli-folder-document:nth-child(3) {
+  transform: translateY(-22px) translateX(-4px) rotate(-3deg) translateZ(10px);
+}
+
+.oli-folder-widget.is-open .oli-folder-document:nth-child(4) {
+  transform: translateY(-15px) translateX(6px) rotate(3deg) translateZ(6px);
+}
+
+.oli-folder-widget.is-open .oli-folder-document:nth-child(5) {
+  transform: translateY(-8px) rotate(-1deg);
+}
+
+.oli-folder-details-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 340ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oli-folder-widget.is-open .oli-folder-details-shell {
+  grid-template-rows: 1fr;
+}
+
+.oli-folder-details {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.oli-folder-details > *:first-child {
+  margin-block-start: 12px;
+}
+
+.oli-folder-details-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  border-block-start: 1px solid var(--border);
+  padding: 14px 2px 0;
+}
+
+.oli-folder-details-head > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.oli-folder-details-head strong,
+.oli-folder-empty-state strong {
+  font-size: 13px;
+}
+
+.oli-folder-details-head span,
+.oli-folder-empty-state span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.oli-folder-format-count,
+.oli-folder-extension,
+.oli-folder-active-file {
+  flex: none;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 9px !important;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.oli-folder-format-count,
+.oli-folder-extension {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+.oli-folder-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block-start: 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding-inline: 10px;
+  background: color-mix(in oklab, var(--muted) 44%, var(--card));
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.oli-folder-search:focus-within {
+  border-color: color-mix(in oklab, var(--primary) 54%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 20%, transparent);
+}
+
+.oli-folder-search svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+}
+
+.oli-folder-search input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  outline: 0;
+  color: var(--foreground);
+  background: transparent;
+  font-size: 12px;
+}
+
+.oli-folder-search input::placeholder {
+  color: color-mix(in oklab, var(--muted-foreground) 84%, transparent);
+}
+
+.oli-folder-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-block-start: 9px;
+  border-radius: 10px;
+  padding: 9px;
+  color: var(--destructive);
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.oli-folder-error svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.oli-folder-file-list {
+  display: grid;
+  max-height: 238px;
+  gap: 4px;
+  margin-block-start: 9px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in oklab, var(--primary) 35%, var(--muted)) transparent;
+  scrollbar-width: thin;
+}
+
+.oli-folder-file {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border-radius: 10px;
+  padding: 7px 8px;
+  transition: background-color 140ms ease;
+}
+
+.oli-folder-file:hover {
+  background: var(--accent);
+}
+
+.oli-folder-file-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  color: color-mix(in oklab, var(--primary) 78%, var(--foreground));
+  background: color-mix(in oklab, var(--primary) 13%, var(--card));
+}
+
+.oli-folder-file-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.oli-folder-file-name {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.oli-folder-file-name strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oli-folder-file-name span {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+
+.oli-folder-active-file {
+  color: color-mix(in oklab, #36d399 76%, var(--foreground));
+  background: color-mix(in oklab, #36d399 12%, transparent);
+}
+
+.oli-folder-no-results,
+.oli-folder-empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  color: var(--muted-foreground);
+  text-align: center;
+  font-size: 11px;
+}
+
+.oli-folder-empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: start;
+}
+
+.oli-folder-empty-state p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+@keyframes oli-folder-pulse {
+  from {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.2);
+  }
+}
+
+@media (max-width: 520px) {
+  .oli-folder-widget {
+    padding-inline: 12px;
+  }
+
+  .oli-folder-trigger {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 10px;
+    padding-inline: 2px;
+  }
+
+  .oli-folder-summary > strong {
+    font-size: 16px;
+  }
+
+  .oli-folder-file {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .oli-folder-extension,
+  .oli-folder-active-file {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oli-folder-scene,
+  .oli-folder-front,
+  .oli-folder-document,
+  .oli-folder-chevron,
+  .oli-folder-details-shell {
+    transition-duration: 1ms;
+  }
+
+  .oli-folder-trigger:hover .oli-folder-scene {
+    transform: none;
+  }
+
+  .oli-folder-widget[data-status="watching"] .oli-folder-status-dot::after {
+    animation: none;
+  }
+
+  .oli-folder-widget.is-open .oli-folder-document {
+    transform: translateY(-12px);
+  }
+}
+
 /* Theme switch (sun/moon toggle) — adapted from Uiverse.io by Galahhad */
 .theme-switch {
   --toggle-size: 15px;
