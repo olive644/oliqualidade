@@ -144,6 +144,8 @@ export type SheetData = {
   exceptionDecisions?: import("@/lib/spreadsheet-intelligence").ExceptionDecisions;
   auditTrail?: import("@/lib/data-review").AuditEntry[];
   bookmarks?: Bookmark[];
+  /** Observações soltas e comentários de célula preservados da planilha original. */
+  sourceNotes?: import("@/lib/import-intelligence").SourceNote[];
 };
 
 export type Dashboard = {

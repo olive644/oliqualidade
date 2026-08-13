@@ -11,6 +11,30 @@ import {
 const sheet = (aoa: (string | number | null)[][]) => XLSX.utils.aoa_to_sheet(aoa);
 
 describe("import intelligence", () => {
+  it("preserva comentários do Excel e observações soltas sem transformá-los em registros", () => {
+    const ws = sheet([
+      ["Item", "Valor"],
+      ["Poço", 5],
+      [null, null],
+      ["Observações: revisar o plano após qualquer reincidência detectada.", null],
+    ]);
+    ws["A2"]!.c = [{ a: "sheetjsghost", t: "Inaly Nascimento:\nConferir o laudo mensal" }];
+    const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
+    expect(diagnostics.sourceNotes).toEqual([
+      {
+        address: "A2",
+        author: "Inaly Nascimento",
+        text: "Conferir o laudo mensal",
+        kind: "comment",
+      },
+      {
+        address: "A4",
+        text: "revisar o plano após qualquer reincidência detectada.",
+        kind: "observation",
+      },
+    ]);
+  });
+
   it("aumenta a confiança quando uma estrutura defeituosa é recuperada com evidências", () => {
     const ws = sheet([
       ["RELATÓRIO DE VENDAS", null, null],

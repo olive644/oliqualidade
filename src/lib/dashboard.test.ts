@@ -115,6 +115,26 @@ describe("migrateDashboard", () => {
 });
 
 describe("mergeReimportedSheets", () => {
+  it("leva as observações preservadas para a versão reimportada", () => {
+    const metricColumns: Column[] = [
+      { key: "valor", label: "Valor", kind: "number", visible: true, description: "" },
+    ];
+    const [merged] = mergeReimportedSheets(
+      [{ name: "Dados", rows: [{ valor: 1 }], columns: metricColumns, filters: [] }],
+      [
+        {
+          name: "Dados",
+          rows: [{ valor: 2 }],
+          columns: metricColumns,
+          sourceNotes: [{ address: "A10", text: "Revisar mensalmente", kind: "observation" }],
+        },
+      ],
+    );
+    expect(merged?.sourceNotes).toEqual([
+      { address: "A10", text: "Revisar mensalmente", kind: "observation" },
+    ]);
+  });
+
   const widget = [{ id: "w1" }] as unknown as Widget[];
   const bookmark = [{ id: "b1" }] as unknown as Bookmark[];
   const chartConfig = { x: "nome" } as unknown as ChartConfig;

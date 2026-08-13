@@ -18,7 +18,7 @@ export function sortAllBarCategories<T extends { total: number }>(series: T[]): 
  * que a área visível (BAR_SLOT px por categoria) e o container rola na
  * horizontal — inclusive por arrasto com o mouse, não só toque/scrollbar.
  */
-const BAR_SLOT_PX = 104;
+const BAR_SLOT_PX = 88;
 const BAR_SCROLL_THRESHOLD = 8;
 
 export function barChartPresentation(categoryCount: number) {

@@ -18,6 +18,7 @@ mindmap
       Worker de workbook
       Fidelidade OOXML
       Fórmulas e metadados
+      Comentários e observações
       Regiões e cabeçalhos
     Inteligência
       Tipos e semântica
@@ -99,10 +100,16 @@ flowchart TD
 - O botão de calculadora concentra as operações; o painel não deve exibir uma
   sequência confusa de verbos de cálculo.
 - Métrica, eixo/grupo e forma de cálculo precisam estar visíveis no contexto do
-  widget.
+  widget. X/Y usam rótulos compactos e o nome completo fica no seletor/tooltip;
+  não repetir títulos longos dentro do gráfico.
 - Painel de exceções e validação são widgets manuais; não entram
   automaticamente no painel.
 - Cronogramas são apresentados por blocos/segmentos detectados na planilha.
+- Códigos de frequência (`D`, `S`, `M`, `T`, `A`, `SM`) são planejamento, não
+  resultado. As métricas do cronograma separam programados, resultados,
+  cobertura, conformidade, não conformidade, lacunas e observações.
+- Comentários de célula e blocos textuais de observação são metadados da origem:
+  devem permanecer rastreáveis por endereço sem virar linhas falsas da tabela.
 - A prévia visual pode ser reduzida para proteger o navegador, mas nunca deve
   alterar, descartar ou sobrescrever as linhas importadas. A tabela detalhada é
   o caminho para todos os registros.
@@ -152,6 +159,10 @@ planilhas passam. Não significa compatibilidade matemática universal com cada
 recurso já criado em toda versão do Excel. Macros VBA não são executadas e
 fórmulas não suportadas dependem do valor armazenado no arquivo.
 
+No cronograma FRS-QA-BR-405 usado como fixture, a prova inclui 18 tabelas úteis,
+validade integral, fidelidade mínima de 90% e 21 notas preservadas (20 comentários
+de célula + 1 bloco textual de observações).
+
 ## Comandos operacionais
 
 ```bash
@@ -184,6 +195,8 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 | Preservar original e agregado               | soma automática distorcia planilhas já consolidadas | widgets guardam `dataMode` e operação                                       |
 | Exceções/validação apenas manuais           | criavam ruído e pouca explicação no painel inicial  | continuam disponíveis no catálogo                                           |
 | Calculadora como controle progressivo       | operações expostas ocupavam espaço e confundiam     | cálculo abre sob demanda                                                    |
+| Notas fora da matriz de dados               | observações soltas não são registros nem métricas   | painel preserva texto, autor e célula sem contaminar cálculos               |
+| Métricas semânticas no cronograma           | códigos planejados pareciam resultados executados   | cobertura e conformidade usam estados distintos e limites por linha         |
 | Prévia visual segura                        | SVG/DOM não escala para milhares de pontos          | tabela mantém acesso integral                                               |
 | Persistência latest-wins                    | snapshots completos intermediários são desperdício  | primeira e última versão são gravadas, intermediárias podem ser coalescidas |
 

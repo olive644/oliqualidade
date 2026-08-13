@@ -30,6 +30,7 @@ export type ImportAudit = {
   blankRowsIgnored: number;
   trailingRowsIgnored: number;
   columnsIgnored: number;
+  notesPreserved?: number;
 };
 
 export type SourceGrid = {
@@ -1835,7 +1836,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   }
   if (trailingNotesTrimmed > 0) {
     messages.push(
-      `${trailingNotesTrimmed} linha${trailingNotesTrimmed > 1 ? "s" : ""} no fim da planilha ${trailingNotesTrimmed > 1 ? "pareciam" : "parecia"} nota${trailingNotesTrimmed > 1 ? "s" : ""}/resumo solto${trailingNotesTrimmed > 1 ? "s" : ""} em vez de dado da tabela (a maioria das colunas vazia) e ${trailingNotesTrimmed > 1 ? "foram ignoradas" : "foi ignorada"}. Confira o fim do arquivo se algum dado real tiver sumido.`,
+      `${trailingNotesTrimmed} linha${trailingNotesTrimmed > 1 ? "s" : ""} no fim da planilha ${trailingNotesTrimmed > 1 ? "pareciam" : "parecia"} nota${trailingNotesTrimmed > 1 ? "s" : ""}/resumo solto${trailingNotesTrimmed > 1 ? "s" : ""} em vez de dado da tabela. O conteúdo de observação foi preservado separadamente, sem poluir os registros do cronograma.`,
     );
   }
   if (renamed > 0) {
@@ -1875,10 +1876,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     );
   }
 
+  const diagnostics = diagnoseImportedSheet(ws, normalizedRows);
   return {
     rows: normalizedRows,
     warning: messages.length ? messages.join(" ") : null,
-    diagnostics: diagnoseImportedSheet(ws, normalizedRows),
+    diagnostics,
     sourceGrid,
     audit: {
       sourceNonEmptyCells,
@@ -1894,6 +1896,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       blankRowsIgnored: blankSkipped,
       trailingRowsIgnored: trailingNotesTrimmed + footerRowsIgnored,
       columnsIgnored: ghostColumns.length + redundantColumns.length,
+      notesPreserved: diagnostics.sourceNotes.length,
     },
   };
 }

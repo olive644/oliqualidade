@@ -4,13 +4,14 @@ Generated from the current TypeScript source tree using the local structural fal
 
 ## Summary
 
-- Files: 90
-- Nodes: 224
-- Relationships: 275
-- Communities: 5
+- Files: 150
+- Nodes: 473
+- Relationships: 605
+- Communities: 6
 
 ## Communities
 
+- Application Components
 - Application Routes
 - Auto Dashboard Engine
 - Import Intelligence
@@ -19,16 +20,16 @@ Generated from the current TypeScript source tree using the local structural fal
 
 ## God Nodes
 
-- `file:src/lib/utils.ts` — degree 45
-- `file:src/lib/types.ts` — degree 35
-- `file:src/routes/index.tsx` — degree 24
-- `file:src/lib/import-intelligence.ts` — degree 20
-- `file:src/lib/auto-dashboard.ts` — degree 17
-- `file:src/lib/data-pipeline.ts` — degree 17
-- `file:src/lib/format.ts` — degree 16
-- `file:src/lib/widgets.ts` — degree 15
-- `file:src/lib/folder-monitor.ts` — degree 13
-- `file:src/lib/storage.ts` — degree 12
+- `file:src/lib/types.ts` — degree 59
+- `file:src/lib/utils.ts` — degree 46
+- `file:src/routes/index.tsx` — degree 41
+- `file:src/lib/import-intelligence.ts` — degree 30
+- `file:src/lib/spreadsheet-intelligence.ts` — degree 27
+- `file:src/lib/import-workbench.ts` — degree 26
+- `file:src/lib/data-pipeline.ts` — degree 24
+- `file:src/lib/widgets.ts` — degree 24
+- `file:src/lib/import.ts` — degree 22
+- `file:src/lib/auto-dashboard.ts` — degree 21
 
 ## Current architecture landmarks
 

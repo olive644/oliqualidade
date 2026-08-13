@@ -61,6 +61,7 @@ const diagnostics = (columns: ColumnDiagnostic[]): ImportDiagnostics => ({
   autofilterRange: null,
   formulaExamples: [],
   sourceCellRepresentations: [],
+  sourceNotes: [],
   formulaDiagnostics: [],
   tableRegions: [],
   transformations: [],
