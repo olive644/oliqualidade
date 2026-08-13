@@ -1,5 +1,6 @@
 import type { ColumnDiagnostic, ImportDiagnostics } from "@/lib/import-intelligence";
 import type { ChartAggregationOp, Column, Row, Widget, WidgetType } from "@/lib/types";
+import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
   createWidget,
   scheduleItemColumn,
@@ -251,11 +252,51 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   const attendanceRoster =
     normalizedKeys.has("nome") &&
     (normalizedKeys.has("matricula") || normalizedKeys.has("n°") || normalizedKeys.has("nº"));
-  if (specializedStructure || attendanceRoster) {
+  const operationalWidgets = detectOperationalWidgetTypes(input.columns);
+  if (specializedStructure || attendanceRoster || operationalWidgets.length) {
     const structure = specializedStructure?.type ?? "lista de presença";
+    const operationalRecommendations: DashboardRecommendation[] = operationalWidgets.map((type) => {
+      const metadata: Record<
+        Extract<
+          WidgetType,
+          "attendance-overview" | "validation-overview" | "control-chart" | "plan-vs-actual"
+        >,
+        { title: string; reason: string }
+      > = {
+        "attendance-overview": {
+          title: "Presença e assinaturas",
+          reason:
+            "Resume participantes, assinaturas ausentes, setores e turnos sem somar matrículas.",
+        },
+        "validation-overview": {
+          title: "Validação de inspetores",
+          reason: "Separa aprovações, rejeições e pendências por inspetor.",
+        },
+        "control-chart": {
+          title: "Carta de controle",
+          reason:
+            "Exibe a estabilidade das medições e sinaliza pontos fora dos limites estatísticos.",
+        },
+        "plan-vs-actual": {
+          title: "Planejado × realizado",
+          reason: "Compara automaticamente colunas hierárquicas do mesmo período.",
+        },
+      };
+      const item = metadata[type as keyof typeof metadata];
+      return {
+        id: slug(type),
+        kind: "visualization",
+        title: item.title,
+        widgetType: type,
+        confidence: 100,
+        reasons: [item.reason],
+        warnings: [],
+      };
+    });
     return {
       classifications,
       recommendations: [
+        ...operationalRecommendations,
         {
           id: "exception-panel",
           kind: "table",
@@ -277,7 +318,9 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
       ],
       confidence: 100,
       reasons: [
-        `A aba foi reconhecida como ${structure}.`,
+        operationalWidgets.includes("plan-vs-actual")
+          ? "A aba possui pares de colunas Programado e Realizado para os mesmos períodos."
+          : `A aba foi reconhecida como ${structure}.`,
         "O painel evita somas e médias automáticas entre limites, resultados, assinaturas ou unidades incompatíveis.",
       ],
       warnings: [...new Set(input.diagnostics?.warnings ?? [])],
