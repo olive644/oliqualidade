@@ -699,12 +699,18 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     ? keys.filter((key) => !/^coluna_\d+$/i.test(key) && normalized(key) !== "").length /
       keys.length
     : 0;
+  const formulaEvidence = formulaDiagnostics.filter((formula) => formula.supported).length;
+  // Fórmulas suportadas são evidência positiva de interpretação, não uma
+  // obrigação de que todas as fórmulas decorativas/institucionais de uma
+  // aba precisem ser calculáveis. Divergências reais entre leitores já são
+  // medidas separadamente no eixo de fidelidade.
+  const formulaInterpretation = formulaEvidence > 0 ? 1 : formulaDiagnostics.length ? 0.5 : 1;
   const interpretationScore = Math.round(
     Math.max(
       0,
       Math.min(
         1,
-        readableRows * 0.5 + interpretedHeaderRatio * 0.25 + supportedFormulaRatio * 0.25,
+        readableRows * 0.5 + interpretedHeaderRatio * 0.25 + formulaInterpretation * 0.25,
       ),
     ) * 100,
   );
@@ -712,11 +718,15 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
   const unresolvedReaderDivergences = meta.readerDivergences.filter(
     (item) => !item.repaired,
   ).length;
+  const reconciledInterpretationScore =
+    interpretedHeaderRatio >= 0.5 && unresolvedReaderDivergences === 0
+      ? Math.max(90, interpretationScore)
+      : interpretationScore;
   const qualityAudit = buildAdaptedQualityAudit({
     rows,
     columnConsistency: columns.map((column) => ({ key: column.key, score: column.qualityScore })),
     duplicateRows,
-    interpretationScore,
+    interpretationScore: reconciledInterpretationScore,
     unresolvedReaderDivergences,
   });
   const independentRegionPenalty = Math.min(0.16, Math.max(0, tableRegions.length - 1) * 0.08);
@@ -787,7 +797,7 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     transformations,
     warnings,
     qualityScore,
-    interpretationScore,
+    interpretationScore: reconciledInterpretationScore,
     advancedQuality,
     structuralClassification,
     qualityAudit,
