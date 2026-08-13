@@ -1,7 +1,7 @@
 import { strFromU8, unzipSync } from "fflate";
 import * as XLSX from "xlsx";
 
-import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
+import { setWorksheetCellAtAddress, worksheetCellAtAddress } from "@/lib/worksheet-cell";
 
 export type ReaderCell = {
   address: string;
@@ -114,18 +114,23 @@ function styleFormats(xml: string): string[] {
 function serialDate(value: number): Date | null {
   const parsed = XLSX.SSF.parse_date_code(value);
   if (!parsed) return null;
-  return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, parsed.H, parsed.M, Math.floor(parsed.S)));
+  return new Date(
+    Date.UTC(parsed.y, parsed.m - 1, parsed.d, parsed.H, parsed.M, Math.floor(parsed.S)),
+  );
 }
 
 function readSheet(xml: string, strings: string[], formats: string[]) {
   const cells = new Map<string, ReaderCell>();
   const worksheet: XLSX.WorkSheet = {};
   let range: XLSX.Range | null = null;
-  for (const match of xml.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>|<c\b([^>]*)\/>/g)) {
-    const attrs = attributes(`<c ${match[1] ?? match[3] ?? ""}>`);
+  // A alternativa autocontida precisa vir primeiro. Caso contrário, `<c .../>`
+  // também casa como uma tag de abertura e captura o conteúdo da próxima
+  // célula até `</c>`, transformando formatação vazia em dado inexistente.
+  for (const match of xml.matchAll(/<c\b([^>]*)\/>|<c\b([^>]*?)>([\s\S]*?)<\/c>/g)) {
+    const attrs = attributes(`<c ${match[1] ?? match[2] ?? ""}>`);
     const address = attrs["r"];
     if (!address) continue;
-    const body = match[2] ?? "";
+    const body = match[3] ?? "";
     const type = attrs["t"] ?? "n";
     const style = Number(attrs["s"] ?? 0);
     const numberFormat = formats[style] ?? "General";
@@ -137,7 +142,10 @@ function readSheet(xml: string, strings: string[], formats: string[]) {
     else if (type === "inlineStr") rawValue = xmlText(inline ?? "");
     else if (type === "b") rawValue = rawText === "1";
     else if (type === "str" || type === "e") rawValue = xmlText(rawText ?? "");
-    else if (rawText != null && rawText !== "") rawValue = Number(rawText);
+    else if (rawText != null && rawText !== "") {
+      const numeric = Number(rawText);
+      rawValue = Number.isFinite(numeric) ? numeric : xmlText(rawText);
+    }
 
     let displayValue = rawValue == null ? "" : String(rawValue);
     if (typeof rawValue === "number") {
@@ -188,10 +196,7 @@ export function inspectOoxml(input: ArrayBuffer | Uint8Array): OoxmlInspection {
   const archive = unzipSync(bytes) as Archive;
   const workbookXml = archiveText(archive, "xl/workbook.xml");
   if (!workbookXml) throw new Error("O pacote OOXML não contém xl/workbook.xml.");
-  const rels = relationshipMap(
-    archiveText(archive, "xl/_rels/workbook.xml.rels"),
-    "xl",
-  );
+  const rels = relationshipMap(archiveText(archive, "xl/_rels/workbook.xml.rels"), "xl");
   const strings = sharedStrings(archiveText(archive, "xl/sharedStrings.xml"));
   const formats = styleFormats(archiveText(archive, "xl/styles.xml"));
   const workbook = XLSX.utils.book_new();
@@ -226,14 +231,13 @@ export function compareAndRepairWithOoxml(
       const cell = worksheetCellAtAddress(sheet, address);
       const primaryValue = comparable(cell?.v);
       const independentValue = comparable(independent.rawValue);
-      if (primaryValue === independentValue || comparable(cell?.w) === independent.displayValue) continue;
+      if (primaryValue === independentValue || comparable(cell?.w) === independent.displayValue)
+        continue;
       const missingPrimary = !cell || (primaryValue === "" && independentValue !== "");
       if (missingPrimary) {
         const fallbackCell = inspection.workbook.Sheets[sheetName]?.[address] as
-          | XLSX.CellObject
-          | undefined;
-        if (fallbackCell && !(sheet as { "!data"?: unknown })["!data"])
-          sheet[address] = { ...fallbackCell };
+          XLSX.CellObject | undefined;
+        if (fallbackCell) setWorksheetCellAtAddress(sheet, address, { ...fallbackCell });
       }
       divergences.push({
         sheet: sheetName,
