@@ -42,6 +42,7 @@ export type FilterRule = {
 };
 
 export type ChartAggregationOp = "sum" | "avg" | "count" | "min" | "max" | "multiply" | "divide";
+export type ChartDataMode = "raw" | "aggregate";
 
 export type ChartConfig = {
   groupKey: string;
@@ -82,6 +83,7 @@ export type Widget = {
   groupKey?: string; // bar/pie/line/area/ranking: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
   valueKey?: string; // bar/pie/line/area/ranking: coluna numérica agregada
   op?: ChartAggregationOp; // bar/pie/line/area/ranking: operação de agregação
+  dataMode?: ChartDataMode; // raw: uma marca por linha do Excel; aggregate: combina categorias
   span: WidgetSpan;
   size: WidgetSize;
   topN?: number; // ranking: quantos itens exibir (padrão 5)
@@ -136,6 +138,7 @@ export type SheetData = {
   chartConfig?: ChartConfig; // legado: usado só para migrar painéis sem "widgets"
   widgets?: Widget[];
   autoDashboard?: AutoDashboardPlan;
+  automaticWidgetPolicyVersion?: number;
   intelligence?: import("@/lib/spreadsheet-intelligence").SpreadsheetIntelligence;
   semanticOverrides?: import("@/lib/spreadsheet-intelligence").SemanticOverrides;
   exceptionDecisions?: import("@/lib/spreadsheet-intelligence").ExceptionDecisions;
