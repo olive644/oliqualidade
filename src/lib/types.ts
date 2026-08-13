@@ -61,6 +61,10 @@ export type WidgetType =
   | "rating"
   | "map"
   | "schedule-heatmap"
+  | "attendance-overview"
+  | "validation-overview"
+  | "control-chart"
+  | "plan-vs-actual"
   | "exception-panel"
   | "pivot-table"
   | "matrix-heatmap"
@@ -103,6 +107,10 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   rating: "Indicador de avaliação",
   map: "Mapa por localização",
   "schedule-heatmap": "Cronograma visual",
+  "attendance-overview": "Presença e assinaturas",
+  "validation-overview": "Validação de inspetores",
+  "control-chart": "Carta de controle",
+  "plan-vs-actual": "Planejado × realizado",
   "exception-panel": "Painel de exceções",
   "pivot-table": "Tabela dinâmica",
   "matrix-heatmap": "Matriz de cruzamento",
