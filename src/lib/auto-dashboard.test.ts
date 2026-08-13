@@ -331,6 +331,7 @@ describe("generateAutoDashboardPlan", () => {
     ];
     const plan = generateAutoDashboardPlan({ columns, rows: [] });
     expect(plan.recommendations.map((item) => item.widgetType)).toEqual([
+      "validation-overview",
       "exception-panel",
       "table",
     ]);
