@@ -47,6 +47,62 @@ export type ColumnSemanticProfile = {
   warnings: string[];
 };
 
+export type SemanticOverride = Partial<
+  Pick<ColumnSemanticProfile, "role" | "unit" | "unitFamily" | "aggregable">
+>;
+
+export type SemanticOverrides = Record<string, SemanticOverride>;
+
+export type ExceptionDecision = {
+  status: "ignored" | "resolved";
+  updatedAt: number;
+};
+
+export type ExceptionDecisions = Record<string, ExceptionDecision>;
+
+export const semanticRoleLabels: Record<SemanticRole, string> = {
+  identifier: "Identificador",
+  description: "Descrição",
+  period: "Período",
+  result: "Resultado",
+  "minimum-limit": "Limite mínimo",
+  "maximum-limit": "Limite máximo",
+  target: "Meta",
+  unit: "Unidade",
+  status: "Status",
+  owner: "Responsável",
+  category: "Categoria",
+  quantity: "Quantidade",
+  price: "Preço",
+  total: "Total",
+  location: "Localização",
+  "start-date": "Data inicial",
+  "end-date": "Data final",
+  unknown: "Não definido",
+};
+
+export const semanticUnitOptions = [
+  "BRL",
+  "USD",
+  "%",
+  "kg",
+  "g",
+  "mg",
+  "L",
+  "mL",
+  "m",
+  "cm",
+  "mm",
+  "dia",
+  "h",
+  "min",
+  "°C",
+  "mg/L",
+  "µg/L",
+  "UFC",
+  "un",
+] as const;
+
 export type CanonicalCell = {
   sheet: string;
   address: string;
@@ -112,7 +168,7 @@ const normalized = (value: unknown) =>
     .trim();
 
 const ROLE_RULES: Array<[SemanticRole, RegExp, string]> = [
-  ["minimum-limit", /\b(min|minimo|limite inferior|de)\b/, "limite mínimo"],
+  ["minimum-limit", /\b(min|minimo|limite inferior|a partir de)\b/, "limite mínimo"],
   ["maximum-limit", /\b(max|maximo|limite superior|ate)\b/, "limite máximo"],
   ["target", /\b(meta|target|objetivo|alvo)\b/, "meta"],
   ["unit", /\b(unidade|unit|uom)\b/, "unidade"],
@@ -147,6 +203,61 @@ const UNIT_RULES: Array<[UnitFamily, string, RegExp]> = [
   ["count", "un", /(?:unidade|unidades|un\.|qtd)/i],
 ];
 
+type ConvertibleUnit = {
+  unit: string;
+  family: UnitFamily;
+  factor: number;
+  pattern: RegExp;
+};
+
+const CONVERTIBLE_UNITS: ConvertibleUnit[] = [
+  { unit: "kg", family: "mass", factor: 1_000, pattern: /\bkg\b/i },
+  { unit: "mg", family: "mass", factor: 0.001, pattern: /\bmg\b/i },
+  { unit: "g", family: "mass", factor: 1, pattern: /(?:^|\s)g(?:$|\s)/i },
+  { unit: "mL", family: "volume", factor: 0.001, pattern: /\bml\b/i },
+  { unit: "L", family: "volume", factor: 1, pattern: /(?:^|\s)l(?:$|\s)/i },
+  { unit: "mm", family: "length", factor: 0.001, pattern: /\bmm\b/i },
+  { unit: "cm", family: "length", factor: 0.01, pattern: /\bcm\b/i },
+  { unit: "m", family: "length", factor: 1, pattern: /(?:^|\s)m(?:$|\s)/i },
+  { unit: "dia", family: "time", factor: 86_400, pattern: /\bdias?\b/i },
+  { unit: "h", family: "time", factor: 3_600, pattern: /\b(?:h|horas?)\b/i },
+  { unit: "min", family: "time", factor: 60, pattern: /\b(?:min|minutos?)\b/i },
+  { unit: "µg/L", family: "concentration", factor: 0.001, pattern: /\b(?:ug|µg)\s*\/\s*l\b/i },
+  { unit: "mg/L", family: "concentration", factor: 1, pattern: /\bmg\s*\/\s*l\b/i },
+];
+
+function unitDefinition(unit: string | null | undefined): ConvertibleUnit | undefined {
+  if (!unit) return undefined;
+  return CONVERTIBLE_UNITS.find((definition) => normalized(definition.unit) === normalized(unit));
+}
+
+function localizedNumber(value: string): number | null {
+  const cleaned = value.trim().replace(/\s/g, "");
+  const normalizedNumber =
+    cleaned.includes(",") && cleaned.includes(".")
+      ? cleaned.lastIndexOf(",") > cleaned.lastIndexOf(".")
+        ? cleaned.replace(/\./g, "").replace(",", ".")
+        : cleaned.replace(/,/g, "")
+      : cleaned.replace(",", ".");
+  const parsed = Number(normalizedNumber);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Converte medições compatíveis para a unidade-alvo ou para a unidade-base da família. */
+export function normalizeMeasurement(value: unknown, targetUnit?: string | null): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const match = /^\s*([+-]?[\d.,]+)\s*(.*?)\s*$/.exec(value);
+  if (!match) return null;
+  const amount = localizedNumber(match[1]!);
+  if (amount === null) return null;
+  const source = CONVERTIBLE_UNITS.find((definition) => definition.pattern.test(match[2]!));
+  if (!source) return match[2]!.trim() ? null : amount;
+  const target = unitDefinition(targetUnit);
+  if (target && target.family !== source.family) return null;
+  return target ? (amount * source.factor) / target.factor : amount * source.factor;
+}
+
 function detectUnit(
   label: string,
   rows: Row[],
@@ -168,6 +279,7 @@ export function inferSemanticProfile(
   column: Column,
   rows: Row[],
   diagnostics?: ImportDiagnostics,
+  override?: SemanticOverride,
 ): ColumnSemanticProfile {
   const name = normalized(`${column.label} ${column.key}`);
   const reasons: string[] = [];
@@ -217,7 +329,7 @@ export function inferSemanticProfile(
     column.key,
   );
   const aggregable = ["result", "quantity", "price", "total"].includes(role);
-  return {
+  const inferred: ColumnSemanticProfile = {
     key: column.key,
     label: column.label,
     role,
@@ -229,6 +341,22 @@ export function inferSemanticProfile(
     reasons,
     warnings,
   };
+  if (!override) return inferred;
+  const overrideUnit = override.unit === undefined ? inferred.unit : override.unit;
+  const overrideDefinition = unitDefinition(overrideUnit);
+  return {
+    ...inferred,
+    ...override,
+    unit: overrideUnit,
+    unitFamily: override.unitFamily ?? overrideDefinition?.family ?? inferred.unitFamily,
+    aggregable:
+      override.aggregable ??
+      (override.role
+        ? ["result", "quantity", "price", "total"].includes(override.role)
+        : inferred.aggregable),
+    confidence: 100,
+    reasons: ["Papel confirmado manualmente pelo usuário.", ...inferred.reasons],
+  };
 }
 
 const valueFamily = (value: Value) => {
@@ -236,7 +364,7 @@ const valueFamily = (value: Value) => {
   if (typeof value === "number") return "number";
   if (typeof value === "boolean") return "boolean";
   const text = String(value).trim();
-  if (/^[+-]?[\d.,]+%?$/.test(text)) return "number";
+  if (/^[+-]?[\d.,]+%?$/.test(text) || normalizeMeasurement(text) !== null) return "number";
   if (/^(?:\d{1,2}[/-]){2}\d{2,4}$|^\d{4}-\d{2}-\d{2}/.test(text)) return "date";
   return "text";
 };
@@ -251,11 +379,14 @@ export function buildCanonicalCells(
   rows: Row[],
   columns: Column[],
   diagnostics?: ImportDiagnostics,
+  overrides?: SemanticOverrides,
 ): CanonicalCell[] {
   const source = new Map(
     (diagnostics?.sourceCellRepresentations ?? []).map((cell) => [cell.address, cell]),
   );
-  const profiles = columns.map((column) => inferSemanticProfile(column, rows, diagnostics));
+  const profiles = columns.map((column) =>
+    inferSemanticProfile(column, rows, diagnostics, overrides?.[column.key]),
+  );
   return rows.flatMap((row, rowIndex) =>
     columns.map((column, columnIndex) => {
       const address = canonicalAddress(columnIndex, rowIndex, diagnostics);
@@ -287,9 +418,12 @@ export function detectSpreadsheetExceptions(
   rows: Row[],
   columns: Column[],
   diagnostics?: ImportDiagnostics,
+  overrides?: SemanticOverrides,
 ): SpreadsheetException[] {
   const exceptions: SpreadsheetException[] = [];
-  const profiles = columns.map((column) => inferSemanticProfile(column, rows, diagnostics));
+  const profiles = columns.map((column) =>
+    inferSemanticProfile(column, rows, diagnostics, overrides?.[column.key]),
+  );
   const fingerprints = new Map<string, number>();
   rows.forEach((row, rowIndex) => {
     const fingerprint = columns.map((column) => String(row[column.key] ?? "")).join("¦");
@@ -320,6 +454,24 @@ export function detectSpreadsheetExceptions(
         columnKey: column.key,
       });
     }
+    const detectedUnits = new Set(
+      values.flatMap((value) => {
+        if (typeof value !== "string") return [];
+        const definition = CONVERTIBLE_UNITS.find((candidate) => candidate.pattern.test(value));
+        return definition ? [definition] : [];
+      }),
+    );
+    const detectedUnitFamilies = new Set([...detectedUnits].map((unit) => unit.family));
+    if (detectedUnitFamilies.size > 1) {
+      exceptions.push({
+        id: `unit-${column.key}`,
+        kind: "incompatible-unit",
+        severity: "critical",
+        title: "Unidades incompatíveis",
+        detail: `${column.label} mistura famílias de unidade que não podem ser convertidas com segurança.`,
+        columnKey: column.key,
+      });
+    }
     const profile = profiles[columnIndex]!;
     if (profile.confidence < 65) {
       exceptions.push({
@@ -332,7 +484,8 @@ export function detectSpreadsheetExceptions(
       });
     }
     const numeric = values
-      .map(Number)
+      .map((value) => normalizeMeasurement(value, profile.unit))
+      .filter((value): value is number => value !== null)
       .filter(Number.isFinite)
       .sort((a, b) => a - b);
     if (numeric.length >= 8 && profile.aggregable) {
@@ -341,8 +494,8 @@ export function detectSpreadsheetExceptions(
       const iqr = q3 - q1;
       if (iqr > 0)
         rows.forEach((row, rowIndex) => {
-          const value = Number(row[column.key]);
-          if (Number.isFinite(value) && (value < q1 - iqr * 1.5 || value > q3 + iqr * 1.5)) {
+          const value = normalizeMeasurement(row[column.key], profile.unit);
+          if (value !== null && (value < q1 - iqr * 1.5 || value > q3 + iqr * 1.5)) {
             exceptions.push({
               id: `outlier-${column.key}-${rowIndex}`,
               kind: "outlier",
@@ -415,9 +568,12 @@ export function analyzeSpreadsheet(
   rows: Row[],
   columns: Column[],
   diagnostics?: ImportDiagnostics,
+  overrides?: SemanticOverrides,
 ): SpreadsheetIntelligence {
-  const profiles = columns.map((column) => inferSemanticProfile(column, rows, diagnostics));
-  const exceptions = detectSpreadsheetExceptions(rows, columns, diagnostics);
+  const profiles = columns.map((column) =>
+    inferSemanticProfile(column, rows, diagnostics, overrides?.[column.key]),
+  );
+  const exceptions = detectSpreadsheetExceptions(rows, columns, diagnostics, overrides);
   const warnings: string[] = [];
   const units = new Set(
     profiles
@@ -453,41 +609,74 @@ export function buildPivotMatrix(
   columnKey: string,
   valueKey: string | undefined,
   op: "sum" | "avg" | "count" | "min" | "max" = "sum",
+  targetUnit?: string | null,
 ): PivotMatrix {
-  const rowLabels = [...new Set(data.map((row) => String(row[rowKey] ?? "Não informado")))];
-  const columnLabels = [...new Set(data.map((row) => String(row[columnKey] ?? "Não informado")))];
-  const aggregate = (items: Row[]) => {
-    if (op === "count") return items.length;
-    const values = items
-      .map((item) => Number(valueKey ? item[valueKey] : null))
-      .filter(Number.isFinite);
-    if (!values.length) return 0;
-    if (op === "avg") return values.reduce((sum, value) => sum + value, 0) / values.length;
-    if (op === "min") return Math.min(...values);
-    if (op === "max") return Math.max(...values);
-    return values.reduce((sum, value) => sum + value, 0);
+  type Stats = { count: number; sum: number; min: number; max: number };
+  const fresh = (): Stats => ({ count: 0, sum: 0, min: Infinity, max: -Infinity });
+  const add = (stats: Stats, value: number | null) => {
+    if (op === "count") {
+      stats.count++;
+      return;
+    }
+    if (value === null) return;
+    stats.count++;
+    stats.sum += value;
+    stats.min = Math.min(stats.min, value);
+    stats.max = Math.max(stats.max, value);
   };
+  const result = (stats: Stats) => {
+    if (!stats.count) return 0;
+    if (op === "count") return stats.count;
+    if (op === "avg") return stats.sum / stats.count;
+    if (op === "min") return stats.min;
+    if (op === "max") return stats.max;
+    return stats.sum;
+  };
+  const rowLabels: string[] = [];
+  const columnLabels: string[] = [];
+  const rowSeen = new Set<string>();
+  const columnSeen = new Set<string>();
+  const cells = new Map<string, Stats>();
+  const rowStats = new Map<string, Stats>();
+  const columnStats = new Map<string, Stats>();
+  const grandStats = fresh();
+  for (const row of data) {
+    const rowLabel = String(row[rowKey] ?? "Não informado");
+    const columnLabel = String(row[columnKey] ?? "Não informado");
+    if (!rowSeen.has(rowLabel)) {
+      rowSeen.add(rowLabel);
+      rowLabels.push(rowLabel);
+    }
+    if (!columnSeen.has(columnLabel)) {
+      columnSeen.add(columnLabel);
+      columnLabels.push(columnLabel);
+    }
+    const value = normalizeMeasurement(valueKey ? row[valueKey] : null, targetUnit);
+    const cellKey = `${rowLabel}\u0000${columnLabel}`;
+    const cell = cells.get(cellKey) ?? fresh();
+    const rowTotal = rowStats.get(rowLabel) ?? fresh();
+    const columnTotal = columnStats.get(columnLabel) ?? fresh();
+    add(cell, value);
+    add(rowTotal, value);
+    add(columnTotal, value);
+    add(grandStats, value);
+    cells.set(cellKey, cell);
+    rowStats.set(rowLabel, rowTotal);
+    columnStats.set(columnLabel, columnTotal);
+  }
   const values = rowLabels.map((rowLabel) =>
     columnLabels.map((columnLabel) =>
-      aggregate(
-        data.filter(
-          (row) =>
-            String(row[rowKey] ?? "Não informado") === rowLabel &&
-            String(row[columnKey] ?? "Não informado") === columnLabel,
-        ),
-      ),
+      result(cells.get(`${rowLabel}\u0000${columnLabel}`) ?? fresh()),
     ),
   );
-  const rowTotals = values.map((row) => row.reduce((sum, value) => sum + value, 0));
-  const columnTotals = columnLabels.map((_, index) =>
-    values.reduce((sum, row) => sum + row[index]!, 0),
-  );
+  const rowTotals = rowLabels.map((label) => result(rowStats.get(label) ?? fresh()));
+  const columnTotals = columnLabels.map((label) => result(columnStats.get(label) ?? fresh()));
   return {
     rows: rowLabels,
     columns: columnLabels,
     values,
     rowTotals,
     columnTotals,
-    grandTotal: rowTotals.reduce((sum, value) => sum + value, 0),
+    grandTotal: result(grandStats),
   };
 }

@@ -5,6 +5,7 @@ import {
   buildPivotMatrix,
   detectSpreadsheetExceptions,
   inferSemanticProfile,
+  normalizeMeasurement,
 } from "@/lib/spreadsheet-intelligence";
 import type { Column, Row } from "@/lib/types";
 
@@ -68,5 +69,93 @@ describe("spreadsheet intelligence", () => {
     expect(analyzeSpreadsheet(problematic, columns).warnings).toContain(
       "Há medidas com unidades incompatíveis; elas não devem ser somadas entre si.",
     );
+  });
+
+  it("permite confirmar manualmente papel e unidade", () => {
+    expect(
+      inferSemanticProfile(columns[0]!, rows, undefined, {
+        role: "quantity",
+        unit: "kg",
+      }),
+    ).toMatchObject({
+      role: "quantity",
+      unit: "kg",
+      unitFamily: "mass",
+      aggregable: true,
+      confidence: 100,
+    });
+  });
+
+  it("converte unidades compatíveis antes de agregar", () => {
+    expect(normalizeMeasurement("1.500,5 g", "kg")).toBeCloseTo(1.5005);
+    expect(normalizeMeasurement("500 mL", "L")).toBe(0.5);
+    expect(normalizeMeasurement("2 kg", "L")).toBeNull();
+    const measurements: Row[] = [
+      { grupo: "A", periodo: "Jan", peso: "1 kg" },
+      { grupo: "A", periodo: "Jan", peso: "500 g" },
+    ];
+    expect(buildPivotMatrix(measurements, "grupo", "periodo", "peso", "sum", "kg")).toMatchObject({
+      values: [[1.5]],
+      grandTotal: 1.5,
+    });
+  });
+
+  it("bloqueia famílias de unidade incompatíveis na mesma coluna", () => {
+    const measurementColumn: Column = {
+      key: "medida",
+      label: "Medida",
+      kind: "number",
+      visible: true,
+      description: "",
+    };
+    const exceptions = detectSpreadsheetExceptions(
+      [{ medida: "1 kg" }, { medida: "2 L" }],
+      [measurementColumn],
+    );
+    expect(exceptions).toContainEqual(
+      expect.objectContaining({
+        kind: "incompatible-unit",
+        severity: "critical",
+        columnKey: "medida",
+      }),
+    );
+  });
+
+  it("calcula médias e totais ponderados sem somar médias parciais", () => {
+    const measurements: Row[] = [
+      { grupo: "A", periodo: "Jan", valor: 10 },
+      { grupo: "A", periodo: "Jan", valor: 20 },
+      { grupo: "A", periodo: "Fev", valor: 90 },
+    ];
+    const pivot = buildPivotMatrix(measurements, "grupo", "periodo", "valor", "avg");
+    expect(pivot.values).toEqual([[15, 90]]);
+    expect(pivot.rowTotals).toEqual([40]);
+    expect(pivot.grandTotal).toBe(40);
+  });
+
+  it("classifica bases financeiras, RH, estoque e laboratório", () => {
+    const corpus: Array<[string, Column["kind"], string]> = [
+      ["Receita total (R$)", "currency", "total"],
+      ["Matrícula do colaborador", "number", "identifier"],
+      ["Quantidade em estoque", "number", "quantity"],
+      ["Resultado mg/L", "number", "result"],
+      ["Data de vencimento", "date", "end-date"],
+    ];
+    for (const [label, kind, role] of corpus) {
+      const column: Column = { key: label, label, kind, visible: true, description: "" };
+      expect(inferSemanticProfile(column, []).role, label).toBe(role);
+    }
+  });
+
+  it("processa cruzamentos grandes em uma única passagem", () => {
+    const large = Array.from({ length: 20_000 }, (_, index) => ({
+      grupo: `G${index % 50}`,
+      periodo: `P${index % 12}`,
+      valor: index % 7,
+    }));
+    const pivot = buildPivotMatrix(large, "grupo", "periodo", "valor", "sum");
+    expect(pivot.rows).toHaveLength(50);
+    expect(pivot.columns).toHaveLength(12);
+    expect(pivot.grandTotal).toBe(59_997);
   });
 });

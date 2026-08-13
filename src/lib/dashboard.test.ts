@@ -157,6 +157,34 @@ describe("mergeReimportedSheets", () => {
     expect(merged[0]!.previousSnapshot).toBeUndefined();
   });
 
+  it("preserva confirmações semânticas e decisões de exceção na reimportação", () => {
+    const oldSheets: SheetData[] = [
+      {
+        name: "Vendas",
+        rows: [{ nome: "Bolo" }, { nome: "Bolo" }],
+        columns,
+        filters: [],
+        semanticOverrides: { nome: { role: "identifier" } },
+        exceptionDecisions: {
+          "duplicate-1": { status: "resolved", updatedAt: 123 },
+        },
+      },
+    ];
+    const [merged] = mergeReimportedSheets(oldSheets, [
+      { name: "Vendas", rows: [{ nome: "Torta" }, { nome: "Torta" }], columns },
+    ]);
+    expect(merged?.semanticOverrides).toEqual({ nome: { role: "identifier" } });
+    expect(merged?.exceptionDecisions?.["duplicate-1"]).toEqual({
+      status: "resolved",
+      updatedAt: 123,
+    });
+    expect(merged?.intelligence?.columns[0]).toMatchObject({
+      key: "nome",
+      role: "identifier",
+      confidence: 100,
+    });
+  });
+
   it("mantém widgets automáticos em uma aba realmente nova", () => {
     const autoWidgets = [{ id: "auto-1" }] as unknown as Widget[];
     const merged = mergeReimportedSheets(
