@@ -36,6 +36,21 @@ describe.skipIf(!fixture)("validação local do cronograma real", () => {
     expect(schedule?.diagnostics?.qualityAudit?.dimensions.completeness.score).toBeGreaterThan(90);
   });
 
+  it("não vaza os marcadores 4s das linhas ocultas para nenhum painel", () => {
+    const sheets = readWorkbookBytes(bytes, source);
+    const displayedValues = sheets.flatMap((sheet) =>
+      sheet.rows.flatMap((row) => Object.values(row)),
+    );
+    const original = XLSX.read(bytes, { type: "buffer", cellStyles: true });
+    const sourceSheet = original.Sheets["FRS QA BR 405 Brasil"];
+
+    expect(sourceSheet?.["I87"]?.v).toBe("4s");
+    expect(sourceSheet?.["!rows"]?.[86]?.hidden).toBe(true);
+    expect(displayedValues).not.toContain("4s");
+    expect(sheets.some((sheet) => (sheet.audit?.hiddenRowsIgnored ?? 0) > 0)).toBe(true);
+    expect(sheets.some((sheet) => (sheet.diagnostics?.hiddenRows ?? 0) > 0)).toBe(true);
+  });
+
   it("não perde células confirmadas pelo ExcelJS", async () => {
     const primary = XLSX.read(bytes, {
       type: "buffer",

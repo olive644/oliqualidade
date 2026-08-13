@@ -27,6 +27,7 @@ export type ImportAudit = {
   mergedCellsExpanded: number;
   numericCellsConverted: number;
   rowsAboveHeaderIgnored: number;
+  hiddenRowsIgnored: number;
   blankRowsIgnored: number;
   trailingRowsIgnored: number;
   columnsIgnored: number;
@@ -1302,8 +1303,8 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     header: 1,
     defval: null,
   });
-  const aoa = rawAoa.map((row, rowIndex) => normalizeRawRow(row, ws, rowIndex, range.s));
-  const sourceNonEmptyCells = aoa.reduce(
+  const sourceAoa = rawAoa.map((row, rowIndex) => normalizeRawRow(row, ws, rowIndex, range.s));
+  const sourceNonEmptyCells = sourceAoa.reduce(
     (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
     0,
   );
@@ -1339,8 +1340,8 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   const formulaCache = new Map<string, number | null>();
   let formulaCellsRecovered = 0;
   const width = range.e.c - range.s.c + 1;
-  for (let r = 0; r < aoa.length; r++) {
-    const row = aoa[r] as (string | number | null)[];
+  for (let r = 0; r < sourceAoa.length; r++) {
+    const row = sourceAoa[r] as (string | number | null)[];
     // Loop com índice explícito até a largura real da planilha (não
     // `row.length`), de propósito, em vez de forEach: uma célula "stub"
     // (fórmula sem valor calculado, só existe no objeto da planilha porque
@@ -1364,7 +1365,26 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // Mantém uma cópia limitada antes do preenchimento de mesclagens e dos
   // cortes automáticos. É essa grade que permite ao usuário escolher outro
   // cabeçalho ou região sem depender da interpretação já reparada.
-  const sourceGrid = buildSourceGrid(aoa, range);
+  const sourceGrid = buildSourceGrid(sourceAoa, range);
+
+  // A grade original continua disponível para auditoria e seleção manual,
+  // mas a interpretação automática deve reproduzir o que o Excel mostra.
+  // Linhas ocultas são usadas com frequência como histórico, detalhe
+  // recolhido ou rascunho. Incluí-las em widgets criava registros que o
+  // usuário não vê na planilha (como os `4s` do FRS-QA-BR-405).
+  // Mantemos os índices no lugar, apenas esvaziando essas linhas na cópia
+  // de análise, para não deslocar endereços, mesclagens nem fórmulas.
+  const hiddenRows = new Set<number>();
+  for (let row = 0; row < sourceAoa.length; row++) {
+    if (ws["!rows"]?.[range.s.r + row]?.hidden === true) hiddenRows.add(row);
+  }
+  const hiddenRowsIgnored = hiddenRows.size;
+  const aoa = sourceAoa.map((row, index) => (hiddenRows.has(index) ? [] : [...row]));
+  const hiddenRowsMessage = hiddenRowsIgnored
+    ? `${hiddenRowsIgnored} linha${hiddenRowsIgnored > 1 ? "s ocultas foram preservadas" : " oculta foi preservada"} na grade original, mas ignorada${hiddenRowsIgnored > 1 ? "s" : ""} nos registros, métricas e widgets para reproduzir a visualização do Excel.`
+    : "";
+  const importMessage = (message: string) =>
+    hiddenRowsMessage ? `${message} ${hiddenRowsMessage}` : message;
 
   const merges: RelativeMerge[] = (ws["!merges"] ?? []).map((m) => ({
     s: { r: m.s.r - range.s.r, c: m.s.c - range.s.c },
@@ -1436,7 +1456,9 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (attendanceRows) {
     return {
       rows: attendanceRows,
-      warning: `Esta aba foi reconhecida como lista de presença. ${attendanceRows.length} posições numeradas foram preservadas com evento, identificação, turno, data e assinatura.`,
+      warning: importMessage(
+        `Esta aba foi reconhecida como lista de presença. ${attendanceRows.length} posições numeradas foram preservadas com evento, identificação, turno, data e assinatura.`,
+      ),
       diagnostics: diagnoseImportedSheet(ws, attendanceRows),
       sourceGrid,
       audit: {
@@ -1450,6 +1472,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
         numericCellsConverted: 0,
         rowsAboveHeaderIgnored: 0,
+        hiddenRowsIgnored,
         blankRowsIgnored: 0,
         trailingRowsIgnored: 0,
         columnsIgnored: 0,
@@ -1462,7 +1485,9 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (laboratoryRows) {
     return {
       rows: laboratoryRows,
-      warning: `Esta aba contém ensaios laboratoriais em blocos. ${laboratoryRows.length} resultados foram normalizados com amostra, ensaio, identificação e resultado, mantendo as especificações separadas.`,
+      warning: importMessage(
+        `Esta aba contém ensaios laboratoriais em blocos. ${laboratoryRows.length} resultados foram normalizados com amostra, ensaio, identificação e resultado, mantendo as especificações separadas.`,
+      ),
       diagnostics: diagnoseImportedSheet(ws, laboratoryRows),
       sourceGrid,
       audit: {
@@ -1476,6 +1501,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
         numericCellsConverted: 0,
         rowsAboveHeaderIgnored: 0,
+        hiddenRowsIgnored,
         blankRowsIgnored: 0,
         trailingRowsIgnored: 0,
         columnsIgnored: 0,
@@ -1488,7 +1514,9 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (measurementRows) {
     return {
       rows: measurementRows,
-      warning: `Esta aba combina especificações, estatísticas e medições dimensionais. ${measurementRows.length} linhas foram normalizadas sem misturar limites, resumos e amostras.`,
+      warning: importMessage(
+        `Esta aba combina especificações, estatísticas e medições dimensionais. ${measurementRows.length} linhas foram normalizadas sem misturar limites, resumos e amostras.`,
+      ),
       diagnostics: diagnoseImportedSheet(ws, measurementRows),
       sourceGrid,
       audit: {
@@ -1502,6 +1530,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
         numericCellsConverted: 0,
         rowsAboveHeaderIgnored: 0,
+        hiddenRowsIgnored,
         blankRowsIgnored: 0,
         trailingRowsIgnored: 0,
         columnsIgnored: 0,
@@ -1514,7 +1543,9 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (validationRows) {
     return {
       rows: validationRows,
-      warning: `Esta aba usa uma matriz de validação por horário. ${validationRows.length} horários foram normalizados, preservando referência, aceita, rejeita, resultado, aviso e inspetor.`,
+      warning: importMessage(
+        `Esta aba usa uma matriz de validação por horário. ${validationRows.length} horários foram normalizados, preservando referência, aceita, rejeita, resultado, aviso e inspetor.`,
+      ),
       diagnostics: diagnoseImportedSheet(ws, validationRows),
       sourceGrid,
       audit: {
@@ -1528,6 +1559,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
         numericCellsConverted: 0,
         rowsAboveHeaderIgnored: 0,
+        hiddenRowsIgnored,
         blankRowsIgnored: 0,
         trailingRowsIgnored: 0,
         columnsIgnored: 0,
@@ -1575,7 +1607,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
 
     return {
       rows: blockRows,
-      warning: blockMessages.join(" "),
+      warning: importMessage(blockMessages.join(" ")),
       diagnostics: diagnoseImportedSheet(ws, blockRows),
       sourceGrid,
       audit: {
@@ -1589,6 +1621,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         mergedCellsExpanded: [...filledByRow.values()].reduce((sum, count) => sum + count, 0),
         numericCellsConverted: 0,
         rowsAboveHeaderIgnored: 0,
+        hiddenRowsIgnored,
         blankRowsIgnored: 0,
         trailingRowsIgnored: 0,
         columnsIgnored: 0,
@@ -1646,7 +1679,9 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     });
   const footerRowIndex = footerMerge?.s.r ?? aoa.length;
   const footerRowsIgnored = Math.max(0, aoa.length - footerRowIndex);
-  const sourceDataRows = aoa.slice(headerRowEnd + 1, footerRowIndex);
+  const sourceDataRows = aoa
+    .slice(headerRowEnd + 1, footerRowIndex)
+    .filter((_, offset) => !hiddenRows.has(headerRowEnd + 1 + offset));
   const headers = refineGenericDocumentHeaders(initialHeaders, sourceDataRows);
   let placeholderCellsNormalized = 0;
 
@@ -1809,6 +1844,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       : [];
 
   const messages: string[] = [];
+  if (hiddenRowsMessage) messages.push(hiddenRowsMessage);
   if (headerRowIndex > 0) {
     messages.push(
       `O cabeçalho foi identificado na linha ${headerRowIndex + 1} da planilha, porque o conteúdo acima não parecia um cabeçalho válido. Confira se a identificação ficou correta.`,
@@ -1893,6 +1929,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       mergedCellsExpanded: mergedHeaderCells + mergedCells,
       numericCellsConverted: numericTextCellsNormalized,
       rowsAboveHeaderIgnored: headerRowIndex,
+      hiddenRowsIgnored,
       blankRowsIgnored: blankSkipped,
       trailingRowsIgnored: trailingNotesTrimmed + footerRowsIgnored,
       columnsIgnored: ghostColumns.length + redundantColumns.length,
@@ -1949,6 +1986,7 @@ function independentRegionWorksheet(
       merge.e.c <= range.e.c,
   );
   if (merges.length) sliced["!merges"] = merges;
+  if (ws["!rows"]) sliced["!rows"] = ws["!rows"].map((row) => (row ? { ...row } : row));
   return sliced;
 }
 
@@ -2015,6 +2053,12 @@ function independentSectionWorksheet(
       sliced[destinationAddress] = { ...cell };
     }
   }
+  const translatedRows: XLSX.RowInfo[] = [];
+  relativeRows.forEach((relativeRow, destinationRow) => {
+    const source = ws["!rows"]?.[used.s.r + relativeRow - 1];
+    if (source) translatedRows[destinationRow] = { ...source };
+  });
+  if (translatedRows.length) sliced["!rows"] = translatedRows;
 
   const translatedMerges = (ws["!merges"] ?? []).flatMap((merge) => {
     const sourceStartColumn = used.s.c + section.startColumn - 1;
@@ -2053,11 +2097,14 @@ function independentSectionWorksheet(
 function detectIndependentSections(ws: XLSX.WorkSheet): IndependentSection[] {
   if (!ws["!ref"]) return [];
   const used = XLSX.utils.decode_range(ws["!ref"]);
-  const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+  const rawAoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
     header: 1,
     defval: null,
     raw: false,
   });
+  const aoa = rawAoa.map((row, index) =>
+    ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row,
+  );
   if (aoa.length < 4) return [];
 
   const filled = (row: (string | number | boolean | null)[] | undefined) =>
@@ -2203,11 +2250,15 @@ function regionsAreSafeToSplit(
   if (regions.some((region) => region.rows < 3 || region.columns < 2 || region.confidence < 0.75))
     return false;
 
-  const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+  const used = XLSX.utils.decode_range(ws["!ref"]);
+  const rawAoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
     header: 1,
     defval: null,
     raw: false,
   });
+  const aoa = rawAoa.map((row, index) =>
+    ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row,
+  );
   const occupied = aoa.reduce(
     (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
     0,

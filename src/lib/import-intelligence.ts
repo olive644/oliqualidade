@@ -430,11 +430,15 @@ function sheetMeta(ws: XLSX.WorkSheet) {
 }
 
 function detectTableRegions(ws: XLSX.WorkSheet): TableRegionDiagnostic[] {
-  const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+  const used = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
+  const rawAoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
     header: 1,
     defval: null,
     raw: true,
   });
+  const aoa = rawAoa.map((row, index) =>
+    used && ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row,
+  );
   if (!aoa.length) return [];
 
   const occupiedRows = aoa.map((row) => row.some((v) => v !== null && v !== ""));
@@ -504,11 +508,15 @@ function detectDateLocaleCandidates(values: unknown[]): string[] {
 }
 
 function detectHeader(ws: XLSX.WorkSheet): { row: number; confidence: number } {
-  const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+  const used = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
+  const rawAoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
     header: 1,
     defval: null,
     raw: true,
   });
+  const aoa = rawAoa.map((row, index) =>
+    used && ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row,
+  );
   const limit = Math.min(40, aoa.length);
   const width = Math.max(1, ...aoa.slice(0, limit).map((r) => r.length));
   let best = { row: 0, confidence: 0 };
