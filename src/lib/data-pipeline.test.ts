@@ -34,7 +34,7 @@ describe("barChartPresentation", () => {
   });
 
   it("habilita rolagem horizontal em bases extensas, mantendo todas as barras juntas", () => {
-    expect(barChartPresentation(300)).toEqual({ scrollable: true, contentWidth: 19200 });
+    expect(barChartPresentation(300)).toEqual({ scrollable: true, contentWidth: 31200 });
   });
 });
 

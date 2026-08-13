@@ -2,6 +2,11 @@ import * as XLSX from "xlsx";
 
 import { sheetsWithData, type SheetOption } from "@/lib/import";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
+import {
+  compareAndRepairWithOoxml,
+  inspectOoxml,
+  type ReaderDivergence,
+} from "@/lib/ooxml-reader";
 
 export const WORKBOOK_ACCEPT =
   ".xlsx,.xlsm,.xlsb,.xls,.xltx,.xltm,.ods,.fods,.csv,.tsv,.txt,.xml,.html,.htm,.numbers";
@@ -18,6 +23,11 @@ export const MAX_ZIP_ENTRY_BYTES = 512 * 1024 * 1024;
 export const MAX_SUSPICIOUS_COMPRESSION_RATIO = 1_000;
 
 export type WorkbookReadProgress = "decoding" | "parsing" | "analyzing";
+
+export type WorksheetWithReaderDiagnostics = XLSX.WorkSheet & {
+  "!oliReaderDivergences"?: ReaderDivergence[];
+  "!oliOoxmlFallback"?: boolean;
+};
 
 /**
  * Lê somente o diretório central do ZIP, sem descompactar seu conteúdo.
@@ -162,21 +172,50 @@ export function readWorkbookBytes(
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) validateZipWorkbook(bytes);
   const source = textFile ? decodeText(bytes) : bytes;
   onProgress?.("parsing");
-  const wb = XLSX.read(source, {
-    type: textFile ? "string" : "array",
-    ...(textFile ? { FS: detectDelimiter(source as string), raw: true } : {}),
-    cellDates: true,
-    cellFormula: true,
-    cellNF: true,
-    cellText: true,
-    sheetStubs: true,
-    bookDeps: true,
-    dense: true,
-    nodim: true,
-    UTC: false,
-  });
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(source, {
+      type: textFile ? "string" : "array",
+      ...(textFile ? { FS: detectDelimiter(source as string), raw: true } : {}),
+      cellDates: true,
+      cellFormula: true,
+      cellNF: true,
+      cellText: true,
+      sheetStubs: true,
+      bookDeps: true,
+      dense: true,
+      nodim: true,
+      UTC: false,
+    });
+    if (
+      ZIP_WORKBOOK_EXTENSIONS.test(fileName) &&
+      (!wb.SheetNames.length || wb.SheetNames.every((name) => !wb.Sheets[name]?.["!ref"]))
+    )
+      throw new Error("O leitor principal não encontrou células no pacote OOXML.");
+  } catch (error) {
+    if (!ZIP_WORKBOOK_EXTENSIONS.test(fileName)) throw error;
+    const fallback = inspectOoxml(bytes);
+    wb = fallback.workbook;
+    for (const sheet of Object.values(wb.Sheets))
+      (sheet as WorksheetWithReaderDiagnostics)["!oliOoxmlFallback"] = true;
+  }
   validateWorkbookComplexity(wb);
-  if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) attachWorkbookFeatures(wb, bytes);
+  if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
+    attachWorkbookFeatures(wb, bytes);
+    try {
+      const independent = inspectOoxml(bytes);
+      const divergences = compareAndRepairWithOoxml(wb, independent);
+      for (const sheetName of wb.SheetNames) {
+        const perSheet = divergences.filter((item) => item.sheet === sheetName);
+        if (perSheet.length)
+          (wb.Sheets[sheetName] as WorksheetWithReaderDiagnostics)["!oliReaderDivergences"] =
+            perSheet;
+      }
+    } catch {
+      // O leitor principal continua válido. O fallback é uma camada de
+      // verificação e nunca pode impedir a importação de um arquivo legível.
+    }
+  }
   onProgress?.("analyzing");
   return sheetsWithData(wb);
 }

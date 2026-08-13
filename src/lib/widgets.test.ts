@@ -258,6 +258,22 @@ describe("createWidget, novos tipos", () => {
     });
   });
 
+  it("cronograma visual reconhece períodos mensais sem exigir um dia inventado", () => {
+    const scheduleColumns: Column[] = [
+      col("Ponto / Item", "category"),
+      col("jun/2025", "number"),
+      col("set/2025", "number"),
+      col("mar/2026", "number"),
+      col("Máx.", "number"),
+    ];
+
+    expect(schedulePeriodColumns(scheduleColumns).map((column) => column.key)).toEqual([
+      "jun/2025",
+      "set/2025",
+      "mar/2026",
+    ]);
+  });
+
   it("área usa data como agrupamento padrão, como a linha", () => {
     const w = createWidget("area", columns);
     expect(w.groupKey).toBe("data_venda");

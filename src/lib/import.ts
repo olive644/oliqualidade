@@ -3,6 +3,7 @@ import type { Row } from "@/lib/types";
 import { resolveFormulaCell } from "@/lib/formula";
 import { diagnoseImportedSheet, type ImportDiagnostics } from "@/lib/import-intelligence";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
+import { scheduleToLong, type LongScheduleRow } from "@/lib/schedule-normalizer";
 
 export type SheetImportResult = {
   rows: Row[];
@@ -95,36 +96,81 @@ const MERGE_FILL_MAX_LENGTH = 60;
  * (é o placeholder mostrado no filtro de intervalo de data, e o formato
  * que a detecção de tipo de coluna em format.ts reconhece).
  */
-function formatDateCell(d: Date): string {
+function calendarParts(d: Date, cell?: XLSX.CellObject) {
+  // Quando a data veio de XLSX.read(cellDates:true), o SheetJS preserva em
+  // `w` o dia civil exibido no Excel, mas o objeto Date pode cair no dia
+  // anterior no fuso do navegador (ex.: Jun-25 vira 31/05 às 21h no Brasil).
+  // Nesses casos os componentes UTC representam o serial original. Datas
+  // criadas diretamente pelo app/testes, sem `w`, continuam usando o fuso
+  // local para não alterar seu significado.
+  const fromWorkbook = typeof cell?.w === "string" && cell.w.trim().length > 0;
+  return {
+    year: fromWorkbook ? d.getUTCFullYear() : d.getFullYear(),
+    month: (fromWorkbook ? d.getUTCMonth() : d.getMonth()) + 1,
+    day: fromWorkbook ? d.getUTCDate() : d.getDate(),
+    hours: fromWorkbook ? d.getUTCHours() : d.getHours(),
+    minutes: fromWorkbook ? d.getUTCMinutes() : d.getMinutes(),
+    seconds: fromWorkbook ? d.getUTCSeconds() : d.getSeconds(),
+  };
+}
+
+function formatDateCell(d: Date, cell?: XLSX.CellObject): string {
   if (!Number.isFinite(d.getTime())) return "";
-  // SheetJS 0.20 converte células de data para um instante UTC antes de
-  // entregá-las ao sheet_to_json. Reaplicar o deslocamento local preserva o
-  // dia civil que aparece no Excel, inclusive em fusos a leste/oeste de UTC.
-  const calendarDate = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  const dd = String(calendarDate.getDate()).padStart(2, "0");
-  const mm = String(calendarDate.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mm}/${calendarDate.getFullYear()}`;
+  const parts = calendarParts(d, cell);
+  const dd = String(parts.day).padStart(2, "0");
+  const mm = String(parts.month).padStart(2, "0");
+  return `${dd}/${mm}/${parts.year}`;
 }
 
 function formatTemporalCell(d: Date, cell?: XLSX.CellObject): string {
+  if (!Number.isFinite(d.getTime())) return "";
   const numberFormat = String(cell?.z ?? "")
     .replace(/"[^"]*"/g, "")
     .replace(/\\./g, "")
     .replace(/\[(?!h+\]|m+\]|s+\])[^\]]*\]/gi, "");
   const hasDate = /[dy]/i.test(numberFormat);
   const hasTime = /h|s|am\/pm|a\/p|\[(?:h+|m+|s+)\]/i.test(numberFormat);
+  const hasYear = /y/i.test(numberFormat);
+  const hasMonth = /m/i.test(numberFormat);
+  const hasDay = /d/i.test(numberFormat);
 
   // Para hora e duração, a representação pronta do SheetJS é mais fiel ao
   // Excel: preserva segundos, AM/PM e durações acima de 24 h (`[h]:mm`) sem
   // transformá-las numa data fictícia de 1899.
   if (hasTime && !hasDate && cell?.w) return cell.w;
 
-  const date = formatDateCell(d);
+  const parts = calendarParts(d, cell);
+
+  // Cabeçalhos de cronograma como `mmm-yy` representam um PERÍODO, não um
+  // dia. Transformá-los em dd/mm/aaaa inventava o dia 31 e ainda deslocava
+  // o mês pelo fuso horário. Mantemos a granularidade declarada no formato.
+  if (hasYear && hasMonth && !hasDay && !hasTime) {
+    const monthNames = [
+      "jan",
+      "fev",
+      "mar",
+      "abr",
+      "mai",
+      "jun",
+      "jul",
+      "ago",
+      "set",
+      "out",
+      "nov",
+      "dez",
+    ];
+    const month = /m{3,}/i.test(numberFormat)
+      ? monthNames[parts.month - 1]
+      : String(parts.month).padStart(2, "0");
+    return `${month}/${parts.year}`;
+  }
+  if (hasYear && !hasMonth && !hasDay && !hasTime) return String(parts.year);
+
+  const date = formatDateCell(d, cell);
   if (!date || !hasTime) return date;
-  const calendarDate = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  const hh = String(calendarDate.getHours()).padStart(2, "0");
-  const mm = String(calendarDate.getMinutes()).padStart(2, "0");
-  const ss = String(calendarDate.getSeconds()).padStart(2, "0");
+  const hh = String(parts.hours).padStart(2, "0");
+  const mm = String(parts.minutes).padStart(2, "0");
+  const ss = String(parts.seconds).padStart(2, "0");
   return `${date} ${hh}:${mm}${/s/i.test(numberFormat) ? `:${ss}` : ""}`;
 }
 
@@ -1239,6 +1285,8 @@ export type SheetOption = {
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
   audit?: ImportAudit;
+  /** Representação canônica para cronogramas, sem alterar a tabela visível. */
+  longScheduleRows?: LongScheduleRow[];
 };
 
 function independentRegionWorksheet(
@@ -1614,6 +1662,9 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
             {
               name: `${name} · ${section.label || `Tabela ${index + 1}`}${(labelTotals.get(section.label) ?? 0) > 1 ? ` · Tabela ${index + 1}` : ""}`,
               ...imported,
+              ...(scheduleToLong(imported.rows).length
+                ? { longScheduleRows: scheduleToLong(imported.rows) }
+                : {}),
               warning: imported.warning
                 ? `${separationWarning} ${imported.warning}`
                 : separationWarning,
@@ -1638,6 +1689,9 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
           {
             name: `${name} · Região ${index + 1}`,
             ...imported,
+            ...(scheduleToLong(imported.rows).length
+              ? { longScheduleRows: scheduleToLong(imported.rows) }
+              : {}),
             warning: imported.warning
               ? `${separationWarning} ${imported.warning}`
               : separationWarning,
@@ -1647,6 +1701,7 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
       if (split.length === result.diagnostics.tableRegions.length) return split;
     }
     const { rows, warning, diagnostics, sourceGrid, audit } = result;
+    const longScheduleRows = scheduleToLong(rows);
     return [
       {
         name,
@@ -1655,6 +1710,7 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
         ...(diagnostics ? { diagnostics } : {}),
         ...(sourceGrid ? { sourceGrid } : {}),
         ...(audit ? { audit } : {}),
+        ...(longScheduleRows.length ? { longScheduleRows } : {}),
       },
     ];
   }).filter((s) => s.rows.length > 0);
