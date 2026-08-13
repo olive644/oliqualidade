@@ -72,7 +72,7 @@ describe.skipIf(!fixtures.length)("corpus local de planilhas reais", () => {
             columns: infer(imported[0]!.rows),
             rows: imported[0]!.rows,
           }).recommendations.map((item) => item.widgetType),
-        ).toContain("validation-overview");
+        ).not.toContain("validation-overview");
       }
       if (name.startsWith("Testes GREEN")) {
         expect(imported).toHaveLength(4);

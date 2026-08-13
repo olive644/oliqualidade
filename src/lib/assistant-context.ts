@@ -1,6 +1,7 @@
 import {
   aggregate,
   aggregationLabels,
+  chartSeries,
   groupAndAggregate,
   relevantAggregationOps,
   sortAllBarCategories,
@@ -208,18 +209,20 @@ function groupedWidget(widget: Widget, columns: Column[], rows: Row[]): LiveWidg
   const value = resolvedValueColumn(widget, columns, numericColumns);
   if (!group || !value) return emptyWidget(widget);
   const operation = resolvedOperation(widget, rows, group, value);
-  let grouped: Array<{ name: string; total: number; count?: number }> = groupAndAggregate(
+  const dataMode = widget.dataMode ?? (operation === "count" ? "aggregate" : "raw");
+  let grouped: Array<{ name: string; total: number; count?: number }> = chartSeries(
     rows,
     group.key,
     value.key,
     operation,
+    dataMode,
   );
   if (widget.type === "line" || (widget.type === "area" && group.kind === "date"))
     grouped = sortChronologically(grouped);
-  if (widget.type === "bar") grouped = sortAllBarCategories(grouped);
+  if (widget.type === "bar" && dataMode === "aggregate") grouped = sortAllBarCategories(grouped);
   if (widget.type === "ranking")
     grouped = [...grouped].sort((a, b) => b.total - a.total).slice(0, widget.topN ?? 5);
-  if (widget.type === "pie" && grouped.length > 6) {
+  if (widget.type === "pie" && dataMode === "aggregate" && grouped.length > 6) {
     const sorted = [...grouped].sort((a, b) => b.total - a.total);
     const rest = sorted.slice(5);
     const restTotal = rest.reduce((sum, item) => sum + item.total, 0);

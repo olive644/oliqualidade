@@ -360,6 +360,7 @@ export function createWidget(
     if (groupKey) widget.groupKey = groupKey;
     if (valueKey) widget.valueKey = valueKey;
     widget.op = seed?.op ?? "sum";
+    widget.dataMode = widget.op === "count" ? "aggregate" : "raw";
     if (type === "ranking") widget.topN = 5;
   }
   return widget;
