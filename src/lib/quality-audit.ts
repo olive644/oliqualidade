@@ -22,7 +22,8 @@ export type AdaptedQualityAudit = {
   unresolvedReaderDivergences: number;
 };
 
-const PERIOD = /^(?:(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
+const PERIOD =
+  /^(?:(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
 const EXCEL_ERROR = /^#(?:DIV\/0!|N\/A|REF!|VALUE!|NAME\?|NULL!|NUM!)$/i;
 
 export function buildAdaptedQualityAudit(input: {
@@ -59,9 +60,7 @@ export function buildAdaptedQualityAudit(input: {
       )
     : 100;
   const validity = Math.round((1 - invalid / Math.max(1, filled)) * 100);
-  const uniqueness = Math.round(
-    (1 - input.duplicateRows / Math.max(1, input.rows.length)) * 100,
-  );
+  const uniqueness = Math.round((1 - input.duplicateRows / Math.max(1, input.rows.length)) * 100);
   const fidelity = Math.max(
     0,
     Math.round(input.interpretationScore - input.unresolvedReaderDivergences * 2),

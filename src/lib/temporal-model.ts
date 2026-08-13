@@ -1,13 +1,7 @@
 import type * as XLSX from "xlsx";
 
 export type TemporalGranularity =
-  | "year"
-  | "quarter"
-  | "month"
-  | "day"
-  | "datetime"
-  | "time"
-  | "duration";
+  "year" | "quarter" | "month" | "day" | "datetime" | "time" | "duration";
 
 export type TemporalCellModel = {
   address: string;
@@ -68,9 +62,10 @@ export function temporalGranularity(format: string): TemporalGranularity | null 
 
 function displayParts(display: string) {
   const normalized = display.trim().toLowerCase().replaceAll(".", "");
-  const namedMonth = /^(jan|fev|feb|mar|abr|apr|mai|may|jun|jul|ago|aug|set|sep|out|oct|nov|dez|dec)[-\s/](\d{2,4})$/i.exec(
-    normalized,
-  );
+  const namedMonth =
+    /^(jan|fev|feb|mar|abr|apr|mai|may|jun|jul|ago|aug|set|sep|out|oct|nov|dez|dec)[-\s/](\d{2,4})$/i.exec(
+      normalized,
+    );
   if (namedMonth) {
     const shortYear = Number(namedMonth[2]);
     return {

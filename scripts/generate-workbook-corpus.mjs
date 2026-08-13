@@ -8,7 +8,8 @@ function workbookFor(seed) {
   const wb = XLSX.utils.book_new();
   const month = new Date(Date.UTC(2025 + (seed % 2), seed % 12, 1));
   const rows = [];
-  for (let banner = 0; banner < seed % 5; banner++) rows.push([banner ? null : `RELATÓRIO ${seed}`]);
+  for (let banner = 0; banner < seed % 5; banner++)
+    rows.push([banner ? null : `RELATÓRIO ${seed}`]);
   rows.push(["Item", month, "Valor", seed % 3 === 0 ? null : "Situação"]);
   for (let row = 0; row < 10 + (seed % 7); row++) {
     if (row === 4 && seed % 4 === 0) rows.push([]);

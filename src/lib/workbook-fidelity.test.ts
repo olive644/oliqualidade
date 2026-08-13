@@ -30,6 +30,32 @@ describe("fidelidade entre leitores independentes", () => {
     expect(divergences.filter((item) => item.severity === "error")).toEqual([]);
   });
 
+  it("restaura uma aba inteira ausente e registra cada célula recuperada", () => {
+    const inspection = inspectOoxml(bytes);
+    const missingSheet = "Cabeçalho deslocado";
+    const retainedSheet = inspection.workbook.SheetNames.at(-1)!;
+    const primary: XLSX.WorkBook = {
+      SheetNames: [retainedSheet],
+      Sheets: { [retainedSheet]: inspection.workbook.Sheets[retainedSheet]! },
+    };
+
+    const divergences = compareAndRepairWithOoxml(primary, inspection);
+
+    expect(primary.SheetNames).toEqual(inspection.workbook.SheetNames);
+    expect(primary.SheetNames.filter((name) => name === missingSheet)).toHaveLength(1);
+    expect(worksheetCellAtAddress(primary.Sheets[missingSheet]!, "A4")?.v).toBe("Data");
+    expect(divergences).toContainEqual(
+      expect.objectContaining({
+        sheet: missingSheet,
+        address: "A4",
+        primary: "",
+        independent: "Data",
+        severity: "error",
+        repaired: true,
+      }),
+    );
+  });
+
   it("usa ExcelJS como terceiro leitor independente nos testes", async () => {
     const primary = XLSX.read(bytes, {
       type: "buffer",
