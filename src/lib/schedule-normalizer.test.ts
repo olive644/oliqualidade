@@ -103,4 +103,9 @@ describe("scheduleToLong", () => {
       value: "7,2",
     });
   });
+
+  it("inclui meses por extenso com ano na normalização longa", () => {
+    const rows: Row[] = [{ Ponto: "CQ", Ensaio: "pH", "mar/2026": 7.2, "Abril-26": 7.1 }];
+    expect(scheduleToLong(rows).map((row) => row.period)).toEqual(["mar/2026", "Abril-26"]);
+  });
 });

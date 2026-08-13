@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
@@ -8,14 +8,17 @@ import { verifyWorkbookWithExcelJs } from "@/lib/workbook-verifier";
 import { scheduleDetailColumns, schedulePeriodColumns } from "@/lib/widgets";
 import type { Column } from "@/lib/types";
 
-const fixture =
-  "upload/FRS-QA-BR-405 - Brasil - Cronograma de Análises Microbiológicas e Água - FY25-26 (5)(1).xlsx";
+const fixture = [
+  "upload/FRS-QA-BR-405 - Brasil - Cronograma de Análises Microbiológicas e Água - FY25-26 (5).xlsx",
+  "upload/FRS-QA-BR-405 - Brasil - Cronograma de Análises Microbiológicas e Água - FY25-26 (5)(1).xlsx",
+].find(existsSync);
 
-describe("validação local do cronograma real", () => {
-  const bytes = readFileSync(fixture);
+describe.skipIf(!fixture)("validação local do cronograma real", () => {
+  const source = fixture!;
+  const bytes = readFileSync(source);
 
   it("preserva mês/ano, Máx. e não inventa 2028", () => {
-    const sheets = readWorkbookBytes(bytes, fixture);
+    const sheets = readWorkbookBytes(bytes, source);
     const schedule = sheets.find((sheet) =>
       sheet.name.startsWith("Monitoramento - Microbiologico"),
     );
@@ -45,7 +48,7 @@ describe("validação local do cronograma real", () => {
   });
 
   it("mantém no cronograma linhas que possuem apenas limite e nenhum mês preenchido", () => {
-    const sheets = readWorkbookBytes(bytes, fixture);
+    const sheets = readWorkbookBytes(bytes, source);
     const schedule = sheets.find((sheet) =>
       sheet.name.startsWith("Monitoramento - Microbiologico"),
     );
@@ -74,7 +77,7 @@ describe("validação local do cronograma real", () => {
   });
 
   it("recupera o bloco físico-químico de Cor sem vazar o título nas células mensais", () => {
-    const sheets = readWorkbookBytes(bytes, fixture);
+    const sheets = readWorkbookBytes(bytes, source);
     const schedule = sheets.find((sheet) => sheet.name === "Monitoramento - F-Q Mensal");
     expect(schedule).toBeDefined();
     const colorRows =
@@ -88,5 +91,38 @@ describe("validação local do cronograma real", () => {
         ),
       ),
     ).toBe(false);
+  });
+
+  it("recupera todas as abas com validade e fidelidade integrais", () => {
+    const sheets = readWorkbookBytes(bytes, source);
+    expect(sheets).toHaveLength(18);
+    expect(sheets.every((sheet) => sheet.rows.length > 0)).toBe(true);
+    for (const sheet of sheets) {
+      const keys = Object.keys(sheet.rows[0] ?? {});
+      expect(keys.join(" ")).not.toMatch(/NaN|undefined|Invalid Date/i);
+      expect(sheet.diagnostics?.qualityAudit?.dimensions.validity.score).toBe(100);
+      expect(sheet.diagnostics?.qualityAudit?.dimensions.fidelity.score).toBeGreaterThanOrEqual(90);
+      expect(sheet.diagnostics?.qualityAudit?.unresolvedReaderDivergences).toBe(0);
+    }
+  });
+
+  it("reconhece Abril-26 como período nas duas abas mensais", () => {
+    const sheets = readWorkbookBytes(bytes, source);
+    for (const name of ["Monitoramento - Micro. Mensal", "Monitoramento - F-Q Mensal"]) {
+      const sheet = sheets.find((candidate) => candidate.name === name);
+      expect(sheet).toBeDefined();
+      const columns: Column[] = Object.keys(sheet?.rows[0] ?? {}).map((key) => ({
+        key,
+        label: key,
+        kind: "number",
+        visible: true,
+        description: "",
+      }));
+      expect(schedulePeriodColumns(columns).map((column) => column.key)).toContain("Abril-26");
+      expect(sheet?.diagnostics?.structuralClassification).toMatchObject({ type: "schedule" });
+      expect(sheet?.diagnostics?.structuralClassification?.reasons).toContain(
+        "9 colunas de período",
+      );
+    }
   });
 });

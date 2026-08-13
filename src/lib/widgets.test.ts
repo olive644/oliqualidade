@@ -277,6 +277,20 @@ describe("createWidget, novos tipos", () => {
     ]);
   });
 
+  it("cronograma reconhece mês por extenso seguido de ano", () => {
+    const scheduleColumns: Column[] = [
+      col("Ponto / Item", "category"),
+      col("mar/2026", "number"),
+      col("Abril-26", "number"),
+      col("Máx.", "number"),
+    ];
+
+    expect(schedulePeriodColumns(scheduleColumns).map((column) => column.key)).toEqual([
+      "mar/2026",
+      "Abril-26",
+    ]);
+  });
+
   it("cronograma preserva limites e contexto fora das colunas de período", () => {
     const scheduleColumns: Column[] = [
       col("Ponto", "category"),

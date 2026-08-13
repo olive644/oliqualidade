@@ -26,7 +26,7 @@ export type ScheduleCriterion = {
 export type ScheduleEvaluation = "within" | "outside" | "not-evaluable";
 
 const PERIOD =
-  /^(?:(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
+  /^(?:(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:[cç]o)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
 
 /** Converte números de planilhas brasileiras sem confundir 0,46 com 46. */
 export function parseScheduleNumber(value: Value | undefined): number | null {
