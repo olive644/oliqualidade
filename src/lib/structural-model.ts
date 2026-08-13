@@ -16,13 +16,21 @@ export type StructuralClassification = {
   reasons: string[];
 };
 
-const PERIOD = /^(?:(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
+const PERIOD =
+  /^(?:(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:[cç]o)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
 const SUMMARY = /^(?:total|m[eé]dia|resumo|indicador|resultado|meta|acumulado)/i;
 const NOTES = /^(?:observa[cç][aã]o|nota|fonte|legenda|instru[cç][aã]o|revis[aã]o)/i;
 
-export function classifyRows(rows: Row[], tableMode?: "single" | "repeated-blocks"): StructuralClassification {
+export function classifyRows(
+  rows: Row[],
+  tableMode?: "single" | "repeated-blocks",
+): StructuralClassification {
   if (tableMode === "repeated-blocks")
-    return { type: "repeated-blocks", confidence: 0.98, reasons: ["blocos de cabeçalho repetidos"] };
+    return {
+      type: "repeated-blocks",
+      confidence: 0.98,
+      reasons: ["blocos de cabeçalho repetidos"],
+    };
   const keys = Object.keys(rows[0] ?? {});
   if (!keys.length || !rows.length)
     return { type: "visual-only", confidence: 0.8, reasons: ["sem grade tabular recuperável"] };
@@ -40,8 +48,17 @@ export function classifyRows(rows: Row[], tableMode?: "single" | "repeated-block
   if (keys.length <= 3 && new Set(firstValues.filter(Boolean)).size >= Math.min(4, rows.length))
     return { type: "form", confidence: 0.72, reasons: ["pares de rótulo e valor"] };
   const joined = `${keys.join(" ")} ${firstValues.join(" ")}`;
-  if (NOTES.test(joined)) return { type: "notes", confidence: 0.75, reasons: ["conteúdo textual institucional"] };
+  if (NOTES.test(joined))
+    return { type: "notes", confidence: 0.75, reasons: ["conteúdo textual institucional"] };
   if (SUMMARY.test(joined) && rows.length <= 12)
-    return { type: "summary", confidence: 0.76, reasons: ["poucas linhas de indicadores agregados"] };
-  return { type: "flat-table", confidence: 0.9, reasons: ["cabeçalho único e registros homogêneos"] };
+    return {
+      type: "summary",
+      confidence: 0.76,
+      reasons: ["poucas linhas de indicadores agregados"],
+    };
+  return {
+    type: "flat-table",
+    confidence: 0.9,
+    reasons: ["cabeçalho único e registros homogêneos"],
+  };
 }
