@@ -12,7 +12,6 @@ import {
   Cell,
   Label,
   LabelList,
-  Legend,
   Line,
   LineChart,
   Pie,
@@ -2647,8 +2646,8 @@ function Review(p: {
                 )}
               </div>
               <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                A IA recebe somente estrutura, contagens e exemplos não sensíveis. Ela sugere; você
-                decide o que aplicar. Nenhum valor ausente é inventado.
+                O Oli analisa somente estrutura, contagens e exemplos não sensíveis. Você decide o
+                que aplicar, e nenhum valor ausente é inventado.
               </p>
             </div>
             <Button
@@ -2731,7 +2730,7 @@ function Review(p: {
                 </div>
               ) : (
                 <p className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-300">
-                  A IA não encontrou nenhuma mudança estrutural segura para recomendar.
+                  O Oli analisou a estrutura e não encontrou ajustes seguros necessários.
                 </p>
               )}
               {smartAnalysis.warnings.length > 0 && (
@@ -6049,66 +6048,77 @@ function compactAxisValue(value: number, kind: Kind) {
 }
 
 /**
- * Legenda customizada da pizza. O Recharts não desenha rótulo nenhum nas
- * fatias por padrão neste widget (o espaço é compacto demais), então esta
- * legenda é a única referência textual visível das categorias; por isso
- * também é aqui que "Não informado" precisa do mesmo destaque do eixo.
+ * Legenda externa da pizza. Mantê-la fora do SVG impede que o Recharts
+ * comprima ou corte o gráfico quando os nomes e valores ocupam mais espaço.
+ * Também é aqui que "Não informado" recebe o mesmo destaque do eixo.
  */
 function PieLegend({
-  payload,
+  items,
   kind,
   activeIndex,
   onHoverIndex,
+  onSelectIndex,
 }: {
-  payload?: { value?: string; color?: string; payload?: { total?: number; count?: number } }[];
+  items: { name: string; total: number; count?: number; color: string }[];
   kind?: Kind;
   activeIndex?: number | null;
   onHoverIndex?: (i: number | null) => void;
+  onSelectIndex?: (i: number) => void;
 }) {
-  if (!payload?.length) return null;
-  const sum = payload.reduce((s, entry) => s + (entry.payload?.total ?? 0), 0);
+  if (!items.length) return null;
+  const sum = items.reduce((s, entry) => s + entry.total, 0);
   return (
-    <ul className="mx-auto flex w-full max-w-xs flex-col gap-0.5 px-3 pb-3 text-[11px]">
-      {payload.map((entry, i) => {
-        const missing = entry.value === NOT_INFORMED;
-        const total = entry.payload?.total ?? 0;
-        const count = entry.payload?.count;
-        const pct = sum > 0 ? (total / sum) * 100 : 0;
+    <ul
+      className="flex max-h-52 min-w-0 flex-col gap-1 overflow-y-auto rounded-xl bg-muted/20 p-2 text-[11px]"
+      aria-label="Legenda do gráfico de pizza"
+    >
+      {items.map((entry, i) => {
+        const missing = entry.name === NOT_INFORMED;
+        const pct = sum > 0 ? (entry.total / sum) * 100 : 0;
         const dimmed = activeIndex !== null && activeIndex !== undefined && activeIndex !== i;
         return (
           <li
-            key={entry.value ?? i}
+            key={`${entry.name}-${i}`}
             className={cn(
-              "flex cursor-default items-center justify-between gap-3 rounded-md px-1 py-1 transition-all duration-150",
+              "rounded-lg transition-all duration-150",
               dimmed ? "opacity-45" : "opacity-100",
               activeIndex === i && "bg-accent",
             )}
             onMouseEnter={() => onHoverIndex?.(i)}
             onMouseLeave={() => onHoverIndex?.(null)}
           >
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ background: entry.color }}
-              />
-              <span
-                className={cn(
-                  "truncate",
-                  missing && "italic text-muted-foreground",
-                  activeIndex === i && "font-semibold text-foreground",
-                )}
-                title={entry.value}
-              >
-                {truncateLabel(entry.value ?? "", 18)}
+            <button
+              type="button"
+              className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 py-1.5 text-left"
+              onClick={() => onSelectIndex?.(i)}
+              title={`Filtrar por ${entry.name}`}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ background: entry.color }}
+                />
+                <span
+                  className={cn(
+                    "truncate",
+                    missing && "italic text-muted-foreground",
+                    activeIndex === i && "font-semibold text-foreground",
+                  )}
+                  title={entry.name}
+                >
+                  {entry.name}
+                </span>
               </span>
-            </span>
-            <span className="shrink-0 whitespace-nowrap font-mono text-muted-foreground">
-              {fmt(total, kind ?? "number") ?? total} ({pct.toFixed(1)}%)
-              {/* "Outros" sozinho não diz o que está dentro: mostrar quantas
-                  categorias distintas foram agrupadas ali torna a fatia
-                  intuitiva sem precisar clicar em nada. */}
-              {count ? ` · ${count.toLocaleString("pt-BR")} categorias` : ""}
-            </span>
+              <span className="whitespace-nowrap text-right font-mono text-muted-foreground">
+                <span className="block">{fmt(entry.total, kind ?? "number") ?? entry.total}</span>
+                <span className="block text-[9px]">{pct.toFixed(1)}%</span>
+              </span>
+              {entry.count ? (
+                <span className="col-span-2 pl-[18px] text-[9px] text-muted-foreground">
+                  {entry.count.toLocaleString("pt-BR")} categorias agrupadas
+                </span>
+              ) : null}
+            </button>
           </li>
         );
       })}
@@ -7241,6 +7251,13 @@ function WidgetCard({
       return rest ? [...top, { name: "Outros", total: rest, count: restItems.length }] : top;
     })();
     const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
+    const pieLegendItems = pieSeries.map((entry, i) => ({
+      ...entry,
+      color:
+        conditionalColor(entry.total, valueCol?.kind ?? "number", valueCol?.conditionalFormat) ??
+        palette[i % palette.length] ??
+        "var(--primary)",
+    }));
     const { cornerRadius: pieCornerRadius, paddingAngle: piePaddingAngle } =
       pieRoundnessFor(pieSeries);
     const insufficient = w.type === "line" ? series.length < 2 : series.length < 1;
@@ -7441,126 +7458,122 @@ function WidgetCard({
           </>
         ) : w.type === "pie" ? (
           <>
-            <div className="h-64 p-4">
-              <ResponsiveContainer>
-                <RPieChart>
-                  <ChartTooltip
-                    contentStyle={{
-                      background: "var(--popover)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      fontSize: 12,
-                      padding: "8px 12px",
-                      boxShadow:
-                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
-                    }}
-                    labelStyle={{
-                      color: "var(--popover-foreground)",
-                      fontWeight: 600,
-                      marginBottom: 2,
-                    }}
-                    itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                    formatter={(
-                      v: number,
-                      _name: string,
-                      entry: { payload?: { count?: number } },
-                    ) => {
-                      const formatted = fmt(v, valueCol.kind) ?? String(v);
-                      const count = entry?.payload?.count;
-                      return count
-                        ? `${formatted} · ${count.toLocaleString("pt-BR")} categorias agrupadas`
-                        : formatted;
-                    }}
-                  />
-                  <Pie
-                    data={pieSeries}
-                    dataKey="total"
-                    nameKey="name"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={piePaddingAngle}
-                    cornerRadius={pieCornerRadius}
-                    stroke="var(--card)"
-                    strokeWidth={3}
-                    onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
-                    onMouseEnter={(_, i) => setActivePieIndex(i)}
-                    onMouseLeave={() => setActivePieIndex(null)}
-                    cursor="pointer"
-                    animationDuration={500}
-                  >
-                    {pieSeries.map((entry, i) => (
-                      <Cell
-                        key={entry.name}
-                        fill={
-                          conditionalColor(
-                            entry.total,
-                            valueCol.kind,
-                            valueCol.conditionalFormat,
-                          ) ?? palette[i % palette.length]
-                        }
-                        opacity={activePieIndex === null || activePieIndex === i ? 1 : 0.45}
-                        style={{ transition: "opacity 150ms ease, transform 150ms ease" }}
-                        transform={activePieIndex === i ? "scale(1.035)" : undefined}
-                      />
-                    ))}
-                    <Label
-                      position="center"
-                      content={({ viewBox }) => {
-                        const box = viewBox as { cx?: number; cy?: number } | undefined;
-                        if (box?.cx === undefined || box?.cy === undefined) return null;
-                        const active = activePieIndex !== null ? pieSeries[activePieIndex] : null;
-                        const label = active ? truncateLabel(active.name, 12) : "Total";
-                        const value = fmt(active ? active.total : pieTotal, valueCol.kind) ?? "–";
-                        return (
-                          <g style={{ pointerEvents: "none" }}>
-                            <text
-                              x={box.cx}
-                              y={box.cy}
-                              textAnchor="middle"
-                              dominantBaseline="central"
-                            >
-                              <tspan
-                                x={box.cx}
-                                dy="-0.35em"
-                                fontFamily="var(--font-display)"
-                                fontSize={17}
-                                fontWeight={800}
-                                fill="var(--foreground)"
-                              >
-                                {value}
-                              </tspan>
-                              <tspan
-                                x={box.cx}
-                                dy="1.4em"
-                                fontSize={10}
-                                fill="var(--muted-foreground)"
-                              >
-                                {label}
-                              </tspan>
-                            </text>
-                          </g>
-                        );
+            <div
+              className={cn(
+                "grid min-w-0 items-center gap-3 p-4",
+                w.span > 1 && "md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,0.9fr)]",
+              )}
+            >
+              <div className="h-52 min-w-0 overflow-visible">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RPieChart margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
+                    <ChartTooltip
+                      contentStyle={{
+                        background: "var(--popover)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        fontSize: 12,
+                        padding: "8px 12px",
+                        boxShadow:
+                          "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+                      }}
+                      labelStyle={{
+                        color: "var(--popover-foreground)",
+                        fontWeight: 600,
+                        marginBottom: 2,
+                      }}
+                      itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                      formatter={(
+                        v: number,
+                        _name: string,
+                        entry: { payload?: { count?: number } },
+                      ) => {
+                        const formatted = fmt(v, valueCol.kind) ?? String(v);
+                        const count = entry?.payload?.count;
+                        return count
+                          ? `${formatted} · ${count.toLocaleString("pt-BR")} categorias agrupadas`
+                          : formatted;
                       }}
                     />
-                  </Pie>
-                  <Legend
-                    content={(props) => (
-                      <PieLegend
-                        payload={
-                          props.payload as {
-                            value?: string;
-                            color?: string;
-                            payload?: { total?: number };
-                          }[]
-                        }
-                        kind={valueCol.kind}
-                        activeIndex={activePieIndex}
-                        onHoverIndex={setActivePieIndex}
+                    <Pie
+                      data={pieSeries}
+                      dataKey="total"
+                      nameKey="name"
+                      innerRadius="48%"
+                      outerRadius="76%"
+                      paddingAngle={piePaddingAngle}
+                      cornerRadius={pieCornerRadius}
+                      stroke="var(--card)"
+                      strokeWidth={3}
+                      onClick={(pt) => pt?.name && handleGroupClick(groupCol.key, String(pt.name))}
+                      onMouseEnter={(_, i) => setActivePieIndex(i)}
+                      onMouseLeave={() => setActivePieIndex(null)}
+                      cursor="pointer"
+                      animationDuration={500}
+                    >
+                      {pieSeries.map((entry, i) => (
+                        <Cell
+                          key={entry.name}
+                          fill={pieLegendItems[i]?.color}
+                          opacity={activePieIndex === null || activePieIndex === i ? 1 : 0.45}
+                          stroke={activePieIndex === i ? "var(--foreground)" : "var(--card)"}
+                          strokeWidth={activePieIndex === i ? 2 : 3}
+                          style={{ transition: "opacity 150ms ease, stroke 150ms ease" }}
+                        />
+                      ))}
+                      <Label
+                        position="center"
+                        content={({ viewBox }) => {
+                          const box = viewBox as { cx?: number; cy?: number } | undefined;
+                          if (box?.cx === undefined || box?.cy === undefined) return null;
+                          const active = activePieIndex !== null ? pieSeries[activePieIndex] : null;
+                          const label = active ? truncateLabel(active.name, 12) : "Total";
+                          const value = fmt(active ? active.total : pieTotal, valueCol.kind) ?? "–";
+                          return (
+                            <g style={{ pointerEvents: "none" }}>
+                              <text
+                                x={box.cx}
+                                y={box.cy}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                              >
+                                <tspan
+                                  x={box.cx}
+                                  dy="-0.35em"
+                                  fontFamily="var(--font-display)"
+                                  fontSize={17}
+                                  fontWeight={800}
+                                  fill="var(--foreground)"
+                                >
+                                  {value}
+                                </tspan>
+                                <tspan
+                                  x={box.cx}
+                                  dy="1.4em"
+                                  fontSize={10}
+                                  fill="var(--muted-foreground)"
+                                >
+                                  {label}
+                                </tspan>
+                              </text>
+                            </g>
+                          );
+                        }}
                       />
-                    )}
-                  />
-                </RPieChart>
-              </ResponsiveContainer>
+                    </Pie>
+                  </RPieChart>
+                </ResponsiveContainer>
+              </div>
+              <PieLegend
+                items={pieLegendItems}
+                kind={valueCol.kind}
+                activeIndex={activePieIndex}
+                onHoverIndex={setActivePieIndex}
+                onSelectIndex={(i) => {
+                  const item = pieSeries[i];
+                  if (item) handleGroupClick(groupCol.key, item.name);
+                }}
+              />
             </div>
             <p className="sr-only">
               Tabela alternativa à pizza:{" "}
