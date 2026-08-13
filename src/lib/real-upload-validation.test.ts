@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
+import type { Buffer } from "node:buffer";
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
 import { readWorkbookBytes } from "@/lib/workbook-reader";
@@ -15,8 +16,13 @@ const fixture = [
 ].find(existsSync);
 
 describe.skipIf(!fixture)("validação local do cronograma real", () => {
-  const source = fixture!;
-  const bytes = readFileSync(source);
+  let source: string;
+  let bytes: Buffer;
+
+  beforeAll(() => {
+    source = fixture!;
+    bytes = readFileSync(source);
+  });
 
   it("preserva mês/ano, Máx. e não inventa 2028", () => {
     const sheets = readWorkbookBytes(bytes, source);
