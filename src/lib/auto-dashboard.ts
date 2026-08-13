@@ -1,6 +1,11 @@
 import type { ColumnDiagnostic, ImportDiagnostics } from "@/lib/import-intelligence";
 import type { ChartAggregationOp, Column, Row, Widget, WidgetType } from "@/lib/types";
-import { createWidget, schedulePeriodColumns } from "@/lib/widgets";
+import {
+  createWidget,
+  scheduleItemColumn,
+  schedulePeriodColumns,
+  scheduleSectionColumn,
+} from "@/lib/widgets";
 
 export type DashboardColumnRole =
   "dimension" | "metric" | "temporal-dimension" | "identifier" | "unsupported";
@@ -218,6 +223,77 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   const identifiers = byRole("identifier");
   const recommendations: DashboardRecommendation[] = [];
 
+  // Cronogramas largos possuem vários resultados numéricos mensais, mas
+  // somá-los como KPIs ou gráficos comuns mistura ensaios e limites com
+  // unidades diferentes. Para esse formato, o painel nasce especializado:
+  // cronograma fiel, volume por bloco e tabela detalhada.
+  const schedulePeriods = schedulePeriodColumns(input.columns);
+  if (schedulePeriods.length >= 3) {
+    const periodKeys = schedulePeriods.map((column) => column.key);
+    const scheduleGroup = scheduleItemColumn(input.columns, periodKeys, input.rows);
+    const scheduleSection = scheduleSectionColumn(input.columns, periodKeys, scheduleGroup?.key);
+    if (scheduleGroup) {
+      recommendations.push(
+        recommendation(input, {
+          id: slug("cronograma", scheduleGroup.key),
+          kind: "visualization",
+          title: "Cronograma visual",
+          widgetType: "schedule-heatmap",
+          groupKey: scheduleGroup.key,
+          columns: [scheduleGroup.key, ...periodKeys],
+          baseConfidence: 97,
+          reasons: [
+            `${schedulePeriods.length} colunas de período foram reconhecidas no cabeçalho.`,
+            "Resultados, limites e blocos permanecem separados para não somar análises incompatíveis.",
+          ],
+        }),
+      );
+      if (scheduleSection && distinctCount(input.rows, scheduleSection.key) >= 2) {
+        recommendations.push(
+          recommendation(input, {
+            id: slug("volume", scheduleSection.key),
+            kind: "visualization",
+            title: `Itens monitorados por ${scheduleSection.label}`,
+            widgetType: "bar",
+            groupKey: scheduleSection.key,
+            valueKey: scheduleGroup.key,
+            op: "count",
+            columns: [scheduleSection.key, scheduleGroup.key],
+            baseConfidence: 93,
+            reasons: [
+              "A contagem por bloco mostra a cobertura do cronograma sem somar resultados laboratoriais.",
+            ],
+          }),
+        );
+      }
+    }
+    recommendations.push({
+      id: "table-detail",
+      kind: "table",
+      title: "Detalhamento dos dados",
+      widgetType: "table",
+      confidence: 100,
+      reasons: ["A tabela preserva cada resultado, período, item e limite original."],
+      warnings: [],
+    });
+    const warnings = input.diagnostics?.warnings ?? [];
+    const confidence = recommendations.length
+      ? clampScore(
+          recommendations.reduce((sum, item) => sum + item.confidence, 0) / recommendations.length,
+        )
+      : 0;
+    return {
+      classifications,
+      recommendations,
+      confidence,
+      reasons: [
+        "A aba foi reconhecida como cronograma e recebeu visualizações próprias para esse formato.",
+        "Valores mensais não são somados entre análises com limites ou unidades diferentes.",
+      ],
+      warnings: [...new Set(warnings)],
+    };
+  }
+
   for (const metric of metrics.slice(0, 3)) {
     recommendations.push(
       recommendation(input, {
@@ -396,33 +472,6 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
           }),
         );
       }
-    }
-  }
-
-  const schedulePeriods = schedulePeriodColumns(input.columns);
-  if (schedulePeriods.length >= 3) {
-    const periodKeys = new Set(schedulePeriods.map((column) => column.key));
-    const scheduleGroup =
-      dimensions.find((dimension) => !periodKeys.has(dimension.key)) ??
-      input.columns.find(
-        (column) => !periodKeys.has(column.key) && ["category", "text"].includes(column.kind),
-      );
-    if (scheduleGroup) {
-      recommendations.push(
-        recommendation(input, {
-          id: slug("cronograma", scheduleGroup.key),
-          kind: "visualization",
-          title: "Cronograma visual",
-          widgetType: "schedule-heatmap",
-          groupKey: scheduleGroup.key,
-          columns: [scheduleGroup.key, ...schedulePeriods.map((column) => column.key)],
-          baseConfidence: 96,
-          reasons: [
-            `${schedulePeriods.length} colunas de período foram reconhecidas no cabeçalho.`,
-            "A matriz preserva itens nas linhas e períodos nas colunas.",
-          ],
-        }),
-      );
     }
   }
 

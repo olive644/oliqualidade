@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import {
@@ -140,11 +140,18 @@ import {
   pickBestGroupColumn,
   schedulePeriodColumns,
   scheduleItemColumn,
+  scheduleLimitColumn,
+  scheduleSectionColumn,
   scheduleStatusColumn,
   scheduleDetailColumns,
   spanClass,
   sizeClass,
 } from "@/lib/widgets";
+import {
+  evaluateScheduleValue,
+  parseScheduleCriterion,
+  type ScheduleCriterion,
+} from "@/lib/schedule-normalizer";
 import {
   conditionalColor,
   conditionalStyle,
@@ -5965,7 +5972,11 @@ function WidgetPickerIcon({ type }: { type: WidgetType }) {
 
 type ScheduleCellState = "empty" | "planned" | "done" | "warning" | "failed" | "neutral";
 
-function scheduleCellState(value: unknown, rowStatus: unknown): ScheduleCellState {
+function scheduleCellState(
+  value: unknown,
+  rowStatus: unknown,
+  criterion: ScheduleCriterion | null = null,
+): ScheduleCellState {
   const text = String(value ?? "").trim();
   const context = `${String(rowStatus ?? "")} ${text}`.toLocaleLowerCase("pt-BR");
   if (!text) return "empty";
@@ -5983,6 +5994,14 @@ function scheduleCellState(value: unknown, rowStatus: unknown): ScheduleCellStat
     /^(?:d|s|m|t|a|sm)$/i.test(text)
   )
     return "planned";
+  const evaluation = evaluateScheduleValue(
+    typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+      ? value
+      : null,
+    criterion,
+  );
+  if (evaluation === "within") return "done";
+  if (evaluation === "outside") return "failed";
   return "neutral";
 }
 
@@ -7050,11 +7069,33 @@ function WidgetCard({
         columns,
         periodCols.map((column) => column.key),
       );
+    const configuredSection = columns.find(
+      (column) =>
+        column.key === w.sectionKey &&
+        !periodKeys.has(column.key) &&
+        column.key !== groupCol?.key &&
+        column.key !== statusCol?.key,
+    );
+    const sectionCol =
+      w.sectionKey === ""
+        ? undefined
+        : (configuredSection ??
+          scheduleSectionColumn(
+            columns,
+            periodCols.map((column) => column.key),
+            groupCol?.key,
+            statusCol?.key,
+          ));
+    const limitCol = scheduleLimitColumn(
+      columns,
+      periodCols.map((column) => column.key),
+    );
     const allDetailCols = columns.filter(
       (column) =>
         !periodKeys.has(column.key) &&
         column.key !== groupCol?.key &&
         column.key !== statusCol?.key &&
+        column.key !== sectionCol?.key &&
         data.some((row) => row[column.key] !== null && row[column.key] !== ""),
     );
     const defaultDetailCols = scheduleDetailColumns(
@@ -7063,7 +7104,7 @@ function WidgetCard({
       data,
       groupCol?.key,
       statusCol?.key,
-    );
+    ).filter((column) => column.key !== sectionCol?.key);
     const detailCols = (
       w.detailKeys === undefined
         ? defaultDetailCols
@@ -7082,6 +7123,29 @@ function WidgetCard({
           allDetailCols.some((column) => row[column.key] !== null && row[column.key] !== "")),
     );
     const visibleRows = scheduleRows.slice(0, 400);
+    const scheduleStats = scheduleRows.reduce<{
+      reported: number;
+      within: number;
+      outside: number;
+      rowsWithoutResult: number;
+    }>(
+      (stats, row) => {
+        const criterion = parseScheduleCriterion(limitCol ? row[limitCol.key] : null);
+        let rowHasResult = false;
+        for (const column of periodCols) {
+          const value = row[column.key];
+          if (value === null || value === "") continue;
+          rowHasResult = true;
+          stats.reported++;
+          const state = scheduleCellState(value, statusCol ? row[statusCol.key] : null, criterion);
+          if (state === "done") stats.within++;
+          if (state === "failed") stats.outside++;
+        }
+        if (!rowHasResult) stats.rowsWithoutResult++;
+        return stats;
+      },
+      { reported: 0, within: 0, outside: 0, rowsWithoutResult: 0 },
+    );
     const togglePeriod = (key: string) => {
       const selected = new Set(periodCols.map((column) => column.key));
       if (selected.has(key) && selected.size > 1) selected.delete(key);
@@ -7143,6 +7207,24 @@ function WidgetCard({
               <option value="">Sem coluna de situação</option>
               {labelOptions
                 .filter((column) => column.key !== groupCol?.key)
+                .map((column) => (
+                  <option key={column.key} value={column.key}>
+                    {column.label}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Seção
+            <select
+              aria-label="Coluna que separa os blocos do cronograma"
+              className="oliam-select h-7 max-w-52"
+              value={sectionCol?.key ?? ""}
+              onChange={(event) => onConfigure({ sectionKey: event.target.value })}
+            >
+              <option value="">Sem separar por seção</option>
+              {labelOptions
+                .filter((column) => column.key !== groupCol?.key && column.key !== statusCol?.key)
                 .map((column) => (
                   <option key={column.key} value={column.key}>
                     {column.label}
@@ -7219,6 +7301,42 @@ function WidgetCard({
           </p>
         ) : (
           <>
+            <div className="grid grid-cols-2 gap-2 border-b border-border bg-muted/10 p-3 sm:grid-cols-4">
+              {[
+                {
+                  label: "Resultados lidos",
+                  value: scheduleStats.reported,
+                  className: "text-foreground",
+                },
+                {
+                  label: "Dentro do limite",
+                  value: scheduleStats.within,
+                  className: "text-emerald-700 dark:text-emerald-300",
+                },
+                {
+                  label: "Fora do limite",
+                  value: scheduleStats.outside,
+                  className: "text-destructive",
+                },
+                {
+                  label: "Itens sem resultado",
+                  value: scheduleStats.rowsWithoutResult,
+                  className: "text-muted-foreground",
+                },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-xl border border-border/70 bg-card px-3 py-2 shadow-sm"
+                >
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {stat.label}
+                  </p>
+                  <p className={cn("mt-0.5 font-mono text-lg font-bold", stat.className)}>
+                    {stat.value.toLocaleString("pt-BR")}
+                  </p>
+                </div>
+              ))}
+            </div>
             <div className="max-h-[32rem] overflow-auto">
               <table className="w-max min-w-full border-separate border-spacing-1 p-3 text-xs">
                 <thead>
@@ -7248,69 +7366,91 @@ function WidgetCard({
                   {visibleRows.map((row, rowIndex) => {
                     const item = String(row[groupCol.key]);
                     const status = statusCol ? row[statusCol.key] : null;
+                    const section = sectionCol ? String(row[sectionCol.key] ?? "") : "";
+                    const previousSection =
+                      sectionCol && rowIndex > 0
+                        ? String(visibleRows[rowIndex - 1]?.[sectionCol.key] ?? "")
+                        : "";
+                    const criterion = parseScheduleCriterion(limitCol ? row[limitCol.key] : null);
                     return (
-                      <tr key={`${item}-${rowIndex}`}>
-                        <th className="sticky left-0 z-10 max-w-64 rounded-lg bg-card px-3 py-2 text-left font-medium shadow-[1px_0_0_var(--border)]">
-                          <button
-                            type="button"
-                            className="w-full text-left hover:text-primary"
-                            onClick={() => handleGroupClick(groupCol.key, item)}
-                            title={`Filtrar por ${item}`}
-                          >
-                            <span className="block truncate">{item}</span>
-                            {status !== null && status !== "" && (
-                              <span className="block truncate text-[10px] font-normal text-muted-foreground">
-                                {String(status)}
-                              </span>
-                            )}
-                          </button>
-                        </th>
-                        {detailCols.map((column) => {
-                          const value = row[column.key];
-                          const empty = value === null || value === "";
-                          const label = empty
-                            ? "—"
-                            : (fmt(value ?? null, column.kind) ?? String(value));
-                          return (
-                            <td
-                              key={column.key}
-                              className="max-w-48 rounded-lg bg-muted/30 px-3 py-2 text-left text-[11px] text-foreground"
-                              title={`${column.label}: ${label}`}
+                      <Fragment key={`${section}-${item}-${rowIndex}`}>
+                        {section && section !== previousSection && (
+                          <tr>
+                            <th
+                              colSpan={1 + detailCols.length + periodCols.length}
+                              className="sticky left-0 rounded-lg border border-primary/20 bg-primary/8 px-3 py-2 text-left font-semibold text-foreground"
                             >
-                              <span
-                                className={cn(
-                                  "block",
-                                  empty ? "text-muted-foreground" : "break-words",
-                                )}
+                              <span className="mr-2 text-[10px] uppercase tracking-[0.12em] text-primary">
+                                {sectionCol?.label}
+                              </span>
+                              {section}
+                            </th>
+                          </tr>
+                        )}
+                        <tr>
+                          <th className="sticky left-0 z-10 max-w-64 rounded-lg bg-card px-3 py-2 text-left font-medium shadow-[1px_0_0_var(--border)]">
+                            <button
+                              type="button"
+                              className="w-full text-left hover:text-primary"
+                              onClick={() => handleGroupClick(groupCol.key, item)}
+                              title={`Filtrar por ${item}`}
+                            >
+                              <span className="block truncate">{item}</span>
+                              {status !== null && status !== "" && (
+                                <span className="block truncate text-[10px] font-normal text-muted-foreground">
+                                  {String(status)}
+                                </span>
+                              )}
+                            </button>
+                          </th>
+                          {detailCols.map((column) => {
+                            const value = row[column.key];
+                            const empty = value === null || value === "";
+                            const label = empty
+                              ? "—"
+                              : (fmt(value ?? null, column.kind) ?? String(value));
+                            return (
+                              <td
+                                key={column.key}
+                                className="max-w-48 rounded-lg bg-muted/30 px-3 py-2 text-left text-[11px] text-foreground"
+                                title={`${column.label}: ${label}`}
                               >
-                                {label}
-                              </span>
-                            </td>
-                          );
-                        })}
-                        {periodCols.map((column) => {
-                          const value = row[column.key];
-                          const state = scheduleCellState(value, status);
-                          const empty = value === null || value === "";
-                          const label = empty ? "Sem registro" : String(value);
-                          return (
-                            <td
-                              key={column.key}
-                              className={cn(
-                                "max-w-32 rounded-lg px-2 py-2 text-center font-semibold transition-transform hover:scale-[1.04]",
-                                scheduleCellClass[state],
-                              )}
-                              title={`${item} · ${column.label}: ${label}${status ? ` · ${String(status)}` : ""}`}
-                            >
-                              {empty ? (
-                                <span className="block min-h-4" aria-label="Sem registro" />
-                              ) : (
-                                <span className="block truncate">{label}</span>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
+                                <span
+                                  className={cn(
+                                    "block",
+                                    empty ? "text-muted-foreground" : "break-words",
+                                  )}
+                                >
+                                  {label}
+                                </span>
+                              </td>
+                            );
+                          })}
+                          {periodCols.map((column) => {
+                            const value = row[column.key];
+                            const state = scheduleCellState(value, status, criterion);
+                            const empty = value === null || value === "";
+                            const label = empty ? "Sem registro" : String(value);
+                            const criterionLabel = criterion ? ` · Limite: ${criterion.label}` : "";
+                            return (
+                              <td
+                                key={column.key}
+                                className={cn(
+                                  "max-w-32 rounded-lg px-2 py-2 text-center font-semibold transition-transform hover:scale-[1.04]",
+                                  scheduleCellClass[state],
+                                )}
+                                title={`${item} · ${column.label}: ${label}${criterionLabel}${status ? ` · ${String(status)}` : ""}`}
+                              >
+                                {empty ? (
+                                  <span className="block min-h-4" aria-label="Sem registro" />
+                                ) : (
+                                  <span className="block truncate">{label}</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -7324,9 +7464,9 @@ function WidgetCard({
               </span>
               {[
                 ["planned", "Planejado"],
-                ["done", "Executado / conforme"],
+                ["done", "Dentro do limite / conforme"],
                 ["warning", "Pendente / atenção"],
-                ["failed", "Não conforme / atrasado"],
+                ["failed", "Fora do limite / não conforme"],
                 ["empty", "Sem registro"],
               ].map(([state, label]) => (
                 <span key={state} className="inline-flex items-center gap-1.5">

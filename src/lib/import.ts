@@ -651,7 +651,7 @@ function findBlockLabel(
   headerRowIndex: number,
   startCol: number,
   endCol: number,
-): string | null {
+): { label: string; row: number } | null {
   // A janela de busca é exatamente a faixa de colunas do próprio bloco
   // (sem folga pra nenhum dos lados): um título mesclado cobre a mesma
   // largura do cabeçalho abaixo dele, e um título isolado (célula única,
@@ -660,22 +660,25 @@ function findBlockLabel(
   // quando dois blocos ficam lado a lado (ex: "Núcleo 2" e "Núcleo 5" no
   // mesmo intervalo de linhas), misturando os dois valores e descartando o
   // rótulo por engano.
-  const aboveRow = (aoa[headerRowIndex - 1] ?? []) as (string | number | null)[];
-  const filled: (string | number)[] = [];
-  aboveRow.forEach((v, c) => {
-    if (v !== null && v !== "" && c >= startCol && c <= endCol) filled.push(v);
-  });
-  if (!filled.length) return null;
-  // Um título mesclado horizontalmente (ex: "Núcleo 1" cobrindo F2:K2) já
-  // chega aqui com o mesmo valor repetido em várias células, por causa do
-  // preenchimento de mesclagem feito antes da detecção de blocos — nesse
-  // caso todas as células preenchidas da janela têm o mesmo valor. Um
-  // título não-mesclado (uma célula só) sempre bate nesse critério
-  // trivialmente. Só desistimos quando a janela tem valores DIFERENTES
-  // (não é um título isolado, é conteúdo genuíno de mais de uma célula).
-  const distinct = new Set(filled.map((v) => String(v).trim()));
-  if (distinct.size !== 1) return null;
-  return [...distinct][0]!;
+  // Alguns modelos deixam uma linha visual vazia entre o título mesclado e
+  // o cabeçalho. Procurar até três linhas acima evita perder esse bloco (e
+  // deixar o título repetido como se fosse dado), mas para no primeiro
+  // conteúdo real encontrado para não "pular" uma tabela anterior.
+  for (let rowIndex = headerRowIndex - 1; rowIndex >= Math.max(0, headerRowIndex - 3); rowIndex--) {
+    const aboveRow = (aoa[rowIndex] ?? []) as (string | number | null)[];
+    const filled: (string | number)[] = [];
+    aboveRow.forEach((v, c) => {
+      if (v !== null && v !== "" && c >= startCol && c <= endCol) filled.push(v);
+    });
+    if (!filled.length) continue;
+    // Um título mesclado horizontalmente chega repetido nas células da
+    // faixa. Conteúdo com valores diferentes é uma linha de dados, não um
+    // título isolado.
+    const distinct = new Set(filled.map((v) => String(v).trim()));
+    if (distinct.size !== 1) return null;
+    return { label: [...distinct][0]!, row: rowIndex };
+  }
+  return null;
 }
 
 /**
@@ -733,7 +736,7 @@ function detectBlocks(aoa: (string | number | null)[][]): Block[] | null {
   // isso pra todos os blocos escolhidos filtra praticamente todo falso
   // positivo, já que dado comum nunca tem um título isolado só seu.
   const labels = chosen.map((run) => findBlockLabel(aoa, run.row, run.startCol, run.endCol));
-  if (labels.some((l) => l === null)) return null;
+  if (labels.some((label) => label === null)) return null;
 
   // Linhas "reservadas": o cabeçalho de cada bloco e a linha do título
   // logo acima dele. Ao coletar as linhas de dado de um bloco, paramos ao
@@ -742,13 +745,14 @@ function detectBlocks(aoa: (string | number | null)[][]): Block[] | null {
   // "Núcleo 3" de um bloco empilhado abaixo cai dentro da mesma faixa de
   // colunas do bloco anterior).
   const reservedRows = new Set<number>();
-  for (const run of chosen) {
+  for (const [index, run] of chosen.entries()) {
     reservedRows.add(run.row);
-    reservedRows.add(run.row - 1);
+    const label = labels[index];
+    if (label) reservedRows.add(label.row);
   }
 
   return chosen.map((run, index) => {
-    const label = labels[index] ?? `Bloco ${index + 1}`;
+    const label = labels[index]?.label ?? `Bloco ${index + 1}`;
     const dataRows: (string | number | null)[][] = [];
     let blankStreak = 0;
     for (let r = run.row + 1; r < aoa.length; r++) {
@@ -795,6 +799,16 @@ function blocksToRows(blocks: Block[]): { rows: Row[]; blockColumnName: string }
   const rows: Row[] = [];
   for (const block of blocks) {
     for (const dataRow of block.dataRows) {
+      // Um título mesclado de um bloco seguinte pode cair dentro da faixa
+      // vertical do bloco anterior. Como a expansão de mesclagens repete o
+      // mesmo texto em todas as células, descarte essa linha visual antes
+      // de ela virar vários "resultados" idênticos no cronograma.
+      const filled = dataRow.filter((value) => value !== null && value !== "");
+      const repeatedMergedTitle =
+        filled.length >= 3 &&
+        String(filled[0]).trim().length >= 8 &&
+        filled.every((value) => String(value).trim() === String(filled[0]).trim());
+      if (repeatedMergedTitle) continue;
       const obj: Row = { [blockColumnName]: block.label };
       headers.forEach((h, i) => {
         const v = dataRow[i];
