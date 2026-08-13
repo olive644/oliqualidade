@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { auditEntry, parseEditedValue, suggestCorrection } from "@/lib/data-review";
+import {
+  applyCellEdit,
+  auditEntry,
+  parseEditedValue,
+  recordUndo,
+  stepRedo,
+  stepUndo,
+  suggestCorrection,
+} from "@/lib/data-review";
 
 describe("revisão e correção de dados", () => {
   it("preserva zero, falso e converte números brasileiros", () => {
@@ -13,6 +21,15 @@ describe("revisão e correção de dados", () => {
       }),
     ).toBe(0);
     expect(parseEditedValue("false")).toBe(false);
+    expect(
+      parseEditedValue("-25%", {
+        key: "p",
+        label: "Percentual",
+        kind: "percentage",
+        visible: true,
+        description: "",
+      }),
+    ).toBe(-0.25);
     expect(
       parseEditedValue("1.234,50", {
         key: "v",
@@ -45,5 +62,31 @@ describe("revisão e correção de dados", () => {
     expect(
       auditEntry({ action: "exception-resolved", exceptionId: "x", reason: "revisado" }, 10),
     ).toMatchObject({ id: "x-10", timestamp: 10 });
+  });
+
+  it("edita somente a célula indicada e mantém a origem imutável", () => {
+    const original = [
+      { nome: "A", valor: 4 },
+      { nome: "B", valor: false },
+    ];
+    const edited = applyCellEdit(original, 1, "valor", 0);
+    expect(edited).toEqual([
+      { nome: "A", valor: 4 },
+      { nome: "B", valor: 0 },
+    ]);
+    expect(original).toEqual([
+      { nome: "A", valor: 4 },
+      { nome: "B", valor: false },
+    ]);
+  });
+
+  it("desfaz e refaz dados junto com a trilha de auditoria", () => {
+    const before = { rows: [{ resultado: 4 }], audit: [] as string[] };
+    const after = { rows: [{ resultado: 0 }], audit: ["4 → 0"] };
+    const recorded = recordUndo({ undo: [], redo: [] }, before);
+    const undone = stepUndo(recorded, after);
+    expect(undone?.next).toEqual(before);
+    const redone = undone ? stepRedo(undone.history, undone.next) : null;
+    expect(redone?.next).toEqual(after);
   });
 });
