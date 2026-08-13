@@ -342,4 +342,34 @@ describe("migração de widgets incompatíveis", () => {
     expect(widgets.some((widget) => widget.id === "old-schedule")).toBe(false);
     expect(widgets.some((widget) => widget.id === "table")).toBe(true);
   });
+
+  it("adiciona widgets operacionais novos ao reabrir um painel especializado", () => {
+    const attendanceColumns: Column[] = [
+      { key: "Matrícula", label: "Matrícula", kind: "text", visible: true, description: "" },
+      { key: "Nome", label: "Nome", kind: "text", visible: true, description: "" },
+      { key: "Setor", label: "Setor", kind: "category", visible: true, description: "" },
+      { key: "Assinatura", label: "Assinatura", kind: "text", visible: true, description: "" },
+    ];
+    const migrated = migrateDashboard({
+      id: "attendance",
+      name: "Treinamento",
+      sheets: [
+        {
+          name: "Lista",
+          rows: [{ Matrícula: "1", Nome: "Ana", Setor: "QA", Assinatura: "Ana" }],
+          columns: attendanceColumns,
+          filters: [],
+          widgets: [{ id: "table", type: "table", span: 3, size: "md" }],
+        },
+      ],
+      activeSheetIndex: 0,
+      createdAt: 0,
+      updatedAt: 0,
+      pinned: false,
+    });
+    expect(migrated.sheets[0]?.widgets?.map((widget) => widget.type)).toEqual([
+      "attendance-overview",
+      "table",
+    ]);
+  });
 });
