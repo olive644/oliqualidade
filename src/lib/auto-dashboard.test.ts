@@ -272,7 +272,6 @@ describe("generateAutoDashboardPlan", () => {
     ];
     const plan = generateAutoDashboardPlan({ columns: scheduleColumns, rows: scheduleRows });
     expect(plan.recommendations.map((item) => item.widgetType)).toEqual([
-      "exception-panel",
       "schedule-heatmap",
       "schedule-heatmap",
       "table",
@@ -330,11 +329,7 @@ describe("generateAutoDashboardPlan", () => {
       column("Inspetor", "text"),
     ];
     const plan = generateAutoDashboardPlan({ columns, rows: [] });
-    expect(plan.recommendations.map((item) => item.widgetType)).toEqual([
-      "validation-overview",
-      "exception-panel",
-      "table",
-    ]);
+    expect(plan.recommendations.map((item) => item.widgetType)).toEqual(["table"]);
     expect(plan.reasons.join(" ")).toContain("matriz de validação por horário");
   });
 });
