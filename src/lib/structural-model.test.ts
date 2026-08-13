@@ -40,4 +40,28 @@ describe("estrutura e cronograma canônico", () => {
     expect(evaluateScheduleValue(0, parseScheduleCriterion("Ausência"))).toBe("within");
     expect(evaluateScheduleValue(1, parseScheduleCriterion("Ausência"))).toBe("outside");
   });
+
+  it("reconhece matrizes de validação e séries laboratoriais normalizadas", () => {
+    expect(
+      classifyRows([
+        {
+          Hora: "07:00h",
+          Referência: "N° de peças",
+          Aceita: null,
+          Rejeita: null,
+          Resultado: "OK",
+        },
+      ]),
+    ).toMatchObject({ type: "validation-matrix" });
+    expect(
+      classifyRows([
+        {
+          Amostra: "Original",
+          Ensaio: "Préforma",
+          Identificação: "Amostra 1",
+          Resultado: 83.7,
+        },
+      ]),
+    ).toMatchObject({ type: "laboratory-series" });
+  });
 });

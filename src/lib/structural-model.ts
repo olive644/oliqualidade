@@ -8,7 +8,11 @@ export type StructuralRegionType =
   | "repeated-blocks"
   | "summary"
   | "notes"
-  | "visual-only";
+  | "visual-only"
+  | "attendance-roster"
+  | "validation-matrix"
+  | "laboratory-series"
+  | "measurement-series";
 
 export type StructuralClassification = {
   type: StructuralRegionType;
@@ -34,6 +38,43 @@ export function classifyRows(
   const keys = Object.keys(rows[0] ?? {});
   if (!keys.length || !rows.length)
     return { type: "visual-only", confidence: 0.8, reasons: ["sem grade tabular recuperável"] };
+  const normalizedKeys = new Set(
+    keys.map((key) =>
+      key
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase(),
+    ),
+  );
+  if (["hora", "referencia", "aceita", "rejeita"].every((key) => normalizedKeys.has(key)))
+    return {
+      type: "validation-matrix",
+      confidence: 0.99,
+      reasons: ["horários com pares aceita/rejeita e resultado operacional"],
+    };
+  if (["amostra", "ensaio", "identificacao", "resultado"].every((key) => normalizedKeys.has(key)))
+    return {
+      type: "laboratory-series",
+      confidence: 0.99,
+      reasons: ["resultados laboratoriais normalizados por amostra e ensaio"],
+    };
+  if (
+    ["categoria", "estatistica", "hora", "amostra", "data"].every((key) => normalizedKeys.has(key))
+  )
+    return {
+      type: "measurement-series",
+      confidence: 0.99,
+      reasons: ["especificações, estatísticas e medições mantidas em registros distintos"],
+    };
+  if (
+    normalizedKeys.has("nome") &&
+    (normalizedKeys.has("matricula") || normalizedKeys.has("n°") || normalizedKeys.has("nº"))
+  )
+    return {
+      type: "attendance-roster",
+      confidence: 0.98,
+      reasons: ["lista numerada de participantes com identificação e presença"],
+    };
   const periodKeys = keys.filter((key) => PERIOD.test(key.trim()));
   if (periodKeys.length >= 3)
     return {

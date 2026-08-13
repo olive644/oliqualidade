@@ -226,6 +226,64 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   const identifiers = byRole("identifier");
   const recommendations: DashboardRecommendation[] = [];
 
+  const normalizedKeys = new Set(
+    input.columns.map((column) =>
+      column.key
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase(),
+    ),
+  );
+  const specializedStructure = [
+    {
+      type: "matriz de validação por horário",
+      keys: ["hora", "referencia", "aceita", "rejeita"],
+    },
+    {
+      type: "série de ensaios laboratoriais",
+      keys: ["amostra", "ensaio", "identificacao", "resultado"],
+    },
+    {
+      type: "controle dimensional com especificações",
+      keys: ["categoria", "estatistica", "hora", "amostra", "data"],
+    },
+  ].find((candidate) => candidate.keys.every((key) => normalizedKeys.has(key)));
+  const attendanceRoster =
+    normalizedKeys.has("nome") &&
+    (normalizedKeys.has("matricula") || normalizedKeys.has("n°") || normalizedKeys.has("nº"));
+  if (specializedStructure || attendanceRoster) {
+    const structure = specializedStructure?.type ?? "lista de presença";
+    return {
+      classifications,
+      recommendations: [
+        {
+          id: "exception-panel",
+          kind: "table",
+          title: "Exceções para revisar",
+          widgetType: "exception-panel",
+          confidence: 100,
+          reasons: ["Mantém ausências, conflitos e valores atípicos ligados ao registro original."],
+          warnings: [],
+        },
+        {
+          id: "table-detail",
+          kind: "table",
+          title: "Detalhamento dos dados",
+          widgetType: "table",
+          confidence: 100,
+          reasons: [`A tabela preserva a estrutura reconhecida como ${structure}.`],
+          warnings: [],
+        },
+      ],
+      confidence: 100,
+      reasons: [
+        `A aba foi reconhecida como ${structure}.`,
+        "O painel evita somas e médias automáticas entre limites, resultados, assinaturas ou unidades incompatíveis.",
+      ],
+      warnings: [...new Set(input.diagnostics?.warnings ?? [])],
+    };
+  }
+
   // Cronogramas largos possuem vários resultados numéricos mensais, mas
   // somá-los como KPIs ou gráficos comuns mistura ensaios e limites com
   // unidades diferentes. Para esse formato, o painel nasce especializado:
