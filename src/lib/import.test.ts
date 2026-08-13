@@ -185,6 +185,24 @@ describe("sheetToRows", () => {
     ]);
   });
 
+  it("preserva grupos esparsos acima de muitas subcolunas temporais", () => {
+    const ws = sheet([
+      [null, null, null, "Programado", null, null, "Realizado"],
+      ["Item", "Descrição", "Gramatura", "1-Jul", "2-Jul", "3-Jul", "1-Jul"],
+      [10, "Produto A", 6, 100, 120, 90, 98],
+      [11, "Produto B", 8, 80, 70, 60, 75],
+    ]);
+    expect(Object.keys(sheetToRows(ws).rows[0] ?? {})).toEqual([
+      "Item",
+      "Descrição",
+      "Gramatura",
+      "Programado — 1-Jul",
+      "Programado — 2-Jul",
+      "Programado — 3-Jul",
+      "Realizado — 1-Jul",
+    ]);
+  });
+
   it("não absorve linhas de dados quando um cabeçalho folha possui uma mesclagem visual", () => {
     const ws = sheet([
       ["Objeto", "Ponto", "Frequência", "Análise", "Limite", null, null],
@@ -911,6 +929,105 @@ describe("sheetToRows", () => {
   });
 });
 
+describe("formatos operacionais especializados", () => {
+  it("normaliza lista de presença sem incorporar o rodapé ao cadastro", () => {
+    const ws = sheet([
+      ["Lista de Presença"],
+      ["Nome do evento: NR10"],
+      ["Entidade Promotora: Amcor", null, null, null, "Carga horária: 08:00h"],
+      ["Instrutor: Ana"],
+      ["N°", "Matrícula", "Nome", null, "Setor", "Turno", "Dia: 25/05/2026"],
+      [null, null, null, null, null, null, "ASSINATURA"],
+      [1, 10, "Ada", null, "QA", "Dia"],
+      [2, 11, "Bia", null, "QA", "Dia"],
+      [3, null, null],
+      [4, null, null],
+      [5, null, null],
+      ["Objetivo:", null, "Texto institucional"],
+    ]);
+    const result = sheetToRows(ws);
+    expect(result.tableMode).toBe("attendance-roster");
+    expect(result.rows).toHaveLength(5);
+    expect(result.rows[0]).toMatchObject({
+      Evento: "NR10",
+      "N°": 1,
+      Matrícula: 10,
+      Nome: "Ada",
+      Setor: "QA",
+      Turno: "Dia",
+      Data: "25/05/2026",
+    });
+    expect(result.rows.some((row) => row["Nome"] === "Texto institucional")).toBe(false);
+  });
+
+  it("normaliza matriz repetida de validação por horário", () => {
+    const ws = sheet([
+      ["Registro de Validação"],
+      ["HORA", "07:00h", null, "08:00h", null],
+      ["REFERÊNCIA", "N° de peças", null, "N° de peças", null],
+      [null, "Aceita", "Rejeita", "Aceita", "Rejeita"],
+      ["Resultado", "OK", null, "OK", null],
+      ["Aviso #"],
+      ["Inspetor", "Ana", null, "Bia"],
+      ["HORA", "09:00h", null, "10:00h", null],
+      ["REFERÊNCIA", "N° de peças", null, "N° de peças", null],
+      [null, "Aceita", "Rejeita", "Aceita", "Rejeita"],
+      ["Resultado", "OK", null, "OK", null],
+      ["Aviso #"],
+      ["Inspetor", "Caio", null, "Dani"],
+    ]);
+    const result = sheetToRows(ws);
+    expect(result.tableMode).toBe("validation-matrix");
+    expect(result.rows).toHaveLength(4);
+    expect(result.rows[0]).toMatchObject({ Hora: "07:00h", Resultado: "OK", Inspetor: "Ana" });
+  });
+
+  it("normaliza ensaios laboratoriais lado a lado", () => {
+    const ws = sheet([
+      ["Amostra Original", null, null, "Amostra Teste"],
+      ["Viscosidade - Préforma", null, null, "Viscosidade - Préforma"],
+      ["Amostra 1", null, 83.7, "Amostra 1", null, 85.4],
+      ["Amostra 2", null, 82.9, "Amostra 2", null, 85.5],
+      ["Viscosidade - Resina", null, null, "Viscosidade - Resina"],
+      ["Amostra 1", null, 84.2, "Amostra 1", null, 83.9],
+      ["Amostra 2", null, 84.7, "Amostra 2", null, 85.4],
+    ]);
+    const result = sheetToRows(ws);
+    expect(result.tableMode).toBe("laboratory-series");
+    expect(result.rows).toHaveLength(8);
+    expect(Object.keys(result.rows[0] ?? {})).toEqual([
+      "Amostra",
+      "Ensaio",
+      "Identificação",
+      "Resultado",
+    ]);
+  });
+
+  it("separa especificações, estatísticas e amostras dimensionais", () => {
+    const ws = sheet([
+      ["Relatório dimensional"],
+      ["Dimensionais/Funcionais", null, null, "Finish F", "Finish T", "Finish A", "Finish D"],
+      ["Unidade de Medida", null, null, "[mm]", "[mm]", "[mm]", "[mm]"],
+      ["Especificação", null, "Limite Inferior", 24.8, 27.2, 27.8, 11],
+      [null, null, "Alvo", 24.9, 27.4, 28, 11.2],
+      [null, null, "Limite Superior", 25.1, 27.5, 28.2, 11.4],
+      ["10:00", 1, "10/08/26", 24.9, 27.4, 28, 11.2],
+      ["10:00", 2, "10/08/26", 25, 27.4, 28, 11.1],
+      ["10:00", 3, "10/08/26", 24.9, 27.3, 28.1, 11.2],
+      ["10:30", 1, "10/08/26", 24.9, 27.4, 28, 11.2],
+      ["10:30", 2, "10/08/26", 25, 27.4, 28, 11.1],
+    ]);
+    const result = sheetToRows(ws);
+    expect(result.tableMode).toBe("measurement-series");
+    expect(result.rows).toHaveLength(8);
+    expect(result.rows[0]).toMatchObject({
+      Categoria: "Especificação",
+      Estatística: "Limite Inferior",
+    });
+    expect(result.rows.at(-1)).toMatchObject({ Categoria: "Medição", Hora: "10:30", Amostra: 2 });
+  });
+});
+
 describe("sheetsWithData", () => {
   it("retorna uma opção por aba quando todas têm dado", () => {
     const wb = XLSX.utils.book_new();
@@ -950,6 +1067,31 @@ describe("sheetsWithData", () => {
     expect(options.every((option) => option.warning?.includes("separada automaticamente"))).toBe(
       true,
     );
+  });
+
+  it("mantém identificadores e períodos na mesma tabela quando há só uma coluna de respiro", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet([
+        ["Máquina", "Tecnologia", "Atendimento %", null, "1-Jul", "2-Jul", "3-Jul", "4-Jul"],
+        ["IN04", "G600", "90%", null, "80%", "90%", "100%", "95%"],
+        ["IN05", "G1-600", "85%", null, "75%", "80%", "90%", "92%"],
+      ]),
+      "Atendimento",
+    );
+    const options = sheetsWithData(wb);
+    expect(options).toHaveLength(1);
+    expect(options[0]?.name).toBe("Atendimento");
+    expect(Object.keys(options[0]?.rows[0] ?? {})).toEqual([
+      "Máquina",
+      "Tecnologia",
+      "Atendimento %",
+      "1-Jul",
+      "2-Jul",
+      "3-Jul",
+      "4-Jul",
+    ]);
   });
 
   it("separa tabelas diferentes empilhadas quando ambas têm estrutura própria", () => {
