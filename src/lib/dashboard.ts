@@ -11,6 +11,7 @@ import type {
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import { numericKinds } from "@/lib/types";
 import { createWidget } from "@/lib/widgets";
+import { analyzeSpreadsheet } from "@/lib/spreadsheet-intelligence";
 
 type LegacyDashboard = {
   id: string;
@@ -241,8 +242,24 @@ export function mergeReimportedSheets(
           ? { autoDashboard: old.autoDashboard }
           : {}),
       ...(s.intelligence ? { intelligence: s.intelligence } : {}),
+      ...(old?.semanticOverrides ? { semanticOverrides: old.semanticOverrides } : {}),
+      ...(old?.exceptionDecisions ? { exceptionDecisions: old.exceptionDecisions } : {}),
       ...(old?.bookmarks ? { bookmarks: old.bookmarks } : {}),
     };
+    if (old?.semanticOverrides) {
+      merged.intelligence = analyzeSpreadsheet(
+        merged.rows,
+        merged.columns,
+        undefined,
+        old.semanticOverrides,
+      );
+    }
+    if (merged.exceptionDecisions && merged.intelligence) {
+      const currentExceptionIds = new Set(merged.intelligence.exceptions.map((item) => item.id));
+      merged.exceptionDecisions = Object.fromEntries(
+        Object.entries(merged.exceptionDecisions).filter(([id]) => currentExceptionIds.has(id)),
+      );
+    }
     if (old && !merged.widgets?.some((widget) => widget.type === "version-compare")) {
       merged.widgets = [
         createWidget("version-compare", merged.columns, undefined, merged.rows),

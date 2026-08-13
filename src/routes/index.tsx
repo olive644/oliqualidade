@@ -230,7 +230,11 @@ import {
 import {
   analyzeSpreadsheet,
   buildPivotMatrix,
-  detectSpreadsheetExceptions,
+  semanticRoleLabels,
+  semanticUnitOptions,
+  type ExceptionDecision,
+  type ColumnSemanticProfile,
+  type SemanticRole,
   type SpreadsheetException,
 } from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFile } from "@/lib/workbook-reader-client";
@@ -3323,6 +3327,11 @@ function Dashboard(p: {
   const [filterMenu, setFilterMenu] = useState(false);
   const [dismissedSignals, setDismissedSignals] = useState<Set<string>>(new Set());
   const [qualityPanel, setQualityPanel] = useState(false);
+  const [focusedCell, setFocusedCell] = useState<{
+    rowIndex: number;
+    columnKey?: string;
+    address?: string;
+  } | null>(null);
   const [addingFormula, setAddingFormula] = useState(false);
   const [formulaLabel, setFormulaLabel] = useState("");
   const [formulaText, setFormulaText] = useState("");
@@ -3366,7 +3375,21 @@ function Dashboard(p: {
   const contentRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
-  const nums = sheet.columns.filter((c) => numericKinds.includes(c.kind)),
+  const effectiveIntelligence = useMemo(
+    () =>
+      sheet.semanticOverrides
+        ? analyzeSpreadsheet(sheet.rows, sheet.columns, undefined, sheet.semanticOverrides)
+        : (sheet.intelligence ?? analyzeSpreadsheet(sheet.rows, sheet.columns)),
+    [sheet.rows, sheet.columns, sheet.intelligence, sheet.semanticOverrides],
+  );
+  const semanticProfilesByKey = useMemo(
+    () => new Map(effectiveIntelligence.columns.map((profile) => [profile.key, profile])),
+    [effectiveIntelligence.columns],
+  );
+  const nums = sheet.columns.filter(
+      (c) =>
+        numericKinds.includes(c.kind) && (semanticProfilesByKey.get(c.key)?.aggregable ?? true),
+    ),
     catCandidates = sheet.columns.filter((c) => c.kind === "category" || c.kind === "text"),
     // Evita escolher como padrão uma coluna categórica quase vazia (ex.: uma
     // coluna residual ou mal importada da planilha), o que fazia o ranking
@@ -3406,18 +3429,33 @@ function Dashboard(p: {
   // ordem/config de colunas (inclui regras de formatação) e widgets (posição,
   // tamanho, configuração). Reinicia sempre que o painel muda.
   const historyRef = useRef<{
-    undo: Array<Pick<SheetData, "filters" | "columns" | "widgets">>;
-    redo: Array<Pick<SheetData, "filters" | "columns" | "widgets">>;
+    undo: Array<
+      Pick<
+        SheetData,
+        "filters" | "columns" | "widgets" | "semanticOverrides" | "exceptionDecisions"
+      >
+    >;
+    redo: Array<
+      Pick<
+        SheetData,
+        "filters" | "columns" | "widgets" | "semanticOverrides" | "exceptionDecisions"
+      >
+    >;
   }>({ undo: [], redo: [] });
   const [, forceHistoryUpdate] = useState(0);
   useEffect(() => {
     historyRef.current = { undo: [], redo: [] };
     forceHistoryUpdate((t) => t + 1);
   }, [d.id]);
-  const dashboardSnapshot = (): Pick<SheetData, "filters" | "columns" | "widgets"> => ({
+  const dashboardSnapshot = (): Pick<
+    SheetData,
+    "filters" | "columns" | "widgets" | "semanticOverrides" | "exceptionDecisions"
+  > => ({
     filters: sheet.filters,
     columns: sheet.columns,
     widgets: sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows),
+    ...(sheet.semanticOverrides ? { semanticOverrides: sheet.semanticOverrides } : {}),
+    ...(sheet.exceptionDecisions ? { exceptionDecisions: sheet.exceptionDecisions } : {}),
   });
   const recordHistory = () => {
     historyRef.current.undo.push(dashboardSnapshot());
@@ -3452,6 +3490,33 @@ function Dashboard(p: {
   const setColumns = (columns: Column[]) => {
     recordHistory();
     updateSheet({ columns });
+  };
+  const setSemanticOverride = (
+    columnKey: string,
+    patch: { role?: SemanticRole; unit?: string | null },
+  ) => {
+    recordHistory();
+    const current = sheet.semanticOverrides ?? {};
+    const next = { ...current, [columnKey]: { ...current[columnKey], ...patch } };
+    const intelligence = analyzeSpreadsheet(sheet.rows, sheet.columns, undefined, next);
+    updateSheet({ semanticOverrides: next, intelligence });
+  };
+  const resetSemanticOverride = (columnKey: string) => {
+    recordHistory();
+    const next = { ...(sheet.semanticOverrides ?? {}) };
+    delete next[columnKey];
+    const intelligence = analyzeSpreadsheet(sheet.rows, sheet.columns, undefined, next);
+    updateSheet({ semanticOverrides: next, intelligence });
+  };
+  const setExceptionDecision = (
+    exceptionId: string,
+    status: ExceptionDecision["status"] | null,
+  ) => {
+    recordHistory();
+    const next = { ...(sheet.exceptionDecisions ?? {}) };
+    if (status) next[exceptionId] = { status, updatedAt: Date.now() };
+    else delete next[exceptionId];
+    updateSheet({ exceptionDecisions: next });
   };
 
   // Colunas calculadas recalculam ao vivo antes de qualquer filtro.
@@ -3589,6 +3654,36 @@ function Dashboard(p: {
   };
   const updateWidget = (id: string, patch: Partial<Widget>) =>
     setWidgets(widgets.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+  const traceException = (exception: SpreadsheetException) => {
+    let columnKey = exception.columnKey;
+    let rowIndex = exception.rowIndex ?? 1;
+    if (exception.address) {
+      try {
+        const decoded = XLSX.utils.decode_cell(exception.address);
+        columnKey ??= sheet.columns[decoded.c]?.key;
+        if (!exception.rowIndex) rowIndex = Math.max(1, decoded.r);
+      } catch {
+        // Endereço textual continua visível no painel mesmo quando não é uma célula A1 válida.
+      }
+    }
+    setSearch("");
+    setSort(null);
+    setFilters([]);
+    setFocusedCell({
+      rowIndex,
+      ...(columnKey ? { columnKey } : {}),
+      ...(exception.address ? { address: exception.address } : {}),
+    });
+    if (!widgets.some((widget) => widget.type === "table")) {
+      setWidgets([...widgets, createWidget("table", sheet.columns, undefined, sheet.rows)]);
+    }
+    setTimeout(() => {
+      document.querySelector("[data-detailed-table]")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  };
   const removeWidget = (id: string) => setWidgets(widgets.filter((w) => w.id !== id));
   const moveWidget = (id: string, dir: -1 | 1) => {
     const i = widgets.findIndex((w) => w.id === id);
@@ -4101,10 +4196,12 @@ function Dashboard(p: {
             setSort={setSort}
             versionDelta={versionDelta}
             versionDiff={detailedVersionDiff}
-            exceptions={
-              sheet.intelligence?.exceptions ??
-              detectSpreadsheetExceptions(sheet.rows, sheet.columns)
-            }
+            exceptions={effectiveIntelligence.exceptions}
+            semanticProfiles={effectiveIntelligence.columns}
+            exceptionDecisions={sheet.exceptionDecisions ?? {}}
+            onExceptionDecision={setExceptionDecision}
+            onTraceException={traceException}
+            focusedCell={focusedCell}
             folderMonitor={p.folderMonitor}
             animationDelay={Math.min(i, 8) * 40}
             filters={sheet.filters}
@@ -4710,118 +4807,167 @@ function Dashboard(p: {
           </div>
         )}
         {panel && (
-          <div className="absolute inset-x-4 top-28 z-40 w-auto max-w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-96">
+          <div className="absolute inset-x-4 top-28 z-40 w-auto overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-[42rem]">
             <div className="flex items-center justify-between border-b p-3">
-              <strong className="text-sm">Colunas visíveis</strong>
+              <div>
+                <strong className="text-sm">Colunas e significado</strong>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Confirme o papel e a unidade usados nas análises.
+                </p>
+              </div>
               <Button variant="ghost" size="icon" onClick={() => setPanel(false)}>
                 <X />
               </Button>
             </div>
-            <p className="px-2 pb-2 text-[11px] text-muted-foreground">
-              Arraste uma coluna direto para o campo de um gráfico, ou solte aqui para reordenar.
-            </p>
-            <div className="max-h-96 overflow-auto p-2">
-              {sheet.columns.map((c, i) => (
-                <div
-                  key={c.key}
-                  draggable
-                  onDragStart={(e) => {
-                    // Reordenar dentro desta lista (texto = índice de origem).
-                    e.dataTransfer.setData("text/plain", String(i));
-                    // Arrastar para um slot de campo de gráfico fora da lista
-                    // (tipo MIME sintético que já embute o Kind da coluna,
-                    // ver columnDragType em src/lib/widgets.ts).
-                    e.dataTransfer.setData(columnDragType(c.kind), c.key);
-                    e.dataTransfer.effectAllowed = "all";
-                  }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const from = Number(e.dataTransfer.getData("text/plain"));
-                    if (Number.isNaN(from) || from === i) return;
-                    const next = [...sheet.columns];
-                    const moved = next.splice(from, 1)[0];
-                    if (!moved) return;
-                    next.splice(i, 0, moved);
-                    setColumns(next);
-                  }}
-                  className="flex items-center gap-2 p-2 text-sm hover:bg-accent"
-                >
-                  <label className="flex flex-1 items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={c.visible}
-                      onChange={() =>
-                        setColumns(
-                          sheet.columns.map((x, j) =>
-                            j === i ? { ...x, visible: !x.visible } : x,
-                          ),
-                        )
-                      }
-                    />
-                    <GripVertical
-                      className="size-4 shrink-0 cursor-grab text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <span className="truncate">
-                      {c.label}
-                      {c.formula && (
-                        <Calculator
-                          className="ml-1 inline size-3 text-secondary-accent"
-                          aria-label="Coluna calculada"
+            <div className="max-h-[32rem] overflow-auto p-2">
+              {sheet.columns.map((c, i) => {
+                const profile = semanticProfilesByKey.get(c.key);
+                const overridden = Boolean(sheet.semanticOverrides?.[c.key]);
+                return (
+                  <div
+                    key={c.key}
+                    draggable
+                    onDragStart={(e) => {
+                      // Reordenar dentro desta lista (texto = índice de origem).
+                      e.dataTransfer.setData("text/plain", String(i));
+                      // Arrastar para um slot de campo de gráfico fora da lista
+                      // (tipo MIME sintético que já embute o Kind da coluna,
+                      // ver columnDragType em src/lib/widgets.ts).
+                      e.dataTransfer.setData(columnDragType(c.kind), c.key);
+                      e.dataTransfer.effectAllowed = "all";
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = Number(e.dataTransfer.getData("text/plain"));
+                      if (Number.isNaN(from) || from === i) return;
+                      const next = [...sheet.columns];
+                      const moved = next.splice(from, 1)[0];
+                      if (!moved) return;
+                      next.splice(i, 0, moved);
+                      setColumns(next);
+                    }}
+                    className="border-b border-border/70 p-2 text-sm last:border-b-0 hover:bg-accent/50"
+                  >
+                    <div className="flex items-center gap-2">
+                      <label className="flex min-w-0 flex-1 items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={c.visible}
+                          onChange={() =>
+                            setColumns(
+                              sheet.columns.map((x, j) =>
+                                j === i ? { ...x, visible: !x.visible } : x,
+                              ),
+                            )
+                          }
                         />
-                      )}
-                    </span>
-                    {c.description && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="size-3 shrink-0 text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent>{c.description}</TooltipContent>
-                      </Tooltip>
-                    )}
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                      {kinds[c.kind]}
-                    </span>
-                  </label>
-                  <div className="flex shrink-0 flex-col">
-                    <button
-                      className="disabled:opacity-30"
-                      aria-label={`Mover ${c.label} para cima`}
-                      disabled={i === 0}
-                      onClick={() => {
-                        if (i === 0) return;
-                        const next = [...sheet.columns];
-                        const a = next[i - 1],
-                          b = next[i];
-                        if (!a || !b) return;
-                        next[i - 1] = b;
-                        next[i] = a;
-                        setColumns(next);
-                      }}
-                    >
-                      <ChevronUp className="size-3" />
-                    </button>
-                    <button
-                      className="disabled:opacity-30"
-                      aria-label={`Mover ${c.label} para baixo`}
-                      disabled={i === sheet.columns.length - 1}
-                      onClick={() => {
-                        if (i === sheet.columns.length - 1) return;
-                        const next = [...sheet.columns];
-                        const a = next[i],
-                          b = next[i + 1];
-                        if (!a || !b) return;
-                        next[i] = b;
-                        next[i + 1] = a;
-                        setColumns(next);
-                      }}
-                    >
-                      <ChevronDown className="size-3" />
-                    </button>
+                        <GripVertical
+                          className="size-4 shrink-0 cursor-grab text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <span className="truncate font-medium">
+                          {c.label}
+                          {c.formula && (
+                            <Calculator
+                              className="ml-1 inline size-3 text-secondary-accent"
+                              aria-label="Coluna calculada"
+                            />
+                          )}
+                        </span>
+                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                          {kinds[c.kind]}
+                        </span>
+                      </label>
+                      <div className="flex shrink-0 flex-col">
+                        <button
+                          className="disabled:opacity-30"
+                          aria-label={`Mover ${c.label} para cima`}
+                          disabled={i === 0}
+                          onClick={() => {
+                            if (i === 0) return;
+                            const next = [...sheet.columns];
+                            const a = next[i - 1],
+                              b = next[i];
+                            if (!a || !b) return;
+                            next[i - 1] = b;
+                            next[i] = a;
+                            setColumns(next);
+                          }}
+                        >
+                          <ChevronUp className="size-3" />
+                        </button>
+                        <button
+                          className="disabled:opacity-30"
+                          aria-label={`Mover ${c.label} para baixo`}
+                          disabled={i === sheet.columns.length - 1}
+                          onClick={() => {
+                            if (i === sheet.columns.length - 1) return;
+                            const next = [...sheet.columns];
+                            const a = next[i],
+                              b = next[i + 1];
+                            if (!a || !b) return;
+                            next[i] = b;
+                            next[i + 1] = a;
+                            setColumns(next);
+                          }}
+                        >
+                          <ChevronDown className="size-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 grid gap-2 pl-10 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-center">
+                      <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        Papel
+                        <select
+                          className="oliam-select h-7 min-w-0 flex-1"
+                          value={profile?.role ?? "unknown"}
+                          onChange={(event) =>
+                            setSemanticOverride(c.key, { role: event.target.value as SemanticRole })
+                          }
+                        >
+                          {Object.entries(semanticRoleLabels).map(([role, label]) => (
+                            <option key={role} value={role}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        Unidade
+                        <select
+                          className="oliam-select h-7 min-w-0 flex-1"
+                          value={profile?.unit ?? ""}
+                          onChange={(event) =>
+                            setSemanticOverride(c.key, { unit: event.target.value || null })
+                          }
+                        >
+                          <option value="">Sem unidade</option>
+                          {semanticUnitOptions.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground">
+                        <span>{profile?.confidence ?? 0}%</span>
+                        {overridden ? (
+                          <button
+                            type="button"
+                            className="font-medium text-primary hover:underline"
+                            onClick={() => resetSemanticOverride(c.key)}
+                          >
+                            Usar automático
+                          </button>
+                        ) : (
+                          <span>Automático</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="border-t p-3">
               {addingFormula ? (
@@ -6535,6 +6681,11 @@ function WidgetCard({
   versionDelta,
   versionDiff,
   exceptions,
+  semanticProfiles,
+  exceptionDecisions,
+  onExceptionDecision,
+  onTraceException,
+  focusedCell,
   folderMonitor,
   animationDelay,
   filters,
@@ -6561,6 +6712,11 @@ function WidgetCard({
   versionDelta: Map<string, number | null> | null;
   versionDiff: VersionDiff | null;
   exceptions: SpreadsheetException[];
+  semanticProfiles: ColumnSemanticProfile[];
+  exceptionDecisions: NonNullable<SheetData["exceptionDecisions"]>;
+  onExceptionDecision: (exceptionId: string, status: ExceptionDecision["status"] | null) => void;
+  onTraceException: (exception: SpreadsheetException) => void;
+  focusedCell: { rowIndex: number; columnKey?: string; address?: string } | null;
   folderMonitor: FolderMonitorView | undefined;
   animationDelay: number;
   filters: FilterRule[];
@@ -6579,6 +6735,7 @@ function WidgetCard({
   // linha do tempo ao mesmo tempo); clicar de novo no mesmo valor remove o
   // filtro. Usado por barra, pizza, linha, área, ranking e mapa.
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
+  const [showHandledExceptions, setShowHandledExceptions] = useState(false);
   const handleGroupClick = (groupKey: string, value: string) => {
     setFilters(toggleClickFilter(filters, groupKey, value));
   };
@@ -6817,13 +6974,38 @@ function WidgetCard({
 
   if (w.type === "exception-panel") {
     const severityOrder = { critical: 0, warning: 1, info: 2 } as const;
-    const visible = [...exceptions]
+    const activeExceptions = exceptions.filter((item) => !exceptionDecisions[item.id]);
+    const handledExceptions = exceptions.filter((item) => exceptionDecisions[item.id]);
+    const visible = [...(showHandledExceptions ? handledExceptions : activeExceptions)]
       .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity])
       .slice(0, 100);
     const totals = {
-      critical: exceptions.filter((item) => item.severity === "critical").length,
-      warning: exceptions.filter((item) => item.severity === "warning").length,
-      info: exceptions.filter((item) => item.severity === "info").length,
+      critical: activeExceptions.filter((item) => item.severity === "critical").length,
+      warning: activeExceptions.filter((item) => item.severity === "warning").length,
+      info: activeExceptions.filter((item) => item.severity === "info").length,
+    };
+    const exportExceptions = () => {
+      const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+      const csv = [
+        ["prioridade", "tipo", "titulo", "origem", "detalhe"],
+        ...activeExceptions.map((item) => [
+          item.severity,
+          item.kind,
+          item.title,
+          item.address ?? (item.rowIndex ? `linha ${item.rowIndex}` : (item.columnKey ?? "")),
+          item.detail,
+        ]),
+      ]
+        .map((row) => row.map(escape).join(";"))
+        .join("\n");
+      const url = URL.createObjectURL(
+        new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "excecoes-da-planilha.csv";
+      link.click();
+      URL.revokeObjectURL(url);
     };
     return (
       <article
@@ -6835,6 +7017,41 @@ function WidgetCard({
           icon={<AlertTriangle className="size-3.5 text-amber-600" />}
           {...dragProps}
         />
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/15 px-4 py-2"
+          data-export-controls
+        >
+          <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5 text-[11px]">
+            <button
+              type="button"
+              className={cn(
+                "rounded-md px-2.5 py-1",
+                !showHandledExceptions && "bg-card font-medium shadow-sm",
+              )}
+              onClick={() => setShowHandledExceptions(false)}
+            >
+              Pendentes · {activeExceptions.length}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "rounded-md px-2.5 py-1",
+                showHandledExceptions && "bg-card font-medium shadow-sm",
+              )}
+              onClick={() => setShowHandledExceptions(true)}
+            >
+              Tratadas · {handledExceptions.length}
+            </button>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!activeExceptions.length}
+            onClick={exportExceptions}
+          >
+            <Download className="size-3.5" /> Exportar pendências
+          </Button>
+        </div>
         {sizeControls}
         <div className="grid grid-cols-3 gap-2 border-b border-border bg-muted/10 p-3">
           {[
@@ -6852,7 +7069,10 @@ function WidgetCard({
         </div>
         {!visible.length ? (
           <div className="flex min-h-32 items-center justify-center gap-2 p-6 text-sm text-emerald-700 dark:text-emerald-300">
-            <Check className="size-4" /> Nenhuma exceção automática encontrada.
+            <Check className="size-4" />
+            {showHandledExceptions
+              ? "Nenhuma exceção foi tratada ainda."
+              : "Nenhuma exceção pendente encontrada."}
           </div>
         ) : (
           <div className="max-h-[28rem] overflow-auto">
@@ -6863,6 +7083,7 @@ function WidgetCard({
                   <th className="px-4 py-2">Exceção</th>
                   <th className="px-4 py-2">Origem</th>
                   <th className="px-4 py-2">Detalhe</th>
+                  <th className="px-4 py-2 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -6886,12 +7107,62 @@ function WidgetCard({
                             : "Info"}
                       </span>
                     </td>
-                    <td className="px-4 py-2 font-medium">{item.title}</td>
+                    <td className="px-4 py-2 font-medium">
+                      <button
+                        type="button"
+                        className="text-left hover:text-primary hover:underline"
+                        onClick={() => onTraceException(item)}
+                      >
+                        {item.title}
+                      </button>
+                    </td>
                     <td className="px-4 py-2 font-mono text-[11px] text-muted-foreground">
-                      {item.address ??
-                        (item.rowIndex ? `linha ${item.rowIndex}` : (item.columnKey ?? "—"))}
+                      <button
+                        type="button"
+                        className="hover:text-primary hover:underline"
+                        onClick={() => onTraceException(item)}
+                      >
+                        {item.address ??
+                          (item.rowIndex ? `linha ${item.rowIndex}` : (item.columnKey ?? "—"))}
+                      </button>
                     </td>
                     <td className="px-4 py-2 text-muted-foreground">{item.detail}</td>
+                    <td className="px-4 py-2">
+                      <div className="flex justify-end gap-1">
+                        {showHandledExceptions ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onExceptionDecision(item.id, null)}
+                          >
+                            Reabrir
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onTraceException(item)}
+                            >
+                              Ver origem
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onExceptionDecision(item.id, "ignored")}
+                            >
+                              Ignorar
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => onExceptionDecision(item.id, "resolved")}
+                            >
+                              Resolver
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -7011,6 +7282,7 @@ function WidgetCard({
       columnDimension.key,
       metric?.key,
       pivotOp,
+      semanticProfiles.find((profile) => profile.key === metric?.key)?.unit,
     );
     const visibleRows = matrix.rows.slice(0, 30);
     const visibleColumns = matrix.columns.slice(0, 24);
@@ -8923,6 +9195,7 @@ function WidgetCard({
     <article
       className={cn("oliam-widget group bg-card", spanClass(w.span))}
       style={{ animationDelay: `${animationDelay}ms` }}
+      data-detailed-table
     >
       <WidgetHead title={`Base detalhada · ${data.length} linhas`} {...dragProps} />
       <DataTable
@@ -8931,6 +9204,7 @@ function WidgetCard({
         sort={sort}
         setSort={setSort}
         interpolated={interpolated}
+        focusedCell={focusedCell}
       />
     </article>
   );
@@ -9189,12 +9463,14 @@ function DataTable({
   sort,
   setSort,
   interpolated,
+  focusedCell,
 }: {
   rows: Row[];
   columns: Column[];
   sort: { key: string; dir: "asc" | "desc" } | null;
   setSort: (s: { key: string; dir: "asc" | "desc" }) => void;
   interpolated?: Set<string>;
+  focusedCell?: { rowIndex: number; columnKey?: string; address?: string } | null;
 }) {
   const parent = useRef<HTMLDivElement>(null),
     visible = columns.filter((c) => c.visible),
@@ -9204,6 +9480,12 @@ function DataTable({
       estimateSize: () => 36,
       overscan: 8,
     });
+  useEffect(() => {
+    if (!focusedCell) return;
+    v.scrollToIndex(Math.max(0, Math.min(rows.length - 1, focusedCell.rowIndex - 1)), {
+      align: "center",
+    });
+  }, [focusedCell, rows.length, v]);
   return (
     <div ref={parent} className="h-[360px] overflow-auto">
       <div className="sticky top-0 z-10 flex min-w-max border-b border-border bg-muted/60 backdrop-blur-sm">
@@ -9249,6 +9531,7 @@ function DataTable({
               className={cn(
                 "absolute left-0 flex border-b border-border transition-colors hover:bg-accent/60",
                 item.index % 2 === 1 && "bg-muted/25",
+                focusedCell?.rowIndex === item.index + 1 && "bg-primary/8",
               )}
               style={{ height: item.size, transform: `translateY(${item.start}px)` }}
             >
@@ -9270,6 +9553,9 @@ function DataTable({
                       shown === null && "text-muted-foreground",
                       isInterpolated &&
                         "outline outline-1 -outline-offset-1 outline-secondary-accent",
+                      focusedCell?.rowIndex === item.index + 1 &&
+                        (!focusedCell.columnKey || focusedCell.columnKey === c.key) &&
+                        "relative z-[1] bg-primary/12 outline outline-2 -outline-offset-2 outline-primary",
                     )}
                   >
                     <span>{shown ?? "—"}</span>

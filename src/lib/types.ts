@@ -129,6 +129,8 @@ export type SheetData = {
   widgets?: Widget[];
   autoDashboard?: AutoDashboardPlan;
   intelligence?: import("@/lib/spreadsheet-intelligence").SpreadsheetIntelligence;
+  semanticOverrides?: import("@/lib/spreadsheet-intelligence").SemanticOverrides;
+  exceptionDecisions?: import("@/lib/spreadsheet-intelligence").ExceptionDecisions;
   bookmarks?: Bookmark[];
 };
 
