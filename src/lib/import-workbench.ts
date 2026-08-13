@@ -54,6 +54,15 @@ export type VersionDiff = {
   typeChanges: { column: string; before: string; after: string }[];
   invalidColumns: string[];
   comparisonMethod: "key" | "position" | "shared-values" | "none";
+  cellChanges: VersionCellChange[];
+};
+
+export type VersionCellChange = {
+  row: number;
+  identity: string;
+  column: string;
+  before: Row[string];
+  after: Row[string];
 };
 
 export type SheetHealth = {
@@ -442,6 +451,7 @@ export function compareVersions(previous: Row[], next: Row[]): VersionDiff {
       typeChanges: [],
       invalidColumns,
       comparisonMethod: "none",
+      cellChanges: [],
     };
   }
   const typeChanges = pairs.flatMap((pair) => {
@@ -454,6 +464,7 @@ export function compareVersions(previous: Row[], next: Row[]): VersionDiff {
   let removed = 0;
   let changed = 0;
   let comparisonMethod: VersionDiff["comparisonMethod"];
+  const cellChanges: VersionCellChange[] = [];
   if (identity.length) {
     comparisonMethod = "key";
     const beforeRows = new Map(previous.map((row) => [rowKey(row, identity, "before"), row]));
@@ -463,9 +474,36 @@ export function compareVersions(previous: Row[], next: Row[]): VersionDiff {
     changed = [...afterRows].filter(
       ([key, row]) => beforeRows.has(key) && rowsDiffer(beforeRows.get(key)!, row, pairs),
     ).length;
+    for (const [key, row] of afterRows) {
+      const before = beforeRows.get(key);
+      if (!before) continue;
+      for (const pair of pairs) {
+        if (normalizedValue(before[pair.before]) === normalizedValue(row[pair.after])) continue;
+        cellChanges.push({
+          row: next.indexOf(row) + 1,
+          identity: key,
+          column: pair.label,
+          before: before[pair.before] ?? null,
+          after: row[pair.after] ?? null,
+        });
+      }
+    }
   } else if (previous.length === next.length) {
     comparisonMethod = "position";
     changed = next.filter((row, index) => rowsDiffer(previous[index]!, row, pairs)).length;
+    next.forEach((row, index) => {
+      const before = previous[index]!;
+      for (const pair of pairs) {
+        if (normalizedValue(before[pair.before]) === normalizedValue(row[pair.after])) continue;
+        cellChanges.push({
+          row: index + 1,
+          identity: `linha ${index + 1}`,
+          column: pair.label,
+          before: before[pair.before] ?? null,
+          after: row[pair.after] ?? null,
+        });
+      }
+    });
   } else {
     comparisonMethod = "shared-values";
     const fingerprint = (row: Row, side: "before" | "after") => rowKey(row, pairs, side);
@@ -505,6 +543,7 @@ export function compareVersions(previous: Row[], next: Row[]): VersionDiff {
     typeChanges,
     invalidColumns,
     comparisonMethod,
+    cellChanges: cellChanges.slice(0, 500),
   };
 }
 

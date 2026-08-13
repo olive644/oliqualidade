@@ -131,6 +131,7 @@ export type SheetData = {
   intelligence?: import("@/lib/spreadsheet-intelligence").SpreadsheetIntelligence;
   semanticOverrides?: import("@/lib/spreadsheet-intelligence").SemanticOverrides;
   exceptionDecisions?: import("@/lib/spreadsheet-intelligence").ExceptionDecisions;
+  auditTrail?: import("@/lib/data-review").AuditEntry[];
   bookmarks?: Bookmark[];
 };
 
