@@ -2427,6 +2427,7 @@ function ImportWorkbench({
                     audit.notesPreserved ?? diagnostics?.sourceNotes.length ?? 0,
                   ],
                   ["Linhas acima do cabeçalho", audit.rowsAboveHeaderIgnored],
+                  ["Linhas ocultas respeitadas", audit.hiddenRowsIgnored],
                   ["Linhas vazias ignoradas", audit.blankRowsIgnored],
                   ["Rodapés/colunas ignorados", audit.trailingRowsIgnored + audit.columnsIgnored],
                 ].map(([label, value]) => (

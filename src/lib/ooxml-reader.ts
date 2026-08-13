@@ -123,6 +123,15 @@ function readSheet(xml: string, strings: string[], formats: string[]) {
   const cells = new Map<string, ReaderCell>();
   const worksheet: XLSX.WorkSheet = {};
   let range: XLSX.Range | null = null;
+  const rows: XLSX.RowInfo[] = [];
+  for (const match of xml.matchAll(/<row\b[^>]*(?:\/>|>)/g)) {
+    const attrs = attributes(match[0]);
+    const rowNumber = Number(attrs["r"]);
+    if (!Number.isInteger(rowNumber) || rowNumber < 1) continue;
+    const hidden = attrs["hidden"] === "1" || attrs["hidden"] === "true";
+    if (hidden) rows[rowNumber - 1] = { hidden: true };
+  }
+  if (rows.length) worksheet["!rows"] = rows;
   // A alternativa autocontida precisa vir primeiro. Caso contrário, `<c .../>`
   // também casa como uma tag de abertura e captura o conteúdo da próxima
   // célula até `</c>`, transformando formatação vazia em dado inexistente.

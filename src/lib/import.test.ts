@@ -44,6 +44,29 @@ describe("sheetToRows", () => {
     expect(warning).toBeNull();
   });
 
+  it("não transforma linhas ocultas do Excel em registros ou métricas", () => {
+    const ws = sheet([
+      ["Item", "Status", "jun", "jul"],
+      ["Manipulador", "Planejado", "T", null],
+      ["Manipulador antigo", "Planejado", "4s", "4s"],
+      ["Manipulador", "Executado", null, null],
+    ]);
+    ws["!rows"] = [{}, {}, { hidden: true }, {}];
+
+    const result = sheetToRows(ws);
+
+    expect(result.rows).toEqual([
+      { Item: "Manipulador", Status: "Planejado", jun: "T", jul: null },
+      { Item: "Manipulador", Status: "Executado", jun: null, jul: null },
+    ]);
+    expect(result.rows.flatMap(Object.values)).not.toContain("4s");
+    expect(result.sourceGrid?.rows[2]).toEqual(["Manipulador antigo", "Planejado", "4s", "4s"]);
+    expect(result.audit?.hiddenRowsIgnored).toBe(1);
+    expect(result.audit?.blankRowsIgnored).toBe(0);
+    expect(result.warning).toContain("linha oculta foi preservada");
+    expect(result.warning).toContain("ignorada nos registros, métricas e widgets");
+  });
+
   it("preserva uma grade original limitada com coordenadas reais", () => {
     const ws = XLSX.utils.aoa_to_sheet([
       ["Título", null],

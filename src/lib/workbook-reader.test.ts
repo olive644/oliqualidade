@@ -31,6 +31,25 @@ describe("leitor universal de planilhas", () => {
     });
     expect(result.report.elapsedMs).toBeGreaterThanOrEqual(0);
   });
+
+  it("preserva a visibilidade das linhas do XLSX e não importa conteúdo oculto", () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Item", "jun"],
+      ["Visível", "T"],
+      ["Oculto", "4s"],
+    ]);
+    worksheet["!rows"] = [{}, {}, { hidden: true }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Cronograma");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const [result] = readWorkbookBytes(bytes, "cronograma.xlsx");
+
+    expect(result?.rows).toEqual([{ Item: "Visível", jun: "T" }]);
+    expect(result?.audit?.hiddenRowsIgnored).toBe(1);
+    expect(result?.diagnostics?.hiddenRows).toBe(1);
+    expect(result?.sourceGrid?.rows[2]).toEqual(["Oculto", "4s"]);
+  });
   it("bloqueia dimensões abusivas declaradas pelo arquivo", () => {
     expect(() =>
       validateWorkbookComplexity({
