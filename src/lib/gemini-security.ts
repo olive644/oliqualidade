@@ -291,6 +291,10 @@ function sanitizeLiveWidget(
     "rating",
     "map",
     "schedule-heatmap",
+    "attendance-overview",
+    "validation-overview",
+    "control-chart",
+    "plan-vs-actual",
     "table",
   ]);
   if (!allowedTypes.has(widget.type)) return null;
