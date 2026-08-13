@@ -115,6 +115,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6709,7 +6711,133 @@ function ChartReadingGuide({
           {mode === "raw" ? "cada linha do Excel" : operation}
         </span>
       </span>
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <Calculator className="size-3" /> Toque na calculadora para alterar
+      </span>
     </div>
+  );
+}
+
+const calculationCopy: Record<AggregationOp, { action: string; detail: string }> = {
+  sum: {
+    action: "Somar os valores",
+    detail: "Junta as linhas da mesma categoria e mostra o total.",
+  },
+  avg: {
+    action: "Calcular a média",
+    detail: "Junta as linhas da mesma categoria e mostra o valor médio.",
+  },
+  count: {
+    action: "Contar as linhas",
+    detail: "Mostra quantos registros existem em cada categoria.",
+  },
+  min: {
+    action: "Mostrar o menor valor",
+    detail: "Escolhe o menor resultado encontrado em cada categoria.",
+  },
+  max: {
+    action: "Mostrar o maior valor",
+    detail: "Escolhe o maior resultado encontrado em cada categoria.",
+  },
+  multiply: {
+    action: "Multiplicar os valores",
+    detail: "Multiplica os resultados da categoria na ordem em que aparecem.",
+  },
+  divide: {
+    action: "Dividir os valores",
+    detail: "Divide o primeiro resultado pelos seguintes, respeitando a ordem.",
+  },
+};
+
+function CalculationButton({
+  mode,
+  operation,
+  operations,
+  metric,
+  group,
+  allowRaw = false,
+  onRaw,
+  onOperation,
+}: {
+  mode?: ChartDataMode;
+  operation: AggregationOp;
+  operations: AggregationOp[];
+  metric: string;
+  group?: string | undefined;
+  allowRaw?: boolean;
+  onRaw?: () => void;
+  onOperation: (operation: AggregationOp) => void;
+}) {
+  const current = mode === "raw" ? "Cada linha do Excel" : calculationCopy[operation].action;
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="relative size-8 shrink-0"
+              aria-label={`Escolher cálculo. Atual: ${current}`}
+            >
+              <Calculator className="size-4" />
+              {mode !== "raw" && (
+                <span
+                  className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"
+                  aria-hidden="true"
+                />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Escolher como calcular</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-[min(22rem,calc(100vw-2rem))] p-1.5">
+        <DropdownMenuLabel className="px-2 pb-0.5 text-xs">
+          Como calcular {metric}
+        </DropdownMenuLabel>
+        <p className="px-2 pb-2 text-[11px] leading-relaxed text-muted-foreground">
+          {group
+            ? `Escolha se o gráfico mantém as linhas originais ou combina valores por ${group}.`
+            : "Escolha o resumo numérico que este indicador deve mostrar."}
+        </p>
+        <DropdownMenuSeparator />
+        {allowRaw && (
+          <DropdownMenuItem className="items-start py-2" {...(onRaw ? { onSelect: onRaw } : {})}>
+            <Check className={cn("mt-0.5 size-4", mode === "raw" ? "opacity-100" : "opacity-0")} />
+            <span>
+              <span className="block text-xs font-medium">Manter cada linha do Excel</span>
+              <span className="mt-0.5 block text-[10px] leading-relaxed text-muted-foreground">
+                Não soma nem combina valores; preserva a ordem original da planilha.
+              </span>
+            </span>
+          </DropdownMenuItem>
+        )}
+        {operations.map((candidate) => {
+          const copy = calculationCopy[candidate];
+          const selected = mode !== "raw" && operation === candidate;
+          return (
+            <DropdownMenuItem
+              key={candidate}
+              className="items-start py-2"
+              onSelect={() => onOperation(candidate)}
+            >
+              <Check className={cn("mt-0.5 size-4", selected ? "opacity-100" : "opacity-0")} />
+              <span>
+                <span className="block text-xs font-medium">
+                  {copy.action}
+                  {group ? ` por ${group}` : ""}
+                </span>
+                <span className="mt-0.5 block text-[10px] leading-relaxed text-muted-foreground">
+                  {copy.detail}
+                </span>
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -8027,20 +8155,13 @@ function WidgetCard({
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Operação
-            <select
-              className="oliam-select h-7"
-              value={pivotOp}
-              onChange={(event) => onConfigure({ op: event.target.value as AggregationOp })}
-            >
-              {(metric ? ["sum", "avg", "count", "min", "max"] : ["count"]).map((op) => (
-                <option key={op} value={op}>
-                  {aggregationLabels[op as AggregationOp]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <CalculationButton
+            operation={pivotOp}
+            operations={metric ? ["sum", "avg", "count", "min", "max"] : ["count"]}
+            metric={metric?.label ?? "registros"}
+            group={`${rowDimension.label} × ${columnDimension.label}`}
+            onOperation={(operation) => onConfigure({ op: operation })}
+          />
         </div>
         {sizeControls}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border bg-card px-4 py-3 text-xs">
@@ -8058,6 +8179,9 @@ function WidgetCard({
           </span>
           <span className="text-muted-foreground">
             Cada célula cruza {rowDimension.label} com {columnDimension.label}.
+          </span>
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
+            <Calculator className="size-3" /> Toque para mudar o cálculo
           </span>
         </div>
         <div className="max-h-[32rem] overflow-auto p-3">
@@ -8228,23 +8352,12 @@ function WidgetCard({
               </select>
             </label>
           </FieldDropSlot>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Operação
-            <select
-              aria-label="Operação de agregação"
-              className="oliam-select h-7"
-              value={metricOp}
-              onChange={(e) => onConfigure({ op: e.target.value as AggregationOp })}
-            >
-              {Object.entries(aggregationLabels)
-                .filter(([o]) => metricOps.includes(o as AggregationOp))
-                .map(([o, label]) => (
-                  <option key={o} value={o}>
-                    {label}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <CalculationButton
+            operation={metricOp}
+            operations={metricOps}
+            metric={col.label}
+            onOperation={(operation) => onConfigure({ op: operation })}
+          />
           {w.type === "metric-trend" && columns.some((c) => c.kind === "date") && (
             <FieldDropSlot
               accepts={["date"]}
@@ -8269,6 +8382,11 @@ function WidgetCard({
               </label>
             </FieldDropSlot>
           )}
+        </div>
+        <div className="border-b border-border bg-card px-4 py-2 text-[11px] text-muted-foreground">
+          <strong className="text-foreground">Cálculo atual:</strong>{" "}
+          {calculationCopy[metricOp].action} para as {data.length.toLocaleString("pt-BR")} linhas
+          visíveis. Toque na calculadora para alterar.
         </div>
         <div className="p-5">
           <p
@@ -8626,35 +8744,16 @@ function WidgetCard({
                 ))}
             </select>
           </label>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Mostrar
-            <select
-              aria-label="Como mostrar os valores do cronograma"
-              className="oliam-select h-7"
-              value={scheduleMode}
-              onChange={(event) => onConfigure({ dataMode: event.target.value as ChartDataMode })}
-            >
-              <option value="raw">Células como no Excel</option>
-              <option value="aggregate">Calcular todos os itens</option>
-            </select>
-          </label>
-          {scheduleMode === "aggregate" && (
-            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              Cálculo
-              <select
-                aria-label="Cálculo do cronograma"
-                className="oliam-select h-7"
-                value={scheduleOp}
-                onChange={(event) => onConfigure({ op: event.target.value as AggregationOp })}
-              >
-                {(["sum", "avg", "count", "min", "max"] as AggregationOp[]).map((operation) => (
-                  <option key={operation} value={operation}>
-                    {aggregationLabels[operation]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          <CalculationButton
+            mode={scheduleMode}
+            operation={scheduleOp}
+            operations={["sum", "avg", "count", "min", "max"]}
+            metric="os resultados dos períodos"
+            group="período"
+            allowRaw
+            onRaw={() => onConfigure({ dataMode: "raw" })}
+            onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
+          />
           <div
             className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
             aria-label="Períodos visíveis"
@@ -8728,6 +8827,9 @@ function WidgetCard({
               <strong>Bloco:</strong> {w.blockValue}
             </span>
           )}
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
+            <Calculator className="size-3" /> Toque para mudar o cálculo
+          </span>
         </div>
         {!groupCol || !periodCols.length ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
@@ -9093,34 +9195,16 @@ function WidgetCard({
               </select>
             </label>
           </FieldDropSlot>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Mostrar
-            <select
-              aria-label="Como mostrar os dados"
-              className="oliam-select"
-              value={dataMode}
-              onChange={(e) => onConfigure({ dataMode: e.target.value as ChartDataMode })}
-            >
-              <option value="raw">Cada linha do Excel</option>
-              <option value="aggregate">Agrupar e calcular</option>
-            </select>
-          </label>
-          {dataMode === "aggregate" && relevantOps.length > 1 && (
-            <select
-              aria-label="Agregação"
-              className="oliam-select"
-              value={op}
-              onChange={(e) => onConfigure({ op: e.target.value as AggregationOp })}
-            >
-              {Object.entries(aggregationLabels)
-                .filter(([o]) => relevantOps.includes(o as AggregationOp))
-                .map(([o, label]) => (
-                  <option key={o} value={o}>
-                    {label}
-                  </option>
-                ))}
-            </select>
-          )}
+          <CalculationButton
+            mode={dataMode}
+            operation={op}
+            operations={relevantOps}
+            metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
+            group={groupCol?.label}
+            allowRaw
+            onRaw={() => onConfigure({ dataMode: "raw" })}
+            onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
+          />
         </div>
         {sizeControls}
         {groupCol && valueCol && (
@@ -9766,34 +9850,16 @@ function WidgetCard({
               ))}
             </select>
           </FieldDropSlot>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Mostrar
-            <select
-              aria-label="Como mostrar os dados do ranking"
-              className="oliam-select"
-              value={dataMode}
-              onChange={(e) => onConfigure({ dataMode: e.target.value as ChartDataMode })}
-            >
-              <option value="raw">Cada linha do Excel</option>
-              <option value="aggregate">Agrupar e calcular</option>
-            </select>
-          </label>
-          {dataMode === "aggregate" && relevantOps.length > 1 && (
-            <select
-              aria-label="Agregação"
-              className="oliam-select"
-              value={op}
-              onChange={(e) => onConfigure({ op: e.target.value as AggregationOp })}
-            >
-              {Object.entries(aggregationLabels)
-                .filter(([o]) => relevantOps.includes(o as AggregationOp))
-                .map(([o, label]) => (
-                  <option key={o} value={o}>
-                    {label}
-                  </option>
-                ))}
-            </select>
-          )}
+          <CalculationButton
+            mode={dataMode}
+            operation={op}
+            operations={relevantOps}
+            metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
+            group={groupCol?.label}
+            allowRaw
+            onRaw={() => onConfigure({ dataMode: "raw" })}
+            onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
+          />
           <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
             Itens
             <select
@@ -9948,34 +10014,16 @@ function WidgetCard({
               ))}
             </select>
           </FieldDropSlot>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Mostrar
-            <select
-              aria-label="Como mostrar os dados do mapa"
-              className="oliam-select"
-              value={dataMode}
-              onChange={(e) => onConfigure({ dataMode: e.target.value as ChartDataMode })}
-            >
-              <option value="raw">Cada linha do Excel</option>
-              <option value="aggregate">Agrupar e calcular</option>
-            </select>
-          </label>
-          {dataMode === "aggregate" && relevantOps.length > 1 && (
-            <select
-              aria-label="Agregação"
-              className="oliam-select"
-              value={op}
-              onChange={(e) => onConfigure({ op: e.target.value as AggregationOp })}
-            >
-              {Object.entries(aggregationLabels)
-                .filter(([o]) => relevantOps.includes(o as AggregationOp))
-                .map(([o, label]) => (
-                  <option key={o} value={o}>
-                    {label}
-                  </option>
-                ))}
-            </select>
-          )}
+          <CalculationButton
+            mode={dataMode}
+            operation={op}
+            operations={relevantOps}
+            metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
+            group={groupCol?.label}
+            allowRaw
+            onRaw={() => onConfigure({ dataMode: "raw" })}
+            onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
+          />
         </div>
         {sizeControls}
         {groupCol && valueCol && (
