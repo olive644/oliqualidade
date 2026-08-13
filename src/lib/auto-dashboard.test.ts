@@ -319,4 +319,21 @@ describe("generateAutoDashboardPlan", () => {
     const plan = generateAutoDashboardPlan({ columns, rows: [] });
     expect(plan.recommendations.some((item) => item.widgetType === "schedule-heatmap")).toBe(false);
   });
+
+  it("não sugere agregações enganosas para formulários operacionais especializados", () => {
+    const columns = [
+      column("Hora", "text"),
+      column("Referência", "text"),
+      column("Aceita", "number"),
+      column("Rejeita", "number"),
+      column("Resultado", "text"),
+      column("Inspetor", "text"),
+    ];
+    const plan = generateAutoDashboardPlan({ columns, rows: [] });
+    expect(plan.recommendations.map((item) => item.widgetType)).toEqual([
+      "exception-panel",
+      "table",
+    ]);
+    expect(plan.reasons.join(" ")).toContain("matriz de validação por horário");
+  });
 });
