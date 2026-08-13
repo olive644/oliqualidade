@@ -1,16 +1,18 @@
 /// <reference lib="webworker" />
 
-import { readWorkbookBytes, type WorkbookReadProgress } from "@/lib/workbook-reader";
+import { readWorkbookBytesWithEngine, type WorkbookReadProgress } from "@/lib/workbook-reader";
 
 type Request = { id: string; bytes: ArrayBuffer; fileName: string };
 
-self.addEventListener("message", (event: MessageEvent<Request>) => {
+self.addEventListener("message", async (event: MessageEvent<Request>) => {
   const { id, bytes, fileName } = event.data;
   try {
-    const sheets = readWorkbookBytes(bytes, fileName, (progress: WorkbookReadProgress) =>
-      self.postMessage({ id, type: "progress", progress }),
+    const result = await readWorkbookBytesWithEngine(
+      bytes,
+      fileName,
+      (progress: WorkbookReadProgress) => self.postMessage({ id, type: "progress", progress }),
     );
-    self.postMessage({ id, type: "result", sheets });
+    self.postMessage({ id, type: "result", result });
   } catch (error) {
     self.postMessage({
       id,

@@ -113,6 +113,8 @@ flowchart TD
 | Risco                                             | Proteção                                               |
 | ------------------------------------------------- | ------------------------------------------------------ |
 | Parse grande bloqueando a interface               | leitura e revisão em Web Workers                       |
+| Uma biblioteca interpreta errado um XLSX          | motor compara SheetJS com leitor OOXML independente    |
+| Evoluir para Rust/WASM sem ruptura                | contrato de adaptador + fallback automático validado   |
 | Bibliotecas pesadas no primeiro acesso            | Excel, PDF, captura e mapa carregados quando usados    |
 | Painel longo renderizando fora da tela            | `content-visibility` nos cartões                       |
 | Tabela enorme criando milhares de nós             | virtualização com `@tanstack/react-virtual`            |
@@ -206,3 +208,7 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
   módulos carregáveis sem alterar comportamento.
 - O mapa estrutural gerado em `graphify-out/` é um artefato derivado. Este
   documento explica intenção; o grafo mostra dependências extraídas do código.
+- O Reading Engine v2 registra leitor, tempos, divergências e recuperações por
+  importação. Ele usa SheetJS verificado por OOXML hoje e aceita um adaptador
+  Rust/WASM opcional no cliente quando este estiver disponível e aprovado pelo
+  corpus. O fallback TypeScript continua obrigatório para compatibilidade.

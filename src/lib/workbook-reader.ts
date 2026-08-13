@@ -2,11 +2,13 @@ import * as XLSX from "xlsx";
 
 import { sheetsWithData, type SheetOption } from "@/lib/import";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
+import { compareAndRepairWithOoxml, inspectOoxml, type ReaderDivergence } from "@/lib/ooxml-reader";
 import {
-  compareAndRepairWithOoxml,
-  inspectOoxml,
-  type ReaderDivergence,
-} from "@/lib/ooxml-reader";
+  registeredWasmWorkbookReader,
+  shouldTryWasm,
+  workbookFormat,
+  type WorkbookReadResult,
+} from "@/lib/workbook-reading-engine";
 
 export const WORKBOOK_ACCEPT =
   ".xlsx,.xlsm,.xlsb,.xls,.xltx,.xltm,.ods,.fods,.csv,.tsv,.txt,.xml,.html,.htm,.numbers";
@@ -161,15 +163,130 @@ export function detectDelimiter(text: string): "," | ";" | "\t" | "|" {
   return [...candidates].sort((a, b) => score(b) - score(a))[0]!;
 }
 
+export async function readWorkbookBytesWithEngine(
+  input: ArrayBuffer | Uint8Array,
+  fileName: string,
+  onProgress?: (progress: WorkbookReadProgress) => void,
+): Promise<WorkbookReadResult> {
+  const startedAt = performance.now();
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  onProgress?.("decoding");
+  if (shouldTryWasm(fileName)) {
+    const wasmStartedAt = performance.now();
+    try {
+      const result = await registeredWasmWorkbookReader()!.read(bytes, fileName);
+      return {
+        sheets: result.sheets,
+        report: {
+          reader: "wasm",
+          format: workbookFormat(fileName),
+          elapsedMs: Math.round(performance.now() - startedAt),
+          parseMs: Math.round(performance.now() - wasmStartedAt),
+          verificationMs: 0,
+          sheets: result.sheets.length,
+          repairedCells: result.repairedCells ?? 0,
+          divergentCells: result.divergentCells ?? 0,
+          fallbackUsed: false,
+          wasmAvailable: true,
+        },
+      };
+    } catch {
+      // A integração WASM é opcional: uma falha nela nunca pode tirar o
+      // fallback comprovado de produção nem bloquear a importação do usuário.
+    }
+  }
+  const textFile = TEXT_EXTENSIONS.test(fileName);
+  if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) validateZipWorkbook(bytes);
+  const source = textFile ? decodeText(bytes) : bytes;
+  onProgress?.("parsing");
+  const parseStartedAt = performance.now();
+  let wb: XLSX.WorkBook;
+  let fallbackUsed = false;
+  try {
+    wb = XLSX.read(source, {
+      type: textFile ? "string" : "array",
+      ...(textFile ? { FS: detectDelimiter(source as string), raw: true } : {}),
+      cellDates: true,
+      cellFormula: true,
+      cellNF: true,
+      cellText: true,
+      sheetStubs: true,
+      bookDeps: true,
+      dense: true,
+      nodim: true,
+      UTC: false,
+    });
+    if (
+      ZIP_WORKBOOK_EXTENSIONS.test(fileName) &&
+      (!wb.SheetNames.length || wb.SheetNames.every((name) => !wb.Sheets[name]?.["!ref"]))
+    )
+      throw new Error("O leitor principal não encontrou células no pacote OOXML.");
+  } catch (error) {
+    if (!ZIP_WORKBOOK_EXTENSIONS.test(fileName)) throw error;
+    const fallback = inspectOoxml(bytes);
+    wb = fallback.workbook;
+    fallbackUsed = true;
+    for (const sheet of Object.values(wb.Sheets))
+      (sheet as WorksheetWithReaderDiagnostics)["!oliOoxmlFallback"] = true;
+  }
+  validateWorkbookComplexity(wb);
+  const parseMs = Math.round(performance.now() - parseStartedAt);
+  let repairedCells = 0;
+  let divergentCells = 0;
+  const verificationStartedAt = performance.now();
+  if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
+    attachWorkbookFeatures(wb, bytes);
+    try {
+      const independent = inspectOoxml(bytes);
+      const divergences = compareAndRepairWithOoxml(wb, independent);
+      repairedCells = divergences.filter((item) => item.repaired).length;
+      divergentCells = divergences.length;
+      for (const sheetName of wb.SheetNames) {
+        const perSheet = divergences.filter((item) => item.sheet === sheetName);
+        if (perSheet.length)
+          (wb.Sheets[sheetName] as WorksheetWithReaderDiagnostics)["!oliReaderDivergences"] =
+            perSheet;
+      }
+    } catch {
+      // O leitor principal continua válido. O fallback é uma camada de
+      // verificação e nunca pode impedir a importação de um arquivo legível.
+    }
+  }
+  onProgress?.("analyzing");
+  const sheets = sheetsWithData(wb);
+  return {
+    sheets,
+    report: {
+      reader: fallbackUsed
+        ? "ooxml-recovery"
+        : ZIP_WORKBOOK_EXTENSIONS.test(fileName)
+          ? "sheetjs-verified"
+          : "sheetjs",
+      format: workbookFormat(fileName),
+      elapsedMs: Math.round(performance.now() - startedAt),
+      parseMs,
+      verificationMs: Math.round(performance.now() - verificationStartedAt),
+      sheets: sheets.length,
+      repairedCells,
+      divergentCells,
+      fallbackUsed,
+      wasmAvailable: !!registeredWasmWorkbookReader(),
+    },
+  };
+}
+
 export function readWorkbookBytes(
   input: ArrayBuffer | Uint8Array,
   fileName: string,
   onProgress?: (progress: WorkbookReadProgress) => void,
 ): SheetOption[] {
+  // Mantém o contrato síncrono usado pelo motor, testes e SSR. O leitor WASM
+  // é usado exclusivamente pelo cliente assíncrono para não forçar await em
+  // todo o ecossistema existente.
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  onProgress?.("decoding");
   const textFile = TEXT_EXTENSIONS.test(fileName);
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) validateZipWorkbook(bytes);
+  onProgress?.("decoding");
   const source = textFile ? decodeText(bytes) : bytes;
   onProgress?.("parsing");
   let wb: XLSX.WorkBook;
@@ -194,8 +311,7 @@ export function readWorkbookBytes(
       throw new Error("O leitor principal não encontrou células no pacote OOXML.");
   } catch (error) {
     if (!ZIP_WORKBOOK_EXTENSIONS.test(fileName)) throw error;
-    const fallback = inspectOoxml(bytes);
-    wb = fallback.workbook;
+    wb = inspectOoxml(bytes).workbook;
     for (const sheet of Object.values(wb.Sheets))
       (sheet as WorksheetWithReaderDiagnostics)["!oliOoxmlFallback"] = true;
   }
@@ -212,8 +328,7 @@ export function readWorkbookBytes(
             perSheet;
       }
     } catch {
-      // O leitor principal continua válido. O fallback é uma camada de
-      // verificação e nunca pode impedir a importação de um arquivo legível.
+      // A verificação independente não bloqueia um arquivo legível.
     }
   }
   onProgress?.("analyzing");
