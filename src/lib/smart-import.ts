@@ -210,10 +210,10 @@ export function parseSmartImportAnalysis(
   try {
     raw = JSON.parse(jsonText);
   } catch {
-    throw new Error("A IA retornou uma análise estrutural inválida.");
+    throw new Error("O Oli não conseguiu concluir esta análise estrutural.");
   }
   if (!raw || typeof raw !== "object")
-    throw new Error("A IA retornou uma análise estrutural inválida.");
+    throw new Error("O Oli não conseguiu concluir esta análise estrutural.");
   const candidate = raw as Record<string, unknown>;
   const validKeys = new Set(input.columns.map((column) => column.key));
   const suggestions = (Array.isArray(candidate["suggestions"]) ? candidate["suggestions"] : [])
