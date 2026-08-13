@@ -103,11 +103,54 @@ function calendarParts(d: Date, cell?: XLSX.CellObject) {
   // Nesses casos os componentes UTC representam o serial original. Datas
   // criadas diretamente pelo app/testes, sem `w`, continuam usando o fuso
   // local para não alterar seu significado.
-  const fromWorkbook = typeof cell?.w === "string" && cell.w.trim().length > 0;
+  const display = typeof cell?.w === "string" ? cell.w.trim() : "";
+  const namedMonths: Record<string, number> = {
+    jan: 1,
+    feb: 2,
+    fev: 2,
+    mar: 3,
+    apr: 4,
+    abr: 4,
+    may: 5,
+    mai: 5,
+    jun: 6,
+    jul: 7,
+    aug: 8,
+    ago: 8,
+    sep: 9,
+    set: 9,
+    oct: 10,
+    out: 10,
+    nov: 11,
+    dec: 12,
+    dez: 12,
+  };
+  const named =
+    /^(jan|feb|fev|mar|apr|abr|may|mai|jun|jul|aug|ago|sep|set|oct|out|nov|dec|dez)[-/. ](\d{2,4})$/i.exec(
+      display,
+    );
+  const numeric = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/.exec(display);
+  const shortYear = (value: string) => (Number(value) < 100 ? 2000 + Number(value) : Number(value));
+  let displayed: { year: number; month: number; day: number } | null = null;
+  if (named)
+    displayed = {
+      year: shortYear(named[2]!),
+      month: namedMonths[named[1]!.toLowerCase()]!,
+      day: 1,
+    };
+  if (numeric) {
+    const dayFirst = /^d/i.test(String(cell?.z ?? "").replace(/[^dmy]/gi, ""));
+    displayed = {
+      year: shortYear(numeric[3]!),
+      month: Number(dayFirst ? numeric[2] : numeric[1]),
+      day: Number(dayFirst ? numeric[1] : numeric[2]),
+    };
+  }
+  const fromWorkbook = display.length > 0;
   return {
-    year: fromWorkbook ? d.getUTCFullYear() : d.getFullYear(),
-    month: (fromWorkbook ? d.getUTCMonth() : d.getMonth()) + 1,
-    day: fromWorkbook ? d.getUTCDate() : d.getDate(),
+    year: displayed?.year ?? (fromWorkbook ? d.getUTCFullYear() : d.getFullYear()),
+    month: displayed?.month ?? (fromWorkbook ? d.getUTCMonth() + 1 : d.getMonth() + 1),
+    day: displayed?.day ?? (fromWorkbook ? d.getUTCDate() : d.getDate()),
     hours: fromWorkbook ? d.getUTCHours() : d.getHours(),
     minutes: fromWorkbook ? d.getUTCMinutes() : d.getMinutes(),
     seconds: fromWorkbook ? d.getUTCSeconds() : d.getSeconds(),
@@ -196,7 +239,8 @@ function normalizeRawRow(
       c: start.c + columnIndex,
     });
     const sourceCell = worksheetCellAtAddress(worksheet, address);
-    const formatted = formatTemporalCell(value, sourceCell);
+    const sourceDate = sourceCell?.v instanceof Date ? sourceCell.v : value;
+    const formatted = formatTemporalCell(sourceDate, sourceCell);
     if (formatted) return formatted;
 
     // O SheetJS 0.20 pode tentar converter uma célula textual para Date
