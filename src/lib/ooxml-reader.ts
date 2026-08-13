@@ -234,8 +234,33 @@ export function compareAndRepairWithOoxml(
 ): ReaderDivergence[] {
   const divergences: ReaderDivergence[] = [];
   for (const [sheetName, independentCells] of inspection.sheets) {
-    const sheet = primary.Sheets[sheetName];
-    if (!sheet) continue;
+    let sheet = primary.Sheets[sheetName];
+    if (!sheet) {
+      const recoveredSheet = inspection.workbook.Sheets[sheetName];
+      if (!recoveredSheet) continue;
+      if (!primary.SheetNames.includes(sheetName)) {
+        const sourceIndex = inspection.workbook.SheetNames.indexOf(sheetName);
+        const insertionIndex =
+          sourceIndex < 0
+            ? primary.SheetNames.length
+            : Math.min(sourceIndex, primary.SheetNames.length);
+        primary.SheetNames.splice(insertionIndex, 0, sheetName);
+      }
+      primary.Sheets[sheetName] = recoveredSheet;
+      sheet = recoveredSheet;
+      for (const [address, independent] of independentCells) {
+        divergences.push({
+          sheet: sheetName,
+          address,
+          primary: "",
+          independent:
+            comparable(independent.rawValue) || independent.formula || independent.displayValue,
+          severity: "error",
+          repaired: true,
+        });
+      }
+      continue;
+    }
     for (const [address, independent] of independentCells) {
       const cell = worksheetCellAtAddress(sheet, address);
       const primaryValue = comparable(cell?.v);

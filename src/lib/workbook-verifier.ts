@@ -9,7 +9,9 @@ function normalized(value: unknown): string {
   if (value && typeof value === "object" && "result" in value)
     return normalized((value as { result?: unknown }).result);
   if (value && typeof value === "object" && "richText" in value)
-    return (value as { richText: Array<{ text: string }> }).richText.map((part) => part.text).join("");
+    return (value as { richText: Array<{ text: string }> }).richText
+      .map((part) => part.text)
+      .join("");
   return String(value ?? "").trim();
 }
 
@@ -34,7 +36,10 @@ export async function verifyWorkbookWithExcelJs(
         if (cell.isMerged && cell.master.address !== address) return;
         const first = normalized(worksheetCellAtAddress(primarySheet, address)?.v);
         const second = normalized(cell.value);
-        if (first === second || normalized(worksheetCellAtAddress(primarySheet, address)?.w) === cell.text)
+        if (
+          first === second ||
+          normalized(worksheetCellAtAddress(primarySheet, address)?.w) === cell.text
+        )
           return;
         divergences.push({
           sheet: sheet.name,

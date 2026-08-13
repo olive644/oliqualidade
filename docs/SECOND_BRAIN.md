@@ -4,6 +4,9 @@ Este documento é a fonte de orientação do projeto: explica o que existe, por
 que existe, onde alterar e como provar que uma mudança não quebrou a leitura.
 O código e os testes continuam sendo a fonte de verdade técnica.
 
+A auditoria detalhada da base, lacunas, matriz de leitores e plano Rust está em
+[`CURRENT_STATE_AUDIT.md`](CURRENT_STATE_AUDIT.md).
+
 ## Mapa mental
 
 ```mermaid
@@ -121,6 +124,7 @@ flowchart TD
 | ------------------------------------------------- | ------------------------------------------------------ |
 | Parse grande bloqueando a interface               | leitura e revisão em Web Workers                       |
 | Uma biblioteca interpreta errado um XLSX          | motor compara SheetJS com leitor OOXML independente    |
+| O leitor principal perde uma aba OOXML inteira    | reconciliação restaura a aba e audita cada célula      |
 | Evoluir para Rust/WASM sem ruptura                | contrato de adaptador + fallback automático validado   |
 | Bibliotecas pesadas no primeiro acesso            | Excel, PDF, captura e mapa carregados quando usados    |
 | Painel longo renderizando fora da tela            | `content-visibility` nos cartões                       |

@@ -39,6 +39,8 @@ describe("suíte crescente de fidelidade", () => {
       expect(sheets[0]?.rows.length, `semente ${seed}`).toBeGreaterThanOrEqual(12);
       expect(report.score, `semente ${seed}`).toBeGreaterThanOrEqual(99);
     }
-    expect(scores.reduce((sum, score) => sum + score, 0) / scores.length).toBeGreaterThanOrEqual(99);
+    expect(scores.reduce((sum, score) => sum + score, 0) / scores.length).toBeGreaterThanOrEqual(
+      99,
+    );
   });
 });
