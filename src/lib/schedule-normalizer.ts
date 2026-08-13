@@ -7,9 +7,12 @@ export type LongScheduleRow = {
   value: Value;
   sourceRow: number;
   sourceColumn: string;
+  /** Demais campos da linha, preservados para revisão e widgets ricos. */
+  dimensions: Record<string, Value>;
 };
 
-const PERIOD = /^(?:(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
+const PERIOD =
+  /^(?:(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
 
 export function scheduleToLong(rows: Row[]): LongScheduleRow[] {
   const keys = Object.keys(rows[0] ?? {});
@@ -29,6 +32,7 @@ export function scheduleToLong(rows: Row[]): LongScheduleRow[] {
       value: row[period] ?? null,
       sourceRow: rowIndex + 2,
       sourceColumn: period,
+      dimensions: Object.fromEntries(dimensions.map((key) => [key, row[key] ?? null])),
     })),
   );
 }

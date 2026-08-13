@@ -184,6 +184,41 @@ export function scheduleStatusColumn(columns: Column[], periodKeys: string[]): C
   );
 }
 
+const SCHEDULE_DETAIL_HINT =
+  /(?:m[aá]x(?:imo)?|m[ií]n(?:imo)?|limite|meta|crit[eé]rio|frequ[eê]ncia|periodicidade|an[aá]lise|ensaio|m[eé]todo|respons[aá]vel|prestador|registro|laudo|unidade|resultado|observa[cç][aã]o|produto|material|gramatura|amostra)/i;
+
+/**
+ * Campos que dão contexto ao cronograma e não podem desaparecer só por não
+ * serem o item principal ou um período. Mantém inclusive colunas numéricas
+ * como "Máx.", pois uma linha apenas com limite ainda é informação válida.
+ */
+export function scheduleDetailColumns(
+  columns: Column[],
+  periodKeys: string[],
+  rows: Row[],
+  groupKey?: string,
+  statusKey?: string,
+): Column[] {
+  const periods = new Set(periodKeys);
+  const candidates = columns.filter((column) => {
+    if (periods.has(column.key) || column.key === groupKey || column.key === statusKey)
+      return false;
+    return rows.some((row) => row[column.key] !== null && row[column.key] !== "");
+  });
+  const ranked = candidates
+    .map((column, index) => ({
+      column,
+      index,
+      priority: SCHEDULE_DETAIL_HINT.test(`${column.label} ${column.key}`) ? 1 : 0,
+      fill: fillRatio(column, rows),
+    }))
+    .sort((a, b) => b.priority - a.priority || b.fill - a.fill || a.index - b.index)
+    .slice(0, 6)
+    .map(({ column }) => column);
+  const selected = new Set(ranked.map((column) => column.key));
+  return columns.filter((column) => selected.has(column.key));
+}
+
 export function scheduleItemColumn(
   columns: Column[],
   periodKeys: string[],
@@ -238,6 +273,13 @@ export function createWidget(
     const status = scheduleStatusColumn(columns, widget.periodKeys);
     if (group) widget.groupKey = group.key;
     if (status && status.key !== group?.key) widget.statusKey = status.key;
+    widget.detailKeys = scheduleDetailColumns(
+      columns,
+      widget.periodKeys,
+      rows,
+      group?.key,
+      status?.key,
+    ).map((column) => column.key);
   } else if (
     type === "bar" ||
     type === "pie" ||

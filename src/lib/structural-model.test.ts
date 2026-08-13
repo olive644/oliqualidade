@@ -21,6 +21,7 @@ describe("estrutura e cronograma canônico", () => {
       period: "jun/2025",
       value: 60,
       sourceRow: 2,
+      dimensions: { Item: "Injetora N04" },
     });
     expect(long.some((item) => item.value === null)).toBe(true);
   });

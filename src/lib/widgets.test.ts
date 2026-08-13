@@ -11,6 +11,7 @@ import {
   newWidgetId,
   pickBestGroupColumn,
   schedulePeriodColumns,
+  scheduleDetailColumns,
 } from "@/lib/widgets";
 import { numericKinds } from "@/lib/types";
 import type { Column, Row } from "@/lib/types";
@@ -271,6 +272,37 @@ describe("createWidget, novos tipos", () => {
       "jun/2025",
       "set/2025",
       "mar/2026",
+    ]);
+  });
+
+  it("cronograma preserva limites e contexto fora das colunas de período", () => {
+    const scheduleColumns: Column[] = [
+      col("Ponto", "category"),
+      col("Análise", "text"),
+      col("Responsável", "text"),
+      col("jun/2025", "number"),
+      col("set/2025", "number"),
+      col("Máx.", "number"),
+    ];
+    const rows: Row[] = [
+      {
+        Ponto: "Bancada CQ",
+        Análise: "Bolores e leveduras",
+        Responsável: "Laboratório",
+        "jun/2025": null,
+        "set/2025": null,
+        "Máx.": 25,
+      },
+    ];
+    expect(
+      scheduleDetailColumns(scheduleColumns, ["jun/2025", "set/2025"], rows, "Ponto").map(
+        (column) => column.key,
+      ),
+    ).toEqual(["Análise", "Responsável", "Máx."]);
+    expect(createWidget("schedule-heatmap", scheduleColumns, undefined, rows).detailKeys).toEqual([
+      "Análise",
+      "Responsável",
+      "Máx.",
     ]);
   });
 
