@@ -260,7 +260,7 @@ export async function handleSmartImportAnalysis(
     if (error instanceof Error && error.name === "AbortError")
       return json({ error: "A análise inteligente demorou demais para responder." }, 504);
     const message =
-      error instanceof Error && /^(Contexto|A IA)/.test(error.message)
+      error instanceof Error && /^(Contexto|A IA|O Oli)/.test(error.message)
         ? error.message
         : "Não foi possível analisar esta estrutura.";
     return json({ error: message }, 400);
