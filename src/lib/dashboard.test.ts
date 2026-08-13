@@ -212,9 +212,7 @@ describe("mergeReimportedSheets", () => {
 
     expect(merged.find((column) => column.key === "receita")).toMatchObject(oldColumns[0]!);
     expect(merged.find((column) => column.key === "custo")).toMatchObject(freshColumns[1]!);
-    expect(merged.find((column) => column.key === "margem_calc")?.formula).toBe(
-      "receita / custo",
-    );
+    expect(merged.find((column) => column.key === "margem_calc")?.formula).toBe("receita / custo");
   });
 });
 
@@ -248,5 +246,62 @@ describe("migração de widgets incompatíveis", () => {
     expect(migrated.sheets[0]?.autoDashboard?.warnings.join(" ")).toContain(
       "Nenhuma métrica numérica segura",
     );
+  });
+
+  it("divide um cronograma automático antigo em widgets por bloco ao reabrir o painel", () => {
+    const scheduleColumns: Column[] = [
+      { key: "Bloco", label: "Bloco", kind: "category", visible: true, description: "" },
+      {
+        key: "Ponto / Item",
+        label: "Ponto / Item",
+        kind: "category",
+        visible: true,
+        description: "",
+      },
+      { key: "jun/2025", label: "jun/2025", kind: "number", visible: true, description: "" },
+      { key: "set/2025", label: "set/2025", kind: "number", visible: true, description: "" },
+      { key: "dez/2025", label: "dez/2025", kind: "number", visible: true, description: "" },
+    ];
+    const scheduleRows: Row[] = [
+      { Bloco: "Bolores", "Ponto / Item": "IN01", "jun/2025": 4 },
+      { Bloco: "Mesófilos", "Ponto / Item": "IN01", "jun/2025": 2 },
+    ];
+    const migrated = migrateDashboard({
+      id: "schedule",
+      name: "Cronograma",
+      sheets: [
+        {
+          name: "Monitoramento",
+          rows: scheduleRows,
+          columns: scheduleColumns,
+          filters: [],
+          widgets: [
+            {
+              id: "old-schedule",
+              type: "schedule-heatmap",
+              groupKey: "Ponto / Item",
+              sectionKey: "Bloco",
+              periodKeys: ["jun/2025", "set/2025", "dez/2025"],
+              span: 3,
+              size: "md",
+            },
+            { id: "table", type: "table", span: 3, size: "md" },
+          ],
+        },
+      ],
+      activeSheetIndex: 0,
+      createdAt: 0,
+      updatedAt: 0,
+      pinned: false,
+    });
+    const widgets = migrated.sheets[0]?.widgets ?? [];
+    expect(widgets.filter((widget) => widget.type === "schedule-heatmap")).toHaveLength(2);
+    expect(
+      widgets
+        .filter((widget) => widget.type === "schedule-heatmap")
+        .map((widget) => widget.blockValue),
+    ).toEqual(["Bolores", "Mesófilos"]);
+    expect(widgets.some((widget) => widget.id === "old-schedule")).toBe(false);
+    expect(widgets.some((widget) => widget.id === "table")).toBe(true);
   });
 });

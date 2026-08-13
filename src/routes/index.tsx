@@ -7052,6 +7052,10 @@ function WidgetCard({
       .filter((column): column is Column => Boolean(column));
     const periodCols = configuredPeriods.length ? configuredPeriods : detectedPeriods;
     const periodKeys = new Set(periodCols.map((column) => column.key));
+    const scheduleData =
+      w.blockKey && w.blockValue !== undefined
+        ? data.filter((row) => String(row[w.blockKey!] ?? "") === w.blockValue)
+        : data;
     const labelOptions = columns.filter(
       (column) => !periodKeys.has(column.key) && groupableKinds.includes(column.kind),
     );
@@ -7060,7 +7064,7 @@ function WidgetCard({
       scheduleItemColumn(
         columns,
         periodCols.map((column) => column.key),
-        data,
+        scheduleData,
       );
     const statusCol =
       columns.find((column) => column.key === w.statusKey && !periodKeys.has(column.key)) ??
@@ -7091,12 +7095,12 @@ function WidgetCard({
         column.key !== groupCol?.key &&
         column.key !== statusCol?.key &&
         column.key !== sectionCol?.key &&
-        data.some((row) => row[column.key] !== null && row[column.key] !== ""),
+        scheduleData.some((row) => row[column.key] !== null && row[column.key] !== ""),
     );
     const defaultDetailCols = scheduleDetailColumns(
       columns,
       periodCols.map((column) => column.key),
-      data,
+      scheduleData,
       groupCol?.key,
       statusCol?.key,
     ).filter((column) => column.key !== sectionCol?.key);
@@ -7108,12 +7112,17 @@ function WidgetCard({
             .filter((column): column is Column => Boolean(column))
     ).slice(0, 8);
     const detailKeys = new Set(detailCols.map((column) => column.key));
-    const scheduleRows = data.filter(
+    const isBlankScheduleValue = (value: unknown) =>
+      value === null ||
+      value === undefined ||
+      value === "" ||
+      (typeof value === "string" && /^[-–—]$/.test(value.trim()));
+    const scheduleRows = scheduleData.filter(
       (row) =>
         groupCol &&
         row[groupCol.key] !== null &&
         row[groupCol.key] !== "" &&
-        (periodCols.some((column) => row[column.key] !== null && row[column.key] !== "") ||
+        (periodCols.some((column) => !isBlankScheduleValue(row[column.key])) ||
           (statusCol && row[statusCol.key] !== null && row[statusCol.key] !== "") ||
           allDetailCols.some((column) => row[column.key] !== null && row[column.key] !== "")),
     );
@@ -7133,7 +7142,7 @@ function WidgetCard({
         let rowHasResult = false;
         for (const column of periodCols) {
           const value = row[column.key];
-          if (value === null || value === "") continue;
+          if (isBlankScheduleValue(value)) continue;
           rowHasResult = true;
           stats.reported++;
           const state = scheduleCellState(value, statusCol ? row[statusCol.key] : null, criterion);
@@ -7408,7 +7417,7 @@ function WidgetCard({
                           </th>
                           {detailCols.map((column) => {
                             const value = row[column.key];
-                            const empty = value === null || value === "";
+                            const empty = isBlankScheduleValue(value);
                             const label = empty
                               ? "—"
                               : (fmt(value ?? null, column.kind) ?? String(value));
@@ -7432,7 +7441,7 @@ function WidgetCard({
                           {periodCols.map((column) => {
                             const value = row[column.key];
                             const state = scheduleCellState(value, status, criterion);
-                            const empty = value === null || value === "";
+                            const empty = isBlankScheduleValue(value);
                             const label = empty ? "Sem registro" : String(value);
                             const criterionLabel = criterion ? ` · Limite: ${criterion.label}` : "";
                             return (

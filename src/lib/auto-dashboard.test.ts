@@ -243,7 +243,7 @@ describe("generateAutoDashboardPlan", () => {
     expect(plan.recommendations.some((item) => item.kind === "kpi")).toBe(false);
   });
 
-  it("em cronogramas por bloco recomenda contagem segura, sem somar resultados", () => {
+  it("em cronogramas por bloco cria um cronograma visual separado para cada bloco", () => {
     const scheduleColumns = [
       column("Bloco", "category"),
       column("Ponto / Item", "category"),
@@ -273,14 +273,49 @@ describe("generateAutoDashboardPlan", () => {
     const plan = generateAutoDashboardPlan({ columns: scheduleColumns, rows: scheduleRows });
     expect(plan.recommendations.map((item) => item.widgetType)).toEqual([
       "schedule-heatmap",
-      "bar",
+      "schedule-heatmap",
       "table",
     ]);
-    expect(plan.recommendations.find((item) => item.widgetType === "bar")).toMatchObject({
-      groupKey: "Bloco",
-      valueKey: "Ponto / Item",
-      op: "count",
-    });
+    expect(
+      plan.recommendations
+        .filter((item) => item.widgetType === "schedule-heatmap")
+        .map((item) => ({
+          title: item.title,
+          blockKey: item.blockKey,
+          blockValue: item.blockValue,
+        })),
+    ).toEqual([
+      { title: "Bolores", blockKey: "Bloco", blockValue: "Bolores" },
+      { title: "Mesófilos", blockKey: "Bloco", blockValue: "Mesófilos" },
+    ]);
+    expect(
+      buildRecommendedWidgets(plan, scheduleColumns, scheduleRows)
+        .filter((item) => item.type === "schedule-heatmap")
+        .map((item) => ({
+          title: item.title,
+          blockKey: item.blockKey,
+          blockValue: item.blockValue,
+          sectionKey: item.sectionKey,
+        })),
+    ).toEqual([
+      { title: "Bolores", blockKey: "Bloco", blockValue: "Bolores", sectionKey: "" },
+      { title: "Mesófilos", blockKey: "Bloco", blockValue: "Mesófilos", sectionKey: "" },
+    ]);
     expect(plan.recommendations.some((item) => item.op === "sum")).toBe(false);
+  });
+
+  it("não transforma subcolunas de máquina, gramatura, amostras e análise em períodos", () => {
+    const columns = [
+      column("1° coleta - Março — Produto — Máquina", "category"),
+      column("1° coleta - Março — Produto — Gramatura", "text"),
+      column("1° coleta - Março — Produto — N° de amostras", "number"),
+      column("1° coleta - Março — Produto — Análise", "text"),
+      column("2° coleta - Junho — Produto — Máquina", "category"),
+      column("2° coleta - Junho — Produto — Análise", "text"),
+      column("3° coleta - Setembro — Produto — Máquina", "category"),
+      column("4° coleta - Dezembro — Produto — Análise", "text"),
+    ];
+    const plan = generateAutoDashboardPlan({ columns, rows: [] });
+    expect(plan.recommendations.some((item) => item.widgetType === "schedule-heatmap")).toBe(false);
   });
 });

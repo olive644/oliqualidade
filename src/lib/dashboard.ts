@@ -50,7 +50,35 @@ function widgetCompatible(widget: Widget, columns: Column[]): boolean {
   );
 }
 
+function refreshAutomaticScheduleWidgets(sheet: SheetData): SheetData {
+  const existing = sheet.widgets ?? [];
+  if (!existing.some((widget) => widget.type === "schedule-heatmap")) return sheet;
+  const plan = generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows });
+  const freshSchedules = buildRecommendedWidgets(plan, sheet.columns, sheet.rows).filter(
+    (widget) => widget.type === "schedule-heatmap",
+  );
+  const currentSchedules = existing.filter((widget) => widget.type === "schedule-heatmap");
+  const signature = (widget: Widget) =>
+    [widget.groupKey, widget.blockKey, widget.blockValue, ...(widget.periodKeys ?? [])].join("|");
+  const currentSignature = currentSchedules.map(signature).sort();
+  const freshSignature = freshSchedules.map(signature).sort();
+  if (
+    currentSignature.length === freshSignature.length &&
+    currentSignature.every((value, index) => value === freshSignature[index])
+  )
+    return { ...sheet, autoDashboard: plan };
+  return {
+    ...sheet,
+    autoDashboard: plan,
+    widgets: [
+      ...freshSchedules,
+      ...existing.filter((widget) => widget.type !== "schedule-heatmap"),
+    ],
+  };
+}
+
 function repairInvalidWidgets(sheet: SheetData): SheetData {
+  sheet = refreshAutomaticScheduleWidgets(sheet);
   if (!sheet.widgets?.some((widget) => !widgetCompatible(widget, sheet.columns))) return sheet;
   const plan = generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows });
   const recommended = buildRecommendedWidgets(plan, sheet.columns, sheet.rows);
@@ -186,7 +214,7 @@ export function mergeReimportedSheets(
 ): SheetData[] {
   return newSheets.map((s) => {
     const old = oldSheets.find((x) => x.name === s.name);
-    return {
+    const merged: SheetData = {
       name: s.name,
       rows: s.rows,
       columns: old ? mergeReimportedColumns(old.columns, s.columns) : s.columns,
@@ -195,12 +223,13 @@ export function mergeReimportedSheets(
       ...(old?.chartConfig ? { chartConfig: old.chartConfig } : {}),
       ...(old?.widgets ? { widgets: old.widgets } : {}),
       ...(!old && s.widgets ? { widgets: s.widgets } : {}),
-      ...(old?.autoDashboard
-        ? { autoDashboard: old.autoDashboard }
-        : s.autoDashboard
-          ? { autoDashboard: s.autoDashboard }
+      ...(s.autoDashboard
+        ? { autoDashboard: s.autoDashboard }
+        : old?.autoDashboard
+          ? { autoDashboard: old.autoDashboard }
           : {}),
       ...(old?.bookmarks ? { bookmarks: old.bookmarks } : {}),
     };
+    return refreshAutomaticScheduleWidgets(merged);
   });
 }

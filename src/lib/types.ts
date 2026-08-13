@@ -82,6 +82,8 @@ export type Widget = {
   statusKey?: string; // schedule-heatmap: coluna que distingue planejado/executado/status
   sectionKey?: string; // schedule-heatmap: agrupa linhas por análise/bloco sem repetir o rótulo
   detailKeys?: string[]; // schedule-heatmap: contexto preservado (limite, análise, responsável etc.)
+  blockKey?: string; // schedule-heatmap automático: coluna que identifica o bloco de origem
+  blockValue?: string; // schedule-heatmap automático: bloco exclusivo exibido neste widget
 };
 
 export const widgetTypeLabels: Record<WidgetType, string> = {

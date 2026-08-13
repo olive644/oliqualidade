@@ -238,7 +238,7 @@ describe("createWidget, novos tipos", () => {
       col("ponto", "category"),
       col("status", "category"),
       col("jan", "category"),
-      { ...col("jun", "category"), label: "2ª coleta — Junho — Análise" },
+      { ...col("jun", "category"), label: "2ª coleta — Junho — Resultado" },
       col("observacao", "text"),
     ];
     const rows: Row[] = [
