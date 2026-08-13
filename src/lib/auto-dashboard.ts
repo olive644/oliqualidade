@@ -34,6 +34,8 @@ export type DashboardRecommendation = {
   valueKey?: string;
   op?: ChartAggregationOp;
   topN?: number;
+  blockKey?: string;
+  blockValue?: string;
 };
 
 export type AutoDashboardPlan = {
@@ -233,35 +235,49 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
     const scheduleGroup = scheduleItemColumn(input.columns, periodKeys, input.rows);
     const scheduleSection = scheduleSectionColumn(input.columns, periodKeys, scheduleGroup?.key);
     if (scheduleGroup) {
-      recommendations.push(
-        recommendation(input, {
-          id: slug("cronograma", scheduleGroup.key),
-          kind: "visualization",
-          title: "Cronograma visual",
-          widgetType: "schedule-heatmap",
-          groupKey: scheduleGroup.key,
-          columns: [scheduleGroup.key, ...periodKeys],
-          baseConfidence: 97,
-          reasons: [
-            `${schedulePeriods.length} colunas de período foram reconhecidas no cabeçalho.`,
-            "Resultados, limites e blocos permanecem separados para não somar análises incompatíveis.",
-          ],
-        }),
-      );
-      if (scheduleSection && distinctCount(input.rows, scheduleSection.key) >= 2) {
+      const blockValues = scheduleSection
+        ? [
+            ...new Set(
+              input.rows
+                .map((row) => row[scheduleSection.key])
+                .filter((value) => value !== null && value !== undefined && value !== "")
+                .map(String),
+            ),
+          ]
+        : [];
+      if (scheduleSection && blockValues.length >= 2) {
+        for (const blockValue of blockValues) {
+          recommendations.push(
+            recommendation(input, {
+              id: slug("cronograma", scheduleSection.key, blockValue),
+              kind: "visualization",
+              title: blockValue,
+              widgetType: "schedule-heatmap",
+              groupKey: scheduleGroup.key,
+              blockKey: scheduleSection.key,
+              blockValue,
+              columns: [scheduleSection.key, scheduleGroup.key, ...periodKeys],
+              baseConfidence: 98,
+              reasons: [
+                `${schedulePeriods.length} colunas de período foram reconhecidas no cabeçalho.`,
+                `O bloco “${blockValue}” permanece isolado dos demais ensaios e limites.`,
+              ],
+            }),
+          );
+        }
+      } else {
         recommendations.push(
           recommendation(input, {
-            id: slug("volume", scheduleSection.key),
+            id: slug("cronograma", scheduleGroup.key),
             kind: "visualization",
-            title: `Itens monitorados por ${scheduleSection.label}`,
-            widgetType: "bar",
-            groupKey: scheduleSection.key,
-            valueKey: scheduleGroup.key,
-            op: "count",
-            columns: [scheduleSection.key, scheduleGroup.key],
-            baseConfidence: 93,
+            title: "Cronograma visual",
+            widgetType: "schedule-heatmap",
+            groupKey: scheduleGroup.key,
+            columns: [scheduleGroup.key, ...periodKeys],
+            baseConfidence: 97,
             reasons: [
-              "A contagem por bloco mostra a cobertura do cronograma sem somar resultados laboratoriais.",
+              `${schedulePeriods.length} colunas de período foram reconhecidas no cabeçalho.`,
+              "Resultados e limites permanecem separados para não somar análises incompatíveis.",
             ],
           }),
         );
@@ -527,6 +543,11 @@ export function recommendationToWidget(
   widget.title = item.title;
   if (item.metricKey) widget.metricKey = item.metricKey;
   if (item.topN) widget.topN = item.topN;
+  if (item.blockKey && item.blockValue) {
+    widget.blockKey = item.blockKey;
+    widget.blockValue = item.blockValue;
+    widget.sectionKey = "";
+  }
   return widget;
 }
 

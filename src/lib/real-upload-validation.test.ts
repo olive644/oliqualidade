@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 
 import { readWorkbookBytes } from "@/lib/workbook-reader";
 import { verifyWorkbookWithExcelJs } from "@/lib/workbook-verifier";
+import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import { scheduleDetailColumns, schedulePeriodColumns } from "@/lib/widgets";
 import type { Column } from "@/lib/types";
 
@@ -123,6 +124,53 @@ describe.skipIf(!fixture)("validação local do cronograma real", () => {
       expect(sheet?.diagnostics?.structuralClassification?.reasons).toContain(
         "9 colunas de período",
       );
+    }
+  });
+
+  it("gera um cronograma visual automático para cada bloco de monitoramento", () => {
+    const sheets = readWorkbookBytes(bytes, source);
+    for (const name of [
+      "Monitoramento - Microbiologico",
+      "Monitoramento - Micro. Mensal",
+      "Monitoramento - F-Q Mensal",
+    ]) {
+      const sheet = sheets.find((candidate) => candidate.name === name)!;
+      const columns: Column[] = Object.keys(sheet.rows[0] ?? {}).map((key) => ({
+        key,
+        label: key,
+        kind: key === "Bloco" || key === "Ponto / Item" ? "category" : "number",
+        visible: true,
+        description: "",
+      }));
+      const expectedBlocks = new Set(sheet.rows.map((row) => String(row["Bloco"]))).size;
+      const plan = generateAutoDashboardPlan({ columns, rows: sheet.rows });
+      const widgets = buildRecommendedWidgets(plan, columns, sheet.rows).filter(
+        (widget) => widget.type === "schedule-heatmap",
+      );
+      expect(widgets).toHaveLength(expectedBlocks);
+      expect(new Set(widgets.map((widget) => widget.blockValue)).size).toBe(expectedBlocks);
+      expect(widgets.every((widget) => widget.blockKey === "Bloco")).toBe(true);
+    }
+  });
+
+  it("não cria cronograma falso nas tabelas de amostragem com subcolunas compostas", () => {
+    const sheets = readWorkbookBytes(bytes, source);
+    const sampling = sheets.filter((sheet) => sheet.name.startsWith(" Anexo I - Amostragem ·"));
+    expect(sampling.length).toBeGreaterThan(0);
+    for (const sheet of sampling) {
+      const columns: Column[] = Object.keys(sheet.rows[0] ?? {}).map((key) => ({
+        key,
+        label: key,
+        kind: "text",
+        visible: true,
+        description: "",
+      }));
+      expect(
+        generateAutoDashboardPlan({ columns, rows: sheet.rows }).recommendations.some(
+          (item) => item.widgetType === "schedule-heatmap",
+        ),
+        sheet.name,
+      ).toBe(false);
     }
   });
 });

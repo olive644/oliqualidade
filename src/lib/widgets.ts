@@ -168,9 +168,15 @@ export function defaultSize(type: WidgetType): WidgetSize {
 const PERIOD_COLUMN_PATTERN =
   /(?:^|\b)(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:[cç]o)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)(?:\b|$)|^\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?$/i;
 
+const COMPOSITE_NON_RESULT_PERIOD =
+  /(?:—|-)?\s*(?:m[aá]quina|gramatura|n[°ºo]\s*de\s*amostras?|an[aá]lises?|ponto\s+de\s+amostragem)(?:_\d+)?\s*$/i;
+
 /** Colunas que representam períodos em planilhas largas de cronograma. */
 export function schedulePeriodColumns(columns: Column[]): Column[] {
-  return columns.filter((column) => PERIOD_COLUMN_PATTERN.test(`${column.label}`.trim()));
+  return columns.filter((column) => {
+    const label = `${column.label}`.trim();
+    return PERIOD_COLUMN_PATTERN.test(label) && !COMPOSITE_NON_RESULT_PERIOD.test(label);
+  });
 }
 
 export function scheduleStatusColumn(columns: Column[], periodKeys: string[]): Column | undefined {
