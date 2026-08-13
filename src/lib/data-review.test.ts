@@ -33,6 +33,15 @@ describe("revisão e correção de dados", () => {
       }),
     ).toBe(-0.25);
     expect(
+      parseEditedValue("0,5%", {
+        key: "p",
+        label: "Percentual",
+        kind: "percentage",
+        visible: true,
+        description: "",
+      }),
+    ).toBe(0.005);
+    expect(
       parseEditedValue("1.234,50", {
         key: "v",
         label: "Valor",

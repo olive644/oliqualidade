@@ -37,6 +37,7 @@ export const sourceRowIndexOf = (row: Row) => (row as TraceableRow)[SOURCE_ROW_I
 
 export function parseEditedValue(input: string, column?: Column): Value {
   const trimmed = input.trim();
+  const explicitPercentage = trimmed.includes("%");
   if (!trimmed) return null;
   if (/^(?:verdadeiro|true)$/i.test(trimmed)) return true;
   if (/^(?:falso|false)$/i.test(trimmed)) return false;
@@ -48,7 +49,9 @@ export function parseEditedValue(input: string, column?: Column): Value {
       .replace(",", ".");
     const number = Number(normalized);
     if (Number.isFinite(number))
-      return column.kind === "percentage" && Math.abs(number) > 1 ? number / 100 : number;
+      return column.kind === "percentage" && (explicitPercentage || Math.abs(number) > 1)
+        ? number / 100
+        : number;
   }
   return trimmed;
 }

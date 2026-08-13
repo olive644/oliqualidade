@@ -9873,7 +9873,7 @@ function DataTable({
     <div>
       <div className="flex items-center gap-2 border-b border-border bg-muted/15 px-3 py-2 text-[11px] text-muted-foreground">
         <Pencil className="size-3.5" />
-        Duplo clique ou pressione Enter em uma célula para editar. Colunas calculadas são
+        Toque, dê duplo clique ou pressione Enter em uma célula para editar. Colunas calculadas são
         protegidas.
       </div>
       <div ref={parent} className="h-[360px] overflow-auto">
@@ -9946,6 +9946,9 @@ function DataTable({
                           : `Editar ${c.label}, linha ${(sourceRowIndex ?? item.index) + 1}`
                       }
                       onDoubleClick={() => beginEdit(row, c)}
+                      onPointerUp={(event) => {
+                        if (event.pointerType === "touch" && !c.formula) beginEdit(row, c);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key !== "Enter" || c.formula) return;
                         event.preventDefault();
