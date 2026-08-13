@@ -4,6 +4,7 @@ import {
   aggregate,
   applyMissingRules,
   barChartPresentation,
+  chartSeries,
   detectQualitySignals,
   groupAndAggregate,
   leftJoin,
@@ -14,6 +15,29 @@ import {
   timeSeriesChartPresentation,
   toggleClickFilter,
 } from "@/lib/data-pipeline";
+
+describe("chartSeries", () => {
+  const rows: Row[] = [
+    { categoria: "A", valor: 10 },
+    { categoria: "A", valor: 20 },
+    { categoria: "B", valor: 5 },
+  ];
+
+  it("preserva cada linha e a ordem do Excel no modo original", () => {
+    expect(chartSeries(rows, "categoria", "valor", "sum", "raw")).toEqual([
+      { name: "A", total: 10, sourceRow: 1 },
+      { name: "A", total: 20, sourceRow: 2 },
+      { name: "B", total: 5, sourceRow: 3 },
+    ]);
+  });
+
+  it("combina categorias somente quando o modo agrupado é escolhido", () => {
+    expect(chartSeries(rows, "categoria", "valor", "sum", "aggregate")).toEqual([
+      { name: "A", total: 30 },
+      { name: "B", total: 5 },
+    ]);
+  });
+});
 
 describe("sortAllBarCategories", () => {
   it("mantém todas as categorias e apenas ordena pelas maiores barras", () => {
