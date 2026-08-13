@@ -203,6 +203,9 @@ describe("import workbench", () => {
     );
     expect(diff.comparisonMethod).toBe("key");
     expect(diff).toMatchObject({ added: 1, removed: 1, changed: 1 });
+    expect(diff.cellChanges).toEqual([
+      expect.objectContaining({ identity: "a", column: "valor", before: 10, after: 15 }),
+    ]);
   });
 
   it("recusa comparação quando a estrutura não tem sobreposição suficiente", () => {

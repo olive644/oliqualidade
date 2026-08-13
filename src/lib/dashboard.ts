@@ -244,6 +244,7 @@ export function mergeReimportedSheets(
       ...(s.intelligence ? { intelligence: s.intelligence } : {}),
       ...(old?.semanticOverrides ? { semanticOverrides: old.semanticOverrides } : {}),
       ...(old?.exceptionDecisions ? { exceptionDecisions: old.exceptionDecisions } : {}),
+      ...(old?.auditTrail ? { auditTrail: old.auditTrail } : {}),
       ...(old?.bookmarks ? { bookmarks: old.bookmarks } : {}),
     };
     if (old?.semanticOverrides) {

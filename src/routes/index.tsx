@@ -49,6 +49,7 @@ import {
   GitMerge,
   GripVertical,
   HelpCircle,
+  History,
   Info,
   LayoutDashboard,
   LayoutGrid,
@@ -78,6 +79,7 @@ import {
   TrendingUp,
   Undo2,
   Upload,
+  WandSparkles,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -260,6 +262,12 @@ import {
   pdfTablePages,
 } from "@/lib/export-layout";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
+import {
+  auditEntry,
+  parseEditedValue,
+  suggestCorrection,
+  type AuditEntry,
+} from "@/lib/data-review";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
@@ -3516,7 +3524,67 @@ function Dashboard(p: {
     const next = { ...(sheet.exceptionDecisions ?? {}) };
     if (status) next[exceptionId] = { status, updatedAt: Date.now() };
     else delete next[exceptionId];
-    updateSheet({ exceptionDecisions: next });
+    const action =
+      status === "resolved"
+        ? "exception-resolved"
+        : status === "ignored"
+          ? "exception-ignored"
+          : "exception-reopened";
+    updateSheet({
+      exceptionDecisions: next,
+      auditTrail: [
+        ...(sheet.auditTrail ?? []),
+        auditEntry({
+          action,
+          exceptionId,
+          reason:
+            status === "ignored"
+              ? "Exceção ignorada pelo usuário."
+              : status === "resolved"
+                ? "Exceção marcada como revisada pelo usuário."
+                : "Exceção reaberta para nova revisão.",
+        }),
+      ].slice(-1000),
+    });
+  };
+  const correctException = (exception: SpreadsheetException, input: string, reason: string) => {
+    if (!exception.columnKey || !exception.rowIndex) return;
+    const rowOffset = exception.rowIndex - 1;
+    const column = sheet.columns.find((item) => item.key === exception.columnKey);
+    const before = sheet.rows[rowOffset]?.[exception.columnKey] ?? null;
+    const after = parseEditedValue(input, column);
+    const rows = sheet.rows.map((row, index) =>
+      index === rowOffset ? { ...row, [exception.columnKey!]: after } : row,
+    );
+    const nextDecisions = {
+      ...(sheet.exceptionDecisions ?? {}),
+      [exception.id]: { status: "resolved" as const, updatedAt: Date.now() },
+    };
+    const intelligence = analyzeSpreadsheet(
+      rows,
+      sheet.columns,
+      undefined,
+      sheet.semanticOverrides,
+    );
+    updateSheet({
+      rows,
+      intelligence,
+      exceptionDecisions: nextDecisions,
+      auditTrail: [
+        ...(sheet.auditTrail ?? []),
+        auditEntry({
+          action: "cell-correction",
+          exceptionId: exception.id,
+          ...(exception.address ? { address: exception.address } : {}),
+          rowIndex: exception.rowIndex,
+          columnKey: exception.columnKey,
+          before,
+          after,
+          reason: reason.trim() || "Correção manual confirmada pelo usuário.",
+        }),
+      ].slice(-1000),
+    });
+    toast.success("Célula corrigida e registrada no histórico.");
   };
 
   // Colunas calculadas recalculam ao vivo antes de qualquer filtro.
@@ -4199,7 +4267,9 @@ function Dashboard(p: {
             exceptions={effectiveIntelligence.exceptions}
             semanticProfiles={effectiveIntelligence.columns}
             exceptionDecisions={sheet.exceptionDecisions ?? {}}
+            auditTrail={sheet.auditTrail ?? []}
             onExceptionDecision={setExceptionDecision}
+            onCorrectException={correctException}
             onTraceException={traceException}
             focusedCell={focusedCell}
             folderMonitor={p.folderMonitor}
@@ -6683,7 +6753,9 @@ function WidgetCard({
   exceptions,
   semanticProfiles,
   exceptionDecisions,
+  auditTrail,
   onExceptionDecision,
+  onCorrectException,
   onTraceException,
   focusedCell,
   folderMonitor,
@@ -6714,7 +6786,9 @@ function WidgetCard({
   exceptions: SpreadsheetException[];
   semanticProfiles: ColumnSemanticProfile[];
   exceptionDecisions: NonNullable<SheetData["exceptionDecisions"]>;
+  auditTrail: AuditEntry[];
   onExceptionDecision: (exceptionId: string, status: ExceptionDecision["status"] | null) => void;
+  onCorrectException: (exception: SpreadsheetException, value: string, reason: string) => void;
   onTraceException: (exception: SpreadsheetException) => void;
   focusedCell: { rowIndex: number; columnKey?: string; address?: string } | null;
   folderMonitor: FolderMonitorView | undefined;
@@ -6735,7 +6809,10 @@ function WidgetCard({
   // linha do tempo ao mesmo tempo); clicar de novo no mesmo valor remove o
   // filtro. Usado por barra, pizza, linha, área, ranking e mapa.
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
-  const [showHandledExceptions, setShowHandledExceptions] = useState(false);
+  const [exceptionView, setExceptionView] = useState<"pending" | "handled" | "audit">("pending");
+  const [editingException, setEditingException] = useState<string | null>(null);
+  const [correctionValue, setCorrectionValue] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
   const handleGroupClick = (groupKey: string, value: string) => {
     setFilters(toggleClickFilter(filters, groupKey, value));
   };
@@ -6976,7 +7053,7 @@ function WidgetCard({
     const severityOrder = { critical: 0, warning: 1, info: 2 } as const;
     const activeExceptions = exceptions.filter((item) => !exceptionDecisions[item.id]);
     const handledExceptions = exceptions.filter((item) => exceptionDecisions[item.id]);
-    const visible = [...(showHandledExceptions ? handledExceptions : activeExceptions)]
+    const visible = [...(exceptionView === "handled" ? handledExceptions : activeExceptions)]
       .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity])
       .slice(0, 100);
     const totals = {
@@ -7026,9 +7103,9 @@ function WidgetCard({
               type="button"
               className={cn(
                 "rounded-md px-2.5 py-1",
-                !showHandledExceptions && "bg-card font-medium shadow-sm",
+                exceptionView === "pending" && "bg-card font-medium shadow-sm",
               )}
-              onClick={() => setShowHandledExceptions(false)}
+              onClick={() => setExceptionView("pending")}
             >
               Pendentes · {activeExceptions.length}
             </button>
@@ -7036,138 +7113,299 @@ function WidgetCard({
               type="button"
               className={cn(
                 "rounded-md px-2.5 py-1",
-                showHandledExceptions && "bg-card font-medium shadow-sm",
+                exceptionView === "handled" && "bg-card font-medium shadow-sm",
               )}
-              onClick={() => setShowHandledExceptions(true)}
+              onClick={() => setExceptionView("handled")}
             >
               Tratadas · {handledExceptions.length}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "flex items-center gap-1 rounded-md px-2.5 py-1",
+                exceptionView === "audit" && "bg-card font-medium shadow-sm",
+              )}
+              onClick={() => setExceptionView("audit")}
+            >
+              <History className="size-3" /> Histórico · {auditTrail.length}
             </button>
           </div>
           <Button
             variant="outline"
             size="sm"
-            disabled={!activeExceptions.length}
+            disabled={!activeExceptions.length || exceptionView === "audit"}
             onClick={exportExceptions}
           >
             <Download className="size-3.5" /> Exportar pendências
           </Button>
         </div>
         {sizeControls}
-        <div className="grid grid-cols-3 gap-2 border-b border-border bg-muted/10 p-3">
-          {[
-            ["Críticas", totals.critical, "text-destructive"],
-            ["Atenção", totals.warning, "text-amber-700 dark:text-amber-300"],
-            ["Informativas", totals.info, "text-muted-foreground"],
-          ].map(([label, value, className]) => (
-            <div key={String(label)} className="rounded-xl border border-border bg-card p-3">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                {label}
-              </p>
-              <p className={cn("mt-1 font-mono text-2xl font-bold", className)}>{value}</p>
-            </div>
-          ))}
-        </div>
-        {!visible.length ? (
-          <div className="flex min-h-32 items-center justify-center gap-2 p-6 text-sm text-emerald-700 dark:text-emerald-300">
-            <Check className="size-4" />
-            {showHandledExceptions
-              ? "Nenhuma exceção foi tratada ainda."
-              : "Nenhuma exceção pendente encontrada."}
+        {exceptionView === "audit" ? (
+          <div className="max-h-[32rem] overflow-auto">
+            {!auditTrail.length ? (
+              <div className="flex min-h-40 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
+                <History className="size-5" />O histórico será preenchido quando uma exceção for
+                corrigida, resolvida ou ignorada.
+              </div>
+            ) : (
+              <table className="w-full min-w-[46rem] text-left text-xs">
+                <thead className="sticky top-0 z-10 bg-card">
+                  <tr className="border-b border-border">
+                    <th className="px-4 py-2">Quando</th>
+                    <th className="px-4 py-2">Ação</th>
+                    <th className="px-4 py-2">Origem</th>
+                    <th className="px-4 py-2">Alteração</th>
+                    <th className="px-4 py-2">Justificativa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...auditTrail]
+                    .reverse()
+                    .slice(0, 250)
+                    .map((entry) => (
+                      <tr key={entry.id} className="border-b border-border/60 align-top">
+                        <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">
+                          {new Intl.DateTimeFormat("pt-BR", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          }).format(entry.timestamp)}
+                        </td>
+                        <td className="px-4 py-2 font-medium">
+                          {entry.action === "cell-correction"
+                            ? "Célula corrigida"
+                            : entry.action === "exception-ignored"
+                              ? "Ignorada"
+                              : entry.action === "exception-reopened"
+                                ? "Reaberta"
+                                : "Resolvida"}
+                        </td>
+                        <td className="px-4 py-2 font-mono text-[11px]">
+                          {entry.address ??
+                            (entry.rowIndex ? `linha ${entry.rowIndex}` : (entry.columnKey ?? "—"))}
+                        </td>
+                        <td className="max-w-64 px-4 py-2">
+                          <span className="text-destructive line-through">
+                            {String(entry.before ?? "")}
+                          </span>
+                          {entry.action === "cell-correction" && (
+                            <>
+                              <span className="mx-1 text-muted-foreground">→</span>
+                              <span className="text-emerald-700 dark:text-emerald-300">
+                                {String(entry.after ?? "")}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                        <td className="max-w-80 px-4 py-2 text-muted-foreground">{entry.reason}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
           </div>
         ) : (
-          <div className="max-h-[28rem] overflow-auto">
-            <table className="w-full min-w-[42rem] text-left text-xs">
-              <thead className="sticky top-0 z-10 bg-card">
-                <tr className="border-b border-border">
-                  <th className="px-4 py-2">Prioridade</th>
-                  <th className="px-4 py-2">Exceção</th>
-                  <th className="px-4 py-2">Origem</th>
-                  <th className="px-4 py-2">Detalhe</th>
-                  <th className="px-4 py-2 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((item) => (
-                  <tr key={item.id} className="border-b border-border/60 align-top">
-                    <td className="px-4 py-2">
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                          item.severity === "critical"
-                            ? "bg-destructive/12 text-destructive"
-                            : item.severity === "warning"
-                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                              : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {item.severity === "critical"
-                          ? "Crítica"
-                          : item.severity === "warning"
-                            ? "Atenção"
-                            : "Info"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 font-medium">
-                      <button
-                        type="button"
-                        className="text-left hover:text-primary hover:underline"
-                        onClick={() => onTraceException(item)}
-                      >
-                        {item.title}
-                      </button>
-                    </td>
-                    <td className="px-4 py-2 font-mono text-[11px] text-muted-foreground">
-                      <button
-                        type="button"
-                        className="hover:text-primary hover:underline"
-                        onClick={() => onTraceException(item)}
-                      >
-                        {item.address ??
-                          (item.rowIndex ? `linha ${item.rowIndex}` : (item.columnKey ?? "—"))}
-                      </button>
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">{item.detail}</td>
-                    <td className="px-4 py-2">
-                      <div className="flex justify-end gap-1">
-                        {showHandledExceptions ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onExceptionDecision(item.id, null)}
-                          >
-                            Reabrir
-                          </Button>
-                        ) : (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
+          <>
+            <div className="grid grid-cols-3 gap-2 border-b border-border bg-muted/10 p-3">
+              {[
+                ["Críticas", totals.critical, "text-destructive"],
+                ["Atenção", totals.warning, "text-amber-700 dark:text-amber-300"],
+                ["Informativas", totals.info, "text-muted-foreground"],
+              ].map(([label, value, className]) => (
+                <div key={String(label)} className="rounded-xl border border-border bg-card p-3">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {label}
+                  </p>
+                  <p className={cn("mt-1 font-mono text-2xl font-bold", className)}>{value}</p>
+                </div>
+              ))}
+            </div>
+            {!visible.length ? (
+              <div className="flex min-h-32 items-center justify-center gap-2 p-6 text-sm text-emerald-700 dark:text-emerald-300">
+                <Check className="size-4" />
+                {exceptionView === "handled"
+                  ? "Nenhuma exceção foi tratada ainda."
+                  : "Nenhuma exceção pendente encontrada."}
+              </div>
+            ) : (
+              <div className="max-h-[28rem] overflow-auto">
+                <table className="w-full min-w-[42rem] text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-card">
+                    <tr className="border-b border-border">
+                      <th className="px-4 py-2">Prioridade</th>
+                      <th className="px-4 py-2">Exceção</th>
+                      <th className="px-4 py-2">Origem</th>
+                      <th className="px-4 py-2">Detalhe</th>
+                      <th className="px-4 py-2 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((item) => (
+                      <Fragment key={item.id}>
+                        <tr className="border-b border-border/60 align-top">
+                          <td className="px-4 py-2">
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                                item.severity === "critical"
+                                  ? "bg-destructive/12 text-destructive"
+                                  : item.severity === "warning"
+                                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                                    : "bg-muted text-muted-foreground",
+                              )}
+                            >
+                              {item.severity === "critical"
+                                ? "Crítica"
+                                : item.severity === "warning"
+                                  ? "Atenção"
+                                  : "Info"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 font-medium">
+                            <button
+                              type="button"
+                              className="text-left hover:text-primary hover:underline"
                               onClick={() => onTraceException(item)}
                             >
-                              Ver origem
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => onExceptionDecision(item.id, "ignored")}
+                              {item.title}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 font-mono text-[11px] text-muted-foreground">
+                            <button
+                              type="button"
+                              className="hover:text-primary hover:underline"
+                              onClick={() => onTraceException(item)}
                             >
-                              Ignorar
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => onExceptionDecision(item.id, "resolved")}
-                            >
-                              Resolver
-                            </Button>
-                          </>
+                              {item.address ??
+                                (item.rowIndex
+                                  ? `linha ${item.rowIndex}`
+                                  : (item.columnKey ?? "—"))}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 text-muted-foreground">{item.detail}</td>
+                          <td className="px-4 py-2">
+                            <div className="flex justify-end gap-1">
+                              {exceptionView === "handled" ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => onExceptionDecision(item.id, null)}
+                                >
+                                  Reabrir
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => onTraceException(item)}
+                                  >
+                                    Ver origem
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => onExceptionDecision(item.id, "ignored")}
+                                  >
+                                    Ignorar
+                                  </Button>
+                                  {item.columnKey && item.rowIndex && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        const suggestion = suggestCorrection(
+                                          item,
+                                          columns.find((column) => column.key === item.columnKey),
+                                        );
+                                        setEditingException(item.id);
+                                        setCorrectionValue(
+                                          suggestion?.value ?? String(item.value ?? ""),
+                                        );
+                                        setCorrectionReason(suggestion?.reason ?? "");
+                                      }}
+                                    >
+                                      <WandSparkles className="size-3.5" /> Corrigir
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    onClick={() => onExceptionDecision(item.id, "resolved")}
+                                  >
+                                    Resolver
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {editingException === item.id && exceptionView === "pending" && (
+                          <tr className="border-b border-primary/30 bg-tint/40">
+                            <td colSpan={5} className="px-4 py-3">
+                              <div className="grid gap-3 md:grid-cols-[minmax(10rem,0.7fr)_minmax(16rem,1.3fr)_auto] md:items-end">
+                                <label className="grid gap-1 text-[11px] font-medium">
+                                  Novo valor
+                                  <input
+                                    autoFocus
+                                    className="oliam-input h-9"
+                                    value={correctionValue}
+                                    onChange={(event) => setCorrectionValue(event.target.value)}
+                                  />
+                                </label>
+                                <label className="grid gap-1 text-[11px] font-medium">
+                                  Justificativa da correção
+                                  <input
+                                    className="oliam-input h-9"
+                                    value={correctionReason}
+                                    onChange={(event) => setCorrectionReason(event.target.value)}
+                                    placeholder="Explique por que o valor foi alterado"
+                                  />
+                                </label>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setEditingException(null)}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    disabled={!correctionReason.trim()}
+                                    onClick={() => {
+                                      onCorrectException(item, correctionValue, correctionReason);
+                                      setEditingException(null);
+                                    }}
+                                  >
+                                    Aplicar correção
+                                  </Button>
+                                </div>
+                              </div>
+                              <p className="mt-2 text-[11px] text-muted-foreground">
+                                Prévia:{" "}
+                                <span className="font-mono text-destructive line-through">
+                                  {String(item.value ?? "")}
+                                </span>{" "}
+                                →{" "}
+                                <span className="font-mono text-emerald-700 dark:text-emerald-300">
+                                  {String(
+                                    parseEditedValue(
+                                      correctionValue,
+                                      columns.find((column) => column.key === item.columnKey),
+                                    ) ?? "vazio",
+                                  )}
+                                </span>
+                                . O valor original ficará preservado no histórico.
+                              </p>
+                            </td>
+                          </tr>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </article>
     );
@@ -7240,6 +7478,54 @@ function WidgetCard({
                     − {column}
                   </span>
                 ))}
+              </div>
+            )}
+            {versionDiff.cellChanges.length > 0 && (
+              <div className="mt-4 overflow-auto rounded-xl border border-border">
+                <div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-2">
+                  <p className="text-xs font-semibold">Alterações célula a célula</p>
+                  <span className="text-[11px] text-muted-foreground">
+                    {versionDiff.cellChanges.length} exibidas
+                  </span>
+                </div>
+                <table className="w-full min-w-[36rem] text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground">
+                      <th className="px-3 py-2">Linha / chave</th>
+                      <th className="px-3 py-2">Coluna</th>
+                      <th className="px-3 py-2">Anterior</th>
+                      <th className="px-3 py-2">Atual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {versionDiff.cellChanges.slice(0, 100).map((change, index) => (
+                      <tr
+                        key={`${change.row}-${change.column}-${index}`}
+                        className="border-b border-border/60 last:border-0"
+                      >
+                        <td
+                          className="max-w-48 truncate px-3 py-2 font-mono text-[11px]"
+                          title={change.identity}
+                        >
+                          {change.identity || `linha ${change.row}`}
+                        </td>
+                        <td className="px-3 py-2 font-medium">{change.column}</td>
+                        <td
+                          className="max-w-56 truncate px-3 py-2 text-destructive line-through"
+                          title={String(change.before ?? "")}
+                        >
+                          {String(change.before ?? "vazio")}
+                        </td>
+                        <td
+                          className="max-w-56 truncate px-3 py-2 text-emerald-700 dark:text-emerald-300"
+                          title={String(change.after ?? "")}
+                        >
+                          {String(change.after ?? "vazio")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

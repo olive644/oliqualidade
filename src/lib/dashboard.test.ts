@@ -168,6 +168,15 @@ describe("mergeReimportedSheets", () => {
         exceptionDecisions: {
           "duplicate-1": { status: "resolved", updatedAt: 123 },
         },
+        auditTrail: [
+          {
+            id: "duplicate-1-123",
+            timestamp: 123,
+            action: "exception-resolved",
+            exceptionId: "duplicate-1",
+            reason: "Revisado",
+          },
+        ],
       },
     ];
     const [merged] = mergeReimportedSheets(oldSheets, [
@@ -178,6 +187,7 @@ describe("mergeReimportedSheets", () => {
       status: "resolved",
       updatedAt: 123,
     });
+    expect(merged?.auditTrail).toHaveLength(1);
     expect(merged?.intelligence?.columns[0]).toMatchObject({
       key: "nome",
       role: "identifier",
