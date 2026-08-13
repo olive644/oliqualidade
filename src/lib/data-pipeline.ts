@@ -251,6 +251,28 @@ export function groupAndAggregate(
 }
 
 /**
+ * Prepara a série de um gráfico sem esconder a diferença entre os dados
+ * originais e uma agregação. No modo raw, cada valor numérico preenchido
+ * permanece uma marca independente, na mesma ordem das linhas do Excel.
+ */
+export function chartSeries(
+  rows: Row[],
+  groupKey: string,
+  valueKey: string,
+  op: AggregationOp,
+  mode: "raw" | "aggregate",
+): Array<{ name: string; total: number; sourceRow?: number }> {
+  if (mode === "aggregate") return groupAndAggregate(rows, groupKey, valueKey, op);
+  return rows.flatMap((row, index) => {
+    const name = String(row[groupKey] ?? NOT_INFORMED);
+    if (op === "count") return [{ name, total: 1, sourceRow: index + 1 }];
+    const raw = row[valueKey];
+    const value = raw === null || raw === undefined || raw === "" ? Number.NaN : Number(raw);
+    return Number.isFinite(value) ? [{ name, total: value, sourceRow: index + 1 }] : [];
+  });
+}
+
+/**
  * Quando cada grupo tem no máximo 1 valor numérico válido na coluna
  * agregada (ex: uma aba "Resumo" com uma linha por vendedor, já
  * pré-agregada), soma, média, mínimo, máximo, multiplicação e divisão
