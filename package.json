@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:fixture": "node scripts/generate-problematic-fixture.mjs",
+    "test:corpus:generate": "node scripts/generate-workbook-corpus.mjs",
     "test:security-smoke": "node scripts/security-smoke.mjs",
     "graph:build": "node scripts/build-code-graph.mjs"
   },
@@ -90,6 +91,7 @@
     "eslint-plugin-prettier": "^5.2.6",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
+    "exceljs": "^4.4.0",
     "globals": "^15.15.0",
     "nitro": "3.0.260603-beta",
     "prettier": "^3.7.3",

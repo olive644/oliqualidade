@@ -18,8 +18,8 @@ export function sortAllBarCategories<T extends { total: number }>(series: T[]): 
  * que a área visível (BAR_SLOT px por categoria) e o container rola na
  * horizontal — inclusive por arrasto com o mouse, não só toque/scrollbar.
  */
-const BAR_SLOT_PX = 64;
-const BAR_SCROLL_THRESHOLD = 12;
+const BAR_SLOT_PX = 104;
+const BAR_SCROLL_THRESHOLD = 8;
 
 export function barChartPresentation(categoryCount: number) {
   const scrollable = categoryCount > BAR_SCROLL_THRESHOLD;
@@ -39,9 +39,7 @@ const TIME_SERIES_SCROLL_THRESHOLD = 8;
 const COMPACT_TIME_SERIES_SCROLL_THRESHOLD = 10;
 
 export function timeSeriesChartPresentation(pointCount: number, compact = false) {
-  const threshold = compact
-    ? COMPACT_TIME_SERIES_SCROLL_THRESHOLD
-    : TIME_SERIES_SCROLL_THRESHOLD;
+  const threshold = compact ? COMPACT_TIME_SERIES_SCROLL_THRESHOLD : TIME_SERIES_SCROLL_THRESHOLD;
   const slot = compact ? COMPACT_TIME_SERIES_SLOT_PX : TIME_SERIES_SLOT_PX;
   const scrollable = pointCount > threshold;
   return {

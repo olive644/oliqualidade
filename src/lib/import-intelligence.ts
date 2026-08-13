@@ -1,6 +1,10 @@
 import * as XLSX from "xlsx";
 import type { Row } from "@/lib/types";
 import { analyzeAdvancedQuality, type AdvancedQualityReport } from "@/lib/advanced-quality";
+import type { ReaderDivergence } from "@/lib/ooxml-reader";
+import { buildAdaptedQualityAudit, type AdaptedQualityAudit } from "@/lib/quality-audit";
+import { classifyRows, type StructuralClassification } from "@/lib/structural-model";
+import { buildTemporalCellModel, type TemporalCellModel } from "@/lib/temporal-model";
 import type {
   PivotTableDiagnostic,
   StructuredTableDiagnostic,
@@ -91,6 +95,9 @@ export type ImportDiagnostics = {
   autofilterRange: string | null;
   formulaExamples: string[];
   sourceCellRepresentations: SourceCellRepresentation[];
+  temporalCells?: TemporalCellModel[];
+  readerDivergences?: ReaderDivergence[];
+  structuralClassification?: StructuralClassification;
   columns: ColumnDiagnostic[];
   tableRegions: TableRegionDiagnostic[];
   transformations: string[];
@@ -98,6 +105,7 @@ export type ImportDiagnostics = {
   qualityScore: number;
   /** Percentual da origem que pôde ser interpretado, sem confundir células vazias com falha. */
   interpretationScore?: number;
+  qualityAudit?: AdaptedQualityAudit;
   advancedQuality?: AdvancedQualityReport;
   suggestedNormalization: string[];
   header: { row: number; confidence: number };
@@ -314,6 +322,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
   ];
   const formulaExamples: string[] = [];
   const sourceCellRepresentations: SourceCellRepresentation[] = [];
+  const temporalCells: TemporalCellModel[] = [];
   if (ref) {
     for (let r = ref.s.r; r <= ref.e.r; r++) {
       for (let c = ref.s.c; c <= ref.e.c; c++) {
@@ -341,6 +350,10 @@ function sheetMeta(ws: XLSX.WorkSheet) {
             ...(cell.f ? { formula: `=${cell.f}` } : {}),
           });
         }
+        if (cell && temporalCells.length < 2_000) {
+          const temporal = buildTemporalCellModel(address, cell);
+          if (temporal) temporalCells.push(temporal);
+        }
       }
     }
   }
@@ -359,6 +372,11 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
     sourceCellRepresentations,
+    temporalCells,
+    readerDivergences:
+      (ws as XLSX.WorkSheet & { "!oliReaderDivergences"?: ReaderDivergence[] })[
+        "!oliReaderDivergences"
+      ] ?? [],
   };
 }
 
@@ -690,6 +708,17 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
       ),
     ) * 100,
   );
+  const structuralClassification = classifyRows(rows);
+  const unresolvedReaderDivergences = meta.readerDivergences.filter(
+    (item) => !item.repaired,
+  ).length;
+  const qualityAudit = buildAdaptedQualityAudit({
+    rows,
+    columnConsistency: columns.map((column) => ({ key: column.key, score: column.qualityScore })),
+    duplicateRows,
+    interpretationScore,
+    unresolvedReaderDivergences,
+  });
   const independentRegionPenalty = Math.min(0.16, Math.max(0, tableRegions.length - 1) * 0.08);
   const formulaPenalty = (1 - supportedFormulaRatio) * 0.1;
   const recoveredStructureBonus = Math.min(
@@ -760,6 +789,8 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     qualityScore,
     interpretationScore,
     advancedQuality,
+    structuralClassification,
+    qualityAudit,
     suggestedNormalization,
     header,
   };

@@ -1,0 +1,249 @@
+import { strFromU8, unzipSync } from "fflate";
+import * as XLSX from "xlsx";
+
+import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
+
+export type ReaderCell = {
+  address: string;
+  rawValue: string | number | boolean | null;
+  displayValue: string;
+  numberFormat?: string;
+  formula?: string;
+};
+
+export type ReaderDivergence = {
+  sheet: string;
+  address: string;
+  primary: string;
+  independent: string;
+  severity: "warning" | "error";
+  repaired: boolean;
+};
+
+export type OoxmlInspection = {
+  sheets: Map<string, Map<string, ReaderCell>>;
+  workbook: XLSX.WorkBook;
+};
+
+type Archive = Record<string, Uint8Array>;
+
+const BUILTIN_FORMATS: Record<number, string> = {
+  0: "General",
+  1: "0",
+  2: "0.00",
+  9: "0%",
+  10: "0.00%",
+  14: "m/d/yy",
+  15: "d-mmm-yy",
+  16: "d-mmm",
+  17: "mmm-yy",
+  18: "h:mm AM/PM",
+  19: "h:mm:ss AM/PM",
+  20: "h:mm",
+  21: "h:mm:ss",
+  22: "m/d/yy h:mm",
+  45: "mm:ss",
+  46: "[h]:mm:ss",
+  47: "mmss.0",
+};
+
+function xmlText(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function attributes(tag: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const match of tag.matchAll(/([\w:-]+)="([^"]*)"/g)) result[match[1]!] = match[2]!;
+  return result;
+}
+
+function archiveText(archive: Archive, path: string): string {
+  const bytes = archive[path];
+  return bytes ? strFromU8(bytes) : "";
+}
+
+function relationshipMap(xml: string, base: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const match of xml.matchAll(/<Relationship\b[^>]*\/>/g)) {
+    const attrs = attributes(match[0]);
+    const target = attrs["Target"];
+    if (!attrs["Id"] || !target) continue;
+    const normalized = target.startsWith("/")
+      ? target.slice(1)
+      : `${base}/${target}`
+          .split("/")
+          .reduce<string[]>((parts, part) => {
+            if (part === "..") parts.pop();
+            else if (part !== ".") parts.push(part);
+            return parts;
+          }, [])
+          .join("/");
+    result.set(attrs["Id"], normalized);
+  }
+  return result;
+}
+
+function sharedStrings(xml: string): string[] {
+  return [...xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map((match) =>
+    [...match[1]!.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)]
+      .map((part) => xmlText(part[1]!))
+      .join(""),
+  );
+}
+
+function styleFormats(xml: string): string[] {
+  const custom = new Map<number, string>();
+  for (const match of xml.matchAll(/<numFmt\b[^>]*\/>/g)) {
+    const attrs = attributes(match[0]);
+    if (attrs["numFmtId"] && attrs["formatCode"])
+      custom.set(Number(attrs["numFmtId"]), attrs["formatCode"]);
+  }
+  const xfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(xml)?.[1] ?? "";
+  return [...xfs.matchAll(/<xf\b[^>]*(?:\/>|>)/g)].map((match) => {
+    const id = Number(attributes(match[0])["numFmtId"] ?? 0);
+    return custom.get(id) ?? BUILTIN_FORMATS[id] ?? "General";
+  });
+}
+
+function serialDate(value: number): Date | null {
+  const parsed = XLSX.SSF.parse_date_code(value);
+  if (!parsed) return null;
+  return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, parsed.H, parsed.M, Math.floor(parsed.S)));
+}
+
+function readSheet(xml: string, strings: string[], formats: string[]) {
+  const cells = new Map<string, ReaderCell>();
+  const worksheet: XLSX.WorkSheet = {};
+  let range: XLSX.Range | null = null;
+  for (const match of xml.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>|<c\b([^>]*)\/>/g)) {
+    const attrs = attributes(`<c ${match[1] ?? match[3] ?? ""}>`);
+    const address = attrs["r"];
+    if (!address) continue;
+    const body = match[2] ?? "";
+    const type = attrs["t"] ?? "n";
+    const style = Number(attrs["s"] ?? 0);
+    const numberFormat = formats[style] ?? "General";
+    const rawText = /<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(body)?.[1];
+    const inline = /<is\b[^>]*>([\s\S]*?)<\/is>/.exec(body)?.[1];
+    const formula = /<f(?:\s[^>]*)?>([\s\S]*?)<\/f>/.exec(body)?.[1];
+    let rawValue: string | number | boolean | null = null;
+    if (type === "s") rawValue = strings[Number(rawText)] ?? "";
+    else if (type === "inlineStr") rawValue = xmlText(inline ?? "");
+    else if (type === "b") rawValue = rawText === "1";
+    else if (type === "str" || type === "e") rawValue = xmlText(rawText ?? "");
+    else if (rawText != null && rawText !== "") rawValue = Number(rawText);
+
+    let displayValue = rawValue == null ? "" : String(rawValue);
+    if (typeof rawValue === "number") {
+      try {
+        displayValue = XLSX.SSF.format(numberFormat, rawValue);
+      } catch {
+        displayValue = String(rawValue);
+      }
+    }
+    cells.set(address, {
+      address,
+      rawValue,
+      displayValue,
+      ...(numberFormat !== "General" ? { numberFormat } : {}),
+      ...(formula ? { formula: `=${xmlText(formula)}` } : {}),
+    });
+    if (rawValue == null && !formula) continue;
+    const cell: XLSX.CellObject = {
+      t: typeof rawValue === "boolean" ? "b" : typeof rawValue === "number" ? "n" : "s",
+      v: rawValue ?? "",
+      w: displayValue,
+      ...(numberFormat !== "General" ? { z: numberFormat } : {}),
+      ...(formula ? { f: xmlText(formula) } : {}),
+    };
+    if (typeof rawValue === "number" && XLSX.SSF.is_date(numberFormat)) {
+      const converted = serialDate(rawValue);
+      if (converted) {
+        cell.t = "d";
+        cell.v = converted;
+      }
+    }
+    worksheet[address] = cell;
+    const decoded = XLSX.utils.decode_cell(address);
+    range = range
+      ? {
+          s: { r: Math.min(range.s.r, decoded.r), c: Math.min(range.s.c, decoded.c) },
+          e: { r: Math.max(range.e.r, decoded.r), c: Math.max(range.e.c, decoded.c) },
+        }
+      : { s: decoded, e: decoded };
+  }
+  const dimension = /<dimension\b[^>]*ref="([^"]+)"/.exec(xml)?.[1];
+  worksheet["!ref"] = dimension || (range ? XLSX.utils.encode_range(range) : "A1");
+  return { cells, worksheet };
+}
+
+export function inspectOoxml(input: ArrayBuffer | Uint8Array): OoxmlInspection {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const archive = unzipSync(bytes) as Archive;
+  const workbookXml = archiveText(archive, "xl/workbook.xml");
+  if (!workbookXml) throw new Error("O pacote OOXML não contém xl/workbook.xml.");
+  const rels = relationshipMap(
+    archiveText(archive, "xl/_rels/workbook.xml.rels"),
+    "xl",
+  );
+  const strings = sharedStrings(archiveText(archive, "xl/sharedStrings.xml"));
+  const formats = styleFormats(archiveText(archive, "xl/styles.xml"));
+  const workbook = XLSX.utils.book_new();
+  const sheets = new Map<string, Map<string, ReaderCell>>();
+  for (const match of workbookXml.matchAll(/<sheet\b[^>]*\/>/g)) {
+    const attrs = attributes(match[0]);
+    const name = xmlText(attrs["name"] ?? "Planilha");
+    const path = rels.get(attrs["r:id"] ?? "");
+    if (!path) continue;
+    const parsed = readSheet(archiveText(archive, path), strings, formats);
+    XLSX.utils.book_append_sheet(workbook, parsed.worksheet, name.slice(0, 31));
+    sheets.set(name, parsed.cells);
+  }
+  if (!workbook.SheetNames.length) throw new Error("Nenhuma aba OOXML legível foi encontrada.");
+  return { sheets, workbook };
+}
+
+function comparable(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  return String(value ?? "").trim();
+}
+
+export function compareAndRepairWithOoxml(
+  primary: XLSX.WorkBook,
+  inspection: OoxmlInspection,
+): ReaderDivergence[] {
+  const divergences: ReaderDivergence[] = [];
+  for (const [sheetName, independentCells] of inspection.sheets) {
+    const sheet = primary.Sheets[sheetName];
+    if (!sheet) continue;
+    for (const [address, independent] of independentCells) {
+      const cell = worksheetCellAtAddress(sheet, address);
+      const primaryValue = comparable(cell?.v);
+      const independentValue = comparable(independent.rawValue);
+      if (primaryValue === independentValue || comparable(cell?.w) === independent.displayValue) continue;
+      const missingPrimary = !cell || (primaryValue === "" && independentValue !== "");
+      if (missingPrimary) {
+        const fallbackCell = inspection.workbook.Sheets[sheetName]?.[address] as
+          | XLSX.CellObject
+          | undefined;
+        if (fallbackCell && !(sheet as { "!data"?: unknown })["!data"])
+          sheet[address] = { ...fallbackCell };
+      }
+      divergences.push({
+        sheet: sheetName,
+        address,
+        primary: primaryValue,
+        independent: independentValue,
+        severity: missingPrimary ? "error" : "warning",
+        repaired: missingPrimary,
+      });
+    }
+  }
+  return divergences.slice(0, 2_000);
+}

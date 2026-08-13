@@ -71,6 +71,45 @@ describe("leitor universal de planilhas", () => {
     expect(sheet?.rows).toEqual([{ Duração: "36:00" }]);
   });
 
+  it("preserva cabeçalhos de mês/ano sem inventar dia nem deslocar o mês pelo fuso", () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Ponto / Item", new Date(2025, 5, 1), new Date(2025, 8, 1), new Date(2026, 2, 1)],
+      ["Laboratório", 3, null, 4],
+    ]);
+    worksheet["B1"]!.z = "mmm-yy";
+    worksheet["C1"]!.z = "mmm-yy";
+    worksheet["D1"]!.z = "mmm-yy";
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Cronograma");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const [sheet] = readWorkbookBytes(bytes, "cronograma.xlsx");
+
+    expect(Object.keys(sheet?.rows[0] ?? {})).toEqual([
+      "Ponto / Item",
+      "jun/2025",
+      "set/2025",
+      "mar/2026",
+    ]);
+    expect(sheet?.rows[0]).toMatchObject({ "Ponto / Item": "Laboratório", "jun/2025": 3 });
+  });
+
+  it("não converte texto em data inválida quando a célula herdou o estilo de mês/ano", () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Ponto / Item", new Date(2025, 5, 1), "Máx."],
+      ["Laboratório", 3, 25],
+    ]);
+    worksheet["B1"]!.z = "mmm-yy";
+    worksheet["C1"]!.z = "mmm-yy";
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Cronograma");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const [sheet] = readWorkbookBytes(bytes, "cronograma-com-maximo.xlsx");
+
+    expect(Object.keys(sheet?.rows[0] ?? {})).toEqual(["Ponto / Item", "jun/2025", "Máx."]);
+  });
+
   it.each(["xlsx", "xlsm", "xlsb", "xls", "ods", "fods"] as const)(
     "lê o formato %s",
     (bookType) => {
