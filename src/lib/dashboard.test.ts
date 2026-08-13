@@ -372,4 +372,65 @@ describe("migração de widgets incompatíveis", () => {
       "table",
     ]);
   });
+
+  it("remove exceções e validação que foram inseridas automaticamente, mas preserva adição manual futura", () => {
+    const validationColumns: Column[] = [
+      { key: "Hora", label: "Hora", kind: "text", visible: true, description: "" },
+      { key: "Referência", label: "Referência", kind: "text", visible: true, description: "" },
+      { key: "Aceita", label: "Aceita", kind: "number", visible: true, description: "" },
+      { key: "Rejeita", label: "Rejeita", kind: "number", visible: true, description: "" },
+    ];
+    const base = {
+      id: "validation",
+      name: "Validação",
+      sheets: [
+        {
+          name: "DIA",
+          rows: [{ Hora: "08:00", Referência: "A", Aceita: 1, Rejeita: 0 }],
+          columns: validationColumns,
+          filters: [],
+          widgets: [
+            {
+              id: "exceptions",
+              type: "exception-panel" as const,
+              span: 3 as const,
+              size: "md" as const,
+            },
+            {
+              id: "validation",
+              type: "validation-overview" as const,
+              span: 3 as const,
+              size: "md" as const,
+            },
+            { id: "table", type: "table" as const, span: 3 as const, size: "md" as const },
+          ],
+        },
+      ],
+      activeSheetIndex: 0,
+      createdAt: 0,
+      updatedAt: 0,
+      pinned: false,
+    };
+    const cleaned = migrateDashboard(base);
+    expect(cleaned.sheets[0]?.widgets?.map((widget) => widget.type)).toEqual(["table"]);
+
+    const reopened = migrateDashboard({
+      ...cleaned,
+      sheets: cleaned.sheets.map((sheet) => ({
+        ...sheet,
+        widgets: [
+          ...(sheet.widgets ?? []),
+          {
+            id: "manual-validation",
+            type: "validation-overview" as const,
+            span: 3 as const,
+            size: "md" as const,
+          },
+        ],
+      })),
+    });
+    expect(reopened.sheets[0]?.widgets?.some((widget) => widget.id === "manual-validation")).toBe(
+      true,
+    );
+  });
 });
