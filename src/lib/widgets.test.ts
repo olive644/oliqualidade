@@ -13,6 +13,7 @@ import {
   schedulePeriodColumns,
   scheduleDetailColumns,
   scheduleSectionColumn,
+  scheduleStatusColumn,
 } from "@/lib/widgets";
 import { numericKinds } from "@/lib/types";
 import type { Column, Row } from "@/lib/types";
@@ -305,6 +306,21 @@ describe("createWidget, novos tipos", () => {
       "Responsável",
       "Máx.",
     ]);
+  });
+
+  it("não interpreta uma coluna numérica Resultado como status do cronograma", () => {
+    const scheduleColumns: Column[] = [
+      col("Ponto", "category"),
+      col("Resultado", "number"),
+      col("jun/2025", "number"),
+      col("set/2025", "number"),
+    ];
+    const rows: Row[] = [{ Ponto: "Bancada CQ", Resultado: 4, "jun/2025": 4, "set/2025": null }];
+    const periods = ["jun/2025", "set/2025"];
+    expect(scheduleStatusColumn(scheduleColumns, periods)).toBeUndefined();
+    expect(createWidget("schedule-heatmap", scheduleColumns, undefined, rows).detailKeys).toContain(
+      "Resultado",
+    );
   });
 
   it("cronograma usa Bloco como seção e não repete essa coluna nos detalhes", () => {

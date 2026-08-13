@@ -1,4 +1,4 @@
-import type { Row, Value } from "@/lib/types";
+import type { Column, Row, Value } from "@/lib/types";
 
 export type LongScheduleRow = {
   item: Value;
@@ -7,17 +7,20 @@ export type LongScheduleRow = {
   value: Value;
   sourceRow: number;
   sourceColumn: string;
+  sourceAddress: string;
+  rawValue: Value;
   /** Demais campos da linha, preservados para revisão e widgets ricos. */
   dimensions: Record<string, Value>;
 };
 
 export type ScheduleCriterion = {
-  kind: "max" | "min" | "range" | "absence";
+  kind: "max" | "min" | "range" | "absence" | "expected-text";
   min?: number;
   max?: number;
   inclusiveMin: boolean;
   inclusiveMax: boolean;
   label: string;
+  expectedText?: string;
 };
 
 export type ScheduleEvaluation = "within" | "outside" | "not-evaluable";
@@ -29,9 +32,26 @@ const PERIOD =
 export function parseScheduleNumber(value: Value | undefined): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
-  const match = value.trim().match(/[-+]?\d+(?:[.,]\d+)?/);
+  const trimmed = value.trim();
+  if (/^(?:\d{1,2}[/-]\d{4}|\d{4}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})$/.test(trimmed))
+    return null;
+  const match = trimmed.match(/[-+]?\d[\d.,]*/);
   if (!match) return null;
-  const parsed = Number(match[0].replace(",", "."));
+  let token = match[0];
+  const comma = token.lastIndexOf(",");
+  const dot = token.lastIndexOf(".");
+  if (comma >= 0 && dot >= 0) {
+    const decimal = comma > dot ? "," : ".";
+    const thousands = decimal === "," ? /\./g : /,/g;
+    token = token.replace(thousands, "").replace(decimal, ".");
+  } else if (comma >= 0) {
+    token = /^[-+]?\d{1,3}(?:,\d{3})+$/.test(token)
+      ? token.replace(/,/g, "")
+      : token.replace(",", ".");
+  } else if (dot >= 0 && /^[-+]?\d{1,3}(?:\.\d{3})+$/.test(token)) {
+    token = token.replace(/\./g, "");
+  }
+  const parsed = Number(token);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -46,7 +66,7 @@ export function parseScheduleCriterion(value: Value | undefined): ScheduleCriter
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (/\bausencia\b|\bausente\b/.test(normalized)) {
+  if (/\bausencia\b|\bausente\b|\bnegativo\b|\bnao detectado\b/.test(normalized)) {
     return {
       kind: "absence",
       max: 0,
@@ -55,10 +75,30 @@ export function parseScheduleCriterion(value: Value | undefined): ScheduleCriter
       label,
     };
   }
-  const numbers = [...label.matchAll(/[-+]?\d+(?:[.,]\d+)?/g)]
-    .map((match) => Number(match[0].replace(",", ".")))
-    .filter(Number.isFinite);
+  if (/^(?:conforme|adequado|aprovado)$/.test(normalized)) {
+    return {
+      kind: "expected-text",
+      inclusiveMin: true,
+      inclusiveMax: true,
+      label,
+      expectedText: normalized,
+    };
+  }
+  const numbers = [...label.matchAll(/[-+]?\d[\d.,]*/g)]
+    .map((match) => parseScheduleNumber(match[0]))
+    .filter((number): number is number => number !== null);
   if (!numbers.length) return null;
+  if (numbers.length >= 2 && /±/.test(label)) {
+    const [center = 0, tolerance = 0] = numbers;
+    return {
+      kind: "range",
+      min: center - Math.abs(tolerance),
+      max: center + Math.abs(tolerance),
+      inclusiveMin: true,
+      inclusiveMax: true,
+      label,
+    };
+  }
   const hasRange =
     numbers.length >= 2 &&
     (/\b(?:a|ate|entre)\b/.test(normalized) || /\d\s*[-–—]\s*\d/.test(normalized));
@@ -97,6 +137,24 @@ export function evaluateScheduleValue(
   criterion: ScheduleCriterion | null,
 ): ScheduleEvaluation {
   if (!criterion) return "not-evaluable";
+  if (criterion.kind === "absence" || criterion.kind === "expected-text") {
+    if (criterion.kind === "absence" && typeof value === "number") {
+      return value === 0 ? "within" : "outside";
+    }
+    if (typeof value !== "string") return "not-evaluable";
+    const normalized = value
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    if (criterion.kind === "absence") {
+      return /^(?:ausente|ausencia|negativo|nao detectado|0)$/.test(normalized)
+        ? "within"
+        : "outside";
+    }
+    if (/^(?:nao conforme|inadequado|reprovado)$/.test(normalized)) return "outside";
+    return normalized === criterion.expectedText ? "within" : "outside";
+  }
   const numeric = parseScheduleNumber(value);
   if (numeric === null) return "not-evaluable";
   const aboveMin =
@@ -106,6 +164,49 @@ export function evaluateScheduleValue(
     criterion.max === undefined ||
     (criterion.inclusiveMax ? numeric <= criterion.max : numeric < criterion.max);
   return aboveMin && belowMax ? "within" : "outside";
+}
+
+export function scheduleCriterionForRow(
+  row: Row,
+  columns: Column[],
+  periodKeys: string[],
+): ScheduleCriterion | null {
+  const periods = new Set(periodKeys);
+  const candidates = columns.filter((column) => !periods.has(column.key));
+  const minimum = candidates.find((column) =>
+    /(?:^|\b)(?:m[ií]n(?:imo)?|limite inferior)(?:\b|\.)/i.test(`${column.label} ${column.key}`),
+  );
+  const maximum = candidates.find((column) =>
+    /(?:^|\b)(?:m[aá]x(?:imo)?|limite superior)(?:\b|\.)/i.test(`${column.label} ${column.key}`),
+  );
+  const min = minimum ? parseScheduleNumber(row[minimum.key]) : null;
+  const max = maximum ? parseScheduleNumber(row[maximum.key]) : null;
+  if (min !== null || max !== null) {
+    return {
+      kind: min !== null && max !== null ? "range" : min !== null ? "min" : "max",
+      ...(min !== null ? { min } : {}),
+      ...(max !== null ? { max } : {}),
+      inclusiveMin: true,
+      inclusiveMax: true,
+      label: [min !== null ? `Mín. ${min}` : null, max !== null ? `Máx. ${max}` : null]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  }
+  const specification = candidates.find((column) =>
+    /(?:^|\b)(?:limite|crit[eé]rio|especifica[cç][aã]o|meta)(?:\b|\.)/i.test(
+      `${column.label} ${column.key}`,
+    ),
+  );
+  return parseScheduleCriterion(specification ? row[specification.key] : null);
+}
+
+function spreadsheetColumnName(index: number): string {
+  let result = "";
+  for (let current = index + 1; current > 0; current = Math.floor((current - 1) / 26)) {
+    result = String.fromCharCode(65 + ((current - 1) % 26)) + result;
+  }
+  return result;
 }
 
 export function scheduleToLong(rows: Row[]): LongScheduleRow[] {
@@ -119,14 +220,19 @@ export function scheduleToLong(rows: Row[]): LongScheduleRow[] {
   if (!itemKey) return [];
   const indicatorKey = dimensions.find((key) => key !== itemKey) ?? itemKey;
   return rows.flatMap((row, rowIndex) =>
-    periods.map((period) => ({
-      item: row[itemKey] ?? null,
-      indicator: String(row[indicatorKey] ?? indicatorKey),
-      period,
-      value: row[period] ?? null,
-      sourceRow: rowIndex + 2,
-      sourceColumn: period,
-      dimensions: Object.fromEntries(dimensions.map((key) => [key, row[key] ?? null])),
-    })),
+    periods.map((period) => {
+      const rawValue = row[period] ?? null;
+      return {
+        item: row[itemKey] ?? null,
+        indicator: String(row[indicatorKey] ?? indicatorKey),
+        period,
+        value: rawValue,
+        sourceRow: rowIndex + 2,
+        sourceColumn: period,
+        sourceAddress: `${spreadsheetColumnName(keys.indexOf(period))}${rowIndex + 2}`,
+        rawValue,
+        dimensions: Object.fromEntries(dimensions.map((key) => [key, row[key] ?? null])),
+      };
+    }),
   );
 }
