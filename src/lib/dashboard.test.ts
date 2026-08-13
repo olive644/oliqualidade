@@ -139,7 +139,7 @@ describe("mergeReimportedSheets", () => {
       name: "Vendas",
       rows: [{ nome: "Torta" }],
       filters: [], // filtros sempre reiniciam numa reimportação
-      widgets: widget,
+      widgets: [expect.objectContaining({ type: "version-compare" }), ...widget],
       bookmarks: bookmark,
       chartConfig,
     });

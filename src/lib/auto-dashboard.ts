@@ -36,6 +36,7 @@ export type DashboardRecommendation = {
   topN?: number;
   blockKey?: string;
   blockValue?: string;
+  columnKey?: string;
 };
 
 export type AutoDashboardPlan = {
@@ -292,6 +293,15 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
       reasons: ["A tabela preserva cada resultado, período, item e limite original."],
       warnings: [],
     });
+    recommendations.unshift({
+      id: "exception-panel",
+      kind: "table",
+      title: "Exceções para revisar",
+      widgetType: "exception-panel",
+      confidence: 100,
+      reasons: ["Centraliza inconsistências e valores atípicos com referência à origem."],
+      warnings: [],
+    });
     const warnings = input.diagnostics?.warnings ?? [];
     const confidence = recommendations.length
       ? clampScore(
@@ -491,6 +501,53 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
     }
   }
 
+  if (dimensions.length >= 2) {
+    const rowDimension = dimensions[0]!;
+    const columnDimension = dimensions[1]!;
+    const value = primaryMetric?.key ?? identifiers[0]?.key ?? input.columns[0]?.key;
+    const op: ChartAggregationOp = primaryMetric ? "sum" : "count";
+    if (value) {
+      recommendations.push(
+        recommendation(input, {
+          id: slug("tabela-dinamica", rowDimension.key, columnDimension.key),
+          kind: "table",
+          title: `${rowDimension.label} × ${columnDimension.label}`,
+          widgetType: "pivot-table",
+          groupKey: rowDimension.key,
+          columnKey: columnDimension.key,
+          valueKey: value,
+          op,
+          columns: [rowDimension.key, columnDimension.key, value],
+          baseConfidence: 90,
+          reasons: ["Duas dimensões permitem cruzar os dados sem perder os totais."],
+        }),
+        recommendation(input, {
+          id: slug("matriz", rowDimension.key, columnDimension.key),
+          kind: "visualization",
+          title: `Matriz de ${rowDimension.label} × ${columnDimension.label}`,
+          widgetType: "matrix-heatmap",
+          groupKey: rowDimension.key,
+          columnKey: columnDimension.key,
+          valueKey: value,
+          op,
+          columns: [rowDimension.key, columnDimension.key, value],
+          baseConfidence: 87,
+          reasons: ["A intensidade visual revela concentrações no cruzamento das dimensões."],
+        }),
+      );
+    }
+  }
+
+  recommendations.unshift({
+    id: "exception-panel",
+    kind: "table",
+    title: "Exceções para revisar",
+    widgetType: "exception-panel",
+    confidence: 100,
+    reasons: ["Centraliza inconsistências e valores atípicos com referência à origem."],
+    warnings: [],
+  });
+
   recommendations.push({
     id: "table-detail",
     kind: "table",
@@ -548,6 +605,7 @@ export function recommendationToWidget(
     widget.blockValue = item.blockValue;
     widget.sectionKey = "";
   }
+  if (item.columnKey) widget.columnKey = item.columnKey;
   return widget;
 }
 

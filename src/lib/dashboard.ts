@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import { numericKinds } from "@/lib/types";
+import { createWidget } from "@/lib/widgets";
 
 type LegacyDashboard = {
   id: string;
@@ -31,7 +32,16 @@ type LegacyDashboard = {
 
 function widgetCompatible(widget: Widget, columns: Column[]): boolean {
   const byKey = (key: string | undefined) => columns.find((column) => column.key === key);
-  if (widget.type === "table" || widget.type === "folder-files") return true;
+  if (
+    widget.type === "table" ||
+    widget.type === "folder-files" ||
+    widget.type === "exception-panel" ||
+    widget.type === "version-compare"
+  )
+    return true;
+  if (widget.type === "pivot-table" || widget.type === "matrix-heatmap") {
+    return Boolean(byKey(widget.groupKey) && byKey(widget.columnKey));
+  }
   if (widget.type === "schedule-heatmap") {
     const group = byKey(widget.groupKey);
     const periods = (widget.periodKeys ?? []).filter((key) => byKey(key));
@@ -210,7 +220,10 @@ export function mergeReimportedColumns(oldColumns: Column[], newColumns: Column[
  */
 export function mergeReimportedSheets(
   oldSheets: SheetData[],
-  newSheets: Pick<SheetData, "name" | "rows" | "columns" | "widgets" | "autoDashboard">[],
+  newSheets: Pick<
+    SheetData,
+    "name" | "rows" | "columns" | "widgets" | "autoDashboard" | "intelligence"
+  >[],
 ): SheetData[] {
   return newSheets.map((s) => {
     const old = oldSheets.find((x) => x.name === s.name);
@@ -221,15 +234,21 @@ export function mergeReimportedSheets(
       filters: [],
       ...(old ? { previousSnapshot: { rows: old.rows, capturedAt: Date.now() } } : {}),
       ...(old?.chartConfig ? { chartConfig: old.chartConfig } : {}),
-      ...(old?.widgets ? { widgets: old.widgets } : {}),
-      ...(!old && s.widgets ? { widgets: s.widgets } : {}),
+      ...(old?.widgets ? { widgets: old.widgets } : s.widgets ? { widgets: s.widgets } : {}),
       ...(s.autoDashboard
         ? { autoDashboard: s.autoDashboard }
         : old?.autoDashboard
           ? { autoDashboard: old.autoDashboard }
           : {}),
+      ...(s.intelligence ? { intelligence: s.intelligence } : {}),
       ...(old?.bookmarks ? { bookmarks: old.bookmarks } : {}),
     };
+    if (old && !merged.widgets?.some((widget) => widget.type === "version-compare")) {
+      merged.widgets = [
+        createWidget("version-compare", merged.columns, undefined, merged.rows),
+        ...(merged.widgets ?? []),
+      ];
+    }
     return refreshAutomaticScheduleWidgets(merged);
   });
 }

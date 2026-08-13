@@ -225,7 +225,14 @@ import {
   saveImportProfile,
   compareVersions,
   type ImportSelection,
+  type VersionDiff,
 } from "@/lib/import-workbench";
+import {
+  analyzeSpreadsheet,
+  buildPivotMatrix,
+  detectSpreadsheetExceptions,
+  type SpreadsheetException,
+} from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFile } from "@/lib/workbook-reader-client";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { geocodeMissing } from "@/lib/geocode";
@@ -746,11 +753,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         rows: s.rows,
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
       });
+      const intelligence = analyzeSpreadsheet(s.rows, columns, s.diagnostics);
       return {
         name: s.name,
         rows: s.rows,
         columns,
         autoDashboard,
+        intelligence,
         widgets: buildRecommendedWidgets(autoDashboard, columns, s.rows),
       };
     });
@@ -1124,11 +1133,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         rows: s.rows,
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
       });
+      const intelligence = analyzeSpreadsheet(s.rows, s.columns, s.diagnostics);
       return {
         name: s.name,
         rows: s.rows,
         columns: s.columns,
         autoDashboard,
+        intelligence,
         widgets: buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
       };
     });
@@ -3614,6 +3625,10 @@ function Dashboard(p: {
     rating: nums.length > 0,
     map: nums.length > 0 && groupableCols.length > 0,
     "schedule-heatmap": schedulePeriodColumns(sheet.columns).length > 0,
+    "exception-panel": true,
+    "pivot-table": groupableCols.length >= 2,
+    "matrix-heatmap": groupableCols.length >= 2,
+    "version-compare": Boolean(sheet.previousSnapshot),
     table: true,
   };
 
@@ -4085,6 +4100,11 @@ function Dashboard(p: {
             sort={sort}
             setSort={setSort}
             versionDelta={versionDelta}
+            versionDiff={detailedVersionDiff}
+            exceptions={
+              sheet.intelligence?.exceptions ??
+              detectSpreadsheetExceptions(sheet.rows, sheet.columns)
+            }
             folderMonitor={p.folderMonitor}
             animationDelay={Math.min(i, 8) * 40}
             filters={sheet.filters}
@@ -5951,6 +5971,10 @@ const widgetTypeDescriptions: Record<WidgetType, string> = {
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
   "schedule-heatmap": "Cruza itens e períodos, colorindo o andamento do cronograma.",
+  "exception-panel": "Prioriza inconsistências, anomalias e pontos de baixa confiança.",
+  "pivot-table": "Cruza duas dimensões com subtotais e total geral.",
+  "matrix-heatmap": "Mostra concentração entre duas dimensões pela intensidade da cor.",
+  "version-compare": "Resume inclusões, remoções e alterações desde a última importação.",
   table: "Exibe os registros detalhados da base.",
 };
 
@@ -5966,6 +5990,10 @@ function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
   if (type === "schedule-heatmap") return <CalendarRange className={className} />;
+  if (type === "exception-panel") return <AlertTriangle className={className} />;
+  if (type === "version-compare") return <GitMerge className={className} />;
+  if (type === "pivot-table" || type === "matrix-heatmap")
+    return <Columns3 className={className} />;
   return <LayoutGrid className={className} />;
 }
 
@@ -6505,6 +6533,8 @@ function WidgetCard({
   sort,
   setSort,
   versionDelta,
+  versionDiff,
+  exceptions,
   folderMonitor,
   animationDelay,
   filters,
@@ -6529,6 +6559,8 @@ function WidgetCard({
   sort: { key: string; dir: "asc" | "desc" } | null;
   setSort: (s: { key: string; dir: "asc" | "desc" } | null) => void;
   versionDelta: Map<string, number | null> | null;
+  versionDiff: VersionDiff | null;
+  exceptions: SpreadsheetException[];
   folderMonitor: FolderMonitorView | undefined;
   animationDelay: number;
   filters: FilterRule[];
@@ -6776,6 +6808,372 @@ function WidgetCard({
           ) : (
             <p className="text-xs leading-relaxed text-muted-foreground">
               Use “Monitorar pasta” para contar automaticamente arquivos Excel, ODS e CSV.
+            </p>
+          )}
+        </div>
+      </article>
+    );
+  }
+
+  if (w.type === "exception-panel") {
+    const severityOrder = { critical: 0, warning: 1, info: 2 } as const;
+    const visible = [...exceptions]
+      .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity])
+      .slice(0, 100);
+    const totals = {
+      critical: exceptions.filter((item) => item.severity === "critical").length,
+      warning: exceptions.filter((item) => item.severity === "warning").length,
+      info: exceptions.filter((item) => item.severity === "info").length,
+    };
+    return (
+      <article
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <WidgetHead
+          title={w.title || "Exceções para revisar"}
+          icon={<AlertTriangle className="size-3.5 text-amber-600" />}
+          {...dragProps}
+        />
+        {sizeControls}
+        <div className="grid grid-cols-3 gap-2 border-b border-border bg-muted/10 p-3">
+          {[
+            ["Críticas", totals.critical, "text-destructive"],
+            ["Atenção", totals.warning, "text-amber-700 dark:text-amber-300"],
+            ["Informativas", totals.info, "text-muted-foreground"],
+          ].map(([label, value, className]) => (
+            <div key={String(label)} className="rounded-xl border border-border bg-card p-3">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                {label}
+              </p>
+              <p className={cn("mt-1 font-mono text-2xl font-bold", className)}>{value}</p>
+            </div>
+          ))}
+        </div>
+        {!visible.length ? (
+          <div className="flex min-h-32 items-center justify-center gap-2 p-6 text-sm text-emerald-700 dark:text-emerald-300">
+            <Check className="size-4" /> Nenhuma exceção automática encontrada.
+          </div>
+        ) : (
+          <div className="max-h-[28rem] overflow-auto">
+            <table className="w-full min-w-[42rem] text-left text-xs">
+              <thead className="sticky top-0 z-10 bg-card">
+                <tr className="border-b border-border">
+                  <th className="px-4 py-2">Prioridade</th>
+                  <th className="px-4 py-2">Exceção</th>
+                  <th className="px-4 py-2">Origem</th>
+                  <th className="px-4 py-2">Detalhe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((item) => (
+                  <tr key={item.id} className="border-b border-border/60 align-top">
+                    <td className="px-4 py-2">
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                          item.severity === "critical"
+                            ? "bg-destructive/12 text-destructive"
+                            : item.severity === "warning"
+                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                              : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {item.severity === "critical"
+                          ? "Crítica"
+                          : item.severity === "warning"
+                            ? "Atenção"
+                            : "Info"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 font-medium">{item.title}</td>
+                    <td className="px-4 py-2 font-mono text-[11px] text-muted-foreground">
+                      {item.address ??
+                        (item.rowIndex ? `linha ${item.rowIndex}` : (item.columnKey ?? "—"))}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">{item.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
+    );
+  }
+
+  if (w.type === "version-compare") {
+    const stats = versionDiff
+      ? [
+          ["Adicionadas", versionDiff.added, "text-emerald-700 dark:text-emerald-300"],
+          ["Alteradas", versionDiff.changed, "text-amber-700 dark:text-amber-300"],
+          ["Removidas", versionDiff.removed, "text-destructive"],
+        ]
+      : [];
+    return (
+      <article
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <WidgetHead
+          title={w.title || "Comparador de versões"}
+          icon={<GitMerge className="size-3.5 text-primary" />}
+          {...dragProps}
+        />
+        {sizeControls}
+        {!versionDiff ? (
+          <p className="p-6 text-center text-xs text-muted-foreground">
+            Reimporte esta aba para criar uma base de comparação.
+          </p>
+        ) : (
+          <div className="p-4">
+            <div className="grid grid-cols-3 gap-2">
+              {stats.map(([label, value, className]) => (
+                <div
+                  key={String(label)}
+                  className="rounded-xl border border-border bg-muted/10 p-3"
+                >
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {label}
+                  </p>
+                  <p className={cn("mt-1 font-mono text-2xl font-bold", className)}>{value}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Método:{" "}
+              {versionDiff.comparisonMethod === "key"
+                ? "chave estável"
+                : versionDiff.comparisonMethod === "position"
+                  ? "posição das linhas"
+                  : versionDiff.comparisonMethod === "shared-values"
+                    ? "valores compartilhados"
+                    : "incompatível"}
+              .{versionDiff.reason ? ` ${versionDiff.reason}` : ""}
+            </p>
+            {(versionDiff.addedColumns.length > 0 || versionDiff.removedColumns.length > 0) && (
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                {versionDiff.addedColumns.map((column) => (
+                  <span
+                    key={`add-${column}`}
+                    className="rounded-full bg-emerald-500/12 px-2 py-1 text-emerald-700 dark:text-emerald-300"
+                  >
+                    + {column}
+                  </span>
+                ))}
+                {versionDiff.removedColumns.map((column) => (
+                  <span
+                    key={`remove-${column}`}
+                    className="rounded-full bg-destructive/12 px-2 py-1 text-destructive"
+                  >
+                    − {column}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </article>
+    );
+  }
+
+  if (w.type === "pivot-table" || w.type === "matrix-heatmap") {
+    const rowDimension =
+      groupableCols.find((column) => column.key === w.groupKey) ?? groupableCols[0];
+    const columnDimension =
+      groupableCols.find(
+        (column) => column.key === w.columnKey && column.key !== rowDimension?.key,
+      ) ?? groupableCols.find((column) => column.key !== rowDimension?.key);
+    const metric = numericCols.find((column) => column.key === w.valueKey) ?? numericCols[0];
+    const pivotOp = (["sum", "avg", "count", "min", "max"] as const).includes(
+      w.op as "sum" | "avg" | "count" | "min" | "max",
+    )
+      ? (w.op as "sum" | "avg" | "count" | "min" | "max")
+      : metric
+        ? "sum"
+        : "count";
+    if (!rowDimension || !columnDimension) {
+      return (
+        <EmptyWidget
+          {...dragProps}
+          title={w.type === "pivot-table" ? "Tabela dinâmica" : "Matriz de cruzamento"}
+          span={w.span}
+          size={w.size}
+          type={w.type}
+          animationDelay={animationDelay}
+          message="São necessárias duas colunas categóricas ou de data."
+        />
+      );
+    }
+    const matrix = buildPivotMatrix(
+      data,
+      rowDimension.key,
+      columnDimension.key,
+      metric?.key,
+      pivotOp,
+    );
+    const visibleRows = matrix.rows.slice(0, 30);
+    const visibleColumns = matrix.columns.slice(0, 24);
+    const max = Math.max(1, ...matrix.values.flat().map(Math.abs));
+    const metricKind = metric?.kind ?? "number";
+    return (
+      <article
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <WidgetHead
+          title={w.title || (w.type === "pivot-table" ? "Tabela dinâmica" : "Matriz de cruzamento")}
+          icon={<Columns3 className="size-3.5 text-primary" />}
+          {...dragProps}
+        />
+        <div
+          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+          data-export-controls
+        >
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Linhas
+            <select
+              className="oliam-select h-7 max-w-40"
+              value={rowDimension.key}
+              onChange={(event) => onConfigure({ groupKey: event.target.value })}
+            >
+              {groupableCols.map((column) => (
+                <option key={column.key} value={column.key}>
+                  {column.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Colunas
+            <select
+              className="oliam-select h-7 max-w-40"
+              value={columnDimension.key}
+              onChange={(event) => onConfigure({ columnKey: event.target.value })}
+            >
+              {groupableCols
+                .filter((column) => column.key !== rowDimension.key)
+                .map((column) => (
+                  <option key={column.key} value={column.key}>
+                    {column.label}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Valor
+            <select
+              className="oliam-select h-7 max-w-40"
+              value={metric?.key ?? ""}
+              onChange={(event) =>
+                onConfigure({
+                  valueKey: event.target.value,
+                  op: event.target.value ? "sum" : "count",
+                })
+              }
+            >
+              <option value="">Contar registros</option>
+              {numericCols.map((column) => (
+                <option key={column.key} value={column.key}>
+                  {column.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Operação
+            <select
+              className="oliam-select h-7"
+              value={pivotOp}
+              onChange={(event) => onConfigure({ op: event.target.value as AggregationOp })}
+            >
+              {(metric ? ["sum", "avg", "count", "min", "max"] : ["count"]).map((op) => (
+                <option key={op} value={op}>
+                  {aggregationLabels[op as AggregationOp]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {sizeControls}
+        <div className="max-h-[32rem] overflow-auto p-3">
+          <table className="w-max min-w-full border-separate border-spacing-1 text-xs">
+            <thead>
+              <tr>
+                <th className="sticky left-0 top-0 z-20 min-w-40 rounded-lg bg-card px-3 py-2 text-left shadow-[1px_1px_0_var(--border)]">
+                  {rowDimension.label}
+                </th>
+                {visibleColumns.map((label) => (
+                  <th
+                    key={label}
+                    className="sticky top-0 z-10 min-w-24 rounded-lg bg-card px-2 py-2 text-center shadow-[0_1px_0_var(--border)]"
+                  >
+                    {label}
+                  </th>
+                ))}
+                {w.type === "pivot-table" && (
+                  <th className="sticky right-0 top-0 z-20 rounded-lg bg-muted px-3 py-2">Total</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((rowLabel, rowIndex) => (
+                <tr key={rowLabel}>
+                  <th className="sticky left-0 z-10 max-w-64 rounded-lg bg-card px-3 py-2 text-left font-medium shadow-[1px_0_0_var(--border)]">
+                    {rowLabel}
+                  </th>
+                  {visibleColumns.map((columnLabel, columnIndex) => {
+                    const value = matrix.values[rowIndex]?.[columnIndex] ?? 0;
+                    const intensity = Math.max(8, Math.round((Math.abs(value) / max) * 72));
+                    return (
+                      <td
+                        key={columnLabel}
+                        className="rounded-lg px-3 py-2 text-right font-mono"
+                        style={
+                          w.type === "matrix-heatmap"
+                            ? {
+                                background: `color-mix(in srgb, var(--primary) ${intensity}%, transparent)`,
+                              }
+                            : undefined
+                        }
+                      >
+                        {fmt(value, metricKind)}
+                      </td>
+                    );
+                  })}
+                  {w.type === "pivot-table" && (
+                    <td className="sticky right-0 rounded-lg bg-muted px-3 py-2 text-right font-mono font-semibold">
+                      {fmt(matrix.rowTotals[rowIndex] ?? 0, metricKind)}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+            {w.type === "pivot-table" && (
+              <tfoot>
+                <tr>
+                  <th className="sticky bottom-0 left-0 z-20 rounded-lg bg-muted px-3 py-2 text-left">
+                    Total
+                  </th>
+                  {visibleColumns.map((label, index) => (
+                    <td
+                      key={label}
+                      className="sticky bottom-0 rounded-lg bg-muted px-3 py-2 text-right font-mono font-semibold"
+                    >
+                      {fmt(matrix.columnTotals[index] ?? 0, metricKind)}
+                    </td>
+                  ))}
+                  <td className="sticky bottom-0 right-0 z-20 rounded-lg bg-primary px-3 py-2 text-right font-mono font-bold text-primary-foreground">
+                    {fmt(matrix.grandTotal, metricKind)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+          {(matrix.rows.length > visibleRows.length ||
+            matrix.columns.length > visibleColumns.length) && (
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              Prévia limitada a 30 linhas × 24 colunas; use filtros para reduzir o cruzamento.
             </p>
           )}
         </div>

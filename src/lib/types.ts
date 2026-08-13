@@ -61,6 +61,10 @@ export type WidgetType =
   | "rating"
   | "map"
   | "schedule-heatmap"
+  | "exception-panel"
+  | "pivot-table"
+  | "matrix-heatmap"
+  | "version-compare"
   | "table";
 // largura em colunas de uma grade de 3 colunas
 export type WidgetSpan = 1 | 2 | 3;
@@ -84,6 +88,7 @@ export type Widget = {
   detailKeys?: string[]; // schedule-heatmap: contexto preservado (limite, análise, responsável etc.)
   blockKey?: string; // schedule-heatmap automático: coluna que identifica o bloco de origem
   blockValue?: string; // schedule-heatmap automático: bloco exclusivo exibido neste widget
+  columnKey?: string; // pivot/matrix: dimensão exibida nas colunas
 };
 
 export const widgetTypeLabels: Record<WidgetType, string> = {
@@ -98,6 +103,10 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   rating: "Indicador de avaliação",
   map: "Mapa por localização",
   "schedule-heatmap": "Cronograma visual",
+  "exception-panel": "Painel de exceções",
+  "pivot-table": "Tabela dinâmica",
+  "matrix-heatmap": "Matriz de cruzamento",
+  "version-compare": "Comparador de versões",
   table: "Tabela",
 };
 
@@ -119,6 +128,7 @@ export type SheetData = {
   chartConfig?: ChartConfig; // legado: usado só para migrar painéis sem "widgets"
   widgets?: Widget[];
   autoDashboard?: AutoDashboardPlan;
+  intelligence?: import("@/lib/spreadsheet-intelligence").SpreadsheetIntelligence;
   bookmarks?: Bookmark[];
 };
 

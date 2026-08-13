@@ -321,6 +321,15 @@ export function createWidget(
     )
       .filter((column) => column.key !== section?.key)
       .map((column) => column.key);
+  } else if (type === "pivot-table" || type === "matrix-heatmap") {
+    const dimensions = columns.filter((column) => groupableKinds.includes(column.kind));
+    const first = pickBestGroupColumn(dimensions, rows);
+    const second = dimensions.find((column) => column.key !== first?.key);
+    const value = nums[0];
+    if (first) widget.groupKey = first.key;
+    if (second) widget.columnKey = second.key;
+    if (value) widget.valueKey = value.key;
+    widget.op = value ? "sum" : "count";
   } else if (
     type === "bar" ||
     type === "pie" ||
