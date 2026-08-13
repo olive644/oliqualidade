@@ -24,6 +24,20 @@ export type ScheduleCriterion = {
 };
 
 export type ScheduleEvaluation = "within" | "outside" | "not-evaluable";
+export type ScheduleCellState = "empty" | "planned" | "done" | "warning" | "failed" | "neutral";
+
+export type ScheduleMetrics = {
+  cells: number;
+  planned: number;
+  results: number;
+  within: number;
+  outside: number;
+  attention: number;
+  empty: number;
+  rowsWithoutResult: number;
+  observations: number;
+  coverage: number;
+};
 
 const PERIOD =
   /^(?:(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:[cç]o)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
@@ -166,6 +180,40 @@ export function evaluateScheduleValue(
   return aboveMin && belowMax ? "within" : "outside";
 }
 
+/** Classifica a célula sem confundir códigos de frequência com resultados. */
+export function scheduleCellState(
+  value: unknown,
+  rowStatus: unknown,
+  criterion: ScheduleCriterion | null = null,
+): ScheduleCellState {
+  const text = String(value ?? "").trim();
+  const context = `${String(rowStatus ?? "")} ${text}`.toLocaleLowerCase("pt-BR");
+  if (!text || /^[-–—]$/.test(text)) return "empty";
+  if (/\b(?:nc|n[aã]o conforme|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(context))
+    return "failed";
+  if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(context))
+    return "warning";
+  if (
+    /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(context) ||
+    /^c$/i.test(text)
+  )
+    return "done";
+  if (
+    /\b(?:planejad[oa]|programad[oa]|previst[oa])\b/i.test(context) ||
+    /^(?:d|s|m|t|a|sm)$/i.test(text)
+  )
+    return "planned";
+  const evaluation = evaluateScheduleValue(
+    typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+      ? value
+      : null,
+    criterion,
+  );
+  if (evaluation === "within") return "done";
+  if (evaluation === "outside") return "failed";
+  return "neutral";
+}
+
 export function scheduleCriterionForRow(
   row: Row,
   columns: Column[],
@@ -199,6 +247,57 @@ export function scheduleCriterionForRow(
     ),
   );
   return parseScheduleCriterion(specification ? row[specification.key] : null);
+}
+
+export function summarizeScheduleRows(
+  rows: Row[],
+  columns: Column[],
+  periodKeys: string[],
+  statusKey?: string,
+  observationKeys: string[] = [],
+): ScheduleMetrics {
+  const metrics: Omit<ScheduleMetrics, "coverage"> = {
+    cells: 0,
+    planned: 0,
+    results: 0,
+    within: 0,
+    outside: 0,
+    attention: 0,
+    empty: 0,
+    rowsWithoutResult: 0,
+    observations: 0,
+  };
+  for (const row of rows) {
+    const criterion = scheduleCriterionForRow(row, columns, periodKeys);
+    let rowHasResult = false;
+    metrics.cells += periodKeys.length;
+    if (observationKeys.some((key) => scheduleCellState(row[key], null) !== "empty"))
+      metrics.observations++;
+    for (const key of periodKeys) {
+      const state = scheduleCellState(row[key], statusKey ? row[statusKey] : null, criterion);
+      if (state === "empty") {
+        metrics.empty++;
+        continue;
+      }
+      if (state === "planned") {
+        metrics.planned++;
+        continue;
+      }
+      rowHasResult = true;
+      metrics.results++;
+      if (state === "done") metrics.within++;
+      if (state === "failed") metrics.outside++;
+      if (state === "warning") metrics.attention++;
+    }
+    if (!rowHasResult) metrics.rowsWithoutResult++;
+  }
+  return {
+    ...metrics,
+    coverage: Math.min(
+      100,
+      Math.round((metrics.results / Math.max(1, metrics.planned || metrics.cells)) * 100),
+    ),
+  };
 }
 
 function spreadsheetColumnName(index: number): string {

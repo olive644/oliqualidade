@@ -107,6 +107,25 @@ describe.skipIf(!fixture)("validação local do cronograma real", () => {
     }
   });
 
+  it("preserva comentários de célula e o bloco textual de observações", () => {
+    const sheets = readWorkbookBytes(bytes, source);
+    const notes = sheets.flatMap((sheet) => sheet.diagnostics?.sourceNotes ?? []);
+    expect(notes).toHaveLength(21);
+    expect(notes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          address: "A99",
+          kind: "observation",
+          text: expect.stringContaining("programa de monitoramento ambiental"),
+        }),
+        expect.objectContaining({
+          kind: "comment",
+          text: expect.stringContaining("Portaria n.º 25/2021"),
+        }),
+      ]),
+    );
+  });
+
   it("reconhece Abril-26 como período nas duas abas mensais", () => {
     const sheets = readWorkbookBytes(bytes, source);
     for (const name of ["Monitoramento - Micro. Mensal", "Monitoramento - F-Q Mensal"]) {

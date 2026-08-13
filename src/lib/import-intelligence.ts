@@ -72,6 +72,13 @@ export type SourceCellRepresentation = {
   formula?: string;
 };
 
+export type SourceNote = {
+  address: string;
+  text: string;
+  author?: string;
+  kind: "comment" | "observation";
+};
+
 export type ImportDiagnostics = {
   formulaDiagnostics: FormulaDiagnostic[];
   confidence: number;
@@ -95,6 +102,8 @@ export type ImportDiagnostics = {
   autofilterRange: string | null;
   formulaExamples: string[];
   sourceCellRepresentations: SourceCellRepresentation[];
+  /** Comentários/notas do Excel e blocos textuais de observação preservados fora da tabela. */
+  sourceNotes: SourceNote[];
   temporalCells?: TemporalCellModel[];
   readerDivergences?: ReaderDivergence[];
   structuralClassification?: StructuralClassification;
@@ -322,6 +331,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
   ];
   const formulaExamples: string[] = [];
   const sourceCellRepresentations: SourceCellRepresentation[] = [];
+  const sourceNotes: SourceNote[] = [];
   const temporalCells: TemporalCellModel[] = [];
   if (ref) {
     for (let r = ref.s.r; r <= ref.e.r; r++) {
@@ -350,6 +360,44 @@ function sheetMeta(ws: XLSX.WorkSheet) {
             ...(cell.f ? { formula: `=${cell.f}` } : {}),
           });
         }
+        const comments = (
+          cell as
+            | (XLSX.CellObject & {
+                c?: Array<{ a?: string; t?: string }>;
+              })
+            | undefined
+        )?.c;
+        for (const comment of comments ?? []) {
+          if (!comment.t || sourceNotes.length >= 500) continue;
+          let text = comment.t.trim();
+          let author = comment.a?.trim();
+          const threaded = text.match(/\bComment:\s*([\s\S]*)$/i);
+          if (threaded?.[1]) text = threaded[1].trim();
+          const embeddedAuthor = text.match(/^([^:\n]{2,80}):\s*\n([\s\S]+)$/);
+          if (embeddedAuthor) {
+            if (!author || author === "sheetjsghost") author = embeddedAuthor[1]!.trim();
+            text = embeddedAuthor[2]!.trim();
+          }
+          sourceNotes.push({
+            address,
+            text,
+            ...(author && author !== "sheetjsghost" ? { author } : {}),
+            kind: "comment",
+          });
+        }
+        const displayed = cell?.w ?? String(cell?.v ?? "");
+        if (
+          sourceNotes.length < 500 &&
+          typeof displayed === "string" &&
+          displayed.trim().length >= 40 &&
+          /^observa[cç][oõ]es?\s*:/i.test(displayed.trim())
+        ) {
+          sourceNotes.push({
+            address,
+            text: displayed.trim().replace(/^observa[cç][oõ]es?\s*:\s*/i, ""),
+            kind: "observation",
+          });
+        }
         if (cell && temporalCells.length < 2_000) {
           const temporal = buildTemporalCellModel(address, cell);
           if (temporal) temporalCells.push(temporal);
@@ -372,6 +420,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
     sourceCellRepresentations,
+    sourceNotes,
     temporalCells,
     readerDivergences:
       (ws as XLSX.WorkSheet & { "!oliReaderDivergences"?: ReaderDivergence[] })[

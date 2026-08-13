@@ -156,9 +156,10 @@ import {
   sizeClass,
 } from "@/lib/widgets";
 import {
-  evaluateScheduleValue,
+  scheduleCellState,
   scheduleCriterionForRow,
-  type ScheduleCriterion,
+  summarizeScheduleRows,
+  type ScheduleCellState,
 } from "@/lib/schedule-normalizer";
 import {
   conditionalColor,
@@ -194,7 +195,7 @@ import {
   type AggregationOp,
   type QualitySignal,
 } from "@/lib/data-pipeline";
-import type { ImportDiagnostics } from "@/lib/import-intelligence";
+import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
@@ -452,6 +453,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       diagnostics?: ImportDiagnostics;
       sourceGrid?: SourceGrid;
       audit?: ImportAudit;
+      sourceNotes?: SourceNote[];
     }[]
   >([]);
   const [reviewSheetIndex, setReviewSheetIndex] = useState(0);
@@ -651,6 +653,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
         ...(s.sourceGrid ? { sourceGrid: s.sourceGrid } : {}),
         ...(s.audit ? { audit: s.audit } : {}),
+        ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
       })),
     );
     setReviewSheetIndex(0);
@@ -713,6 +716,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         autoDashboard,
         intelligence,
         widgets: buildRecommendedWidgets(autoDashboard, columns, s.rows),
+        ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
       };
     });
 
@@ -1095,6 +1099,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         autoDashboard,
         intelligence,
         widgets: buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
+        ...(s.sourceNotes?.length ? { sourceNotes: s.sourceNotes } : {}),
       };
     });
     if (reviewTarget === "new") {
@@ -2417,6 +2422,10 @@ function ImportWorkbench({
                   ["Fórmulas recuperadas", audit.formulaCellsRecovered],
                   ["Mesclagens expandidas", audit.mergedCellsExpanded],
                   ["Números convertidos", audit.numericCellsConverted],
+                  [
+                    "Observações preservadas",
+                    audit.notesPreserved ?? diagnostics?.sourceNotes.length ?? 0,
+                  ],
                   ["Linhas acima do cabeçalho", audit.rowsAboveHeaderIgnored],
                   ["Linhas vazias ignoradas", audit.blankRowsIgnored],
                   ["Rodapés/colunas ignorados", audit.trailingRowsIgnored + audit.columnsIgnored],
@@ -2487,6 +2496,7 @@ function Review(p: {
     diagnostics?: ImportDiagnostics;
     sourceGrid?: SourceGrid;
     audit?: ImportAudit;
+    sourceNotes?: SourceNote[];
   }[];
   activeIndex: number;
   setActiveIndex: (i: number) => void;
@@ -2957,6 +2967,33 @@ function Review(p: {
               ))}
             </div>
           </div>
+        ) : null}
+        {active?.diagnostics?.sourceNotes.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <FileText className="size-4 text-primary" />
+                Observações e comentários preservados
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.sourceNotes.length}
+              </span>
+            </summary>
+            <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+              {active.diagnostics.sourceNotes.slice(0, 20).map((note, index) => (
+                <li
+                  key={`${note.address}-${index}`}
+                  className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+                >
+                  <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
+                    {note.address} · {note.kind === "comment" ? "Comentário" : "Observação"}
+                    {note.author ? ` · ${note.author}` : ""}
+                  </span>
+                  <span className="whitespace-pre-line">{note.text}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
         ) : null}
         {active?.diagnostics?.tableRegions && active.diagnostics.tableRegions.length > 1 && (
           <div className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -4356,6 +4393,34 @@ function Dashboard(p: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presentation, autoPlay, intervalSeconds, bookmarks.length]);
 
+  const sourceNotesPanel = sheet.sourceNotes?.length ? (
+    <details className="mx-4 mb-4 rounded-2xl border border-primary/20 bg-card shadow-sm md:mx-6">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <FileText className="size-4 shrink-0 text-primary" />
+          <span className="truncate">Observações da planilha</span>
+        </span>
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+          {sheet.sourceNotes.length}
+        </span>
+      </summary>
+      <ul className="grid max-h-72 gap-2 overflow-auto border-t border-border p-3 sm:grid-cols-2">
+        {sheet.sourceNotes.map((note, noteIndex) => (
+          <li
+            key={`${note.address}-${noteIndex}`}
+            className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+          >
+            <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
+              {note.address} · {note.kind === "comment" ? "Comentário" : "Observação"}
+              {note.author ? ` · ${note.author}` : ""}
+            </span>
+            <span className="whitespace-pre-line">{note.text}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  ) : null;
+
   const gridContent =
     widgets.length === 0 ? (
       <button
@@ -5445,6 +5510,7 @@ function Dashboard(p: {
                 )}
               </div>
             )}
+            {sourceNotesPanel}
             {gridContent}
           </div>
           {insightOpen && (
@@ -5714,7 +5780,10 @@ function Dashboard(p: {
               </Button>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4 md:p-6">{gridContent}</div>
+          <div className="flex-1 overflow-auto p-4 md:p-6">
+            {sourceNotesPanel}
+            {gridContent}
+          </div>
         </div>
       )}
       <CommandDialog open={command} onOpenChange={setCommand}>
@@ -6382,41 +6451,6 @@ function WidgetPickerIcon({ type }: { type: WidgetType }) {
   return <LayoutGrid className={className} />;
 }
 
-type ScheduleCellState = "empty" | "planned" | "done" | "warning" | "failed" | "neutral";
-
-function scheduleCellState(
-  value: unknown,
-  rowStatus: unknown,
-  criterion: ScheduleCriterion | null = null,
-): ScheduleCellState {
-  const text = String(value ?? "").trim();
-  const context = `${String(rowStatus ?? "")} ${text}`.toLocaleLowerCase("pt-BR");
-  if (!text) return "empty";
-  if (/\b(?:nc|n[aã]o conforme|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(context))
-    return "failed";
-  if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(context))
-    return "warning";
-  if (
-    /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(context) ||
-    /^c$/i.test(text)
-  )
-    return "done";
-  if (
-    /\b(?:planejad[oa]|programad[oa]|previst[oa])\b/i.test(context) ||
-    /^(?:d|s|m|t|a|sm)$/i.test(text)
-  )
-    return "planned";
-  const evaluation = evaluateScheduleValue(
-    typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-      ? value
-      : null,
-    criterion,
-  );
-  if (evaluation === "within") return "done";
-  if (evaluation === "outside") return "failed";
-  return "neutral";
-}
-
 const scheduleCellClass: Record<ScheduleCellState, string> = {
   empty: "bg-muted/35 text-muted-foreground",
   planned: "bg-blue-500/18 text-blue-700 dark:text-blue-300",
@@ -6436,7 +6470,7 @@ const scheduleCellClass: Record<ScheduleCellState, string> = {
 /** Trunca um rótulo comprido com reticências, mantendo o texto completo
  * disponível via <title> (tooltip nativo do navegador ao passar o mouse),
  * em vez de deixar o SVG quebrar ou sobrepor letras entre rótulos vizinhos. */
-function truncateLabel(value: string, max = 14): string {
+function truncateLabel(value: string, max = 10): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
@@ -6616,23 +6650,19 @@ function ChartReadingGuide({
   operation: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-border/70 bg-card px-4 py-2 text-[11px]">
-      <span>
-        <strong className="font-semibold text-foreground">Eixo X:</strong>{" "}
-        <span className="text-muted-foreground">{group}</span>
+    <div
+      className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border/70 bg-card px-4 py-1.5 text-[10px] text-muted-foreground"
+      title={`Eixo X: ${group}. Eixo Y: ${metric}. ${mode === "raw" ? "Cada linha do Excel" : operation}.`}
+    >
+      <span className="max-w-44 shrink-0 truncate rounded-full bg-muted/40 px-2 py-1">
+        <strong className="text-foreground">X</strong> · {group}
       </span>
-      <span>
-        <strong className="font-semibold text-foreground">Eixo Y:</strong>{" "}
-        <span className="text-muted-foreground">{metric}</span>
+      <span aria-hidden="true">→</span>
+      <span className="max-w-44 shrink-0 truncate rounded-full bg-muted/40 px-2 py-1">
+        <strong className="text-foreground">Y</strong> · {metric}
       </span>
-      <span>
-        <strong className="font-semibold text-foreground">Leitura:</strong>{" "}
-        <span className="text-muted-foreground">
-          {mode === "raw" ? "cada linha do Excel" : operation}
-        </span>
-      </span>
-      <span className="inline-flex items-center gap-1 text-muted-foreground">
-        <Calculator className="size-3" /> Toque na calculadora para alterar
+      <span className="max-w-56 shrink-0 truncate px-1">
+        {mode === "raw" ? "linha a linha" : operation}
       </span>
     </div>
   );
@@ -8526,33 +8556,42 @@ function WidgetCard({
           (statusCol && row[statusCol.key] !== null && row[statusCol.key] !== "") ||
           allDetailCols.some((column) => row[column.key] !== null && row[column.key] !== "")),
     );
-    const scheduleStats = scheduleRows.reduce<{
-      reported: number;
-      within: number;
-      outside: number;
-      rowsWithoutResult: number;
-    }>(
-      (stats, row) => {
-        const criterion = scheduleCriterionForRow(
-          row,
-          columns,
-          periodCols.map((column) => column.key),
-        );
-        let rowHasResult = false;
-        for (const column of periodCols) {
-          const value = row[column.key];
-          if (isBlankScheduleValue(value)) continue;
-          rowHasResult = true;
-          stats.reported++;
-          const state = scheduleCellState(value, statusCol ? row[statusCol.key] : null, criterion);
-          if (state === "done") stats.within++;
-          if (state === "failed") stats.outside++;
-        }
-        if (!rowHasResult) stats.rowsWithoutResult++;
-        return stats;
-      },
-      { reported: 0, within: 0, outside: 0, rowsWithoutResult: 0 },
+    const observationCols = allDetailCols.filter((column) =>
+      /observa|nota|coment|justific|informa[cç][aã]o adicional/i.test(
+        `${column.key} ${column.label}`,
+      ),
     );
+    const scheduleStats = summarizeScheduleRows(
+      scheduleRows,
+      columns,
+      periodCols.map((column) => column.key),
+      statusCol?.key,
+      observationCols.map((column) => column.key),
+    );
+    const scheduleObservations = scheduleRows
+      .flatMap((row) =>
+        observationCols.flatMap((column) => {
+          const value = row[column.key];
+          if (isBlankScheduleValue(value)) return [];
+          return [
+            {
+              item: groupCol ? String(row[groupCol.key] ?? "Item") : "Item",
+              field: column.label,
+              text: String(value),
+            },
+          ];
+        }),
+      )
+      .filter(
+        (entry, index, all) =>
+          all.findIndex(
+            (candidate) =>
+              candidate.item === entry.item &&
+              candidate.field === entry.field &&
+              candidate.text === entry.text,
+          ) === index,
+      )
+      .slice(0, 100);
     const scheduleMode: ChartDataMode = w.dataMode ?? "raw";
     const scheduleOp: AggregationOp = (
       ["sum", "avg", "count", "min", "max"] as AggregationOp[]
@@ -8732,24 +8771,23 @@ function WidgetCard({
           )}
         </div>
         {sizeControls}
-        <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-border bg-card px-4 py-2 text-[11px]">
-          <span>
-            <strong>Métrica:</strong> resultados dos períodos selecionados
+        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-4 py-1.5 text-[10px] text-muted-foreground">
+          <span className="shrink-0 rounded-full bg-muted/40 px-2 py-1">
+            <strong className="text-foreground">Métrica</strong> · células por período
           </span>
-          <span>
-            <strong>Leitura:</strong>{" "}
+          <span className="shrink-0 px-1">
             {scheduleMode === "raw"
-              ? "cada célula original do Excel, sem soma"
-              : `${aggregationLabels[scheduleOp]} de todos os itens em cada período`}
+              ? "linha a linha"
+              : `${aggregationLabels[scheduleOp]} por período`}
           </span>
           {w.blockValue && (
-            <span>
-              <strong>Bloco:</strong> {w.blockValue}
+            <span
+              className="max-w-64 shrink-0 truncate rounded-full bg-primary/8 px-2 py-1 text-foreground"
+              title={w.blockValue}
+            >
+              <strong>Bloco</strong> · {w.blockValue}
             </span>
           )}
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <Calculator className="size-3" /> Toque para mudar o cálculo
-          </span>
         </div>
         {!groupCol || !periodCols.length ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
@@ -8762,38 +8800,71 @@ function WidgetCard({
           </p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-2 border-b border-border bg-muted/10 p-3 sm:grid-cols-4">
+            <div className="flex gap-1.5 overflow-x-auto border-b border-border bg-muted/10 px-3 py-2">
               {[
+                ...(scheduleStats.planned
+                  ? [
+                      {
+                        label: "Programados",
+                        value: scheduleStats.planned,
+                        suffix: "",
+                        className: "text-blue-700 dark:text-blue-300",
+                      },
+                    ]
+                  : []),
                 {
-                  label: "Resultados lidos",
-                  value: scheduleStats.reported,
+                  label: "Resultados",
+                  value: scheduleStats.results,
+                  suffix: "",
                   className: "text-foreground",
+                },
+                {
+                  label: "Cobertura",
+                  value: scheduleStats.coverage,
+                  suffix: "%",
+                  className: "text-primary",
                 },
                 {
                   label: "Dentro do limite",
                   value: scheduleStats.within,
+                  suffix: "",
                   className: "text-emerald-700 dark:text-emerald-300",
                 },
                 {
                   label: "Fora do limite",
                   value: scheduleStats.outside,
+                  suffix: "",
                   className: "text-destructive",
                 },
                 {
-                  label: "Itens sem resultado",
-                  value: scheduleStats.rowsWithoutResult,
+                  label: "Sem registro",
+                  value: scheduleStats.planned
+                    ? Math.max(0, scheduleStats.planned - scheduleStats.results)
+                    : scheduleStats.empty,
+                  suffix: "",
                   className: "text-muted-foreground",
                 },
+                ...(scheduleStats.observations
+                  ? [
+                      {
+                        label: "Observações",
+                        value: scheduleStats.observations,
+                        suffix: "",
+                        className: "text-foreground",
+                      },
+                    ]
+                  : []),
               ].map((stat) => (
                 <div
                   key={stat.label}
-                  className="rounded-xl border border-border/70 bg-card px-3 py-2 shadow-sm"
+                  className="flex min-w-[7.5rem] shrink-0 items-baseline justify-between gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-1.5 shadow-sm"
                 >
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <p className="truncate text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
                     {stat.label}
                   </p>
-                  <p className={cn("mt-0.5 font-mono text-lg font-bold", stat.className)}>
+                  <p className={cn("shrink-0 font-mono text-sm font-bold", stat.className)}>
                     {stat.value.toLocaleString("pt-BR")}
+                    {stat.suffix}
                   </p>
                 </div>
               ))}
@@ -8921,6 +8992,34 @@ function WidgetCard({
                 </tbody>
               </table>
             </div>
+            {scheduleObservations.length > 0 && (
+              <details className="border-t border-border bg-card">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2 text-[11px] font-medium">
+                  <span className="inline-flex items-center gap-1.5">
+                    <FileText className="size-3.5 text-primary" /> Observações do bloco
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {scheduleObservations.length}
+                  </span>
+                </summary>
+                <ul className="grid max-h-52 gap-1.5 overflow-auto border-t border-border p-3 sm:grid-cols-2">
+                  {scheduleObservations.map((entry, index) => (
+                    <li
+                      key={`${entry.item}-${entry.field}-${index}`}
+                      className="rounded-lg bg-muted/25 px-3 py-2 text-[11px] leading-relaxed"
+                    >
+                      <span className="block truncate font-medium" title={entry.item}>
+                        {entry.item}
+                      </span>
+                      <span className="block text-[9px] uppercase tracking-wide text-muted-foreground">
+                        {entry.field}
+                      </span>
+                      <span className="whitespace-pre-line">{entry.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
             <div className="flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-2 text-[10px] text-muted-foreground">
               <span className="font-medium text-foreground">
                 {scheduleRows.length.toLocaleString("pt-BR")} item(ns) · {periodCols.length}{" "}
@@ -9088,11 +9187,11 @@ function WidgetCard({
             accepts={w.type === "line" ? (["date"] as Kind[]) : groupableKinds}
             onDropColumn={(key) => onConfigure({ groupKey: key })}
           >
-            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              Eixo X
+            <label className="flex max-w-56 items-center gap-1 rounded-lg border border-border bg-card pl-1.5 text-[10px] text-muted-foreground">
+              <span className="font-mono font-bold text-foreground">X</span>
               <select
                 aria-label="Coluna do eixo X"
-                className="oliam-select"
+                className="oliam-select h-7 min-w-0 max-w-48 border-0 bg-transparent px-1.5 shadow-none"
                 value={groupCol?.key ?? ""}
                 onChange={(e) => onConfigure({ groupKey: e.target.value })}
               >
@@ -9109,11 +9208,11 @@ function WidgetCard({
             accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
             onDropColumn={(key) => onConfigure({ valueKey: key })}
           >
-            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              Métrica
+            <label className="flex max-w-56 items-center gap-1 rounded-lg border border-border bg-card pl-1.5 text-[10px] text-muted-foreground">
+              <span className="font-mono font-bold text-foreground">Y</span>
               <select
                 aria-label={op === "count" ? "Coluna usada para contar" : "Métrica do eixo Y"}
-                className="oliam-select"
+                className="oliam-select h-7 min-w-0 max-w-48 border-0 bg-transparent px-1.5 shadow-none"
                 value={valueCol?.key ?? ""}
                 onChange={(e) => onConfigure({ valueKey: e.target.value })}
               >
@@ -9182,7 +9281,7 @@ function WidgetCard({
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={barSeries}
-                      margin={{ top: 20, right: 16, left: 30, bottom: 42 }}
+                      margin={{ top: 20, right: 12, left: 4, bottom: 18 }}
                       barCategoryGap={barSeries.length > 10 ? "34%" : "18%"}
                     >
                       <defs>
@@ -9204,31 +9303,14 @@ function WidgetCard({
                         tickLine={false}
                         axisLine={{ stroke: "var(--border)" }}
                         interval={0}
-                        label={{
-                          value: groupCol.label,
-                          position: "insideBottom",
-                          offset: -16,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          fill: "var(--muted-foreground)",
-                        }}
                       />
                       <YAxis
                         type="number"
                         tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                         tickLine={false}
                         axisLine={false}
-                        width={66}
+                        width={52}
                         tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
-                        label={{
-                          value: op === "count" ? "Quantidade" : valueCol.label,
-                          angle: -90,
-                          position: "insideLeft",
-                          offset: -18,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          fill: "var(--muted-foreground)",
-                        }}
                       />
                       <ChartTooltip
                         cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
@@ -9509,7 +9591,7 @@ function WidgetCard({
                   }}
                 >
                   <ResponsiveContainer>
-                    <AreaChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
+                    <AreaChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
                       <defs>
                         <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
@@ -9521,24 +9603,11 @@ function WidgetCard({
                         dataKey="name"
                         tick={(props) => <AxisTick {...props} />}
                         interval={0}
-                        label={{
-                          value: groupCol.label,
-                          position: "insideBottom",
-                          offset: -14,
-                          fontSize: 11,
-                          fill: "var(--muted-foreground)",
-                        }}
                       />
                       <YAxis
                         tick={{ fontSize: 10 }}
-                        tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                        label={{
-                          value: `${aggregationLabels[op]} de ${valueCol.label}`,
-                          angle: -90,
-                          position: "insideLeft",
-                          fontSize: 11,
-                          fill: "var(--muted-foreground)",
-                        }}
+                        width={52}
+                        tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
                       />
                       <ChartTooltip
                         contentStyle={{
@@ -9622,30 +9691,17 @@ function WidgetCard({
                   }}
                 >
                   <ResponsiveContainer>
-                    <LineChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 22 }}>
+                    <LineChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
                       <CartesianGrid vertical={false} stroke="var(--border)" />
                       <XAxis
                         dataKey="name"
                         tick={(props) => <AxisTick {...props} />}
                         interval={0}
-                        label={{
-                          value: groupCol.label,
-                          position: "insideBottom",
-                          offset: -14,
-                          fontSize: 11,
-                          fill: "var(--muted-foreground)",
-                        }}
                       />
                       <YAxis
                         tick={{ fontSize: 10 }}
-                        tickFormatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                        label={{
-                          value: `${aggregationLabels[op]} de ${valueCol.label}`,
-                          angle: -90,
-                          position: "insideLeft",
-                          fontSize: 11,
-                          fill: "var(--muted-foreground)",
-                        }}
+                        width={52}
+                        tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
                       />
                       <ChartTooltip
                         contentStyle={{

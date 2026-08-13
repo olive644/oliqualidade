@@ -264,7 +264,7 @@ export function mergeReimportedSheets(
   oldSheets: SheetData[],
   newSheets: Pick<
     SheetData,
-    "name" | "rows" | "columns" | "widgets" | "autoDashboard" | "intelligence"
+    "name" | "rows" | "columns" | "widgets" | "autoDashboard" | "intelligence" | "sourceNotes"
   >[],
 ): SheetData[] {
   return newSheets.map((s) => {
@@ -283,6 +283,7 @@ export function mergeReimportedSheets(
           ? { autoDashboard: old.autoDashboard }
           : {}),
       ...(s.intelligence ? { intelligence: s.intelligence } : {}),
+      ...(s.sourceNotes?.length ? { sourceNotes: s.sourceNotes } : {}),
       ...(old?.semanticOverrides ? { semanticOverrides: old.semanticOverrides } : {}),
       ...(old?.exceptionDecisions ? { exceptionDecisions: old.exceptionDecisions } : {}),
       ...(old?.auditTrail ? { auditTrail: old.auditTrail } : {}),
