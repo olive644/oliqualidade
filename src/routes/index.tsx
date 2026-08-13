@@ -270,10 +270,12 @@ import { bookmarkView, createBookmark } from "@/lib/bookmarks";
 import {
   applyCellEdit,
   auditEntry,
+  markSourceRows,
   parseEditedValue,
   recordUndo,
   stepRedo,
   stepUndo,
+  sourceRowIndexOf,
   suggestCorrection,
   type AuditEntry,
   type UndoHistory,
@@ -290,11 +292,6 @@ import {
   type LocalDirectoryHandle,
 } from "@/lib/folder-monitor";
 import "leaflet/dist/leaflet.css";
-
-const SOURCE_ROW_INDEX = Symbol("source-row-index");
-type TraceableRow = Row & { [SOURCE_ROW_INDEX]?: number };
-
-const sourceRowIndexOf = (row: Row) => (row as TraceableRow)[SOURCE_ROW_INDEX] ?? null;
 
 const demo: Row[] = [
   {
@@ -3654,18 +3651,7 @@ function Dashboard(p: {
   };
 
   // Colunas calculadas recalculam ao vivo antes de qualquer filtro.
-  const traceableRows = useMemo(
-    () =>
-      sheet.rows.map((row, sourceRowIndex) => {
-        const traceable = { ...row } as TraceableRow;
-        Object.defineProperty(traceable, SOURCE_ROW_INDEX, {
-          value: sourceRowIndex,
-          enumerable: true,
-        });
-        return traceable;
-      }),
-    [sheet.rows],
-  );
+  const traceableRows = useMemo(() => markSourceRows(sheet.rows), [sheet.rows]);
   const withCalculated = useMemo(
     () => withCalculatedColumns(traceableRows, sheet.columns),
     [traceableRows, sheet.columns],

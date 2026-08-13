@@ -3,7 +3,9 @@ import {
   applyCellEdit,
   auditEntry,
   parseEditedValue,
+  markSourceRows,
   recordUndo,
+  sourceRowIndexOf,
   stepRedo,
   stepUndo,
   suggestCorrection,
@@ -88,5 +90,15 @@ describe("revisão e correção de dados", () => {
     expect(undone?.next).toEqual(before);
     const redone = undone ? stepRedo(undone.history, undone.next) : null;
     expect(redone?.next).toEqual(after);
+  });
+
+  it("mantém a linha de origem após filtrar, ordenar e clonar", () => {
+    const marked = markSourceRows([{ nome: "B" }, { nome: "A" }, { nome: "C" }]);
+    const visible = marked
+      .filter((row) => row["nome"] !== "B")
+      .sort((a, b) => String(a["nome"]).localeCompare(String(b["nome"])))
+      .map((row) => ({ ...row }));
+    expect(visible.map(sourceRowIndexOf)).toEqual([1, 2]);
+    expect(Object.keys(visible[0] ?? {})).toEqual(["nome"]);
   });
 });

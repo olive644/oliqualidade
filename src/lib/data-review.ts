@@ -19,6 +19,22 @@ export type CorrectionSuggestion = {
   reason: string;
 };
 
+export const SOURCE_ROW_INDEX = Symbol("source-row-index");
+export type TraceableRow = Row & { [SOURCE_ROW_INDEX]?: number };
+
+export function markSourceRows(rows: Row[]): TraceableRow[] {
+  return rows.map((row, sourceRowIndex) => {
+    const traceable = { ...row } as TraceableRow;
+    Object.defineProperty(traceable, SOURCE_ROW_INDEX, {
+      value: sourceRowIndex,
+      enumerable: true,
+    });
+    return traceable;
+  });
+}
+
+export const sourceRowIndexOf = (row: Row) => (row as TraceableRow)[SOURCE_ROW_INDEX] ?? null;
+
 export function parseEditedValue(input: string, column?: Column): Value {
   const trimmed = input.trim();
   if (!trimmed) return null;
