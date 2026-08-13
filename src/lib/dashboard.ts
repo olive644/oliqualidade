@@ -12,6 +12,7 @@ import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-d
 import { numericKinds } from "@/lib/types";
 import { createWidget } from "@/lib/widgets";
 import { analyzeSpreadsheet } from "@/lib/spreadsheet-intelligence";
+import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 
 type LegacyDashboard = {
   id: string;
@@ -40,6 +41,14 @@ function widgetCompatible(widget: Widget, columns: Column[]): boolean {
     widget.type === "version-compare"
   )
     return true;
+  if (
+    widget.type === "attendance-overview" ||
+    widget.type === "validation-overview" ||
+    widget.type === "control-chart" ||
+    widget.type === "plan-vs-actual"
+  ) {
+    return detectOperationalWidgetTypes(columns).includes(widget.type);
+  }
   if (widget.type === "pivot-table" || widget.type === "matrix-heatmap") {
     return Boolean(byKey(widget.groupKey) && byKey(widget.columnKey));
   }
@@ -61,18 +70,33 @@ function widgetCompatible(widget: Widget, columns: Column[]): boolean {
   );
 }
 
-function refreshAutomaticScheduleWidgets(sheet: SheetData): SheetData {
+const AUTOMATIC_OPERATIONAL_TYPES = new Set<Widget["type"]>([
+  "schedule-heatmap",
+  "attendance-overview",
+  "validation-overview",
+  "control-chart",
+  "plan-vs-actual",
+]);
+
+function refreshAutomaticWidgets(sheet: SheetData): SheetData {
   const existing = sheet.widgets ?? [];
-  if (!existing.some((widget) => widget.type === "schedule-heatmap")) return sheet;
   const plan = generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows });
-  const freshSchedules = buildRecommendedWidgets(plan, sheet.columns, sheet.rows).filter(
-    (widget) => widget.type === "schedule-heatmap",
+  const freshAutomatic = buildRecommendedWidgets(plan, sheet.columns, sheet.rows).filter((widget) =>
+    AUTOMATIC_OPERATIONAL_TYPES.has(widget.type),
   );
-  const currentSchedules = existing.filter((widget) => widget.type === "schedule-heatmap");
+  const currentAutomatic = existing.filter((widget) =>
+    AUTOMATIC_OPERATIONAL_TYPES.has(widget.type),
+  );
   const signature = (widget: Widget) =>
-    [widget.groupKey, widget.blockKey, widget.blockValue, ...(widget.periodKeys ?? [])].join("|");
-  const currentSignature = currentSchedules.map(signature).sort();
-  const freshSignature = freshSchedules.map(signature).sort();
+    [
+      widget.type,
+      widget.groupKey,
+      widget.blockKey,
+      widget.blockValue,
+      ...(widget.periodKeys ?? []),
+    ].join("|");
+  const currentSignature = currentAutomatic.map(signature).sort();
+  const freshSignature = freshAutomatic.map(signature).sort();
   if (
     currentSignature.length === freshSignature.length &&
     currentSignature.every((value, index) => value === freshSignature[index])
@@ -82,14 +106,17 @@ function refreshAutomaticScheduleWidgets(sheet: SheetData): SheetData {
     ...sheet,
     autoDashboard: plan,
     widgets: [
-      ...freshSchedules,
-      ...existing.filter((widget) => widget.type !== "schedule-heatmap"),
+      ...freshAutomatic.map(
+        (widget) =>
+          currentAutomatic.find((current) => signature(current) === signature(widget)) ?? widget,
+      ),
+      ...existing.filter((widget) => !AUTOMATIC_OPERATIONAL_TYPES.has(widget.type)),
     ],
   };
 }
 
 function repairInvalidWidgets(sheet: SheetData): SheetData {
-  sheet = refreshAutomaticScheduleWidgets(sheet);
+  sheet = refreshAutomaticWidgets(sheet);
   if (!sheet.widgets?.some((widget) => !widgetCompatible(widget, sheet.columns))) return sheet;
   const plan = generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows });
   const recommended = buildRecommendedWidgets(plan, sheet.columns, sheet.rows);
@@ -267,6 +294,6 @@ export function mergeReimportedSheets(
         ...(merged.widgets ?? []),
       ];
     }
-    return refreshAutomaticScheduleWidgets(merged);
+    return refreshAutomaticWidgets(merged);
   });
 }

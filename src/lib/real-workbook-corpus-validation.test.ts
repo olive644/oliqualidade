@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import { inspectOoxml } from "@/lib/ooxml-reader";
 import { readWorkbookBytes } from "@/lib/workbook-reader";
+import { infer } from "@/lib/format";
+import { generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 
 const candidates = [
   "001Política de segurança 2 (1) (1) (2).xlsx",
@@ -46,6 +48,12 @@ describe.skipIf(!fixtures.length)("corpus local de planilhas reais", () => {
           "Assinatura",
         ]);
         expect(imported[0]?.diagnostics?.structuralClassification?.type).toBe("attendance-roster");
+        expect(
+          generateAutoDashboardPlan({
+            columns: infer(imported[0]!.rows),
+            rows: imported[0]!.rows,
+          }).recommendations.map((item) => item.widgetType),
+        ).toContain("attendance-overview");
       }
       if (name.startsWith("FRS-QA-BR-009")) {
         expect(imported.map((sheet) => sheet.rows.length)).toEqual([24, 12]);
@@ -59,6 +67,12 @@ describe.skipIf(!fixtures.length)("corpus local de planilhas reais", () => {
           "Inspetor",
         ]);
         expect(imported[0]?.diagnostics?.structuralClassification?.type).toBe("validation-matrix");
+        expect(
+          generateAutoDashboardPlan({
+            columns: infer(imported[0]!.rows),
+            rows: imported[0]!.rows,
+          }).recommendations.map((item) => item.widgetType),
+        ).toContain("validation-overview");
       }
       if (name.startsWith("Testes GREEN")) {
         expect(imported).toHaveLength(4);
@@ -66,6 +80,12 @@ describe.skipIf(!fixtures.length)("corpus local de planilhas reais", () => {
         const finish = imported.find((sheet) => sheet.name === "Finish");
         expect(finish?.rows).toHaveLength(91);
         expect(finish?.diagnostics?.structuralClassification?.type).toBe("measurement-series");
+        expect(
+          generateAutoDashboardPlan({
+            columns: infer(finish!.rows),
+            rows: finish!.rows,
+          }).recommendations.map((item) => item.widgetType),
+        ).toContain("control-chart");
       }
       if (name.startsWith("Plano de Produção")) {
         expect(independent.sheets.size).toBe(13);
@@ -74,6 +94,13 @@ describe.skipIf(!fixtures.length)("corpus local de planilhas reais", () => {
         expect(
           Object.keys(imported.find((sheet) => sheet.name === "Comparativo SKU")?.rows[0] ?? {}),
         ).toContain("Programado — 01/07/2026");
+        const comparison = imported.find((sheet) => sheet.name === "Comparativo SKU")!;
+        expect(
+          generateAutoDashboardPlan({
+            columns: infer(comparison.rows),
+            rows: comparison.rows,
+          }).recommendations.map((item) => item.widgetType),
+        ).toContain("plan-vs-actual");
       }
     });
   }

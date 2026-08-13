@@ -84,6 +84,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OperationalWidgetBody } from "@/components/operational-widget-body";
 import {
   CommandDialog,
   CommandEmpty,
@@ -189,6 +190,7 @@ import {
 } from "@/lib/data-pipeline";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
+import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
   loadDashboards,
   loadFolderMonitor,
@@ -3893,6 +3895,14 @@ function Dashboard(p: {
     rating: nums.length > 0,
     map: nums.length > 0 && groupableCols.length > 0,
     "schedule-heatmap": schedulePeriodColumns(sheet.columns).length > 0,
+    "attendance-overview": detectOperationalWidgetTypes(sheet.columns).includes(
+      "attendance-overview",
+    ),
+    "validation-overview": detectOperationalWidgetTypes(sheet.columns).includes(
+      "validation-overview",
+    ),
+    "control-chart": detectOperationalWidgetTypes(sheet.columns).includes("control-chart"),
+    "plan-vs-actual": detectOperationalWidgetTypes(sheet.columns).includes("plan-vs-actual"),
     "exception-panel": true,
     "pivot-table": groupableCols.length >= 2,
     "matrix-heatmap": groupableCols.length >= 2,
@@ -6433,6 +6443,10 @@ const widgetTypeDescriptions: Record<WidgetType, string> = {
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
   "schedule-heatmap": "Cruza itens e períodos, colorindo o andamento do cronograma.",
+  "attendance-overview": "Resume participantes, assinaturas ausentes, setores e turnos.",
+  "validation-overview": "Separa aprovações, rejeições e pendências por inspetor.",
+  "control-chart": "Acompanha medições, média e limites estatísticos do processo.",
+  "plan-vs-actual": "Compara automaticamente o programado e o realizado por período.",
   "exception-panel": "Prioriza inconsistências, anomalias e pontos de baixa confiança.",
   "pivot-table": "Cruza duas dimensões com subtotais e total geral.",
   "matrix-heatmap": "Mostra concentração entre duas dimensões pela intensidade da cor.",
@@ -6452,6 +6466,10 @@ function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
   if (type === "schedule-heatmap") return <CalendarRange className={className} />;
+  if (type === "attendance-overview") return <Check className={className} />;
+  if (type === "validation-overview") return <ShieldAlert className={className} />;
+  if (type === "control-chart") return <Activity className={className} />;
+  if (type === "plan-vs-actual") return <BarChart3 className={className} />;
   if (type === "exception-panel") return <AlertTriangle className={className} />;
   if (type === "version-compare") return <GitMerge className={className} />;
   if (type === "pivot-table" || type === "matrix-heatmap")
@@ -7221,6 +7239,42 @@ function WidgetCard({
       )}
     </div>
   );
+
+  if (
+    w.type === "attendance-overview" ||
+    w.type === "validation-overview" ||
+    w.type === "control-chart" ||
+    w.type === "plan-vs-actual"
+  ) {
+    const presentation = {
+      "attendance-overview": {
+        title: "Presença e assinaturas",
+        icon: <Check className="size-3.5 shrink-0 text-muted-foreground" />,
+      },
+      "validation-overview": {
+        title: "Validação de inspetores",
+        icon: <ShieldAlert className="size-3.5 shrink-0 text-muted-foreground" />,
+      },
+      "control-chart": {
+        title: "Carta de controle",
+        icon: <Activity className="size-3.5 shrink-0 text-muted-foreground" />,
+      },
+      "plan-vs-actual": {
+        title: "Planejado × realizado",
+        icon: <BarChart3 className="size-3.5 shrink-0 text-muted-foreground" />,
+      },
+    }[w.type];
+    return (
+      <article
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <WidgetHead title={w.title || presentation.title} icon={presentation.icon} {...dragProps} />
+        {sizeControls}
+        <OperationalWidgetBody type={w.type} columns={columns} rows={data} />
+      </article>
+    );
+  }
 
   if (w.type === "folder-files") {
     const monitoredFiles = folderMonitor?.fileNames?.length

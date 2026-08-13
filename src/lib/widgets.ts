@@ -321,6 +321,15 @@ export function createWidget(
     )
       .filter((column) => column.key !== section?.key)
       .map((column) => column.key);
+  } else if (
+    type === "attendance-overview" ||
+    type === "validation-overview" ||
+    type === "control-chart" ||
+    type === "plan-vs-actual"
+  ) {
+    // Estes widgets escolhem os campos pelo vocabulário operacional da
+    // própria planilha. A configuração visual continua editável, mas não
+    // exige que o usuário associe colunas manualmente após a importação.
   } else if (type === "pivot-table" || type === "matrix-heatmap") {
     const dimensions = columns.filter((column) => groupableKinds.includes(column.kind));
     const first = pickBestGroupColumn(dimensions, rows);

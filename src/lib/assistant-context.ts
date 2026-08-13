@@ -8,6 +8,12 @@ import {
 } from "@/lib/data-pipeline";
 import { fmt, sortChronologically } from "@/lib/format";
 import type { FolderMonitorView } from "@/lib/folder-monitor";
+import {
+  buildAttendanceStats,
+  buildControlSeries,
+  buildPlanVsActualSeries,
+  buildValidationStats,
+} from "@/lib/operational-widgets";
 import type { Column, FilterRule, Row, Widget, WidgetType } from "@/lib/types";
 import { numericKinds, widgetTypeLabels } from "@/lib/types";
 
@@ -321,6 +327,69 @@ function snapshotWidget(
       groupBy: { key: group.key, label: group.label, kind: group.kind },
       rowCount: rows.length,
       displayedValue: { value: filled, formatted: `${filled.toLocaleString("pt-BR")} marcações` },
+    };
+  }
+  if (widget.type === "attendance-overview") {
+    const stats = buildAttendanceStats(columns, rows);
+    return {
+      id: widget.id,
+      type: widget.type,
+      title: widget.title ?? "Presença e assinaturas",
+      status: stats.total ? "ready" : "empty",
+      rowCount: stats.total,
+      displayedValue: { value: stats.completion, formatted: `${stats.completion}% assinados` },
+      series: seriesSnapshot(
+        stats.bySector.map((item) => ({ name: item.label, total: item.value })),
+        "number",
+      ),
+    };
+  }
+  if (widget.type === "validation-overview") {
+    const stats = buildValidationStats(columns, rows);
+    return {
+      id: widget.id,
+      type: widget.type,
+      title: widget.title ?? "Validação de inspetores",
+      status: stats.total ? "ready" : "empty",
+      rowCount: stats.total,
+      displayedValue: {
+        value: stats.approvalRate,
+        formatted: `${stats.approvalRate}% aprovadas`,
+      },
+    };
+  }
+  if (widget.type === "control-chart") {
+    const series = buildControlSeries(columns, rows);
+    return {
+      id: widget.id,
+      type: widget.type,
+      title: widget.title ?? "Carta de controle",
+      status: series.points.length ? "ready" : "empty",
+      rowCount: series.points.length,
+      displayedValue: {
+        value: series.outside,
+        formatted: `${series.outside} ponto(s) fora de controle`,
+      },
+    };
+  }
+  if (widget.type === "plan-vs-actual") {
+    const series = buildPlanVsActualSeries(columns, rows);
+    const planned = series.reduce((sum, item) => sum + item.planned, 0);
+    const actual = series.reduce((sum, item) => sum + item.actual, 0);
+    const attainment = planned ? actual / planned : 0;
+    return {
+      id: widget.id,
+      type: widget.type,
+      title: widget.title ?? "Planejado × realizado",
+      status: series.length ? "ready" : "empty",
+      rowCount: series.length,
+      displayedValue: {
+        value: attainment,
+        formatted: new Intl.NumberFormat("pt-BR", {
+          style: "percent",
+          maximumFractionDigits: 1,
+        }).format(attainment),
+      },
     };
   }
   return {
