@@ -5,11 +5,32 @@ import { strToU8, zipSync } from "fflate";
 import {
   detectDelimiter,
   readWorkbookBytes,
+  readWorkbookBytesWithEngine,
   validateWorkbookComplexity,
   validateZipWorkbook,
 } from "@/lib/workbook-reader";
 
 describe("leitor universal de planilhas", () => {
+  it("produz relatório do motor e mantém o leitor verificado para OOXML", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx");
+
+    expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
+    expect(result.report).toMatchObject({
+      reader: "sheetjs-verified",
+      format: "xlsx",
+      sheets: 1,
+      fallbackUsed: false,
+    });
+    expect(result.report.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
   it("bloqueia dimensões abusivas declaradas pelo arquivo", () => {
     expect(() =>
       validateWorkbookComplexity({

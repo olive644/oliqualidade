@@ -252,7 +252,7 @@ import {
   type SpreadsheetException,
   type SpreadsheetIntelligence,
 } from "@/lib/spreadsheet-intelligence";
-import { readWorkbookFile } from "@/lib/workbook-reader-client";
+import { readWorkbookFile, readWorkbookFileWithReport } from "@/lib/workbook-reader-client";
 import { analyzeReviewInBackground } from "@/lib/review-analysis-client";
 import type { ReviewAnalysisProgress, ReviewAnalysisResult } from "@/lib/review-analysis";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
@@ -617,12 +617,18 @@ export function OliAm({ routeId }: { routeId?: string }) {
       parsing: "Lendo células, fórmulas e formatação…",
       analyzing: "Analisando cabeçalhos e regiões de dados…",
     };
-    const sheets = await readWorkbookFile(
+    const result = await readWorkbookFileWithReport(
       file,
       (progress) => setImportProgressLabel(labels[progress]),
       signal,
     );
+    const sheets = result.sheets;
     if (!sheets.length) throw new Error("empty-workbook");
+    if (result.report.repairedCells) {
+      setImportWarning(
+        `Leitura conferida por dois motores: ${result.report.repairedCells} célula(s) recuperada(s) automaticamente.`,
+      );
+    }
     return sheets;
   };
   const prepare = (

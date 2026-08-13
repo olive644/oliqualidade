@@ -1,9 +1,10 @@
 import type { SheetOption } from "@/lib/import";
-import { readWorkbookBytes, type WorkbookReadProgress } from "@/lib/workbook-reader";
+import { readWorkbookBytesWithEngine, type WorkbookReadProgress } from "@/lib/workbook-reader";
+import type { WorkbookReadResult } from "@/lib/workbook-reading-engine";
 
 type WorkerResponse =
   | { id: string; type: "progress"; progress: WorkbookReadProgress }
-  | { id: string; type: "result"; sheets: SheetOption[] }
+  | { id: string; type: "result"; result: WorkbookReadResult }
   | { id: string; type: "error"; message: string };
 
 export const MAX_WORKBOOK_BYTES = 100 * 1024 * 1024;
@@ -14,12 +15,21 @@ export async function readWorkbookFile(
   onProgress?: (progress: WorkbookReadProgress) => void,
   signal?: AbortSignal,
 ): Promise<SheetOption[]> {
+  return (await readWorkbookFileWithReport(file, onProgress, signal)).sheets;
+}
+
+export async function readWorkbookFileWithReport(
+  file: File,
+  onProgress?: (progress: WorkbookReadProgress) => void,
+  signal?: AbortSignal,
+): Promise<WorkbookReadResult> {
   if (file.size > MAX_WORKBOOK_BYTES)
     throw new Error("A planilha excede o limite de 100 MB. Divida o arquivo antes de importar.");
   if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
   const bytes = await file.arrayBuffer();
   if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
-  if (typeof Worker === "undefined") return readWorkbookBytes(bytes, file.name, onProgress);
+  if (typeof Worker === "undefined")
+    return readWorkbookBytesWithEngine(bytes, file.name, onProgress);
 
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("../workers/workbook.worker.ts", import.meta.url), {
@@ -52,7 +62,7 @@ export async function readWorkbookFile(
       if (event.data.type === "progress") onProgress?.(event.data.progress);
       if (event.data.type === "result") {
         if (!finish()) return;
-        resolve(event.data.sheets);
+        resolve(event.data.result);
       }
       if (event.data.type === "error") {
         if (!finish()) return;
