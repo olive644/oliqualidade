@@ -7956,9 +7956,9 @@ function WidgetCard({
       ? semanticAggregationOps(["sum", "avg", "count", "min", "max"], metric, metricProfile)
       : ["count"];
     const requestedPivotOp: AggregationOp = w.op ?? (metric ? "sum" : "count");
-    const pivotOp: AggregationOp = pivotOps.includes(requestedPivotOp)
-      ? requestedPivotOp
-      : (pivotOps[0] ?? "count");
+    const pivotOp = (
+      pivotOps.includes(requestedPivotOp) ? requestedPivotOp : (pivotOps[0] ?? "count")
+    ) as "sum" | "avg" | "count" | "min" | "max";
     if (!rowDimension || !columnDimension) {
       return (
         <EmptyWidget
