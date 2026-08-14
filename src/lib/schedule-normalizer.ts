@@ -187,22 +187,21 @@ export function scheduleCellState(
   criterion: ScheduleCriterion | null = null,
 ): ScheduleCellState {
   const text = String(value ?? "").trim();
-  const context = `${String(rowStatus ?? "")} ${text}`.toLocaleLowerCase("pt-BR");
   if (!text || /^[-–—]$/.test(text)) return "empty";
-  if (/\b(?:nc|n[aã]o conforme|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(context))
+
+  // O conteúdo da célula é a fonte de verdade. O status geral da linha é
+  // apenas fallback: "Planejado" não pode esconder uma medição já preenchida
+  // nem transformar um valor fora do limite em uma marcação planejada.
+  if (/\b(?:nc|n[aã]o conforme|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(text))
     return "failed";
-  if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(context))
+  if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(text))
     return "warning";
   if (
-    /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(context) ||
+    /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(text) ||
     /^c$/i.test(text)
   )
     return "done";
-  if (
-    /\b(?:planejad[oa]|programad[oa]|previst[oa])\b/i.test(context) ||
-    /^(?:d|s|m|t|a|sm)$/i.test(text)
-  )
-    return "planned";
+
   const evaluation = evaluateScheduleValue(
     typeof value === "string" || typeof value === "number" || typeof value === "boolean"
       ? value
@@ -211,6 +210,23 @@ export function scheduleCellState(
   );
   if (evaluation === "within") return "done";
   if (evaluation === "outside") return "failed";
+
+  if (
+    /\b(?:planejad[oa]|programad[oa]|previst[oa])\b/i.test(text) ||
+    /^(?:d|s|m|t|a|sm)$/i.test(text)
+  )
+    return "planned";
+
+  const status = String(rowStatus ?? "").trim();
+  if (/\b(?:nc|n[aã]o conforme|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(status))
+    return "failed";
+  if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(status))
+    return "warning";
+  if (
+    /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(status)
+  )
+    return "done";
+  if (/\b(?:planejad[oa]|programad[oa]|previst[oa])\b/i.test(status)) return "planned";
   return "neutral";
 }
 
