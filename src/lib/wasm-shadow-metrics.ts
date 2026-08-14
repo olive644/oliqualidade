@@ -98,9 +98,7 @@ export function assessWasmPromotion(
   ).length;
   const sanitizedRealWorkbooks = sanitizedRealIds.size;
   const duplicateSanitizedRealWorkbooks =
-    sanitizedRealObservations.length -
-    unidentifiedSanitizedRealWorkbooks -
-    sanitizedRealWorkbooks;
+    sanitizedRealObservations.length - unidentifiedSanitizedRealWorkbooks - sanitizedRealWorkbooks;
   const comparedCells = measured.reduce((total, item) => total + item.comparedCells, 0);
   const divergentCells = measured.reduce((total, item) => total + item.divergentCells, 0);
   const comparedStructures = measured.reduce((total, item) => total + item.comparedStructures, 0);
