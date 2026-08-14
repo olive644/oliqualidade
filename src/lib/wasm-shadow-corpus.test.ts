@@ -116,12 +116,7 @@ describe.skipIf(!existsSync(generatedManifestPath))(
           undefined,
           { wasmSampleRate: 1 },
         );
-        const measured = observation(
-          result.report,
-          testCase.format,
-          testCase.source,
-          testCase.id,
-        );
+        const measured = observation(result.report, testCase.format, testCase.source, testCase.id);
         observations.push(measured);
         cases.push({ id: testCase.id, features: testCase.features, ...measured });
       }
@@ -150,12 +145,12 @@ describe.skipIf(!existsSync(generatedManifestPath))(
             undefined,
             { wasmSampleRate: 1 },
           );
-          const measured = observation(
-          result.report,
-          testCase.format,
-          testCase.source,
-          testCase.id,
-        );
+            const measured = observation(
+            result.report,
+            testCase.format,
+            testCase.source,
+            testCase.id,
+          );
           observations.push(measured);
           cases.push({ id: testCase.id, features: testCase.features, ...measured });
         }
