@@ -56,7 +56,6 @@ describe("export layout", () => {
     ]);
   });
 
-
   it("pagina alturas variáveis sem cortar linhas com texto longo", () => {
     expect(pdfVariableRowPages([18, 42, 18, 54, 18], 80)).toEqual([
       { rowStart: 0, rowEnd: 3, heights: [18, 42, 18] },
@@ -67,9 +66,7 @@ describe("export layout", () => {
 
   it("mantém uma página vazia para o cabeçalho e limita linhas gigantes", () => {
     expect(pdfVariableRowPages([], 80)).toEqual([{ rowStart: 0, rowEnd: 0, heights: [] }]);
-    expect(pdfVariableRowPages([120], 80)).toEqual([
-      { rowStart: 0, rowEnd: 1, heights: [80] },
-    ]);
+    expect(pdfVariableRowPages([120], 80)).toEqual([{ rowStart: 0, rowEnd: 1, heights: [80] }]);
   });
 
   it("divide colunas largas em faixas legíveis", () => {
