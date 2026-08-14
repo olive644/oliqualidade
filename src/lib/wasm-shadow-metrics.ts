@@ -6,6 +6,7 @@ import {
 export type WasmCorpusObservation = {
   format: string;
   source: "synthetic" | "sanitized-real";
+  corpusId?: string;
   status: WasmShadowStatus;
   schemaVersion: string | null;
   comparedCells: number;
@@ -47,6 +48,8 @@ export type WasmPromotionAssessment = {
   divergentWorkbooks: number;
   failedWorkbooks: number;
   sanitizedRealWorkbooks: number;
+  duplicateSanitizedRealWorkbooks: number;
+  unidentifiedSanitizedRealWorkbooks: number;
   comparedCells: number;
   divergentCells: number;
   divergentCellRatio: number;
@@ -84,7 +87,18 @@ export function assessWasmPromotion(
       item.divergentSheets === 0,
   ).length;
   const failedWorkbooks = measured.filter((item) => item.status === "failed").length;
-  const sanitizedRealWorkbooks = measured.filter((item) => item.source === "sanitized-real").length;
+  const sanitizedRealObservations = measured.filter((item) => item.source === "sanitized-real");
+  const sanitizedRealIds = new Set(
+    sanitizedRealObservations
+      .map((item) => item.corpusId?.trim())
+      .filter((id): id is string => !!id),
+  );
+  const unidentifiedSanitizedRealWorkbooks = sanitizedRealObservations.filter(
+    (item) => !item.corpusId?.trim(),
+  ).length;
+  const sanitizedRealWorkbooks = sanitizedRealIds.size;
+  const duplicateSanitizedRealWorkbooks =
+    sanitizedRealObservations.length - unidentifiedSanitizedRealWorkbooks - sanitizedRealWorkbooks;
   const comparedCells = measured.reduce((total, item) => total + item.comparedCells, 0);
   const divergentCells = measured.reduce((total, item) => total + item.divergentCells, 0);
   const comparedStructures = measured.reduce((total, item) => total + item.comparedStructures, 0);
@@ -102,6 +116,10 @@ export function assessWasmPromotion(
   if (sanitizedRealWorkbooks < criteria.minimumSanitizedRealWorkbooks)
     reasons.push(
       `corpus real sanitizado insuficiente: ${sanitizedRealWorkbooks}/${criteria.minimumSanitizedRealWorkbooks} arquivos`,
+    );
+  if (unidentifiedSanitizedRealWorkbooks > 0)
+    reasons.push(
+      `corpus real sem identidade sanitizada: ${unidentifiedSanitizedRealWorkbooks} arquivo(s)`,
     );
   if (failedWorkbooks > criteria.maximumFailedWorkbooks)
     reasons.push(`falhas acima do limite: ${failedWorkbooks}/${criteria.maximumFailedWorkbooks}`);
@@ -136,6 +154,8 @@ export function assessWasmPromotion(
     divergentWorkbooks,
     failedWorkbooks,
     sanitizedRealWorkbooks,
+    duplicateSanitizedRealWorkbooks,
+    unidentifiedSanitizedRealWorkbooks,
     comparedCells,
     divergentCells,
     divergentCellRatio,

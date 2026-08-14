@@ -38,10 +38,12 @@ function observation(
   report: WorkbookReadReport,
   format: string,
   source: WasmCorpusObservation["source"],
+  corpusId?: string,
 ): WasmCorpusObservation {
   return {
     format,
     source,
+    ...(corpusId === undefined ? {} : { corpusId }),
     status: report.wasmShadowStatus,
     schemaVersion: report.wasmSchemaVersion,
     comparedCells: report.wasmComparedCells,
@@ -114,7 +116,7 @@ describe.skipIf(!existsSync(generatedManifestPath))(
           undefined,
           { wasmSampleRate: 1 },
         );
-        const measured = observation(result.report, testCase.format, testCase.source);
+        const measured = observation(result.report, testCase.format, testCase.source, testCase.id);
         observations.push(measured);
         cases.push({ id: testCase.id, features: testCase.features, ...measured });
       }
@@ -143,7 +145,12 @@ describe.skipIf(!existsSync(generatedManifestPath))(
             undefined,
             { wasmSampleRate: 1 },
           );
-          const measured = observation(result.report, testCase.format, testCase.source);
+          const measured = observation(
+            result.report,
+            testCase.format,
+            testCase.source,
+            testCase.id,
+          );
           observations.push(measured);
           cases.push({ id: testCase.id, features: testCase.features, ...measured });
         }
