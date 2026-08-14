@@ -231,4 +231,6 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por
   importação. Ele usa SheetJS verificado por OOXML hoje e aceita um adaptador
   Rust/WASM opcional no cliente quando este estiver disponível e aprovado pelo
-  corpus. O fallback TypeScript continua obrigatório para compatibilidade.
+  corpus. O gate exige cinco fontes reais sanitizadas e únicas por formato;
+  duplicatas e fontes sem identidade privada não contam. O fallback TypeScript
+  continua obrigatório para compatibilidade.
