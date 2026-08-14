@@ -250,7 +250,9 @@ export function scheduleDetailColumns(
       fill: fillRatio(column, rows),
     }))
     .sort((a, b) => b.priority - a.priority || b.fill - a.fill || a.index - b.index)
-    .slice(0, 6)
+    // O widget suporta até oito colunas de contexto. Selecioná-las aqui evita
+    // descartar unidade, método ou observação antes mesmo da configuração visual.
+    .slice(0, 8)
     .map(({ column }) => column);
   const selected = new Set(ranked.map((column) => column.key));
   return columns.filter((column) => selected.has(column.key));

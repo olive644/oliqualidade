@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeScheduleRows } from "@/lib/schedule-normalizer";
+import {
+  parseScheduleCriterion,
+  scheduleCellState,
+  summarizeScheduleRows,
+} from "@/lib/schedule-normalizer";
 import type { Column, Row } from "@/lib/types";
 
 const column = (key: string, kind: Column["kind"] = "text"): Column => ({
@@ -47,6 +51,36 @@ describe("métricas de cronograma", () => {
       rows,
       [column("item"), column("jan", "number"), column("fev", "number"), column("Máx.", "number")],
       ["jan", "fev"],
+    );
+    expect(metrics).toMatchObject({
+      planned: 0,
+      results: 2,
+      within: 1,
+      outside: 1,
+      coverage: 100,
+    });
+  });
+
+  it("prioriza a medição preenchida sobre o status geral Planejado", () => {
+    const criterion = parseScheduleCriterion("Máx. 5");
+    expect(scheduleCellState(4, "Planejado", criterion)).toBe("done");
+    expect(scheduleCellState(6, "Planejado", criterion)).toBe("failed");
+    expect(scheduleCellState("Não conforme", "Planejado", criterion)).toBe("failed");
+  });
+
+  it("contabiliza resultados numéricos mesmo quando a linha ainda diz Planejado", () => {
+    const rows: Row[] = [{ item: "Torneira", status: "Planejado", jan: 4, fev: 6, "Máx.": 5 }];
+    const metrics = summarizeScheduleRows(
+      rows,
+      [
+        column("item"),
+        column("status"),
+        column("jan", "number"),
+        column("fev", "number"),
+        column("Máx.", "number"),
+      ],
+      ["jan", "fev"],
+      "status",
     );
     expect(metrics).toMatchObject({
       planned: 0,

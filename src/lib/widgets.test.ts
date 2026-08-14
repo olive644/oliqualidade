@@ -322,6 +322,52 @@ describe("createWidget, novos tipos", () => {
     ]);
   });
 
+  it("preserva até oito informações importantes do cronograma", () => {
+    const scheduleColumns: Column[] = [
+      col("Ponto", "category"),
+      col("Análise", "text"),
+      col("Responsável", "text"),
+      col("Método", "text"),
+      col("Unidade", "text"),
+      col("Periodicidade", "text"),
+      col("Máx.", "number"),
+      col("Observação", "text"),
+      col("Registro", "text"),
+      col("jun/2025", "number"),
+      col("set/2025", "number"),
+    ];
+    const rows: Row[] = [
+      {
+        Ponto: "Torneira",
+        Análise: "Cor",
+        Responsável: "Qualidade",
+        Método: "Interno",
+        Unidade: "uT",
+        Periodicidade: "Mensal",
+        "Máx.": 5,
+        Observação: "Revisar laudo",
+        Registro: "FRS-001",
+        "jun/2025": 4,
+        "set/2025": null,
+      },
+    ];
+
+    expect(
+      scheduleDetailColumns(scheduleColumns, ["jun/2025", "set/2025"], rows, "Ponto").map(
+        (column) => column.key,
+      ),
+    ).toEqual([
+      "Análise",
+      "Responsável",
+      "Método",
+      "Unidade",
+      "Periodicidade",
+      "Máx.",
+      "Observação",
+      "Registro",
+    ]);
+  });
+
   it("não interpreta uma coluna numérica Resultado como status do cronograma", () => {
     const scheduleColumns: Column[] = [
       col("Ponto", "category"),
