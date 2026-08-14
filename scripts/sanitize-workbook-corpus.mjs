@@ -60,10 +60,17 @@ if (!inputArgument || !outputArgument) {
     } else {
       mkdirSync(outputRoot, { recursive: true });
       const cases = [];
-      for (const [index, sourcePath] of candidates.sort().entries()) {
+      const sourceIds = new Set();
+      let duplicateSources = 0;
+      for (const sourcePath of candidates.sort()) {
         const sourceBytes = readFileSync(sourcePath);
         const id = privateSourceId(sourceBytes, salt);
-        const file = `sanitized-${String(index + 1).padStart(3, "0")}.xlsx`;
+        if (sourceIds.has(id)) {
+          duplicateSources += 1;
+          continue;
+        }
+        sourceIds.add(id);
+        const file = `sanitized-${String(cases.length + 1).padStart(3, "0")}.xlsx`;
         const sanitized = sanitizeWorkbookBytes(sourceBytes, { salt, workbookId: id });
         writeFileSync(join(outputRoot, file), sanitized.bytes, { flag: "wx" });
         cases.push({
@@ -84,6 +91,8 @@ if (!inputArgument || !outputArgument) {
       console.info(
         `${cases.length} arquivo(s) sanitizado(s) em ${relative(process.cwd(), outputRoot) || basename(outputRoot)}.`,
       );
+      if (duplicateSources > 0)
+        console.info(`${duplicateSources} duplicata(s) exata(s) ignorada(s) no gate de promoção.`);
       console.info("Nenhum nome, caminho de origem ou chave foi gravado no manifesto.");
     }
   }
