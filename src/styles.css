@@ -1397,6 +1397,58 @@
 .oliam-export-mode .leaflet-control-container {
   display: none !important;
 }
+.oliam-export-table-preview {
+  display: none;
+}
+.oliam-export-mode .oliam-data-table {
+  height: auto !important;
+  overflow: visible !important;
+}
+.oliam-export-mode .oliam-data-table-virtual {
+  display: none !important;
+}
+.oliam-export-mode .oliam-export-table-preview {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.oliam-export-mode .oliam-export-table-preview th,
+.oliam-export-mode .oliam-export-table-preview td {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 7px 8px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  vertical-align: top;
+}
+.oliam-export-mode .oliam-export-table-preview th {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.oliam-export-mode .oliam-export-table-preview tbody tr:nth-child(even) td {
+  background: color-mix(in oklab, var(--muted) 38%, transparent);
+}
+.oliam-export-mode .oliam-export-table-preview td.is-numeric {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.oliam-export-mode .oliam-export-table-preview caption {
+  caption-side: bottom;
+  padding: 8px 10px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 1.4;
+  text-align: left;
+}
 
 @utility oliam-widget {
   content-visibility: auto;
