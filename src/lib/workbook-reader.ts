@@ -2,7 +2,6 @@ import * as XLSX from "xlsx";
 
 import { sheetsWithData, type SheetOption } from "@/lib/import";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
-import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 import {
   compareAndRepairWithOoxml,
   inspectOoxml,
@@ -287,27 +286,6 @@ function sameImportedSheets(left: SheetOption[], right: SheetOption[]): boolean 
   return sameImportedValue(left, right);
 }
 
-function copyValidatedWorkbookMetadata(source: XLSX.WorkBook, target: XLSX.WorkBook): void {
-  for (const sheetName of target.SheetNames) {
-    const sourceSheet = source.Sheets[sheetName];
-    const targetSheet = target.Sheets[sheetName];
-    if (!sourceSheet || !targetSheet) continue;
-    for (const key of ["!autofilter", "!tables", "!oliAdvanced"] as const) {
-      const value = (sourceSheet as Record<string, unknown>)[key];
-      if (value !== undefined) (targetSheet as Record<string, unknown>)[key] = value;
-    }
-    for (const address of Object.keys(targetSheet).filter((key) => !key.startsWith("!"))) {
-      const sourceCell = worksheetCellAtAddress(sourceSheet, address) as
-        (XLSX.CellObject & { c?: unknown; l?: unknown }) | undefined;
-      const targetCell = targetSheet[address] as
-        (XLSX.CellObject & { c?: unknown; l?: unknown }) | undefined;
-      if (!sourceCell || !targetCell) continue;
-      if (sourceCell.c !== undefined) targetCell.c = sourceCell.c;
-      if (sourceCell.l !== undefined) targetCell.l = sourceCell.l;
-    }
-  }
-}
-
 export async function readWorkbookBytesWithEngine(
   input: ArrayBuffer | Uint8Array,
   fileName: string,
@@ -434,8 +412,7 @@ export async function readWorkbookBytesWithEngine(
         } else if (wasmShadowStatus === "diverged") {
           wasmFallbackReason = "diverged";
         } else {
-          const wasmWorkbook = workbookFromWasmInventory(inventory);
-          copyValidatedWorkbookMetadata(wb, wasmWorkbook);
+          const wasmWorkbook = attachWorkbookFeatures(workbookFromWasmInventory(inventory), bytes);
           const wasmSheets = sheetsWithData(wasmWorkbook);
           if (sameImportedSheets(wasmSheets, sheets)) {
             sheets = wasmSheets;

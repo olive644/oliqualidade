@@ -15,16 +15,19 @@ function advancedWorkbookPackage() {
       '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
     ),
     "xl/worksheets/sheet1.xml": xml(
-      '<worksheet xmlns:r="r"><tableParts><tablePart r:id="rIdTable"/></tableParts><pivotTableDefinition r:id="rIdPivot"/></worksheet>',
+      '<worksheet xmlns:r="r"><autoFilter ref="A1:C5"/><hyperlinks><hyperlink ref="A2" r:id="rIdLink" tooltip="Abrir &amp; revisar"/><hyperlink ref="B2" location="Resumo!A1"/></hyperlinks><tableParts><tablePart r:id="rIdTable"/></tableParts><pivotTableDefinition r:id="rIdPivot"/></worksheet>',
     ),
     "xl/worksheets/_rels/sheet1.xml.rels": xml(
-      '<Relationships><Relationship Id="rIdTable" Type="table" Target="../tables/table1.xml"/><Relationship Id="rIdPivot" Type="pivotTable" Target="../pivotTables/pivotTable1.xml"/></Relationships>',
+      '<Relationships><Relationship Id="rIdTable" Type="table" Target="../tables/table1.xml"/><Relationship Id="rIdPivot" Type="pivotTable" Target="../pivotTables/pivotTable1.xml"/><Relationship Id="rIdLink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/revisao?a=1&amp;b=2" TargetMode="External"/><Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/></Relationships>',
     ),
     "xl/tables/table1.xml": xml(
       '<table name="VendasTabela" displayName="VendasTabela" ref="A1:C5"><tableColumns><tableColumn id="1" name="Produto"/><tableColumn id="2" name="Quantidade"/><tableColumn id="3" name="Total"><calculatedColumnFormula>[@Quantidade]*10</calculatedColumnFormula></tableColumn></tableColumns></table>',
     ),
     "xl/pivotTables/pivotTable1.xml": xml(
       '<pivotTableDefinition name="ResumoVendas"><location ref="E3:H12"/></pivotTableDefinition>',
+    ),
+    "xl/comments1.xml": xml(
+      '<comments><authors><author>Ana &amp; João</author></authors><commentList><comment ref="C2" authorId="0"><text><r><t>Conferir </t></r><r><t>total</t></r></text></comment></commentList></comments>',
     ),
   });
 }
@@ -41,6 +44,18 @@ describe("metadados avançados de XLSX", () => {
       },
     ]);
     expect(metadata?.pivotTables).toEqual([{ name: "ResumoVendas", range: "E3:H12" }]);
+    expect(metadata?.autoFilterRange).toBe("A1:C5");
+    expect(metadata?.comments).toEqual([
+      { address: "C2", author: "Ana & João", text: "Conferir total" },
+    ]);
+    expect(metadata?.hyperlinks).toEqual([
+      {
+        address: "A2",
+        target: "https://example.com/revisao?a=1&b=2",
+        tooltip: "Abrir & revisar",
+      },
+      { address: "B2", target: "#Resumo!A1" },
+    ]);
   });
 
   it("integra os metadados ao diagnóstico sem alterar os dados", () => {
@@ -51,6 +66,14 @@ describe("metadados avançados de XLSX", () => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
     attachWorkbookFeatures(workbook, advancedWorkbookPackage());
+
+    expect(worksheet["!autofilter"]).toEqual({ ref: "A1:C5" });
+    expect(worksheet["A2"]?.l).toEqual({
+      Target: "https://example.com/revisao?a=1&b=2",
+      Tooltip: "Abrir & revisar",
+    });
+    expect(worksheet["B2"]?.l).toEqual({ Target: "#Resumo!A1" });
+    expect(worksheet["C2"]?.c).toEqual([{ a: "Ana & João", t: "Conferir total" }]);
 
     const diagnostics = diagnoseImportedSheet(worksheet, [
       { Produto: "A", Quantidade: 2, Total: 20 },

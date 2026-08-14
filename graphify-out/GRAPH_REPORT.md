@@ -1,15 +1,16 @@
 # Graph Report - oliqualidade  (2026-08-14)
 
 ## Corpus Check
-- cluster-only mode — file stats not available
+- 192 files · ~150,344 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1775 nodes · 3729 edges · 165 communities (98 shown, 67 thin omitted)
+- 1839 nodes · 3797 edges · 166 communities (97 shown, 69 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 31 edges (avg confidence: 0.59)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d0158266`
+- Built from commit: `9b7a774a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -20,10 +21,10 @@
 - cn
 - import-workbench.ts
 - sidebar.tsx
-- data-pipeline.ts
+- assistant-context.ts
 - index.tsx
 - spreadsheet-intelligence.ts
-- dashboard.ts
+- Auditoria do estado atual — 2026-08-13
 - review-export.ts
 - compilerOptions
 - utils.ts
@@ -34,25 +35,25 @@
 - routeTree.gen.ts
 - workbook-reader.ts
 - alert-dialog.tsx
-- Dashboard
+- worksheetCellAtAddress
 - auto-dashboard.ts
 - workbook-reading-engine.ts
 - oli_ooxml_core.js
-- OliAm
+- folder-monitor.ts
 - scripts
 - gemini-security.ts
-- formula.ts
+- schedule-normalizer.ts
 - gemini-server.ts
 - wasm-shadow-corpus.test.ts
 - workbook-sanitizer.mjs
 - components.json
-- format.ts
+- select.tsx
 - devDependencies
 - command.tsx
 - menubar.tsx
 - smart-import.ts
 - properties
-- enum
+- string
 - build-code-graph.mjs
 - dependencies
 - form.tsx
@@ -72,38 +73,38 @@
 - chart.tsx
 - properties
 - items
-- assistant-context.ts
+- Critérios de promoção do núcleo Rust/WASM
 - required
 - properties
 - table.tsx
 - required
 - breadcrumb.tsx
-- navigation-menu.tsx
+- input-otp.tsx
 - diagnostic
 - generate-problematic-fixture.mjs
 - error-capture.ts
-- http-security.ts
+- Sanitiza&ccedil;&atilde;o local do corpus WASM
 - package.json
 - check-performance-budget.mjs
 - types.ts
 - $defs
 - build-ooxml-wasm.mjs
-- alert.tsx
+- badge.tsx
 - maxCompressionRatio
 - start
 - generate-workbook-corpus.mjs
 - preview-vercel.mjs
 - oli_ooxml_core.d.ts
 - limits
-- maxEntries
+- maxSheets
 - maxEntryUncompressedBytes
 - maxSharedStrings
-- maxStructuralRecords
+- maxXmlEvents
 - maxTextBytes
 - suspiciousRatioMinBytes
 - main
-- canvg
-- folder-monitor-widget.tsx
+- styleIndex
+- Routes
 - clsx
 - date-fns
 - embla-carousel-react
@@ -160,7 +161,7 @@
 - zod
 - @types/node
 - @types/react-dom
-- export-layout.ts
+- class-variance-authority
 - typescript-eslint
 - vite
 - vitest
@@ -169,35 +170,36 @@
 - oli-ooxml-core
 - cmdk
 - @eslint/js
+- oli-ooxml-core/README.md
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 245 edges
 2. `Dashboard()` - 47 edges
 3. `WidgetCard()` - 33 edges
 4. `Row` - 32 edges
-5. `Column` - 27 edges
-6. `sheetToRows()` - 27 edges
-7. `readWorkbookBytesWithEngine()` - 27 edges
+5. `sheetToRows()` - 27 edges
+6. `Column` - 27 edges
+7. `readWorkbookBytesWithEngine()` - 26 edges
 8. `OliAm()` - 25 edges
-9. `compilerOptions` - 22 edges
-10. `createWidget()` - 21 edges
+9. `Auditoria do estado atual — 2026-08-13` - 23 edges
+10. `compilerOptions` - 22 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `OliAm()` --indirect_call--> `saveDashboards()`  [INFERRED]
-  src/routes/index.tsx → src/lib/storage.ts
+- `finish_cell()` --calls--> `is_date_format()`  [INFERRED]
+  rust/oli-ooxml-core/src/lib.rs → rust/oli-ooxml-core/src/excel_date.rs
+- `matches_the_public_problematic_fixture()` --calls--> `inventory_ooxml()`  [INFERRED]
+  rust/oli-ooxml-core/tests/inventory.rs → rust/oli-ooxml-core/src/lib.rs
 - `SummaryStrip()` --calls--> `cn()`  [EXTRACTED]
   src/components/operational-widget-body.tsx → src/lib/utils.ts
-- `Pagination()` --calls--> `cn()`  [EXTRACTED]
-  src/components/ui/pagination.tsx → src/lib/utils.ts
-- `PaginationEllipsis()` --calls--> `cn()`  [EXTRACTED]
-  src/components/ui/pagination.tsx → src/lib/utils.ts
-- `PaginationNext()` --calls--> `cn()`  [EXTRACTED]
-  src/components/ui/pagination.tsx → src/lib/utils.ts
+- `AlertDialogOverlay` --calls--> `cn()`  [EXTRACTED]
+  src/components/ui/alert-dialog.tsx → src/lib/utils.ts
+- `AlertTitle` --calls--> `cn()`  [EXTRACTED]
+  src/components/ui/alert.tsx → src/lib/utils.ts
 
 ## Import Cycles
 - 2-file cycle: `rust/oli-ooxml-core/src/excel_date.rs -> rust/oli-ooxml-core/src/lib.rs -> rust/oli-ooxml-core/src/excel_date.rs`
 
-## Communities (165 total, 67 thin omitted)
+## Communities (166 total, 69 thin omitted)
 
 ### Community 0 - "lib.rs"
 Cohesion: 0.07
@@ -205,43 +207,43 @@ Nodes (84): BytesRef, BytesStart, Decoder, Default, Error, From, HashMap, JsValu
 
 ### Community 1 - "import-intelligence.ts"
 Cohesion: 0.06
-Nodes (56): AdvancedColumnQuality, AdvancedQualityReport, analyzeAdvancedQuality(), numeric(), quantile(), analyzeFormulas(), containsSensitiveValues(), detectDateLocaleCandidates() (+48 more)
+Nodes (59): AdvancedColumnQuality, AdvancedQualityReport, analyzeAdvancedQuality(), numeric(), quantile(), analyzeFormulas(), containsSensitiveValues(), detectDateLocaleCandidates() (+51 more)
 
 ### Community 2 - "import.ts"
-Cohesion: 0.06
-Nodes (59): attendanceRosterRows(), Block, blocksToRows(), buildSourceGrid(), calendarParts(), cellHasValue(), cellLooksDate(), cellLooksNumeric() (+51 more)
+Cohesion: 0.05
+Nodes (58): conditionalAggregate(), ConditionalValue, FUNCTIONS, matchesCriterion(), Parser, resolveFormulaCell(), splitFormulaArguments(), wildcardPattern() (+50 more)
 
 ### Community 3 - "cn"
-Cohesion: 0.06
-Nodes (53): AccordionContent, AccordionItem, AccordionTrigger, Avatar, AvatarFallback, AvatarImage, Card, CardContent (+45 more)
+Cohesion: 0.05
+Nodes (58): AccordionContent, AccordionItem, AccordionTrigger, Avatar, AvatarFallback, AvatarImage, Card, CardContent (+50 more)
 
 ### Community 4 - "import-workbench.ts"
-Cohesion: 0.11
-Nodes (35): SourceGrid, adaptImportProfile(), applyImportSelection(), buildSheetHealth(), canonicalProfileTokens(), ColumnPair, compareVersions(), defaultSelection() (+27 more)
+Cohesion: 0.08
+Nodes (45): SourceGrid, adaptImportProfile(), applyImportSelection(), buildSheetHealth(), canonicalProfileTokens(), ColumnPair, compareVersions(), defaultSelection() (+37 more)
 
 ### Community 5 - "sidebar.tsx"
 Cohesion: 0.06
 Nodes (40): Input, Separator, SheetContent, SheetContentProps, SheetDescription, SheetFooter(), SheetHeader(), SheetOverlay (+32 more)
 
-### Community 6 - "data-pipeline.ts"
-Cohesion: 0.15
-Nodes (23): aggregate(), applyMissingRules(), barChartPresentation(), chartSeries(), detectQualitySignals(), groupAndAggregate(), JoinResult, leftJoin() (+15 more)
+### Community 6 - "assistant-context.ts"
+Cohesion: 0.09
+Nodes (42): buildLiveDashboardContext(), BuildLiveDashboardContextInput, buildLiveSuggestedPrompts(), emptyWidget(), groupedWidget(), LiveSeriesItem, metricWidget(), percent() (+34 more)
 
 ### Community 7 - "index.tsx"
-Cohesion: 0.07
-Nodes (26): createLatestTaskQueue(), LatestTaskQueue, sizeClass(), spanClass(), AxisTick(), CalculationButton(), calculationCopy, ChartDotProps (+18 more)
+Cohesion: 0.06
+Nodes (49): applyCellEdit(), auditEntry, CorrectionSuggestion, markSourceRows(), parseEditedValue(), recordUndo(), SOURCE_ROW_INDEX, sourceRowIndexOf() (+41 more)
 
 ### Community 8 - "spreadsheet-intelligence.ts"
-Cohesion: 0.07
-Nodes (45): decodeCellAddress(), encodeCellAddress(), VersionDiff, buildReviewAnalysis(), analyzeReviewInBackground(), REVIEW_ANALYSIS_TIMEOUT_MS, WorkerResponse, ReviewAnalysisInput (+37 more)
+Cohesion: 0.09
+Nodes (31): decodeCellAddress(), encodeCellAddress(), buildCanonicalCells(), buildPivotMatrix(), canonicalAddress(), CanonicalCell, ClassifiedRegion, classifyRegions() (+23 more)
 
-### Community 9 - "dashboard.ts"
-Cohesion: 0.22
-Nodes (15): AUTOMATIC_OPERATIONAL_TYPES, LegacyDashboard, mergeReimportedColumns(), mergeReimportedSheets(), migrateDashboard(), migrateDashboards(), refreshAutomaticWidgets(), repairInvalidWidgets() (+7 more)
+### Community 9 - "Auditoria do estado atual — 2026-08-13"
+Cohesion: 0.05
+Nodes (41): 10. Primeira implementação mensurável, 11. Núcleo Rust de inventário OOXML — fase 1, 12. Núcleo Rust de células OOXML — fase 2, 13. Núcleo Rust de fidelidade estrutural OOXML — fase 3, 14. Adaptador WASM em shadow mode — fase 4, 15. Medição de corpus e gate de promoção — fase 5, 16. Corpus reproduzível e paridade estrutural — fase 6, 17. Sanitização local do corpus real — fase 7 (+33 more)
 
 ### Community 10 - "review-export.ts"
-Cohesion: 0.13
-Nodes (29): cryptoBytes(), decoder, decryptDashboardBackup(), encoder, encryptDashboardBackup(), EncryptedEnvelope, fromBase64(), keyFromPassword() (+21 more)
+Cohesion: 0.10
+Nodes (36): LiveDashboardContext, cryptoBytes(), decoder, decryptDashboardBackup(), encoder, encryptDashboardBackup(), EncryptedEnvelope, fromBase64() (+28 more)
 
 ### Community 11 - "compilerOptions"
 Cohesion: 0.06
@@ -249,19 +251,19 @@ Nodes (31): DOM, DOM.Iterable, ES2022, eslint.config.js, src/**/*.ts, src/**/*.t
 
 ### Community 12 - "utils.ts"
 Cohesion: 0.08
-Nodes (19): Badge(), BadgeProps, badgeVariants, Checkbox, HoverCardContent, InputOTP, InputOTPGroup, InputOTPSeparator (+11 more)
+Nodes (18): Alert, AlertDescription, AlertTitle, alertVariants, Checkbox, HoverCardContent, PopoverContent, Progress (+10 more)
 
 ### Community 13 - "widgets.ts"
 Cohesion: 0.18
 Nodes (23): fixture, numericKinds, buildDefaultWidgets(), columnDragType(), columnDropAccepted(), createWidget(), defaultSize(), defaultSpan() (+15 more)
 
 ### Community 14 - "ooxml-reader.ts"
-Cohesion: 0.15
-Nodes (24): measureWorkbookFidelity(), WorkbookFidelityReport, Archive, archiveText(), attributes(), BUILTIN_FORMATS, comparable(), compareAndRepairWithOoxml() (+16 more)
+Cohesion: 0.19
+Nodes (16): Archive, archiveText(), attributes(), BUILTIN_FORMATS, inspectOoxml(), OoxmlSheetStructure, ReaderCell, readSheet() (+8 more)
 
 ### Community 15 - "storage.ts"
 Cohesion: 0.10
-Nodes (30): FileFingerprint, geocodeMissing(), geocodePlace(), throttle(), DASH_KEY, estimateBytes(), GEOCODE_KEY, GeocodeCache (+22 more)
+Nodes (31): geocodeMissing(), geocodePlace(), throttle(), DASH_KEY, estimateBytes(), GEOCODE_KEY, GeocodeCache, GeoPoint (+23 more)
 
 ### Community 16 - "operational-widgets.ts"
 Cohesion: 0.13
@@ -272,48 +274,48 @@ Cohesion: 0.10
 Nodes (19): Toaster(), ToasterProps, getRouter(), Route, Route, Route, FileRoutesByFullPath, FileRoutesById (+11 more)
 
 ### Community 18 - "workbook-reader.ts"
-Cohesion: 0.12
-Nodes (25): candidates, fixtures, copyValidatedWorkbookMetadata(), decodeText(), detectDelimiter(), MAX_SUSPICIOUS_COMPRESSION_RATIO, MAX_WORKBOOK_CELLS, MAX_WORKBOOK_SHEETS (+17 more)
+Cohesion: 0.14
+Nodes (22): decodeText(), detectDelimiter(), MAX_SUSPICIOUS_COMPRESSION_RATIO, MAX_WORKBOOK_CELLS, MAX_WORKBOOK_SHEETS, MAX_ZIP_ENTRIES, MAX_ZIP_ENTRY_BYTES, MAX_ZIP_UNCOMPRESSED_BYTES (+14 more)
 
 ### Community 19 - "alert-dialog.tsx"
 Cohesion: 0.12
 Nodes (21): AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter(), AlertDialogHeader(), AlertDialogOverlay, AlertDialogTitle (+13 more)
 
-### Community 20 - "Dashboard"
-Cohesion: 0.16
-Nodes (22): applyCellEdit(), AuditEntry, CorrectionSuggestion, markSourceRows(), parseEditedValue(), recordUndo(), SOURCE_ROW_INDEX, sourceRowIndexOf() (+14 more)
+### Community 20 - "worksheetCellAtAddress"
+Cohesion: 0.22
+Nodes (12): measureWorkbookFidelity(), WorkbookFidelityReport, comparable(), compareAndRepairWithOoxml(), ReaderDivergence, attachWorkbookFeatures(), cellAddresses(), normalized() (+4 more)
 
 ### Community 21 - "auto-dashboard.ts"
-Cohesion: 0.14
-Nodes (19): AutoDashboardInput, buildRecommendedWidgets(), clampScore(), classifyDashboardColumn(), DashboardColumnClassification, DashboardColumnRole, DashboardRecommendation, DashboardRecommendationKind (+11 more)
+Cohesion: 0.09
+Nodes (36): AutoDashboardInput, AutoDashboardPlan, buildRecommendedWidgets(), clampScore(), classifyDashboardColumn(), DashboardColumnClassification, DashboardColumnRole, DashboardRecommendation (+28 more)
 
 ### Community 22 - "workbook-reading-engine.ts"
 Cohesion: 0.13
-Nodes (23): OoxmlInspection, canUseWasmCandidate(), compareWasmInventory(), configuredWasmCandidateFormats(), configuredWasmReaderMode(), configuredWasmSampleRate(), normalizeWasmCandidateFormats(), normalizeWasmReaderMode() (+15 more)
+Nodes (24): OoxmlInspection, canUseWasmCandidate(), compareWasmInventory(), configuredWasmCandidateFormats(), configuredWasmReaderMode(), configuredWasmSampleRate(), normalizeWasmCandidateFormats(), normalizeWasmReaderMode() (+16 more)
 
 ### Community 23 - "oli_ooxml_core.js"
-Cohesion: 0.16
-Nodes (20): fixture, inventory, root, wasm, inventoryWorkbookWithWasm(), isInventory(), registerWasmWorkbookReader(), WasmWorkbookInventory (+12 more)
+Cohesion: 0.17
+Nodes (19): fixture, inventory, root, wasm, inventoryWorkbookWithWasm(), isInventory(), WasmWorkbookInventory, cachedTextDecoder (+11 more)
 
-### Community 24 - "OliAm"
-Cohesion: 0.26
-Nodes (13): fileChanged(), fingerprint(), FOLDER_MONITOR_INTERVAL_MS, FolderMonitorStatus, FolderWorkbookSelection, isSupportedWorkbook(), listSupportedWorkbooks(), LocalDirectoryHandle (+5 more)
+### Community 24 - "folder-monitor.ts"
+Cohesion: 0.15
+Nodes (18): extensionOf(), FolderMonitorWidget(), FolderMonitorWidgetProps, FORMAT_LABELS, formatSyncTime(), fileChanged(), FileFingerprint, fingerprint() (+10 more)
 
 ### Community 25 - "scripts"
 Cohesion: 0.10
 Nodes (21): scripts, build, build:dev, corpus:sanitize, dev, format, graph:build, lint (+13 more)
 
 ### Community 26 - "gemini-security.ts"
-Cohesion: 0.16
-Nodes (20): LiveWidgetSnapshot, ALLOWED_OPERATIONS, asNumber(), buckets, buildCrossAnalyses(), buildSafeDashboardContext(), CrossAnalysis, finiteNumber() (+12 more)
+Cohesion: 0.12
+Nodes (27): LiveWidgetSnapshot, ALLOWED_OPERATIONS, asNumber(), buckets, buildCrossAnalyses(), buildSafeDashboardContext(), CrossAnalysis, detectPromptInjection() (+19 more)
 
-### Community 27 - "formula.ts"
-Cohesion: 0.20
-Nodes (8): conditionalAggregate(), ConditionalValue, FUNCTIONS, matchesCriterion(), Parser, resolveFormulaCell(), splitFormulaArguments(), wildcardPattern()
+### Community 27 - "schedule-normalizer.ts"
+Cohesion: 0.35
+Nodes (9): evaluateScheduleValue(), parseScheduleCriterion(), parseScheduleNumber(), scheduleCellState, ScheduleCriterion, scheduleCriterionForRow(), ScheduleEvaluation, ScheduleMetrics (+1 more)
 
 ### Community 28 - "gemini-server.ts"
-Cohesion: 0.20
-Nodes (19): checkRateLimit(), detectPromptInjection(), GeminiDashboardInput, resetRateLimitsForTests(), dashboard, smartImport, validateChatHistory(), validateChatMessage() (+11 more)
+Cohesion: 0.21
+Nodes (17): checkRateLimit(), validateDashboardInput(), GeminiApiError, GeminiEnvironment, geminiFailure(), GeminiInteraction, handleGeminiChat(), handleSmartImportAnalysis() (+9 more)
 
 ### Community 29 - "wasm-shadow-corpus.test.ts"
 Cohesion: 0.14
@@ -327,9 +329,9 @@ Nodes (13): inputArgument, outputArgument, digest(), escapeRegExp(), privateSour
 Cohesion: 0.11
 Nodes (18): aliases, components, hooks, lib, ui, utils, iconLibrary, registries (+10 more)
 
-### Community 32 - "format.ts"
-Cohesion: 0.21
-Nodes (15): conditionalColor(), evalFormula(), formulaColumnRefs(), infer(), inferColumns(), inferOne(), numericKindFromName(), palette (+7 more)
+### Community 32 - "select.tsx"
+Cohesion: 0.25
+Nodes (7): SelectContent, SelectItem, SelectLabel, SelectScrollDownButton, SelectScrollUpButton, SelectSeparator, SelectTrigger
 
 ### Community 33 - "devDependencies"
 Cohesion: 0.12
@@ -344,16 +346,16 @@ Cohesion: 0.12
 Nodes (11): Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarLabel, MenubarRadioItem, MenubarSeparator, MenubarShortcut() (+3 more)
 
 ### Community 36 - "smart-import.ts"
-Cohesion: 0.21
-Nodes (14): ALLOWED_KINDS, buildSmartImportInput(), cleanText(), analyzeImportWithAi(), CacheEntry, readCache(), writeCache(), parseSmartImportAnalysis() (+6 more)
+Cohesion: 0.20
+Nodes (15): ALLOWED_KINDS, buildSmartImportInput(), cleanText(), analyzeImportWithAi(), CacheEntry, markSmartImportAutoAnalysis(), readCache(), writeCache() (+7 more)
 
 ### Community 37 - "properties"
-Cohesion: 0.12
-Nodes (16): type, properties, pattern, type, type, type, type, address (+8 more)
+Cohesion: 0.10
+Nodes (21): type, properties, enum, pattern, type, type, type, type (+13 more)
 
-### Community 38 - "enum"
-Cohesion: 0.17
-Nodes (16): enum, type, type, declaredDimension, path, rawValue, sheetId, type (+8 more)
+### Community 38 - "string"
+Cohesion: 0.32
+Nodes (8): type, type, declaredDimension, path, sheetId, type, null, string
 
 ### Community 39 - "build-code-graph.mjs"
 Cohesion: 0.13
@@ -361,7 +363,7 @@ Nodes (12): communities, community(), degree, files, hubs, links, nodes, outputR
 
 ### Community 40 - "dependencies"
 Cohesion: 0.13
-Nodes (15): class-variance-authority, fflate, dependencies, class-variance-authority, fflate, @radix-ui/react-navigation-menu, @radix-ui/react-radio-group, @radix-ui/react-tabs (+7 more)
+Nodes (15): canvg, fflate, dependencies, canvg, fflate, @radix-ui/react-navigation-menu, @radix-ui/react-radio-group, @radix-ui/react-tabs (+7 more)
 
 ### Community 41 - "form.tsx"
 Cohesion: 0.19
@@ -431,9 +433,9 @@ Nodes (10): properties, minimum, type, minimum, type, compressedBytes, entries, 
 Cohesion: 0.20
 Nodes (10): items, type, maximum, minimum, pattern, type, items, type (+2 more)
 
-### Community 58 - "assistant-context.ts"
-Cohesion: 0.14
-Nodes (23): buildLiveDashboardContext(), BuildLiveDashboardContextInput, buildLiveSuggestedPrompts(), emptyWidget(), groupedWidget(), LiveDashboardContext, LiveSeriesItem, metricWidget() (+15 more)
+### Community 58 - "Critérios de promoção do núcleo Rust/WASM"
+Cohesion: 0.33
+Nodes (5): Amostragem, Ativação e rollback, Corpus e decisão, Critérios de promoção do núcleo Rust/WASM, Gate padrão
 
 ### Community 59 - "required"
 Cohesion: 0.22
@@ -448,16 +450,16 @@ Cohesion: 0.22
 Nodes (8): Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow
 
 ### Community 62 - "required"
-Cohesion: 0.25
-Nodes (8): additionalProperties, required, type, archive, compressedBytes, entries, limits, maxCompressionRatio
+Cohesion: 0.22
+Nodes (9): additionalProperties, required, type, archive, compressedBytes, entries, limits, maxCompressionRatio (+1 more)
 
 ### Community 63 - "breadcrumb.tsx"
 Cohesion: 0.25
 Nodes (7): Breadcrumb, BreadcrumbEllipsis(), BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator()
 
-### Community 64 - "navigation-menu.tsx"
-Cohesion: 0.29
-Nodes (7): NavigationMenu, NavigationMenuContent, NavigationMenuIndicator, NavigationMenuList, NavigationMenuTrigger, navigationMenuTriggerStyle, NavigationMenuViewport
+### Community 64 - "input-otp.tsx"
+Cohesion: 0.40
+Nodes (4): InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot
 
 ### Community 65 - "diagnostic"
 Cohesion: 0.29
@@ -471,9 +473,9 @@ Nodes (6): archive, rows, sheet, sideBySide, workbook, workbookBytes
 Cohesion: 0.38
 Nodes (4): describeError(), describeStatus(), originalConsoleError, safeStringify()
 
-### Community 68 - "http-security.ts"
-Cohesion: 0.43
-Nodes (5): isSameOriginBrowserRequest(), MAX_CHAT_BODY_BYTES, readLimitedJson(), SECURITY_HEADERS, withSecurityHeaders()
+### Community 68 - "Sanitiza&ccedil;&atilde;o local do corpus WASM"
+Cohesion: 0.50
+Nodes (3): Execu&ccedil;&atilde;o, Garantias e limites, Sanitiza&ccedil;&atilde;o local do corpus WASM
 
 ### Community 69 - "package.json"
 Cohesion: 0.33
@@ -484,8 +486,8 @@ Cohesion: 0.33
 Nodes (5): assets, assetsDir, budgets, failures, largest
 
 ### Community 71 - "types.ts"
-Cohesion: 0.14
-Nodes (15): columns, trendWidget, AutoDashboardPlan, BookmarkSort, bookmarkView(), createBookmark(), columns, ChartDataMode (+7 more)
+Cohesion: 0.11
+Nodes (26): BookmarkSort, bookmarkView(), createBookmark(), columns, evalFormula(), formulaColumnRefs(), infer(), inferColumns() (+18 more)
 
 ### Community 72 - "$defs"
 Cohesion: 0.40
@@ -495,9 +497,9 @@ Nodes (5): $defs, sheet, sheet, additionalProperties, type
 Cohesion: 0.40
 Nodes (4): crate, output, result, root
 
-### Community 74 - "alert.tsx"
-Cohesion: 0.50
-Nodes (4): Alert, AlertDescription, AlertTitle, alertVariants
+### Community 74 - "badge.tsx"
+Cohesion: 0.67
+Nodes (3): Badge(), BadgeProps, badgeVariants
 
 ### Community 75 - "maxCompressionRatio"
 Cohesion: 0.50
@@ -519,9 +521,9 @@ Nodes (3): InitInput, InitOutput, SyncInitInput
 Cohesion: 0.67
 Nodes (3): additionalProperties, type, limits
 
-### Community 81 - "maxEntries"
+### Community 81 - "maxSheets"
 Cohesion: 0.67
-Nodes (3): minimum, type, maxEntries
+Nodes (3): minimum, type, maxSheets
 
 ### Community 82 - "maxEntryUncompressedBytes"
 Cohesion: 0.67
@@ -531,9 +533,9 @@ Nodes (3): minimum, type, maxEntryUncompressedBytes
 Cohesion: 0.67
 Nodes (3): minimum, type, maxSharedStrings
 
-### Community 84 - "maxStructuralRecords"
+### Community 84 - "maxXmlEvents"
 Cohesion: 0.67
-Nodes (3): minimum, type, maxStructuralRecords
+Nodes (3): minimum, type, maxXmlEvents
 
 ### Community 85 - "maxTextBytes"
 Cohesion: 0.67
@@ -543,33 +545,29 @@ Nodes (3): minimum, type, maxTextBytes
 Cohesion: 0.67
 Nodes (3): suspiciousRatioMinBytes, minimum, type
 
-### Community 89 - "folder-monitor-widget.tsx"
-Cohesion: 0.36
-Nodes (6): extensionOf(), FolderMonitorWidget(), FolderMonitorWidgetProps, FORMAT_LABELS, formatSyncTime(), FolderMonitorView
-
-### Community 146 - "export-layout.ts"
-Cohesion: 0.36
-Nodes (6): captureScale(), EXPORT_SURFACE_WIDTH, MAX_EXPORT_PIXELS, pdfPageSlices(), PdfTablePage, pdfTablePages()
+### Community 88 - "styleIndex"
+Cohesion: 0.67
+Nodes (3): styleIndex, minimum, type
 
 ## Knowledge Gaps
-- **521 isolated node(s):** `AdvancedColumnQuality`, `DetectedFieldKind`, `FormulaDiagnostic`, `NormalizationResult`, `SourceCellRepresentation` (+516 more)
+- **568 isolated node(s):** `$schema`, `style`, `rsc`, `tsx`, `css` (+563 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **67 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **69 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `cn()` connect `cn` to `import-workbench.ts`, `sidebar.tsx`, `data-pipeline.ts`, `index.tsx`, `utils.ts`, `widgets.ts`, `operational-widgets.ts`, `alert-dialog.tsx`, `Dashboard`, `OliAm`, `command.tsx`, `menubar.tsx`, `form.tsx`, `carousel.tsx`, `chart.tsx`, `assistant-context.ts`, `table.tsx`, `breadcrumb.tsx`, `navigation-menu.tsx`, `alert.tsx`, `folder-monitor-widget.tsx`?**
-  _High betweenness centrality (0.119) - this node is a cross-community bridge._
-- **Why does `Row` connect `types.ts` to `format.ts`, `import-intelligence.ts`, `import.ts`, `gemini-security.ts`, `import-workbench.ts`, `data-pipeline.ts`, `index.tsx`, `spreadsheet-intelligence.ts`, `dashboard.ts`, `review-export.ts`, `widgets.ts`, `operational-widgets.ts`, `Dashboard`, `auto-dashboard.ts`, `assistant-context.ts`?**
-  _High betweenness centrality (0.013) - this node is a cross-community bridge._
+- **Why does `cn()` connect `cn` to `import-workbench.ts`, `sidebar.tsx`, `assistant-context.ts`, `index.tsx`, `utils.ts`, `widgets.ts`, `storage.ts`, `operational-widgets.ts`, `alert-dialog.tsx`, `folder-monitor.ts`, `select.tsx`, `command.tsx`, `menubar.tsx`, `form.tsx`, `carousel.tsx`, `chart.tsx`, `table.tsx`, `breadcrumb.tsx`, `input-otp.tsx`, `badge.tsx`?**
+  _High betweenness centrality (0.116) - this node is a cross-community bridge._
 - **Why does `$defs` connect `$defs` to `diagnostic`, `ooxml-inventory.schema.json`, `hiddenColumnRange`, `required`, `required`?**
-  _High betweenness centrality (0.010) - this node is a cross-community bridge._
-- **What connects `AdvancedColumnQuality`, `DetectedFieldKind`, `FormulaDiagnostic` to the rest of the system?**
-  _521 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
+- **Why does `Row` connect `types.ts` to `import-intelligence.ts`, `import.ts`, `import-workbench.ts`, `assistant-context.ts`, `index.tsx`, `spreadsheet-intelligence.ts`, `review-export.ts`, `widgets.ts`, `operational-widgets.ts`, `auto-dashboard.ts`, `gemini-security.ts`, `schedule-normalizer.ts`?**
+  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+- **What connects `$schema`, `style`, `rsc` to the rest of the system?**
+  _568 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `lib.rs` be split into smaller, more focused modules?**
   _Cohesion score 0.06965871902758299 - nodes in this community are weakly interconnected._
 - **Should `import-intelligence.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.05750658472344162 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05593561368209256 - nodes in this community are weakly interconnected._
 - **Should `import.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.06233538191395961 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.053946053946053944 - nodes in this community are weakly interconnected._
