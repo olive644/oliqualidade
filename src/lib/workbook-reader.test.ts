@@ -48,6 +48,9 @@ describe("leitor universal de planilhas", () => {
         schemaVersion: "3.0.0",
         sheets: [...inspection.sheets].map(([name, cells]) => ({
           name,
+          mergedRanges: inspection.structures.get(name)?.mergedRanges ?? [],
+          hiddenRows: inspection.structures.get(name)?.hiddenRows ?? [],
+          hiddenColumns: inspection.structures.get(name)?.hiddenColumns ?? [],
           cells: [...cells.values()],
         })),
       }),

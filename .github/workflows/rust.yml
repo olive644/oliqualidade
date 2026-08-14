@@ -8,6 +8,8 @@ on:
       - "src/lib/wasm-shadow-*.ts"
       - "src/lib/workbook-reading-engine.ts"
       - "src/lib/workbook-reader.ts"
+      - "test-fixtures/wasm-corpus-manifest.json"
+      - "scripts/generate-workbook-corpus.mjs"
       - "scripts/*ooxml-wasm.mjs"
       - "contracts/ooxml-inventory.schema.json"
       - ".github/workflows/rust.yml"
@@ -19,6 +21,8 @@ on:
       - "src/lib/wasm-shadow-*.ts"
       - "src/lib/workbook-reading-engine.ts"
       - "src/lib/workbook-reader.ts"
+      - "test-fixtures/wasm-corpus-manifest.json"
+      - "scripts/generate-workbook-corpus.mjs"
       - "scripts/*ooxml-wasm.mjs"
       - "contracts/ooxml-inventory.schema.json"
       - ".github/workflows/rust.yml"
@@ -56,3 +60,10 @@ jobs:
         run: npm ci
       - name: Measure real Wasm corpus and apply promotion gate
         run: npm run wasm:corpus
+      - name: Upload Wasm corpus report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-corpus-report
+          path: test-results/wasm-corpus-report.json
+          if-no-files-found: warn

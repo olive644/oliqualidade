@@ -18,6 +18,18 @@ function isInventory(value: unknown): value is WasmWorkbookInventory {
         !!sheet &&
         typeof sheet === "object" &&
         typeof sheet.name === "string" &&
+        Array.isArray(sheet.mergedRanges) &&
+        sheet.mergedRanges.every((range) => typeof range === "string") &&
+        Array.isArray(sheet.hiddenRows) &&
+        sheet.hiddenRows.every((row) => typeof row === "number") &&
+        Array.isArray(sheet.hiddenColumns) &&
+        sheet.hiddenColumns.every(
+          (range) =>
+            !!range &&
+            typeof range === "object" &&
+            typeof range.start === "number" &&
+            typeof range.end === "number",
+        ) &&
         Array.isArray(sheet.cells) &&
         sheet.cells.every(
           (cell) =>

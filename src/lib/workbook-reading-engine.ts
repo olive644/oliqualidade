@@ -20,6 +20,8 @@ export type WorkbookReadReport = {
   wasmShadowMs: number;
   wasmComparedCells: number;
   wasmDivergentCells: number;
+  wasmComparedStructures: number;
+  wasmDivergentStructures: number;
   wasmDivergentSheets: number;
   wasmSchemaVersion: string | null;
 };
@@ -38,7 +40,13 @@ export type WasmInventoryCell = {
 
 export type WasmWorkbookInventory = {
   schemaVersion: string;
-  sheets: Array<{ name: string; cells: WasmInventoryCell[] }>;
+  sheets: Array<{
+    name: string;
+    mergedRanges: string[];
+    hiddenRows: number[];
+    hiddenColumns: Array<{ start: number; end: number }>;
+    cells: WasmInventoryCell[];
+  }>;
 };
 
 export type WasmWorkbookReader = {
@@ -48,6 +56,8 @@ export type WasmWorkbookReader = {
 export type WasmShadowComparison = {
   comparedCells: number;
   divergentCells: number;
+  comparedStructures: number;
+  divergentStructures: number;
   divergentSheets: number;
 };
 
@@ -127,14 +137,24 @@ export function compareWasmInventory(
   const sheetNames = new Set([...rustSheets.keys(), ...inspection.sheets.keys()]);
   let comparedCells = 0;
   let divergentCells = 0;
+  let comparedStructures = 0;
+  let divergentStructures = 0;
   let divergentSheets = 0;
 
   for (const sheetName of sheetNames) {
     const rustSheet = rustSheets.get(sheetName);
     const typescriptSheet = inspection.sheets.get(sheetName);
+    const typescriptStructure = inspection.structures.get(sheetName);
     if (!rustSheet || !typescriptSheet) {
       divergentSheets++;
       divergentCells += rustSheet?.cells.length ?? typescriptSheet?.size ?? 0;
+      divergentStructures += rustSheet
+        ? rustSheet.mergedRanges.length +
+          rustSheet.hiddenRows.length +
+          rustSheet.hiddenColumns.length
+        : (typescriptStructure?.mergedRanges.length ?? 0) +
+          (typescriptStructure?.hiddenRows.length ?? 0) +
+          (typescriptStructure?.hiddenColumns.length ?? 0);
       continue;
     }
     const rustCells = new Map(rustSheet.cells.map((cell) => [cell.address, cell]));
@@ -155,8 +175,35 @@ export function compareWasmInventory(
         sheetDiverged = true;
       }
     }
+    const rustStructures = new Set([
+      ...rustSheet.mergedRanges.map((range) => `merge:${range.replaceAll("$", "").toUpperCase()}`),
+      ...rustSheet.hiddenRows.map((row) => `row:${row}`),
+      ...rustSheet.hiddenColumns.map(({ start, end }) => `column:${start}:${end}`),
+    ]);
+    const typescriptStructures = new Set([
+      ...(typescriptStructure?.mergedRanges ?? []).map(
+        (range) => `merge:${range.replaceAll("$", "").toUpperCase()}`,
+      ),
+      ...(typescriptStructure?.hiddenRows ?? []).map((row) => `row:${row}`),
+      ...(typescriptStructure?.hiddenColumns ?? []).map(
+        ({ start, end }) => `column:${start}:${end}`,
+      ),
+    ]);
+    for (const structure of new Set([...rustStructures, ...typescriptStructures])) {
+      comparedStructures++;
+      if (!rustStructures.has(structure) || !typescriptStructures.has(structure)) {
+        divergentStructures++;
+        sheetDiverged = true;
+      }
+    }
     if (sheetDiverged) divergentSheets++;
   }
 
-  return { comparedCells, divergentCells, divergentSheets };
+  return {
+    comparedCells,
+    divergentCells,
+    comparedStructures,
+    divergentStructures,
+    divergentSheets,
+  };
 }

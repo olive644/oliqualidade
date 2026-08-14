@@ -22,7 +22,7 @@
     "rust:test": "cargo test --locked --manifest-path rust/oli-ooxml-core/Cargo.toml",
     "wasm:build": "node scripts/build-ooxml-wasm.mjs",
     "wasm:smoke": "node scripts/test-ooxml-wasm.mjs",
-    "wasm:corpus": "vitest run src/lib/wasm-shadow-corpus.test.ts src/lib/wasm-shadow-metrics.test.ts",
+    "wasm:corpus": "npm run test:corpus:generate && vitest run src/lib/wasm-shadow-corpus.test.ts src/lib/wasm-shadow-metrics.test.ts",
     "verify": "npm test && npm run build && npm run performance:check"
   },
   "dependencies": {

@@ -8,3 +8,5 @@ dist/
 .DS_Store
 .vercel/
 rust/oli-ooxml-core/target/
+test-fixtures/generated/
+test-results/
