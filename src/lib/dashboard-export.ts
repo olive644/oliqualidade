@@ -134,15 +134,7 @@ export async function exportDashboardPng({ element, slug }: DashboardExportOptio
 }
 
 export async function exportDashboardPdf(options: DashboardExportOptions) {
-  const {
-    element,
-    dashboardId,
-    dashboardName,
-    rows,
-    columns,
-    widgets,
-    slug,
-  } = options;
+  const { element, dashboardId, dashboardName, rows, columns, widgets, slug } = options;
   const capture = await captureDashboard(element);
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
