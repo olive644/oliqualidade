@@ -29,3 +29,8 @@ pacote web versionado é reconstruído com `npm run wasm:build` e validado com
 quando inventário, estruturas e saída final coincidem com o leitor TypeScript.
 Qualquer diferença aciona o fallback validado; o modo `shadow` permanece como
 rollback operacional.
+
+A promoção independente por formato exige ao menos cinco fontes reais
+sanitizadas e **únicas**. A identidade é um HMAC local que não revela nome,
+caminho nem conteúdo; cópias idênticas são ignoradas e entradas sem identidade
+não contam para o gate.
