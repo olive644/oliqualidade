@@ -344,7 +344,6 @@ export function relevantAggregationOps(
   return ["sum"];
 }
 
-
 export type AggregationSemanticProfile = {
   role?: string;
   unitFamily?: string;
