@@ -4369,7 +4369,8 @@ function Dashboard(p: {
             const raw = data[plan.rowStart + rowOffset]?.[column.key] ?? null;
             const style = conditionalStyle(raw, column.kind, column.conditionalFormat);
             const textColor = style?.color ? hexRgb(style.color) : null;
-            pdf.setTextColor(...(textColor ?? [30, 41, 59]));
+            if (textColor) pdf.setTextColor(...textColor);
+            else pdf.setTextColor(30, 41, 59);
             pdf.setFont("helvetica", "normal");
             pdf.setFontSize(7.5);
             pdf.text(cells[columnIndex] ?? ["—"], x + 5, y + 11, {
