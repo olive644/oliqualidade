@@ -43,7 +43,7 @@ function observation(
   return {
     format,
     source,
-    corpusId,
+    ...(corpusId === undefined ? {} : { corpusId }),
     status: report.wasmShadowStatus,
     schemaVersion: report.wasmSchemaVersion,
     comparedCells: report.wasmComparedCells,
