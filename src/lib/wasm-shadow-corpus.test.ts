@@ -145,7 +145,7 @@ describe.skipIf(!existsSync(generatedManifestPath))(
             undefined,
             { wasmSampleRate: 1 },
           );
-            const measured = observation(
+          const measured = observation(
             result.report,
             testCase.format,
             testCase.source,
