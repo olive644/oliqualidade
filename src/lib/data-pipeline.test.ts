@@ -480,12 +480,18 @@ describe("pieComparisonFor", () => {
 
   it("compara Outros com a maior categoria individual e trata base zero", () => {
     expect(pieComparisonFor(series, 2)?.reference).toBe(series[0]);
-    expect(pieComparisonFor([{ name: "A", total: 5 }, { name: "B", total: 0 }], 0))
-      .toMatchObject({ difference: 5, relativeDifference: null });
+    expect(
+      pieComparisonFor(
+        [
+          { name: "A", total: 5 },
+          { name: "B", total: 0 },
+        ],
+        0,
+      ),
+    ).toMatchObject({ difference: 5, relativeDifference: null });
   });
 
   it("retorna null para uma seleção inexistente", () => {
     expect(pieComparisonFor(series, 8)).toBeNull();
   });
 });
-
