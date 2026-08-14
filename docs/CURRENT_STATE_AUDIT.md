@@ -386,3 +386,20 @@ Integração entregue:
 O próximo passo seguro é coletar a distribuição das divergências no corpus de
 produção e definir critérios objetivos de promoção por formato antes de permitir
 que o Rust participe do resultado produtivo.
+
+## 15. Medição de corpus e gate de promoção — fase 5
+
+O shadow mode agora possui amostragem determinística configurável por
+`VITE_WASM_SHADOW_SAMPLE_RATE`. Arquivos fora da amostra são identificados como
+`sampled-out`; o Rust continua sem alterar o resultado produtivo em qualquer
+estado.
+
+O binário WASM real passou a integrar um teste de corpus no Vitest e na CI. A
+medição registra contrato, tempo, células comparadas, células divergentes e abas
+divergentes. O avaliador agrega essas observações, calcula taxa de divergência e
+latência p95 e informa todos os motivos que impedem a promoção.
+
+Os critérios padrão exigem contrato `3.0.0`, no mínimo 25 arquivos e 10.000
+células, zero falhas e divergências e p95 de até 1.500 ms. A fixture pública
+isolada é deliberadamente classificada como corpus insuficiente. Os critérios e
+o processo de decisão estão documentados em `docs/WASM_PROMOTION_CRITERIA.md`.

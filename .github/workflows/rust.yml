@@ -5,6 +5,9 @@ on:
     paths:
       - "rust/**"
       - "src/wasm/**"
+      - "src/lib/wasm-shadow-*.ts"
+      - "src/lib/workbook-reading-engine.ts"
+      - "src/lib/workbook-reader.ts"
       - "scripts/*ooxml-wasm.mjs"
       - "contracts/ooxml-inventory.schema.json"
       - ".github/workflows/rust.yml"
@@ -13,6 +16,9 @@ on:
     paths:
       - "rust/**"
       - "src/wasm/**"
+      - "src/lib/wasm-shadow-*.ts"
+      - "src/lib/workbook-reading-engine.ts"
+      - "src/lib/workbook-reader.ts"
       - "scripts/*ooxml-wasm.mjs"
       - "contracts/ooxml-inventory.schema.json"
       - ".github/workflows/rust.yml"
@@ -37,3 +43,16 @@ jobs:
         run: cargo check --locked --target wasm32-unknown-unknown --manifest-path rust/oli-ooxml-core/Cargo.toml
       - name: Smoke test committed Wasm package
         run: node scripts/test-ooxml-wasm.mjs
+
+  corpus-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install application dependencies
+        run: npm ci
+      - name: Measure real Wasm corpus and apply promotion gate
+        run: npm run wasm:corpus

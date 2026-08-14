@@ -85,6 +85,31 @@ describe("leitor universal de planilhas", () => {
     }
   });
 
+  it("registra quando o arquivo fica fora da amostra WASM", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    registerWasmWorkbookReader({
+      inventory: async () => Promise.reject(new Error("não deve rodar")),
+    });
+
+    try {
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmSampleRate: 0,
+      });
+      expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo" }]);
+      expect(result.report).toMatchObject({
+        wasmAvailable: true,
+        wasmSampleRate: 0,
+        wasmShadowStatus: "sampled-out",
+        wasmShadowMs: 0,
+      });
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
+  });
+
   it("preserva a visibilidade das linhas do XLSX e não importa conteúdo oculto", () => {
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["Item", "jun"],
