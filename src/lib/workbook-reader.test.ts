@@ -9,6 +9,8 @@ import {
   validateWorkbookComplexity,
   validateZipWorkbook,
 } from "@/lib/workbook-reader";
+import { inspectOoxml } from "@/lib/ooxml-reader";
+import { registerWasmWorkbookReader } from "@/lib/workbook-reading-engine";
 
 describe("leitor universal de planilhas", () => {
   it("produz relatório do motor e mantém o leitor verificado para OOXML", async () => {
@@ -30,6 +32,57 @@ describe("leitor universal de planilhas", () => {
       fallbackUsed: false,
     });
     expect(result.report.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("executa o inventário WASM em shadow mode sem substituir as planilhas", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    const inspection = inspectOoxml(bytes);
+    registerWasmWorkbookReader({
+      inventory: async () => ({
+        schemaVersion: "3.0.0",
+        sheets: [...inspection.sheets].map(([name, cells]) => ({
+          name,
+          cells: [...cells.values()],
+        })),
+      }),
+    });
+
+    try {
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx");
+      expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
+      expect(result.report).toMatchObject({
+        reader: "sheetjs-verified",
+        wasmAvailable: true,
+        wasmShadowStatus: "matched",
+        wasmDivergentCells: 0,
+        wasmSchemaVersion: "3.0.0",
+      });
+      expect(result.report.wasmComparedCells).toBeGreaterThan(0);
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
+  });
+
+  it("mantém a importação quando o shadow WASM falha", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    registerWasmWorkbookReader({ inventory: async () => Promise.reject(new Error("falha")) });
+
+    try {
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx");
+      expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo" }]);
+      expect(result.report.wasmShadowStatus).toBe("failed");
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
   });
 
   it("preserva a visibilidade das linhas do XLSX e não importa conteúdo oculto", () => {

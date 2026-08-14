@@ -20,6 +20,8 @@
     "graph:build": "node scripts/build-code-graph.mjs",
     "performance:check": "node scripts/check-performance-budget.mjs",
     "rust:test": "cargo test --locked --manifest-path rust/oli-ooxml-core/Cargo.toml",
+    "wasm:build": "node scripts/build-ooxml-wasm.mjs",
+    "wasm:smoke": "node scripts/test-ooxml-wasm.mjs",
     "verify": "npm test && npm run build && npm run performance:check"
   },
   "dependencies": {

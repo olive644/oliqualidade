@@ -1,0 +1,16 @@
+{
+  "name": "oli-ooxml-core",
+  "type": "module",
+  "version": "0.4.0",
+  "license": "UNLICENSED",
+  "files": [
+    "oli_ooxml_core_bg.wasm",
+    "oli_ooxml_core.js",
+    "oli_ooxml_core.d.ts"
+  ],
+  "main": "oli_ooxml_core.js",
+  "types": "oli_ooxml_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

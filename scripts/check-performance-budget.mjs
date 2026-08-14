@@ -13,6 +13,7 @@ const budgets = [
   { label: "worker", pattern: /worker-.*\.js$/, max: 500 * kib },
   { label: "Leaflet sob demanda", pattern: /^leaflet-.*\.js$/, max: 1400 * kib },
   { label: "Excel sob demanda", pattern: /^xlsx-.*\.js$/, max: 550 * kib },
+  { label: "Rust WASM", pattern: /^oli_ooxml_core.*\.wasm$/, max: 450 * kib },
   {
     label: "chunk JavaScript",
     pattern: /\.js$/,

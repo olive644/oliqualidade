@@ -23,5 +23,8 @@ cargo test --locked --manifest-path rust/oli-ooxml-core/Cargo.toml
 cargo run --locked --manifest-path rust/oli-ooxml-core/Cargo.toml -- arquivo.xlsx
 ```
 
-Não há integração WASM nesta etapa. A próxima fase é o adaptador em shadow
-mode, sem substituir o leitor produtivo até a medição de paridade.
+O crate também expõe `inventory_ooxml_json` para `wasm32-unknown-unknown`. O
+pacote web versionado é reconstruído com `npm run wasm:build` e validado com
+`npm run wasm:smoke`. No aplicativo ele roda em shadow mode dentro do worker:
+mede a paridade com o leitor OOXML TypeScript, mas não monta, repara nem
+substitui as planilhas entregues ao usuário.

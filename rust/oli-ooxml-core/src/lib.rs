@@ -288,6 +288,15 @@ pub fn inventory_ooxml(bytes: &[u8]) -> Result<WorkbookInventory, InventoryError
     inventory_ooxml_with_limits(bytes, InventoryLimits::default())
 }
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn inventory_ooxml_json(bytes: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    let inventory = inventory_ooxml(bytes)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
+    serde_json::to_string(&inventory)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
+}
+
 pub fn inventory_ooxml_with_limits(
     bytes: &[u8],
     limits: InventoryLimits,

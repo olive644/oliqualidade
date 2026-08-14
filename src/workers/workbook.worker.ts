@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import { readWorkbookBytesWithEngine, type WorkbookReadProgress } from "@/lib/workbook-reader";
+import "@/lib/ooxml-wasm-shadow";
 
 type Request = { id: string; bytes: ArrayBuffer; fileName: string };
 
