@@ -1,8 +1,15 @@
 import type { SheetOption } from "@/lib/import";
 import type { OoxmlInspection } from "@/lib/ooxml-reader";
 
-export type WorkbookReaderId = "sheetjs" | "sheetjs-verified" | "ooxml-recovery";
+export type WorkbookReaderId =
+  "sheetjs" | "sheetjs-verified" | "sheetjs-wasm-verified" | "ooxml-recovery";
 export type WasmShadowStatus = "unavailable" | "sampled-out" | "matched" | "diverged" | "failed";
+export type WasmReaderMode = "shadow" | "candidate";
+export type WasmCandidateStatus = "shadow" | "not-eligible" | "verified" | "fallback";
+export type WasmFallbackReason = "unavailable" | "schema-mismatch" | "diverged" | "failed";
+
+export const WASM_INVENTORY_SCHEMA_VERSION = "3.0.0";
+const WASM_CANDIDATE_FORMATS = new Set(["xlsx"]);
 
 export type WorkbookReadReport = {
   reader: WorkbookReaderId;
@@ -15,6 +22,9 @@ export type WorkbookReadReport = {
   divergentCells: number;
   fallbackUsed: boolean;
   wasmAvailable: boolean;
+  wasmReaderMode: WasmReaderMode;
+  wasmCandidateStatus: WasmCandidateStatus;
+  wasmFallbackReason: WasmFallbackReason | null;
   wasmSampleRate: number;
   wasmShadowStatus: WasmShadowStatus;
   wasmShadowMs: number;
@@ -98,6 +108,35 @@ export function normalizeWasmSampleRate(value: string | number | undefined): num
 
 export function configuredWasmSampleRate(): number {
   return normalizeWasmSampleRate(import.meta.env["VITE_WASM_SHADOW_SAMPLE_RATE"]);
+}
+
+export function normalizeWasmReaderMode(value: string | undefined): WasmReaderMode {
+  return value?.trim().toLowerCase() === "candidate" ? "candidate" : "shadow";
+}
+
+export function configuredWasmReaderMode(): WasmReaderMode {
+  return normalizeWasmReaderMode(import.meta.env["VITE_WASM_READER_MODE"]);
+}
+
+export function normalizeWasmCandidateFormats(
+  value: string | readonly string[] | undefined,
+): string[] {
+  const formats: readonly string[] = typeof value === "string" ? value.split(",") : (value ?? []);
+  return [
+    ...new Set(
+      formats
+        .map((format) => format.trim().toLowerCase())
+        .filter((format) => WASM_CANDIDATE_FORMATS.has(format)),
+    ),
+  ].sort();
+}
+
+export function configuredWasmCandidateFormats(): string[] {
+  return normalizeWasmCandidateFormats(import.meta.env["VITE_WASM_CANDIDATE_FORMATS"]);
+}
+
+export function canUseWasmCandidate(format: string, candidateFormats: readonly string[]): boolean {
+  return WASM_CANDIDATE_FORMATS.has(format) && candidateFormats.includes(format);
 }
 
 /**

@@ -9,14 +9,21 @@ import {
   type ReaderDivergence,
 } from "@/lib/ooxml-reader";
 import {
+  canUseWasmCandidate,
   compareWasmInventory,
+  configuredWasmCandidateFormats,
+  configuredWasmReaderMode,
   configuredWasmSampleRate,
   normalizeWasmSampleRate,
   registeredWasmWorkbookReader,
   shouldSampleWasm,
   shouldTryWasm,
   workbookFormat,
+  WASM_INVENTORY_SCHEMA_VERSION,
   type WorkbookReadResult,
+  type WasmCandidateStatus,
+  type WasmFallbackReason,
+  type WasmReaderMode,
   type WasmShadowStatus,
 } from "@/lib/workbook-reading-engine";
 
@@ -43,6 +50,8 @@ export type WorksheetWithReaderDiagnostics = XLSX.WorkSheet & {
 
 export type WorkbookReadEngineOptions = {
   wasmSampleRate?: number;
+  wasmReaderMode?: WasmReaderMode;
+  wasmCandidateFormats?: readonly string[];
 };
 
 /**
@@ -247,12 +256,20 @@ export async function readWorkbookBytesWithEngine(
   }
   onProgress?.("analyzing");
   const sheets = sheetsWithData(wb);
-  const wasmSampleRate =
-    options.wasmSampleRate === undefined
+  const format = workbookFormat(fileName);
+  const wasmReaderMode = options.wasmReaderMode ?? configuredWasmReaderMode();
+  const wasmCandidateFormats = options.wasmCandidateFormats ?? configuredWasmCandidateFormats();
+  const candidateEligible =
+    wasmReaderMode === "candidate" && canUseWasmCandidate(format, wasmCandidateFormats);
+  const wasmSampleRate = candidateEligible
+    ? 1
+    : options.wasmSampleRate === undefined
       ? configuredWasmSampleRate()
       : normalizeWasmSampleRate(options.wasmSampleRate);
   const registeredReader = shouldTryWasm(fileName) ? registeredWasmWorkbookReader() : undefined;
-  const sampled = registeredReader ? shouldSampleWasm(fileName, bytes, wasmSampleRate) : false;
+  const sampled = registeredReader
+    ? candidateEligible || shouldSampleWasm(fileName, bytes, wasmSampleRate)
+    : false;
   const wasmReader = sampled ? registeredReader : undefined;
   let wasmShadowStatus: WasmShadowStatus = registeredReader
     ? sampled
@@ -266,6 +283,10 @@ export async function readWorkbookBytesWithEngine(
   let wasmDivergentStructures = 0;
   let wasmDivergentSheets = 0;
   let wasmSchemaVersion: string | null = null;
+  let wasmCandidateStatus: WasmCandidateStatus =
+    wasmReaderMode === "shadow" ? "shadow" : candidateEligible ? "fallback" : "not-eligible";
+  let wasmFallbackReason: WasmFallbackReason | null =
+    candidateEligible && !registeredReader ? "unavailable" : null;
   if (wasmReader) {
     const wasmStartedAt = performance.now();
     try {
@@ -284,8 +305,19 @@ export async function readWorkbookBytesWithEngine(
         comparison.divergentCells || comparison.divergentStructures || comparison.divergentSheets
           ? "diverged"
           : "matched";
+      if (candidateEligible) {
+        if (inventory.schemaVersion !== WASM_INVENTORY_SCHEMA_VERSION) {
+          wasmFallbackReason = "schema-mismatch";
+        } else if (wasmShadowStatus === "diverged") {
+          wasmFallbackReason = "diverged";
+        } else {
+          wasmCandidateStatus = "verified";
+          wasmFallbackReason = null;
+        }
+      }
     } catch {
-      // Shadow mode nunca interfere no resultado já produzido pelo leitor validado.
+      if (candidateEligible) wasmFallbackReason = "failed";
+      // Shadow e candidate mode nunca descartam o resultado do leitor validado.
     } finally {
       wasmShadowMs = Math.round(performance.now() - wasmStartedAt);
     }
@@ -295,10 +327,12 @@ export async function readWorkbookBytesWithEngine(
     report: {
       reader: fallbackUsed
         ? "ooxml-recovery"
-        : ZIP_WORKBOOK_EXTENSIONS.test(fileName)
-          ? "sheetjs-verified"
-          : "sheetjs",
-      format: workbookFormat(fileName),
+        : wasmCandidateStatus === "verified"
+          ? "sheetjs-wasm-verified"
+          : ZIP_WORKBOOK_EXTENSIONS.test(fileName)
+            ? "sheetjs-verified"
+            : "sheetjs",
+      format,
       elapsedMs: Math.round(performance.now() - startedAt),
       parseMs,
       verificationMs: Math.round(performance.now() - verificationStartedAt),
@@ -307,6 +341,9 @@ export async function readWorkbookBytesWithEngine(
       divergentCells,
       fallbackUsed,
       wasmAvailable: !!registeredWasmWorkbookReader(),
+      wasmReaderMode,
+      wasmCandidateStatus,
+      wasmFallbackReason,
       wasmSampleRate,
       wasmShadowStatus,
       wasmShadowMs,

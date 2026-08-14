@@ -436,3 +436,18 @@ não contém nomes ou caminhos de origem nem a chave. Quando presente em
 `test-fixtures/sanitized-real`, o corpus local passa a integrar automaticamente
 o relatório e o gate por formato; a CI continua usando apenas as fixtures
 sintéticas reproduzíveis.
+
+## 18. Candidate mode com fallback automático — fase 8
+
+Foi preparado o controle de ativação gradual do Rust/WASM para XLSX. O padrão
+continua sendo `shadow`, e a allowlist de formatos nasce vazia. Apenas a
+combinação explícita de `VITE_WASM_READER_MODE=candidate` com
+`VITE_WASM_CANDIDATE_FORMATS=xlsx` permite que um match integral seja marcado
+como `sheetjs-wasm-verified`.
+
+Candidate mode mede 100% dos arquivos do formato liberado, independentemente da
+taxa de shadow. Contrato incompatível, divergência, falha do adaptador ou
+indisponibilidade acionam fallback automático para o leitor TypeScript validado.
+O relatório registra modo, estado do candidato e motivo do fallback. O inventário
+Rust ainda não cria, substitui ou repara células; publicar a allowlist continua
+condicionado ao gate real sanitizado e a uma decisão humana por formato.

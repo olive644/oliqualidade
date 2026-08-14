@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canUseWasmCandidate,
   compareWasmInventory,
+  normalizeWasmCandidateFormats,
+  normalizeWasmReaderMode,
   normalizeWasmSampleRate,
   registerWasmWorkbookReader,
   registeredWasmWorkbookReader,
@@ -34,6 +37,16 @@ describe("contrato do Reading Engine v2", () => {
     expect(shouldSampleWasm("relatorio.xlsx", bytes, 0.5)).toBe(
       shouldSampleWasm("relatorio.xlsx", bytes, 0.5),
     );
+  });
+
+  it("mantém o modo candidato restrito ao XLSX explicitamente liberado", () => {
+    expect(normalizeWasmReaderMode(undefined)).toBe("shadow");
+    expect(normalizeWasmReaderMode("CANDIDATE")).toBe("candidate");
+    expect(normalizeWasmReaderMode("qualquer")).toBe("shadow");
+    expect(normalizeWasmCandidateFormats(" xlsx, XLSM, xlsx, xltx ")).toEqual(["xlsx"]);
+    expect(canUseWasmCandidate("xlsx", ["xlsx"])).toBe(true);
+    expect(canUseWasmCandidate("xlsm", ["xlsx", "xlsm"])).toBe(false);
+    expect(canUseWasmCandidate("xlsx", [])).toBe(false);
   });
 
   it("compara células do inventário WASM sem modificar o leitor TypeScript", () => {
