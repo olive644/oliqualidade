@@ -102,7 +102,6 @@ export function pdfTablePages(
   return pages;
 }
 
-
 export type PdfRowPage = {
   rowStart: number;
   rowEnd: number;
@@ -114,10 +113,7 @@ export type PdfRowPage = {
  * Textos longos podem aumentar a altura da própria linha até o limite
  * definido por quem renderiza a tabela.
  */
-export function pdfVariableRowPages(
-  rowHeights: number[],
-  availableHeightPt: number,
-): PdfRowPage[] {
+export function pdfVariableRowPages(rowHeights: number[], availableHeightPt: number): PdfRowPage[] {
   if (availableHeightPt <= 0) return [];
   if (!rowHeights.length) return [{ rowStart: 0, rowEnd: 0, heights: [] }];
 
