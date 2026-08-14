@@ -2,7 +2,7 @@ import type { SheetOption } from "@/lib/import";
 import type { OoxmlInspection } from "@/lib/ooxml-reader";
 
 export type WorkbookReaderId = "sheetjs" | "sheetjs-verified" | "ooxml-recovery";
-export type WasmShadowStatus = "unavailable" | "matched" | "diverged" | "failed";
+export type WasmShadowStatus = "unavailable" | "sampled-out" | "matched" | "diverged" | "failed";
 
 export type WorkbookReadReport = {
   reader: WorkbookReaderId;
@@ -15,6 +15,7 @@ export type WorkbookReadReport = {
   divergentCells: number;
   fallbackUsed: boolean;
   wasmAvailable: boolean;
+  wasmSampleRate: number;
   wasmShadowStatus: WasmShadowStatus;
   wasmShadowMs: number;
   wasmComparedCells: number;
@@ -77,6 +78,39 @@ export function registerWasmWorkbookReader(reader: WasmWorkbookReader | undefine
 
 export function shouldTryWasm(fileName: string): boolean {
   return /\.(xlsx|xlsm|xltx|xltm)$/i.test(fileName) && !!registeredWasmWorkbookReader();
+}
+
+export function normalizeWasmSampleRate(value: string | number | undefined): number {
+  const parsed = typeof value === "number" ? value : Number(value ?? 1);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.min(1, Math.max(0, parsed));
+}
+
+export function configuredWasmSampleRate(): number {
+  return normalizeWasmSampleRate(import.meta.env["VITE_WASM_SHADOW_SAMPLE_RATE"]);
+}
+
+/**
+ * Seleciona sempre o mesmo arquivo para a mesma taxa, sem persistir nome ou
+ * conteúdo. A taxa 0 desliga a medição e a taxa 1 mede todo o corpus.
+ */
+export function shouldSampleWasm(fileName: string, bytes: Uint8Array, sampleRate: number): boolean {
+  const rate = normalizeWasmSampleRate(sampleRate);
+  if (rate <= 0) return false;
+  if (rate >= 1) return true;
+
+  let hash = 0x811c9dc5;
+  const update = (value: number) => {
+    hash ^= value;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  };
+  for (const char of fileName.toLowerCase()) update(char.charCodeAt(0));
+  for (let shift = 0; shift < 32; shift += 8) update((bytes.length >>> shift) & 0xff);
+  const edge = Math.min(64, bytes.length);
+  for (let index = 0; index < edge; index++) update(bytes[index]!);
+  for (let index = Math.max(edge, bytes.length - edge); index < bytes.length; index++)
+    update(bytes[index]!);
+  return hash / 0x1_0000_0000 < rate;
 }
 
 function sameValue(left: unknown, right: unknown): boolean {

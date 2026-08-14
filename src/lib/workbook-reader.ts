@@ -10,7 +10,10 @@ import {
 } from "@/lib/ooxml-reader";
 import {
   compareWasmInventory,
+  configuredWasmSampleRate,
+  normalizeWasmSampleRate,
   registeredWasmWorkbookReader,
+  shouldSampleWasm,
   shouldTryWasm,
   workbookFormat,
   type WorkbookReadResult,
@@ -36,6 +39,10 @@ export type WorkbookReadProgress = "decoding" | "parsing" | "analyzing";
 export type WorksheetWithReaderDiagnostics = XLSX.WorkSheet & {
   "!oliReaderDivergences"?: ReaderDivergence[];
   "!oliOoxmlFallback"?: boolean;
+};
+
+export type WorkbookReadEngineOptions = {
+  wasmSampleRate?: number;
 };
 
 /**
@@ -174,6 +181,7 @@ export async function readWorkbookBytesWithEngine(
   input: ArrayBuffer | Uint8Array,
   fileName: string,
   onProgress?: (progress: WorkbookReadProgress) => void,
+  options: WorkbookReadEngineOptions = {},
 ): Promise<WorkbookReadResult> {
   const startedAt = performance.now();
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
@@ -239,8 +247,18 @@ export async function readWorkbookBytesWithEngine(
   }
   onProgress?.("analyzing");
   const sheets = sheetsWithData(wb);
-  const wasmReader = shouldTryWasm(fileName) ? registeredWasmWorkbookReader() : undefined;
-  let wasmShadowStatus: WasmShadowStatus = wasmReader ? "failed" : "unavailable";
+  const wasmSampleRate =
+    options.wasmSampleRate === undefined
+      ? configuredWasmSampleRate()
+      : normalizeWasmSampleRate(options.wasmSampleRate);
+  const registeredReader = shouldTryWasm(fileName) ? registeredWasmWorkbookReader() : undefined;
+  const sampled = registeredReader ? shouldSampleWasm(fileName, bytes, wasmSampleRate) : false;
+  const wasmReader = sampled ? registeredReader : undefined;
+  let wasmShadowStatus: WasmShadowStatus = registeredReader
+    ? sampled
+      ? "failed"
+      : "sampled-out"
+    : "unavailable";
   let wasmShadowMs = 0;
   let wasmComparedCells = 0;
   let wasmDivergentCells = 0;
@@ -283,6 +301,7 @@ export async function readWorkbookBytesWithEngine(
       divergentCells,
       fallbackUsed,
       wasmAvailable: !!registeredWasmWorkbookReader(),
+      wasmSampleRate,
       wasmShadowStatus,
       wasmShadowMs,
       wasmComparedCells,

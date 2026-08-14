@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   compareWasmInventory,
+  normalizeWasmSampleRate,
   registerWasmWorkbookReader,
   registeredWasmWorkbookReader,
+  shouldSampleWasm,
   shouldTryWasm,
   workbookFormat,
 } from "@/lib/workbook-reading-engine";
@@ -19,6 +21,19 @@ describe("contrato do Reading Engine v2", () => {
     registerWasmWorkbookReader(undefined);
     expect(registeredWasmWorkbookReader()).toBeUndefined();
     expect(shouldTryWasm("relatorio.xlsx")).toBe(false);
+  });
+
+  it("normaliza e aplica uma amostragem WASM determinística", () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    expect(normalizeWasmSampleRate(-1)).toBe(0);
+    expect(normalizeWasmSampleRate("0.25")).toBe(0.25);
+    expect(normalizeWasmSampleRate(2)).toBe(1);
+    expect(normalizeWasmSampleRate("inválido")).toBe(1);
+    expect(shouldSampleWasm("relatorio.xlsx", bytes, 0)).toBe(false);
+    expect(shouldSampleWasm("relatorio.xlsx", bytes, 1)).toBe(true);
+    expect(shouldSampleWasm("relatorio.xlsx", bytes, 0.5)).toBe(
+      shouldSampleWasm("relatorio.xlsx", bytes, 0.5),
+    );
   });
 
   it("compara células do inventário WASM sem modificar o leitor TypeScript", () => {
