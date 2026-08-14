@@ -16,7 +16,7 @@ type GeneratedCase = {
   id: string;
   file: string;
   format: string;
-  source: "synthetic";
+  source: WasmCorpusObservation["source"];
   features: string[];
 };
 
@@ -27,6 +27,8 @@ type GeneratedManifest = {
 
 const generatedRoot = "test-fixtures/generated";
 const generatedManifestPath = join(generatedRoot, "manifest.generated.json");
+const sanitizedRoot = process.env["OLI_SANITIZED_CORPUS_DIR"] ?? "test-fixtures/sanitized-real";
+const sanitizedManifestPath = join(sanitizedRoot, "manifest.local.json");
 const wasm = readFileSync(
   new URL("../wasm/oli-ooxml-core/oli_ooxml_core_bg.wasm", import.meta.url),
 );
@@ -110,17 +112,46 @@ describe.skipIf(!existsSync(generatedManifestPath))(
         cases.push({ id: testCase.id, features: testCase.features, ...measured });
       }
 
-      const assessment = assessWasmPromotion(observations);
-      const byFormat = assessWasmPromotionByFormat(observations);
-      expect(assessment.measuredWorkbooks).toBe(25);
-      expect(assessment.comparedCells).toBeGreaterThanOrEqual(10_000);
-      expect(assessment.failedWorkbooks).toBe(0);
-      expect(assessment.sanitizedRealWorkbooks).toBe(0);
-      expect(assessment.eligible).toBe(false);
-      expect(assessment.reasons).toEqual(
+      const syntheticAssessment = assessWasmPromotion(observations);
+      expect(syntheticAssessment.measuredWorkbooks).toBe(25);
+      expect(syntheticAssessment.comparedCells).toBeGreaterThanOrEqual(10_000);
+      expect(syntheticAssessment.failedWorkbooks).toBe(0);
+      expect(syntheticAssessment.sanitizedRealWorkbooks).toBe(0);
+      expect(syntheticAssessment.eligible).toBe(false);
+      expect(syntheticAssessment.reasons).toEqual(
         expect.arrayContaining([expect.stringContaining("corpus real sanitizado insuficiente")]),
       );
-      expect(byFormat["xlsx"]?.measuredWorkbooks).toBe(25);
+
+      let sanitizedManifest: GeneratedManifest | undefined;
+      if (existsSync(sanitizedManifestPath)) {
+        sanitizedManifest = JSON.parse(
+          readFileSync(sanitizedManifestPath, "utf8"),
+        ) as GeneratedManifest;
+        expect(sanitizedManifest.schemaVersion).toBe("1.0.0");
+        for (const testCase of sanitizedManifest.cases) {
+          expect(testCase.source).toBe("sanitized-real");
+          const result = await readWorkbookBytesWithEngine(
+            readFileSync(join(sanitizedRoot, testCase.file)),
+            testCase.file,
+            undefined,
+            { wasmSampleRate: 1 },
+          );
+          const measured = observation(result.report, testCase.format, testCase.source);
+          observations.push(measured);
+          cases.push({ id: testCase.id, features: testCase.features, ...measured });
+        }
+      }
+
+      const assessment = assessWasmPromotion(observations);
+      const byFormat = assessWasmPromotionByFormat(observations);
+      if (!sanitizedManifest?.cases.length) {
+        expect(byFormat["xlsx"]?.measuredWorkbooks).toBe(25);
+        expect(assessment.sanitizedRealWorkbooks).toBe(0);
+        expect(assessment.eligible).toBe(false);
+      } else {
+        expect(assessment.sanitizedRealWorkbooks).toBe(sanitizedManifest.cases.length);
+        expect(byFormat["xlsx"]?.measuredWorkbooks).toBe(25 + sanitizedManifest.cases.length);
+      }
 
       mkdirSync("test-results", { recursive: true });
       writeFileSync(
@@ -129,6 +160,7 @@ describe.skipIf(!existsSync(generatedManifestPath))(
           {
             schemaVersion: "1.0.0",
             generatedManifest: manifest.schemaVersion,
+            sanitizedManifest: sanitizedManifest?.schemaVersion ?? null,
             assessment,
             byFormat,
             cases,

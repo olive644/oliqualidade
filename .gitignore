@@ -9,4 +9,6 @@ dist/
 .vercel/
 rust/oli-ooxml-core/target/
 test-fixtures/generated/
+test-fixtures/private/
+test-fixtures/sanitized-real/
 test-results/

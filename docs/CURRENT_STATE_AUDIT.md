@@ -420,3 +420,19 @@ Na medição de referência, os 25 arquivos, 13.200 células e 24 estruturas tiv
 paridade total, sem falhas ou divergências e com p95 abaixo do limite. O gate
 permanece corretamente bloqueado: corpus sintético comprova cobertura, mas a
 promoção exige pelo menos cinco arquivos reais sanitizados por formato.
+
+## 17. Sanitização local do corpus real — fase 7
+
+Foi adicionado um fluxo local e determinístico para transformar planilhas XLSX
+reais em fixtures adequadas à medição de paridade sem versionar originais ou
+cópias. Textos, números, datas, nomes de abas e literais de fórmula são
+pseudonimizados; metadados, links, comentários, nomes definidos, macros e
+referências externas são removidos ou neutralizados.
+
+O sanitizador preserva os tipos das células, fórmulas internas, formatos,
+mesclagens e regiões ocultas. Ele aceita somente XLSX, exige chave local via
+ambiente, não altera a origem e recusa destinos não vazios. O manifesto gerado
+não contém nomes ou caminhos de origem nem a chave. Quando presente em
+`test-fixtures/sanitized-real`, o corpus local passa a integrar automaticamente
+o relatório e o gate por formato; a CI continua usando apenas as fixtures
+sintéticas reproduzíveis.
