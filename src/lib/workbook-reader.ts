@@ -2,12 +2,19 @@ import * as XLSX from "xlsx";
 
 import { sheetsWithData, type SheetOption } from "@/lib/import";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
-import { compareAndRepairWithOoxml, inspectOoxml, type ReaderDivergence } from "@/lib/ooxml-reader";
 import {
+  compareAndRepairWithOoxml,
+  inspectOoxml,
+  type OoxmlInspection,
+  type ReaderDivergence,
+} from "@/lib/ooxml-reader";
+import {
+  compareWasmInventory,
   registeredWasmWorkbookReader,
   shouldTryWasm,
   workbookFormat,
   type WorkbookReadResult,
+  type WasmShadowStatus,
 } from "@/lib/workbook-reading-engine";
 
 export const WORKBOOK_ACCEPT =
@@ -171,30 +178,6 @@ export async function readWorkbookBytesWithEngine(
   const startedAt = performance.now();
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   onProgress?.("decoding");
-  if (shouldTryWasm(fileName)) {
-    const wasmStartedAt = performance.now();
-    try {
-      const result = await registeredWasmWorkbookReader()!.read(bytes, fileName);
-      return {
-        sheets: result.sheets,
-        report: {
-          reader: "wasm",
-          format: workbookFormat(fileName),
-          elapsedMs: Math.round(performance.now() - startedAt),
-          parseMs: Math.round(performance.now() - wasmStartedAt),
-          verificationMs: 0,
-          sheets: result.sheets.length,
-          repairedCells: result.repairedCells ?? 0,
-          divergentCells: result.divergentCells ?? 0,
-          fallbackUsed: false,
-          wasmAvailable: true,
-        },
-      };
-    } catch {
-      // A integração WASM é opcional: uma falha nela nunca pode tirar o
-      // fallback comprovado de produção nem bloquear a importação do usuário.
-    }
-  }
   const textFile = TEXT_EXTENSIONS.test(fileName);
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) validateZipWorkbook(bytes);
   const source = textFile ? decodeText(bytes) : bytes;
@@ -234,12 +217,13 @@ export async function readWorkbookBytesWithEngine(
   const parseMs = Math.round(performance.now() - parseStartedAt);
   let repairedCells = 0;
   let divergentCells = 0;
+  let independentInspection: OoxmlInspection | undefined;
   const verificationStartedAt = performance.now();
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
     attachWorkbookFeatures(wb, bytes);
     try {
-      const independent = inspectOoxml(bytes);
-      const divergences = compareAndRepairWithOoxml(wb, independent);
+      independentInspection = inspectOoxml(bytes);
+      const divergences = compareAndRepairWithOoxml(wb, independentInspection);
       repairedCells = divergences.filter((item) => item.repaired).length;
       divergentCells = divergences.length;
       for (const sheetName of wb.SheetNames) {
@@ -255,6 +239,33 @@ export async function readWorkbookBytesWithEngine(
   }
   onProgress?.("analyzing");
   const sheets = sheetsWithData(wb);
+  const wasmReader = shouldTryWasm(fileName) ? registeredWasmWorkbookReader() : undefined;
+  let wasmShadowStatus: WasmShadowStatus = wasmReader ? "failed" : "unavailable";
+  let wasmShadowMs = 0;
+  let wasmComparedCells = 0;
+  let wasmDivergentCells = 0;
+  let wasmDivergentSheets = 0;
+  let wasmSchemaVersion: string | null = null;
+  if (wasmReader) {
+    const wasmStartedAt = performance.now();
+    try {
+      const inventory = await wasmReader.inventory(bytes);
+      wasmSchemaVersion = inventory.schemaVersion;
+      const comparison = compareWasmInventory(
+        inventory,
+        independentInspection ?? inspectOoxml(bytes),
+      );
+      wasmComparedCells = comparison.comparedCells;
+      wasmDivergentCells = comparison.divergentCells;
+      wasmDivergentSheets = comparison.divergentSheets;
+      wasmShadowStatus =
+        comparison.divergentCells || comparison.divergentSheets ? "diverged" : "matched";
+    } catch {
+      // Shadow mode nunca interfere no resultado já produzido pelo leitor validado.
+    } finally {
+      wasmShadowMs = Math.round(performance.now() - wasmStartedAt);
+    }
+  }
   return {
     sheets,
     report: {
@@ -272,6 +283,12 @@ export async function readWorkbookBytesWithEngine(
       divergentCells,
       fallbackUsed,
       wasmAvailable: !!registeredWasmWorkbookReader(),
+      wasmShadowStatus,
+      wasmShadowMs,
+      wasmComparedCells,
+      wasmDivergentCells,
+      wasmDivergentSheets,
+      wasmSchemaVersion,
     },
   };
 }

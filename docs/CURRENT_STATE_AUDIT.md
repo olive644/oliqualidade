@@ -354,6 +354,35 @@ Cobertura acrescentada:
   estruturas ocultas e limite reduzido, além da paridade estrutural da fixture
   pública.
 
-A próxima etapa recomendada é compilar um adaptador WASM e executá-lo em shadow
-mode contra o leitor TypeScript, medindo divergências sem alterar o resultado
-entregue ao usuário.
+A etapa de compilação e shadow mode foi concluída abaixo.
+
+## 14. Adaptador WASM em shadow mode — fase 4
+
+O crate `oli-ooxml-core` passa à versão `0.4.0` e gera um módulo WebAssembly
+para navegador. O contrato de inventário permanece `3.0.0`; não houve mudança
+incompatível na saída JSON.
+
+Integração entregue:
+
+- exportação `inventory_ooxml_json` restrita ao alvo `wasm32`, mantendo a API
+  Rust nativa e a CLI existentes;
+- pacote web gerado por `wasm-pack --target web`, versionado em `src/wasm` para
+  que o deploy da Vercel não dependa de uma toolchain Rust;
+- registro automático dentro do worker de leitura para XLSX, XLSM, XLTX e XLTM;
+- execução somente depois que SheetJS e o verificador OOXML TypeScript já
+  produziram o resultado validado;
+- comparação de nomes de abas e, por endereço, valor bruto, texto exibido e
+  fórmula, com tolerância numérica mínima;
+- relatório separado de disponibilidade, estado (`matched`, `diverged`,
+  `failed` ou `unavailable`), tempo, células comparadas, células/abas divergentes
+  e versão do contrato;
+- falha, contrato inválido ou divergência no WASM nunca altera linhas, reparos,
+  diagnósticos produtivos nem impede a importação;
+- smoke test do binário real contra `problematic-import.xlsx`, além de testes de
+  paridade simulada e de falha não bloqueante;
+- CI ampliada com compilação para `wasm32-unknown-unknown` e execução do smoke
+  test sobre o artefato versionado.
+
+O próximo passo seguro é coletar a distribuição das divergências no corpus de
+produção e definir critérios objetivos de promoção por formato antes de permitir
+que o Rust participe do resultado produtivo.
