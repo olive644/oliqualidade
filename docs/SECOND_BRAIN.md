@@ -94,7 +94,7 @@ flowchart TD
 | Revisão, auditoria e versões        | `data-review.ts`, `import-workbench.ts`, `review-export.ts`       | testes de revisão/exportação |
 | Armazenamento e privacidade         | `storage.ts`, `encrypted-backup.ts`                               | storage/privacy + backup     |
 | IA                                  | `gemini-security.ts`, `gemini-server.ts`, `assistant-context.ts`  | segurança + contexto         |
-| Exportação PNG/PDF                  | `dashboard-export.ts`, `export-layout.ts`, CSS `.oliam-export-*` | layout + teste de exportação |
+| Exportação PNG/PDF e tabelas        | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação |
 | Desempenho                          | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets     | `npm run verify`             |
 
 ## Regras de produto que não podem regredir
@@ -222,9 +222,10 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 - Leitura pesada, análise de revisão e exportações pesadas são separadas do
   caminho interativo sempre que possível.
 - `src/routes/index.tsx` ainda concentra a orquestração visual. O motor de
-  exportação PNG/PDF já foi extraído para `dashboard-export.ts`; o próximo
-  recorte recomendado é extrair famílias de widgets em módulos carregáveis sem
-  alterar comportamento.
+  exportação PNG/PDF está em `dashboard-export.ts` e a tabela detalhada já foi
+  extraída para `data-table-widget.tsx`, com uma representação semântica de
+  altura automática exclusiva para exportação. O próximo recorte recomendado é
+  extrair gráficos e métricas sem alterar comportamento.
 - O mapa estrutural gerado em `graphify-out/` é um artefato derivado. Este
   documento explica intenção; o grafo mostra dependências extraídas do código.
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por
