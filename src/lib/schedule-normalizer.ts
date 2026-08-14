@@ -222,9 +222,7 @@ export function scheduleCellState(
     return "failed";
   if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(status))
     return "warning";
-  if (
-    /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(status)
-  )
+  if (/\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(status))
     return "done";
   if (/\b(?:planejad[oa]|programad[oa]|previst[oa])\b/i.test(status)) return "planned";
   return "neutral";
