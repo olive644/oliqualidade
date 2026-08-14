@@ -41,6 +41,12 @@ promoção. O campo `source` distingue `synthetic` de `sanitized-real`, e o gate
 permanece bloqueado enquanto não houver cinco arquivos reais sanitizados para o
 formato avaliado.
 
+O procedimento local, suas garantias e seus limites estão em
+`docs/WASM_CORPUS_SANITIZATION.md`. O comando `npm run corpus:sanitize` cria
+cópias XLSX com nomes neutros em uma pasta ignorada pelo Git. Quando o destino é
+`test-fixtures/sanitized-real`, `npm run wasm:corpus` incorpora automaticamente
+essas medições ao relatório sem alterar o corpus público da CI.
+
 Arquivos reais adicionais podem continuar no corpus local sanitizado. A
 promoção futura deverá ser separada por formato e acompanhada de revisão humana
 das divergências aceitas. Alterar os limites ou permitir que o Rust influencie o
