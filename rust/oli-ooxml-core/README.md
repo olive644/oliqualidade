@@ -9,8 +9,13 @@ preserva a ordem e visibilidade das abas, identifica o sistema de datas 1900 ou
 de ler qualquer parte, valida caminhos, criptografia, quantidade de entradas,
 bytes descompactados e razão de compactação do ZIP.
 
-O contrato de saída é a versão `1.0.0` definida em
+O contrato de saída é a versão `2.0.0` definida em
 `../../contracts/ooxml-inventory.schema.json`.
+
+A versão 2 acrescenta células tipadas, texto exibido, shared strings, cache de
+fórmula, índice de estilo e formato numérico. A formatação numérica exibida é
+intencionalmente conservadora nesta fase: cobre formatos básicos e preserva o
+código original para os demais casos.
 
 ```bash
 cargo test --locked --manifest-path rust/oli-ooxml-core/Cargo.toml

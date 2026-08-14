@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "format", "dateSystem", "archive", "sheets", "diagnostics"],
   "properties": {
-    "schemaVersion": { "const": "1.0.0" },
+    "schemaVersion": { "const": "2.0.0" },
     "format": { "const": "ooxml" },
     "dateSystem": { "enum": ["1900", "1904"] },
     "archive": { "$ref": "#/$defs/archive" },
@@ -35,6 +35,9 @@
           "required": [
             "maxEntries",
             "maxSheets",
+            "maxCells",
+            "maxSharedStrings",
+            "maxTextBytes",
             "maxTotalUncompressedBytes",
             "maxEntryUncompressedBytes",
             "suspiciousRatioMinBytes",
@@ -44,6 +47,9 @@
           "properties": {
             "maxEntries": { "type": "integer", "minimum": 1 },
             "maxSheets": { "type": "integer", "minimum": 1 },
+            "maxCells": { "type": "integer", "minimum": 1 },
+            "maxSharedStrings": { "type": "integer", "minimum": 1 },
+            "maxTextBytes": { "type": "integer", "minimum": 1 },
             "maxTotalUncompressedBytes": { "type": "integer", "minimum": 1 },
             "maxEntryUncompressedBytes": { "type": "integer", "minimum": 1 },
             "suspiciousRatioMinBytes": { "type": "integer", "minimum": 0 },
@@ -63,7 +69,8 @@
         "path",
         "state",
         "declaredDimension",
-        "actualDimension"
+        "actualDimension",
+        "cells"
       ],
       "properties": {
         "name": { "type": "string" },
@@ -88,7 +95,24 @@
               }
             }
           ]
-        }
+        },
+        "cells": { "type": "array", "items": { "$ref": "#/$defs/cell" } }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address", "cellType", "rawValue", "displayValue", "styleIndex"],
+      "properties": {
+        "address": { "type": "string" },
+        "cellType": {
+          "enum": ["blank", "number", "boolean", "string", "error", "date"]
+        },
+        "rawValue": { "type": ["string", "number", "boolean", "null"] },
+        "displayValue": { "type": "string" },
+        "styleIndex": { "type": "integer", "minimum": 0 },
+        "numberFormat": { "type": "string" },
+        "formula": { "type": "string" }
       }
     },
     "diagnostic": {

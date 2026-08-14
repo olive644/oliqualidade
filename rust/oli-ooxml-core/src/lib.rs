@@ -4,19 +4,26 @@ use std::{
     path::Component,
 };
 
-use quick_xml::{Reader, XmlVersion, encoding::Decoder, events::BytesStart, events::Event};
+use quick_xml::{
+    Reader, XmlVersion, encoding::Decoder, escape::unescape, events::BytesStart, events::Event,
+};
 use serde::Serialize;
 use thiserror::Error;
 use zip::ZipArchive;
 
-pub const CONTRACT_VERSION: &str = "1.0.0";
+pub const CONTRACT_VERSION: &str = "2.0.0";
 const WORKBOOK_PART: &str = "xl/workbook.xml";
 const WORKBOOK_RELS_PART: &str = "xl/_rels/workbook.xml.rels";
+const SHARED_STRINGS_PART: &str = "xl/sharedStrings.xml";
+const STYLES_PART: &str = "xl/styles.xml";
 
 #[derive(Debug, Clone, Copy)]
 pub struct InventoryLimits {
     pub max_entries: usize,
     pub max_sheets: usize,
+    pub max_cells: u64,
+    pub max_shared_strings: usize,
+    pub max_text_bytes: u64,
     pub max_total_uncompressed_bytes: u64,
     pub max_entry_uncompressed_bytes: u64,
     pub suspicious_ratio_min_bytes: u64,
@@ -29,6 +36,9 @@ impl Default for InventoryLimits {
         Self {
             max_entries: 10_000,
             max_sheets: 100,
+            max_cells: 2_000_000,
+            max_shared_strings: 2_000_000,
+            max_text_bytes: 256 * 1024 * 1024,
             max_total_uncompressed_bytes: 1024 * 1024 * 1024,
             max_entry_uncompressed_bytes: 512 * 1024 * 1024,
             suspicious_ratio_min_bytes: 50 * 1024 * 1024,
@@ -64,6 +74,9 @@ pub struct ArchiveInventory {
 pub struct AppliedLimits {
     pub max_entries: usize,
     pub max_sheets: usize,
+    pub max_cells: u64,
+    pub max_shared_strings: usize,
+    pub max_text_bytes: u64,
     pub max_total_uncompressed_bytes: u64,
     pub max_entry_uncompressed_bytes: u64,
     pub suspicious_ratio_min_bytes: u64,
@@ -76,6 +89,9 @@ impl From<InventoryLimits> for AppliedLimits {
         Self {
             max_entries: value.max_entries,
             max_sheets: value.max_sheets,
+            max_cells: value.max_cells,
+            max_shared_strings: value.max_shared_strings,
+            max_text_bytes: value.max_text_bytes,
             max_total_uncompressed_bytes: value.max_total_uncompressed_bytes,
             max_entry_uncompressed_bytes: value.max_entry_uncompressed_bytes,
             suspicious_ratio_min_bytes: value.suspicious_ratio_min_bytes,
@@ -93,7 +109,7 @@ pub enum DateSystem {
     Excel1904,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SheetInventory {
     pub name: String,
@@ -103,6 +119,40 @@ pub struct SheetInventory {
     pub state: SheetState,
     pub declared_dimension: Option<String>,
     pub actual_dimension: Option<ActualDimension>,
+    pub cells: Vec<CellInventory>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CellInventory {
+    pub address: String,
+    pub cell_type: CellType,
+    pub raw_value: Option<CellValue>,
+    pub display_value: String,
+    pub style_index: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number_format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub formula: Option<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CellType {
+    Blank,
+    Number,
+    Boolean,
+    String,
+    Error,
+    Date,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum CellValue {
+    String(String),
+    Number(f64),
+    Boolean(bool),
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -180,6 +230,30 @@ struct Relationship {
     external: bool,
 }
 
+#[derive(Debug)]
+struct CellBuilder {
+    address: String,
+    data_type: String,
+    style_index: u32,
+    value_text: String,
+    inline_text: String,
+    formula_text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CellTextTarget {
+    Value,
+    Inline,
+    Formula,
+}
+
+#[derive(Debug)]
+struct ParsedWorksheet {
+    declared_dimension: Option<String>,
+    actual_dimension: Option<ActualDimension>,
+    cells: Vec<CellInventory>,
+}
+
 pub fn inventory_ooxml(bytes: &[u8]) -> Result<WorkbookInventory, InventoryError> {
     inventory_ooxml_with_limits(bytes, InventoryLimits::default())
 }
@@ -194,8 +268,18 @@ pub fn inventory_ooxml_with_limits(
     let relationships_xml = read_part(&mut archive, &part_indexes, WORKBOOK_RELS_PART, limits)?;
     let (date_system, workbook_sheets) = parse_workbook(&workbook_xml, limits)?;
     let relationships = parse_relationships(&relationships_xml, limits)?;
+    let shared_strings =
+        read_optional_part(&mut archive, &part_indexes, SHARED_STRINGS_PART, limits)?
+            .map(|xml| parse_shared_strings(&xml, limits))
+            .transpose()?
+            .unwrap_or_default();
+    let style_formats = read_optional_part(&mut archive, &part_indexes, STYLES_PART, limits)?
+        .map(|xml| parse_style_formats(&xml, limits))
+        .transpose()?
+        .unwrap_or_else(|| vec!["General".to_owned()]);
     let mut diagnostics = Vec::new();
     let mut sheets = Vec::with_capacity(workbook_sheets.len());
+    let mut workbook_cell_count = 0_u64;
 
     for sheet in workbook_sheets {
         let path = relationships
@@ -203,10 +287,34 @@ pub fn inventory_ooxml_with_limits(
             .filter(|relationship| !relationship.external)
             .and_then(|relationship| resolve_relationship_target("xl", &relationship.target));
 
-        let (declared_dimension, actual_dimension) = if let Some(path) = path.as_deref() {
+        let (declared_dimension, actual_dimension, cells) = if let Some(path) = path.as_deref() {
             if part_indexes.contains_key(path) {
                 let xml = read_part(&mut archive, &part_indexes, path, limits)?;
-                parse_worksheet(&xml, path, limits, &sheet.name, &mut diagnostics)?
+                let parsed = parse_worksheet(
+                    &xml,
+                    path,
+                    limits,
+                    &sheet.name,
+                    &shared_strings,
+                    &style_formats,
+                    &mut diagnostics,
+                )?;
+                workbook_cell_count = workbook_cell_count
+                    .checked_add(parsed.cells.len() as u64)
+                    .ok_or_else(|| {
+                        InventoryError::ResourceLimit("contagem de células excedeu u64".into())
+                    })?;
+                if workbook_cell_count > limits.max_cells {
+                    return Err(InventoryError::ResourceLimit(format!(
+                        "o workbook possui mais de {} células",
+                        limits.max_cells
+                    )));
+                }
+                (
+                    parsed.declared_dimension,
+                    parsed.actual_dimension,
+                    parsed.cells,
+                )
             } else {
                 diagnostics.push(Diagnostic {
                     code: "missing-sheet-part",
@@ -214,7 +322,7 @@ pub fn inventory_ooxml_with_limits(
                     message: format!("A parte OOXML '{path}' não existe no pacote."),
                     sheet: Some(sheet.name.clone()),
                 });
-                (None, None)
+                (None, None, Vec::new())
             }
         } else {
             diagnostics.push(Diagnostic {
@@ -226,7 +334,7 @@ pub fn inventory_ooxml_with_limits(
                 ),
                 sheet: Some(sheet.name.clone()),
             });
-            (None, None)
+            (None, None, Vec::new())
         };
 
         sheets.push(SheetInventory {
@@ -237,6 +345,7 @@ pub fn inventory_ooxml_with_limits(
             state: sheet.state,
             declared_dimension,
             actual_dimension,
+            cells,
         });
     }
 
@@ -377,6 +486,18 @@ fn read_part<R: Read + Seek>(
     Ok(output)
 }
 
+fn read_optional_part<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    indexes: &HashMap<String, usize>,
+    part: &str,
+    limits: InventoryLimits,
+) -> Result<Option<Vec<u8>>, InventoryError> {
+    if !indexes.contains_key(part) {
+        return Ok(None);
+    }
+    read_part(archive, indexes, part, limits).map(Some)
+}
+
 fn parse_workbook(
     xml: &[u8],
     limits: InventoryLimits,
@@ -488,13 +609,19 @@ fn parse_worksheet(
     part: &str,
     limits: InventoryLimits,
     sheet_name: &str,
+    shared_strings: &[String],
+    style_formats: &[String],
     diagnostics: &mut Vec<Diagnostic>,
-) -> Result<(Option<String>, Option<ActualDimension>), InventoryError> {
+) -> Result<ParsedWorksheet, InventoryError> {
     let mut reader = Reader::from_reader(xml);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut declared_dimension = None;
     let mut bounds: Option<(u32, u32, u32, u32)> = None;
     let mut cell_count = 0_u64;
+    let mut cells = Vec::new();
+    let mut current_cell: Option<CellBuilder> = None;
+    let mut text_target = None;
+    let mut text_bytes = 0_u64;
     let mut events = 0_u64;
 
     loop {
@@ -511,22 +638,115 @@ fn parse_worksheet(
                     .get("ref")
                     .cloned();
             }
-            Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"c" =>
-            {
+            Event::Start(ref element) if element.local_name().as_ref() == b"c" => {
                 cell_count += 1;
-                if let Some(reference) = attributes(element, reader.decoder(), part)?.get("r")
-                    && let Some((column, row)) = parse_cell_reference(reference)
-                {
-                    bounds = Some(match bounds {
-                        Some((min_col, min_row, max_col, max_row)) => (
-                            min_col.min(column),
-                            min_row.min(row),
-                            max_col.max(column),
-                            max_row.max(row),
-                        ),
-                        None => (column, row, column, row),
-                    });
+                enforce_cell_limit(cell_count, limits, sheet_name)?;
+                current_cell = start_cell(element, reader.decoder(), part, &mut bounds)?;
+            }
+            Event::Empty(ref element) if element.local_name().as_ref() == b"c" => {
+                cell_count += 1;
+                enforce_cell_limit(cell_count, limits, sheet_name)?;
+                if let Some(builder) = start_cell(element, reader.decoder(), part, &mut bounds)? {
+                    cells.push(finish_cell(
+                        builder,
+                        shared_strings,
+                        style_formats,
+                        diagnostics,
+                        sheet_name,
+                    ));
+                }
+            }
+            Event::Start(ref element) if current_cell.is_some() => {
+                text_target = match element.local_name().as_ref() {
+                    b"v" => Some(CellTextTarget::Value),
+                    b"f" => Some(CellTextTarget::Formula),
+                    b"t" => Some(CellTextTarget::Inline),
+                    _ => text_target,
+                };
+            }
+            Event::Text(ref text) if current_cell.is_some() && text_target.is_some() => {
+                let decoded = text.decode().map_err(|source| InventoryError::Xml {
+                    part: part.into(),
+                    source: source.into(),
+                })?;
+                let decoded = unescape(&decoded).map_err(|source| InventoryError::Xml {
+                    part: part.into(),
+                    source: source.into(),
+                })?;
+                text_bytes = text_bytes
+                    .checked_add(decoded.len() as u64)
+                    .ok_or_else(|| {
+                        InventoryError::ResourceLimit("contagem de texto excedeu u64".into())
+                    })?;
+                if text_bytes > limits.max_text_bytes {
+                    return Err(InventoryError::ResourceLimit(format!(
+                        "a aba '{sheet_name}' excedeu {} bytes de texto",
+                        limits.max_text_bytes
+                    )));
+                }
+                append_cell_text(
+                    current_cell.as_mut().expect("guarded"),
+                    text_target,
+                    &decoded,
+                );
+            }
+            Event::CData(ref text) if current_cell.is_some() && text_target.is_some() => {
+                let decoded = text.decode().map_err(|source| InventoryError::Xml {
+                    part: part.into(),
+                    source: source.into(),
+                })?;
+                text_bytes = text_bytes
+                    .checked_add(decoded.len() as u64)
+                    .ok_or_else(|| {
+                        InventoryError::ResourceLimit("contagem de texto excedeu u64".into())
+                    })?;
+                if text_bytes > limits.max_text_bytes {
+                    return Err(InventoryError::ResourceLimit(format!(
+                        "a aba '{sheet_name}' excedeu {} bytes de texto",
+                        limits.max_text_bytes
+                    )));
+                }
+                append_cell_text(
+                    current_cell.as_mut().expect("guarded"),
+                    text_target,
+                    &decoded,
+                );
+            }
+            Event::GeneralRef(ref reference) if current_cell.is_some() && text_target.is_some() => {
+                let resolved = resolve_general_reference(reference, part)?;
+                text_bytes = text_bytes
+                    .checked_add(resolved.len() as u64)
+                    .ok_or_else(|| {
+                        InventoryError::ResourceLimit("contagem de texto excedeu u64".into())
+                    })?;
+                if text_bytes > limits.max_text_bytes {
+                    return Err(InventoryError::ResourceLimit(format!(
+                        "a aba '{sheet_name}' excedeu {} bytes de texto",
+                        limits.max_text_bytes
+                    )));
+                }
+                append_cell_text(
+                    current_cell.as_mut().expect("guarded"),
+                    text_target,
+                    &resolved,
+                );
+            }
+            Event::End(ref element) if current_cell.is_some() => {
+                match element.local_name().as_ref() {
+                    b"v" | b"f" | b"t" => text_target = None,
+                    b"c" => {
+                        if let Some(builder) = current_cell.take() {
+                            cells.push(finish_cell(
+                                builder,
+                                shared_strings,
+                                style_formats,
+                                diagnostics,
+                                sheet_name,
+                            ));
+                        }
+                        text_target = None;
+                    }
+                    _ => {}
                 }
             }
             Event::DocType(_) => {
@@ -563,7 +783,356 @@ fn parse_worksheet(
             });
         }
     }
-    Ok((declared_dimension, actual_dimension))
+    Ok(ParsedWorksheet {
+        declared_dimension,
+        actual_dimension,
+        cells,
+    })
+}
+
+fn parse_shared_strings(
+    xml: &[u8],
+    limits: InventoryLimits,
+) -> Result<Vec<String>, InventoryError> {
+    let part = SHARED_STRINGS_PART;
+    let mut reader = Reader::from_reader(xml);
+    reader.config_mut().trim_text(false);
+    let mut strings = Vec::new();
+    let mut current = None::<String>;
+    let mut in_text = false;
+    let mut events = 0_u64;
+    let mut text_bytes = 0_u64;
+
+    loop {
+        let event = reader.read_event().map_err(|source| InventoryError::Xml {
+            part: part.into(),
+            source,
+        })?;
+        count_event(&mut events, limits, part)?;
+        match event {
+            Event::Start(ref element) if element.local_name().as_ref() == b"si" => {
+                current = Some(String::new());
+            }
+            Event::Start(ref element) if element.local_name().as_ref() == b"t" => in_text = true,
+            Event::Text(ref text) if current.is_some() && in_text => {
+                let decoded = text.decode().map_err(|source| InventoryError::Xml {
+                    part: part.into(),
+                    source: source.into(),
+                })?;
+                let decoded = unescape(&decoded).map_err(|source| InventoryError::Xml {
+                    part: part.into(),
+                    source: source.into(),
+                })?;
+                add_text_bytes(&mut text_bytes, decoded.len(), limits, part)?;
+                current.as_mut().expect("guarded").push_str(&decoded);
+            }
+            Event::CData(ref text) if current.is_some() && in_text => {
+                let decoded = text.decode().map_err(|source| InventoryError::Xml {
+                    part: part.into(),
+                    source: source.into(),
+                })?;
+                add_text_bytes(&mut text_bytes, decoded.len(), limits, part)?;
+                current.as_mut().expect("guarded").push_str(&decoded);
+            }
+            Event::GeneralRef(ref reference) if current.is_some() && in_text => {
+                let resolved = resolve_general_reference(reference, part)?;
+                add_text_bytes(&mut text_bytes, resolved.len(), limits, part)?;
+                current.as_mut().expect("guarded").push_str(&resolved);
+            }
+            Event::End(ref element) if element.local_name().as_ref() == b"t" => in_text = false,
+            Event::End(ref element) if element.local_name().as_ref() == b"si" => {
+                strings.push(current.take().unwrap_or_default());
+                if strings.len() > limits.max_shared_strings {
+                    return Err(InventoryError::ResourceLimit(format!(
+                        "sharedStrings possui mais de {} itens",
+                        limits.max_shared_strings
+                    )));
+                }
+            }
+            Event::DocType(_) => {
+                return Err(InventoryError::ResourceLimit(
+                    "DOCTYPE não é permitido em partes OOXML".into(),
+                ));
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    Ok(strings)
+}
+
+fn parse_style_formats(xml: &[u8], limits: InventoryLimits) -> Result<Vec<String>, InventoryError> {
+    let part = STYLES_PART;
+    let mut reader = Reader::from_reader(xml);
+    reader.config_mut().trim_text(true);
+    let mut custom = HashMap::<u32, String>::new();
+    let mut formats = Vec::new();
+    let mut in_cell_xfs = false;
+    let mut events = 0_u64;
+
+    loop {
+        let event = reader.read_event().map_err(|source| InventoryError::Xml {
+            part: part.into(),
+            source,
+        })?;
+        count_event(&mut events, limits, part)?;
+        match event {
+            Event::Start(ref element) if element.local_name().as_ref() == b"cellXfs" => {
+                in_cell_xfs = true;
+            }
+            Event::End(ref element) if element.local_name().as_ref() == b"cellXfs" => {
+                in_cell_xfs = false;
+            }
+            Event::Start(ref element) | Event::Empty(ref element)
+                if element.local_name().as_ref() == b"numFmt" =>
+            {
+                let attrs = attributes(element, reader.decoder(), part)?;
+                if let (Some(id), Some(code)) = (attrs.get("numFmtId"), attrs.get("formatCode"))
+                    && let Ok(id) = id.parse::<u32>()
+                {
+                    custom.insert(id, code.clone());
+                }
+            }
+            Event::Start(ref element) | Event::Empty(ref element)
+                if in_cell_xfs && element.local_name().as_ref() == b"xf" =>
+            {
+                let attrs = attributes(element, reader.decoder(), part)?;
+                let id = attrs
+                    .get("numFmtId")
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .unwrap_or(0);
+                formats.push(
+                    custom
+                        .get(&id)
+                        .cloned()
+                        .unwrap_or_else(|| builtin_number_format(id).to_owned()),
+                );
+            }
+            Event::DocType(_) => {
+                return Err(InventoryError::ResourceLimit(
+                    "DOCTYPE não é permitido em partes OOXML".into(),
+                ));
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    if formats.is_empty() {
+        formats.push("General".to_owned());
+    }
+    Ok(formats)
+}
+
+fn start_cell(
+    element: &BytesStart<'_>,
+    decoder: Decoder,
+    part: &str,
+    bounds: &mut Option<(u32, u32, u32, u32)>,
+) -> Result<Option<CellBuilder>, InventoryError> {
+    let attrs = attributes(element, decoder, part)?;
+    let Some(address) = attrs.get("r").cloned() else {
+        return Ok(None);
+    };
+    if let Some((column, row)) = parse_cell_reference(&address) {
+        *bounds = Some(match *bounds {
+            Some((min_col, min_row, max_col, max_row)) => (
+                min_col.min(column),
+                min_row.min(row),
+                max_col.max(column),
+                max_row.max(row),
+            ),
+            None => (column, row, column, row),
+        });
+    }
+    Ok(Some(CellBuilder {
+        address,
+        data_type: attrs.get("t").cloned().unwrap_or_else(|| "n".to_owned()),
+        style_index: attrs
+            .get("s")
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(0),
+        value_text: String::new(),
+        inline_text: String::new(),
+        formula_text: String::new(),
+    }))
+}
+
+fn append_cell_text(builder: &mut CellBuilder, target: Option<CellTextTarget>, text: &str) {
+    match target {
+        Some(CellTextTarget::Value) => builder.value_text.push_str(text),
+        Some(CellTextTarget::Inline) => builder.inline_text.push_str(text),
+        Some(CellTextTarget::Formula) => builder.formula_text.push_str(text),
+        None => {}
+    }
+}
+
+fn finish_cell(
+    builder: CellBuilder,
+    shared_strings: &[String],
+    style_formats: &[String],
+    diagnostics: &mut Vec<Diagnostic>,
+    sheet_name: &str,
+) -> CellInventory {
+    let (cell_type, raw_value) = match builder.data_type.as_str() {
+        "s" => match builder.value_text.parse::<usize>() {
+            Ok(index) => match shared_strings.get(index) {
+                Some(value) => (CellType::String, Some(CellValue::String(value.clone()))),
+                None => {
+                    diagnostics.push(Diagnostic {
+                        code: "missing-shared-string",
+                        severity: DiagnosticSeverity::Warning,
+                        message: format!(
+                            "A célula '{}' referencia shared string inexistente {}.",
+                            builder.address, index
+                        ),
+                        sheet: Some(sheet_name.to_owned()),
+                    });
+                    (CellType::String, Some(CellValue::String(String::new())))
+                }
+            },
+            Err(_) => (CellType::String, Some(CellValue::String(String::new()))),
+        },
+        "inlineStr" => (
+            CellType::String,
+            Some(CellValue::String(builder.inline_text.clone())),
+        ),
+        "b" => (
+            CellType::Boolean,
+            Some(CellValue::Boolean(builder.value_text == "1")),
+        ),
+        "str" => (
+            CellType::String,
+            Some(CellValue::String(builder.value_text.clone())),
+        ),
+        "e" => (
+            CellType::Error,
+            Some(CellValue::String(builder.value_text.clone())),
+        ),
+        "d" => (
+            CellType::Date,
+            Some(CellValue::String(builder.value_text.clone())),
+        ),
+        _ if builder.value_text.is_empty() => (CellType::Blank, None),
+        _ => match builder.value_text.parse::<f64>() {
+            Ok(value) if value.is_finite() => (CellType::Number, Some(CellValue::Number(value))),
+            _ => (
+                CellType::String,
+                Some(CellValue::String(builder.value_text.clone())),
+            ),
+        },
+    };
+    let number_format = style_formats
+        .get(builder.style_index as usize)
+        .cloned()
+        .unwrap_or_else(|| "General".to_owned());
+    let display_value = display_cell_value(raw_value.as_ref(), &number_format);
+    CellInventory {
+        address: builder.address,
+        cell_type,
+        raw_value,
+        display_value,
+        style_index: builder.style_index,
+        number_format: (number_format != "General").then_some(number_format),
+        formula: (!builder.formula_text.is_empty()).then(|| format!("={}", builder.formula_text)),
+    }
+}
+
+fn display_cell_value(value: Option<&CellValue>, number_format: &str) -> String {
+    match value {
+        Some(CellValue::String(value)) => value.clone(),
+        Some(CellValue::Boolean(value)) => value.to_string(),
+        Some(CellValue::Number(value)) if number_format == "0" => format!("{value:.0}"),
+        Some(CellValue::Number(value)) if number_format == "0.00" => format!("{value:.2}"),
+        Some(CellValue::Number(value)) if number_format == "0%" => format!("{:.0}%", value * 100.0),
+        Some(CellValue::Number(value)) if number_format == "0.00%" => {
+            format!("{:.2}%", value * 100.0)
+        }
+        Some(CellValue::Number(value)) => value.to_string(),
+        None => String::new(),
+    }
+}
+
+fn builtin_number_format(id: u32) -> &'static str {
+    match id {
+        1 => "0",
+        2 => "0.00",
+        9 => "0%",
+        10 => "0.00%",
+        14 => "m/d/yy",
+        15 => "d-mmm-yy",
+        16 => "d-mmm",
+        17 => "mmm-yy",
+        18 => "h:mm AM/PM",
+        19 => "h:mm:ss AM/PM",
+        20 => "h:mm",
+        21 => "h:mm:ss",
+        22 => "m/d/yy h:mm",
+        45 => "mm:ss",
+        46 => "[h]:mm:ss",
+        47 => "mmss.0",
+        _ => "General",
+    }
+}
+
+fn enforce_cell_limit(
+    cell_count: u64,
+    limits: InventoryLimits,
+    sheet_name: &str,
+) -> Result<(), InventoryError> {
+    if cell_count > limits.max_cells {
+        return Err(InventoryError::ResourceLimit(format!(
+            "a aba '{sheet_name}' possui mais de {} células",
+            limits.max_cells
+        )));
+    }
+    Ok(())
+}
+
+fn add_text_bytes(
+    total: &mut u64,
+    added: usize,
+    limits: InventoryLimits,
+    part: &str,
+) -> Result<(), InventoryError> {
+    *total = total
+        .checked_add(added as u64)
+        .ok_or_else(|| InventoryError::ResourceLimit("contagem de texto excedeu u64".into()))?;
+    if *total > limits.max_text_bytes {
+        return Err(InventoryError::ResourceLimit(format!(
+            "a parte '{part}' excedeu {} bytes de texto",
+            limits.max_text_bytes
+        )));
+    }
+    Ok(())
+}
+
+fn resolve_general_reference(
+    reference: &quick_xml::events::BytesRef<'_>,
+    part: &str,
+) -> Result<String, InventoryError> {
+    if let Some(character) = reference
+        .resolve_char_ref()
+        .map_err(|source| InventoryError::Xml {
+            part: part.into(),
+            source,
+        })?
+    {
+        return Ok(character.to_string());
+    }
+    let name = reference.decode().map_err(|source| InventoryError::Xml {
+        part: part.into(),
+        source: source.into(),
+    })?;
+    match name.as_ref() {
+        "amp" => Ok("&".into()),
+        "lt" => Ok("<".into()),
+        "gt" => Ok(">".into()),
+        "quot" => Ok("\"".into()),
+        "apos" => Ok("'".into()),
+        _ => Err(InventoryError::ResourceLimit(format!(
+            "a parte '{part}' contém entidade XML não permitida '&{name};'"
+        ))),
+    }
 }
 
 fn attributes(
