@@ -344,6 +344,58 @@ export function relevantAggregationOps(
   return ["sum"];
 }
 
+
+export type AggregationSemanticProfile = {
+  role?: string;
+  unitFamily?: string;
+  aggregable?: boolean;
+};
+
+/**
+ * Remove cálculos matematicamente possíveis, mas semanticamente enganosos.
+ * Soma continua disponível para medidas aditivas; percentuais, limites,
+ * médias, notas e resultados de laboratório usam média/faixa/contagem.
+ */
+export function semanticAggregationOps(
+  operations: AggregationOp[],
+  column: Pick<Column, "kind" | "label">,
+  profile?: AggregationSemanticProfile,
+): AggregationOp[] {
+  if (profile?.aggregable === false)
+    return operations.includes("count") ? ["count"] : operations.slice(0, 1);
+
+  const label = column.label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const additiveRole = profile?.role === "quantity" || profile?.role === "total";
+  const additiveLabel =
+    /\b(?:quantidade|qtd|total|receita|faturamento|custo|consumo|producao|volume produzido)\b/.test(
+      label,
+    );
+  const nonAdditiveRole = ["result", "minimum-limit", "maximum-limit", "target", "price"].includes(
+    profile?.role ?? "",
+  );
+  const nonAdditiveUnit = ["percentage", "temperature", "concentration", "dimensionless"].includes(
+    profile?.unitFamily ?? "",
+  );
+  const nonAdditiveLabel =
+    /(?:^|\b)(?:resultado|limite|meta|media|indice|taxa|margem|percentual|porcentagem|nota|score|oee|temperatura|concentracao|preco unitario)(?:\b|$)|%/.test(
+      label,
+    );
+  const nonAdditive =
+    !additiveRole &&
+    !additiveLabel &&
+    (column.kind === "percentage" || nonAdditiveRole || nonAdditiveUnit || nonAdditiveLabel);
+  if (!nonAdditive) return operations;
+
+  const filtered = operations.filter(
+    (operation) => !["sum", "multiply", "divide"].includes(operation),
+  );
+  if (filtered.length) return filtered;
+  return operations.includes("count") ? ["count"] : operations.slice(0, 1);
+}
+
 /**
  * Aplica de forma padronizada o clique de cross-filter em um widget
  * (barra, pizza, linha, área, ranking, mapa): clicar em um valor filtra a
