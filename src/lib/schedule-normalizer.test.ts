@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseScheduleCriterion, scheduleCellState, summarizeScheduleRows } from "@/lib/schedule-normalizer";
+import {
+  parseScheduleCriterion,
+  scheduleCellState,
+  summarizeScheduleRows,
+} from "@/lib/schedule-normalizer";
 import type { Column, Row } from "@/lib/types";
 
 const column = (key: string, kind: Column["kind"] = "text"): Column => ({
@@ -65,9 +69,7 @@ describe("métricas de cronograma", () => {
   });
 
   it("contabiliza resultados numéricos mesmo quando a linha ainda diz Planejado", () => {
-    const rows: Row[] = [
-      { item: "Torneira", status: "Planejado", jan: 4, fev: 6, "Máx.": 5 },
-    ];
+    const rows: Row[] = [{ item: "Torneira", status: "Planejado", jan: 4, fev: 6, "Máx.": 5 }];
     const metrics = summarizeScheduleRows(
       rows,
       [
@@ -88,5 +90,4 @@ describe("métricas de cronograma", () => {
       coverage: 100,
     });
   });
-
 });
