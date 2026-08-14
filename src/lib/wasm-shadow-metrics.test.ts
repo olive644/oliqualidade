@@ -82,6 +82,34 @@ describe("gate de promoção do shadow WASM", () => {
     );
   });
 
+  it("conta apenas fontes reais sanitizadas únicas e bloqueia identidades ausentes", () => {
+    const criteria = {
+      ...permissiveCriteria,
+      minimumWorkbooks: 4,
+      minimumComparedCells: 200,
+      minimumSanitizedRealWorkbooks: 2,
+    };
+    const assessment = assessWasmPromotion(
+      [
+        { ...matched(20), source: "sanitized-real", corpusId: "real-a" },
+        { ...matched(30), source: "sanitized-real", corpusId: "real-a" },
+        { ...matched(40), source: "sanitized-real", corpusId: "real-b" },
+        { ...matched(50), source: "sanitized-real" },
+      ],
+      criteria,
+    );
+
+    expect(assessment).toMatchObject({
+      eligible: false,
+      sanitizedRealWorkbooks: 2,
+      duplicateSanitizedRealWorkbooks: 1,
+      unidentifiedSanitizedRealWorkbooks: 1,
+    });
+    expect(assessment.reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining("sem identidade sanitizada")]),
+    );
+  });
+
   it("avalia a promoção separadamente por formato", () => {
     const assessments = assessWasmPromotionByFormat(
       [matched(20), { ...matched(30), format: "xlsm" }],
