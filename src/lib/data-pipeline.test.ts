@@ -12,6 +12,7 @@ import {
   NOT_INFORMED,
   pieRoundnessFor,
   relevantAggregationOps,
+  semanticAggregationOps,
   sortAllBarCategories,
   timeSeriesChartPresentation,
   toggleClickFilter,
@@ -320,6 +321,47 @@ describe("relevantAggregationOps", () => {
 
   it("não quebra com uma base vazia", () => {
     expect(relevantAggregationOps([], "vendedor", "vendas")).toEqual(["sum"]);
+  });
+});
+
+describe("semanticAggregationOps", () => {
+  const operations = ["sum", "avg", "count", "min", "max"] as const;
+
+  it("remove soma de percentuais, taxas e resultados de laboratório", () => {
+    expect(
+      semanticAggregationOps(
+        [...operations],
+        { kind: "percentage", label: "Taxa de aprovação" },
+        { role: "result", unitFamily: "percentage", aggregable: true },
+      ),
+    ).toEqual(["avg", "count", "min", "max"]);
+    expect(
+      semanticAggregationOps(
+        [...operations],
+        { kind: "number", label: "Resultado microbiológico" },
+        { role: "result", unitFamily: "concentration", aggregable: true },
+      ),
+    ).toEqual(["avg", "count", "min", "max"]);
+  });
+
+  it("mantém soma para quantidades, totais e valores aditivos", () => {
+    expect(
+      semanticAggregationOps(
+        [...operations],
+        { kind: "currency", label: "Receita total" },
+        { role: "total", unitFamily: "currency", aggregable: true },
+      ),
+    ).toEqual([...operations]);
+  });
+
+  it("oferece somente contagem para coluna não agregável", () => {
+    expect(
+      semanticAggregationOps(
+        [...operations],
+        { kind: "number", label: "Código numérico" },
+        { role: "identifier", unitFamily: "count", aggregable: false },
+      ),
+    ).toEqual(["count"]);
   });
 });
 
