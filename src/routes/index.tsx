@@ -10225,4 +10225,3 @@ function FormatRulesEditor({
     </div>
   );
 }
-
