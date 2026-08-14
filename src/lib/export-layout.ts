@@ -1,14 +1,20 @@
 export const EXPORT_SURFACE_WIDTH = 1440;
 export const MAX_EXPORT_PIXELS = 18_000_000;
+export const MAX_EXPORT_DIMENSION = 28_000;
 
 export function captureScale(
   width: number,
   height: number,
   preferredScale = 2,
   maxPixels = MAX_EXPORT_PIXELS,
+  maxDimension = MAX_EXPORT_DIMENSION,
 ) {
   if (width <= 0 || height <= 0) return 1;
-  return Math.max(1, Math.min(preferredScale, Math.sqrt(maxPixels / (width * height))));
+  const pixelScale = Math.sqrt(maxPixels / (width * height));
+  const dimensionScale = Math.min(maxDimension / width, maxDimension / height);
+  // Escalas menores que 1 são necessárias em painéis muito altos. Forçar 1
+  // ultrapassava o limite do canvas e fazia o PNG terminar no meio.
+  return Math.max(0.01, Math.min(preferredScale, pixelScale, dimensionScale));
 }
 
 export function pdfPageSlices(
@@ -94,4 +100,63 @@ export function pdfTablePages(
     }
   }
   return pages;
+}
+
+
+export type PdfRowPage = {
+  rowStart: number;
+  rowEnd: number;
+  heights: number[];
+};
+
+/**
+ * Pagina linhas de altura variável sem repartir uma linha entre páginas.
+ * Textos longos podem aumentar a altura da própria linha até o limite
+ * definido por quem renderiza a tabela.
+ */
+export function pdfVariableRowPages(
+  rowHeights: number[],
+  availableHeightPt: number,
+): PdfRowPage[] {
+  if (availableHeightPt <= 0) return [];
+  if (!rowHeights.length) return [{ rowStart: 0, rowEnd: 0, heights: [] }];
+
+  const pages: PdfRowPage[] = [];
+  let rowStart = 0;
+  let heights: number[] = [];
+  let used = 0;
+
+  rowHeights.forEach((rawHeight, index) => {
+    const height = Math.max(1, Math.min(rawHeight, availableHeightPt));
+    if (heights.length && used + height > availableHeightPt) {
+      pages.push({ rowStart, rowEnd: index, heights });
+      rowStart = index;
+      heights = [];
+      used = 0;
+    }
+    heights.push(height);
+    used += height;
+  });
+
+  pages.push({ rowStart, rowEnd: rowHeights.length, heights });
+  return pages;
+}
+
+export type PdfColumnRange = {
+  columnStart: number;
+  columnEnd: number;
+};
+
+export function pdfColumnRanges(
+  columnCount: number,
+  contentWidthPt: number,
+  minColumnWidthPt = 112,
+): PdfColumnRange[] {
+  if (columnCount <= 0 || contentWidthPt <= 0 || minColumnWidthPt <= 0) return [];
+  const columnsPerPage = Math.max(1, Math.floor(contentWidthPt / minColumnWidthPt));
+  const ranges: PdfColumnRange[] = [];
+  for (let start = 0; start < columnCount; start += columnsPerPage) {
+    ranges.push({ columnStart: start, columnEnd: Math.min(columnCount, start + columnsPerPage) });
+  }
+  return ranges;
 }
