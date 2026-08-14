@@ -4120,6 +4120,7 @@ function Dashboard(p: {
       const capture = await captureContent();
       if (!capture) return;
       downloadBlob(await canvasBlob(capture.canvas, "image/png"), `${slug}.png`);
+      toast.success("PNG completo exportado com assinatura OliQualidade.");
     } catch (err) {
       console.error("Falha ao exportar PNG:", err);
       setExportError("Não foi possível gerar o PNG. Tente novamente.");
@@ -5552,15 +5553,19 @@ function Dashboard(p: {
         )}
         <div className="flex min-h-0 flex-1">
           <div ref={contentRef} className="min-w-0 flex-1 overflow-auto bg-canvas p-4 md:p-6">
+            <div className="oliam-export-watermark" aria-hidden="true" />
             <div className="oliam-export-header" aria-hidden="true">
               <div>
-                <p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">
-                  Oli.Qualidade
-                </p>
-                <h1 className="mt-1 font-display text-2xl font-bold">{d.name}</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Aba {sheet.name} · {data.length} de {sheet.rows.length} linhas
-                </p>
+                <Mark />
+                <div className="oliam-export-brand-copy">
+                  <p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">
+                    Oli.Qualidade
+                  </p>
+                  <h1 className="mt-1 font-display text-2xl font-bold">{d.name}</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Aba {sheet.name} · {data.length} de {sheet.rows.length} linhas
+                  </p>
+                </div>
               </div>
               <div className="text-right text-xs text-muted-foreground">
                 <p>Relatório gerado em</p>
@@ -5627,6 +5632,23 @@ function Dashboard(p: {
             )}
             {sourceNotesPanel}
             {gridContent}
+            <footer className="oliam-export-footer" aria-hidden="true">
+              <div className="oliam-export-signature">
+                <Mark />
+                <div>
+                  <p className="font-display text-sm font-bold text-foreground">
+                    Assinatura de origem OliQualidade
+                  </p>
+                  <p className="mt-0.5 text-[10px]">
+                    Relatório gerado pela plataforma a partir da aba {sheet.name}.
+                  </p>
+                </div>
+              </div>
+              <div className="oliam-export-license text-right">
+                <p className="font-semibold text-foreground">Uso licenciado</p>
+                <p className="font-mono">Painel {d.id.slice(0, 8).toUpperCase()}</p>
+              </div>
+            </footer>
           </div>
           {insightOpen && (
             <aside className="oliam-insight-sidebar hidden shrink-0 overflow-auto lg:block">
