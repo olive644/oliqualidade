@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oliqualidade.local/contracts/ooxml-inventory.schema.json",
+  "title": "OliQualidade OOXML Workbook Inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "format", "dateSystem", "archive", "sheets", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "format": { "const": "ooxml" },
+    "dateSystem": { "enum": ["1900", "1904"] },
+    "archive": { "$ref": "#/$defs/archive" },
+    "sheets": { "type": "array", "items": { "$ref": "#/$defs/sheet" } },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
+  },
+  "$defs": {
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entries",
+        "compressedBytes",
+        "uncompressedBytes",
+        "maxCompressionRatio",
+        "limits"
+      ],
+      "properties": {
+        "entries": { "type": "integer", "minimum": 0 },
+        "compressedBytes": { "type": "integer", "minimum": 0 },
+        "uncompressedBytes": { "type": "integer", "minimum": 0 },
+        "maxCompressionRatio": { "type": "number", "minimum": 0 },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maxEntries",
+            "maxSheets",
+            "maxTotalUncompressedBytes",
+            "maxEntryUncompressedBytes",
+            "suspiciousRatioMinBytes",
+            "maxCompressionRatio",
+            "maxXmlEvents"
+          ],
+          "properties": {
+            "maxEntries": { "type": "integer", "minimum": 1 },
+            "maxSheets": { "type": "integer", "minimum": 1 },
+            "maxTotalUncompressedBytes": { "type": "integer", "minimum": 1 },
+            "maxEntryUncompressedBytes": { "type": "integer", "minimum": 1 },
+            "suspiciousRatioMinBytes": { "type": "integer", "minimum": 0 },
+            "maxCompressionRatio": { "type": "number", "exclusiveMinimum": 0 },
+            "maxXmlEvents": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "sheet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sheetId",
+        "relationshipId",
+        "path",
+        "state",
+        "declaredDimension",
+        "actualDimension"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "sheetId": { "type": ["string", "null"] },
+        "relationshipId": { "type": "string" },
+        "path": { "type": ["string", "null"] },
+        "state": { "enum": ["visible", "hidden", "veryHidden"] },
+        "declaredDimension": { "type": ["string", "null"] },
+        "actualDimension": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["start", "end", "rows", "columns", "cellCount"],
+              "properties": {
+                "start": { "type": "string" },
+                "end": { "type": "string" },
+                "rows": { "type": "integer", "minimum": 1 },
+                "columns": { "type": "integer", "minimum": 1 },
+                "cellCount": { "type": "integer", "minimum": 1 }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "severity": { "enum": ["info", "warning"] },
+        "message": { "type": "string" },
+        "sheet": { "type": "string" }
+      }
+    }
+  }
+}
