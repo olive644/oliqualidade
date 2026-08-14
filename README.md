@@ -12,6 +12,12 @@ O ponto de entrada para entender, operar e evoluir o projeto é o
 npm run verify
 ```
 
+O núcleo Rust isolado possui uma verificação própria:
+
+```bash
+npm run rust:test
+```
+
 Para regenerar o mapa estrutural extraído do código:
 
 ```bash

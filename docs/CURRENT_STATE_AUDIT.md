@@ -281,3 +281,28 @@ Após a implementação e a normalização estritamente mecânica dos cinco arqu
 - dependências de produção: zero vulnerabilidades no `npm audit --omit=dev`;
 - dependências de desenvolvimento: duas vulnerabilidades moderadas herdadas de
   `exceljs -> uuid`, sem correção disponível no inventário atual.
+
+## 11. Núcleo Rust de inventário OOXML — fase 1
+
+O primeiro recorte do plano incremental foi implementado no crate isolado
+`rust/oli-ooxml-core`, ainda fora do leitor produtivo e do adaptador WASM. O
+contrato JSON `1.0.0` está congelado em
+`contracts/ooxml-inventory.schema.json`.
+
+Cobertura entregue:
+
+- validação prévia de quantidade de entradas, tamanho individual e agregado,
+  razão de compactação, criptografia e caminhos inseguros/duplicados no ZIP;
+- leitura XML orientada a eventos, limitada também por número de eventos;
+- ordem, nome, identificador, relação, caminho e estado
+  `visible`/`hidden`/`veryHidden` das abas;
+- sistema de datas 1900/1904;
+- dimensão declarada e dimensão real calculada pelas referências de células;
+- métricas do pacote, limites aplicados e diagnósticos estruturados;
+- CLI JSON para inspeção local e workflow dedicado no GitHub.
+
+Os testes incluem fixture sintética com abas ocultas e data 1904, caminho ZIP
+inseguro, limite de recurso reduzido e paridade de inventário com
+`test-fixtures/problematic-import.xlsx`. A próxima fase continua sendo leitura
+de shared strings, células, fórmulas/cache e formatos; somente depois disso o
+crate será compilado para WASM e executado lado a lado com o leitor atual.
