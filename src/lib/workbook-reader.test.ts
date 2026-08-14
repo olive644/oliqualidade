@@ -117,6 +117,59 @@ describe("leitor universal de planilhas", () => {
     }
   });
 
+  it("materializa metadados OOXML no candidato Rust sem copiá-los do workbook validado", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+    ]);
+    worksheet["!autofilter"] = { ref: "A1:B2" };
+    worksheet["A2"]!.c = [{ a: "Qualidade", t: "Conferir cadastro" }];
+    worksheet["B2"]!.l = { Target: "https://example.com/item/42", Tooltip: "Abrir item" };
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    const inspection = inspectOoxml(bytes);
+    registerWasmWorkbookReader({
+      inventory: async () => ({
+        schemaVersion: "3.0.0",
+        sheets: [...inspection.sheets].map(([name, cells]) => ({
+          name,
+          mergedRanges: inspection.structures.get(name)?.mergedRanges ?? [],
+          hiddenRows: inspection.structures.get(name)?.hiddenRows ?? [],
+          hiddenColumns: inspection.structures.get(name)?.hiddenColumns ?? [],
+          cells: [...cells.values()],
+        })),
+      }),
+    });
+
+    try {
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "candidate",
+        wasmCandidateFormats: ["xlsx"],
+      });
+      expect(result.report).toMatchObject({
+        reader: "rust-wasm",
+        wasmCandidateStatus: "primary",
+        wasmFallbackReason: null,
+        wasmOutputUsed: true,
+      });
+      expect(result.sheets[0]?.diagnostics).toMatchObject({
+        hasAutoFilter: true,
+        autofilterRange: "A1:B2",
+        sourceNotes: [
+          {
+            address: "A2",
+            author: "Qualidade",
+            kind: "comment",
+            text: "Conferir cadastro",
+          },
+        ],
+      });
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
+  });
+
   it("recua para o leitor validado quando o candidato diverge", async () => {
     const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
     const workbook = XLSX.utils.book_new();

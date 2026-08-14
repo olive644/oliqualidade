@@ -55,7 +55,8 @@ Sem variáveis, esses mesmos valores são assumidos. O rollback operacional é
 imediato com `VITE_WASM_READER_MODE=shadow`. O modo candidato verifica 100% dos
 XLSX e registra `rust-wasm` somente quando o inventário Rust e a saída final são
 equivalentes. Metadados complementares já validados, como filtros, tabelas,
-comentários e links, são preservados no workbook materializado.
+comentários clássicos e links, são reconstruídos diretamente das partes OOXML
+no workbook materializado. Eles não são mais copiados do workbook SheetJS.
 
 O procedimento local, suas garantias e seus limites estão em
 `docs/WASM_CORPUS_SANITIZATION.md`. O comando `npm run corpus:sanitize` cria

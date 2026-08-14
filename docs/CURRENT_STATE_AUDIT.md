@@ -463,3 +463,15 @@ Filtros, tabelas, comentários e links já validados são preservados na
 materialização. `VITE_WASM_READER_MODE=shadow` continua disponível como rollback
 imediato. O corpus real sanitizado ainda é necessário antes de remover a
 validação dupla e obter ganho efetivo de desempenho.
+
+## 20. Metadados OOXML independentes no candidato Rust — fase 10
+
+O workbook materializado pelo inventário Rust deixou de copiar metadados do
+workbook SheetJS. Filtros automáticos, tabelas estruturadas, Pivot Tables,
+comentários clássicos e hyperlinks internos ou externos agora são reconstruídos
+diretamente das partes e relacionamentos do pacote XLSX.
+
+O leitor TypeScript continua executando como oráculo de paridade e fallback: a
+saída Rust somente é publicada quando o resultado final permanece idêntico. Isso
+remove um acoplamento da materialização sem antecipar a promoção independente,
+que ainda depende de cinco arquivos XLSX reais sanitizados e do gate completo.
