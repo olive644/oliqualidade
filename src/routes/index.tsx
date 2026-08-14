@@ -189,6 +189,7 @@ import {
   NOT_INFORMED,
   pieRoundnessFor,
   relevantAggregationOps,
+  semanticAggregationOps,
   sortAllBarCategories,
   barChartPresentation,
   timeSeriesChartPresentation,
@@ -7950,13 +7951,14 @@ function WidgetCard({
         (column) => column.key === w.columnKey && column.key !== rowDimension?.key,
       ) ?? groupableCols.find((column) => column.key !== rowDimension?.key);
     const metric = numericCols.find((column) => column.key === w.valueKey) ?? numericCols[0];
-    const pivotOp = (["sum", "avg", "count", "min", "max"] as const).includes(
-      w.op as "sum" | "avg" | "count" | "min" | "max",
-    )
-      ? (w.op as "sum" | "avg" | "count" | "min" | "max")
-      : metric
-        ? "sum"
-        : "count";
+    const metricProfile = semanticProfiles.find((profile) => profile.key === metric?.key);
+    const pivotOps: AggregationOp[] = metric
+      ? semanticAggregationOps(["sum", "avg", "count", "min", "max"], metric, metricProfile)
+      : ["count"];
+    const requestedPivotOp: AggregationOp = w.op ?? (metric ? "sum" : "count");
+    const pivotOp: AggregationOp = pivotOps.includes(requestedPivotOp)
+      ? requestedPivotOp
+      : (pivotOps[0] ?? "count");
     if (!rowDimension || !columnDimension) {
       return (
         <EmptyWidget
@@ -8051,7 +8053,7 @@ function WidgetCard({
           </label>
           <CalculationButton
             operation={pivotOp}
-            operations={metric ? ["sum", "avg", "count", "min", "max"] : ["count"]}
+            operations={pivotOps}
             metric={metric?.label ?? "registros"}
             group={`${rowDimension.label} × ${columnDimension.label}`}
             onOperation={(operation) => onConfigure({ op: operation })}
@@ -8179,8 +8181,15 @@ function WidgetCard({
         />
       );
     }
-    const metricOps: AggregationOp[] = ["sum", "avg", "count", "min", "max"];
-    const metricOp: AggregationOp = metricOps.includes(w.op ?? "sum") ? (w.op ?? "sum") : "sum";
+    const metricOps = semanticAggregationOps(
+      ["sum", "avg", "count", "min", "max"],
+      col,
+      semanticProfiles.find((profile) => profile.key === col.key),
+    );
+    const requestedMetricOp: AggregationOp = w.op ?? "sum";
+    const metricOp: AggregationOp = metricOps.includes(requestedMetricOp)
+      ? requestedMetricOp
+      : (metricOps[0] ?? "avg");
     const total = aggregate(
       data.map((r) => Number(r[col.key])).filter((v) => Number.isFinite(v)),
       metricOp,
@@ -8537,11 +8546,13 @@ function WidgetCard({
       )
       .slice(0, 100);
     const scheduleMode: ChartDataMode = w.dataMode ?? "raw";
-    const scheduleOp: AggregationOp = (
-      ["sum", "avg", "count", "min", "max"] as AggregationOp[]
-    ).includes(w.op ?? "sum")
-      ? (w.op ?? "sum")
-      : "sum";
+    // Blocos podem misturar análises e unidades. Somar ou calcular média entre
+    // resultados diferentes cria um número sem significado; a visão resumida
+    // conta registros preenchidos por período e a visão original preserva cada linha.
+    const scheduleOps: AggregationOp[] = ["count"];
+    const scheduleOp: AggregationOp = scheduleOps.includes(w.op ?? "count")
+      ? (w.op ?? "count")
+      : "count";
     const aggregateScheduleRow: Row = groupCol
       ? {
           [groupCol.key]: `${aggregationLabels[scheduleOp]} de todos os itens`,
@@ -8650,7 +8661,7 @@ function WidgetCard({
           <CalculationButton
             mode={scheduleMode}
             operation={scheduleOp}
-            operations={["sum", "avg", "count", "min", "max"]}
+            operations={scheduleOps}
             metric="os resultados dos períodos"
             group="período"
             allowRaw
@@ -9011,7 +9022,11 @@ function WidgetCard({
         : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
     const relevantOps =
       groupCol && valueCol
-        ? relevantAggregationOps(data, groupCol.key, valueCol.key)
+        ? semanticAggregationOps(
+            relevantAggregationOps(data, groupCol.key, valueCol.key),
+            valueCol,
+            semanticProfiles.find((profile) => profile.key === valueCol.key),
+          )
         : (Object.keys(aggregationLabels) as AggregationOp[]);
     const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
       ? (w.op ?? "sum")
@@ -9722,7 +9737,11 @@ function WidgetCard({
         : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
     const relevantOps =
       groupCol && valueCol
-        ? relevantAggregationOps(data, groupCol.key, valueCol.key)
+        ? semanticAggregationOps(
+            relevantAggregationOps(data, groupCol.key, valueCol.key),
+            valueCol,
+            semanticProfiles.find((profile) => profile.key === valueCol.key),
+          )
         : (Object.keys(aggregationLabels) as AggregationOp[]);
     const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
       ? (w.op ?? "sum")
@@ -9889,7 +9908,11 @@ function WidgetCard({
         : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
     const relevantOps =
       groupCol && valueCol
-        ? relevantAggregationOps(data, groupCol.key, valueCol.key)
+        ? semanticAggregationOps(
+            relevantAggregationOps(data, groupCol.key, valueCol.key),
+            valueCol,
+            semanticProfiles.find((profile) => profile.key === valueCol.key),
+          )
         : (Object.keys(aggregationLabels) as AggregationOp[]);
     const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
       ? (w.op ?? "sum")
