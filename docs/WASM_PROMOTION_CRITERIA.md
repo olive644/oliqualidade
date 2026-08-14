@@ -1,9 +1,9 @@
 # Critérios de promoção do núcleo Rust/WASM
 
-O núcleo Rust permanece em **shadow mode**. Ele mede o mesmo arquivo depois do
-leitor produtivo, mas seu inventário não cria, substitui nem repara dados da
-importação. A promoção só pode ser discutida quando o gate automatizado estiver
-aprovado para um formato específico.
+O núcleo Rust/WASM é o candidato padrão para **XLSX**. Ele materializa a
+planilha a partir do próprio inventário e só assume a saída quando ela é
+idêntica, ponta a ponta, à importação validada pelo leitor TypeScript. Contrato
+incompatível, divergência ou falha acionam fallback automático.
 
 ## Amostragem
 
@@ -41,22 +41,21 @@ promoção. O campo `source` distingue `synthetic` de `sanitized-real`, e o gate
 permanece bloqueado enquanto não houver cinco arquivos reais sanitizados para o
 formato avaliado.
 
-## Candidate mode
+## Ativação e rollback
 
-O caminho de ativação gradual permanece desligado por padrão. Ele exige as
-duas configurações abaixo e, nesta fase, aceita somente `xlsx`:
+O caminho candidato está habilitado por padrão e, nesta fase, aceita somente
+`xlsx`:
 
 ```dotenv
 VITE_WASM_READER_MODE=candidate
 VITE_WASM_CANDIDATE_FORMATS=xlsx
 ```
 
-Essas variáveis só devem ser publicadas depois que o relatório local do formato
-estiver elegível e a decisão tiver revisão humana. O modo candidato ignora a
-amostragem e verifica 100% dos XLSX. Contrato incompatível, divergência, falha ou
-indisponibilidade mantém o resultado do leitor TypeScript e registra o motivo do
-fallback. Um match integral identifica o leitor como `sheetjs-wasm-verified`,
-sem permitir que o inventário Rust crie ou repare células.
+Sem variáveis, esses mesmos valores são assumidos. O rollback operacional é
+imediato com `VITE_WASM_READER_MODE=shadow`. O modo candidato verifica 100% dos
+XLSX e registra `rust-wasm` somente quando o inventário Rust e a saída final são
+equivalentes. Metadados complementares já validados, como filtros, tabelas,
+comentários e links, são preservados no workbook materializado.
 
 O procedimento local, suas garantias e seus limites estão em
 `docs/WASM_CORPUS_SANITIZATION.md`. O comando `npm run corpus:sanitize` cria
@@ -64,8 +63,7 @@ cópias XLSX com nomes neutros em uma pasta ignorada pelo Git. Quando o destino 
 `test-fixtures/sanitized-real`, `npm run wasm:corpus` incorpora automaticamente
 essas medições ao relatório sem alterar o corpus público da CI.
 
-Arquivos reais adicionais podem continuar no corpus local sanitizado. A
-promoção futura deverá ser separada por formato e acompanhada de revisão humana
-das divergências aceitas. Alterar os limites ou permitir que o Rust influencie o
-resultado produtivo exige uma mudança explícita e revisável; atingir o gate, por
-si só, não ativa o leitor.
+Arquivos reais adicionais podem continuar no corpus local sanitizado. Esse
+corpus ainda é obrigatório antes de remover a validação dupla e promover o Rust
+para um caminho independente. Até lá, o leitor TypeScript permanece como oráculo
+e fallback, priorizando fidelidade sobre ganho de desempenho.

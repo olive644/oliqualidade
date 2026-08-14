@@ -39,10 +39,11 @@ describe("contrato do Reading Engine v2", () => {
     );
   });
 
-  it("mantém o modo candidato restrito ao XLSX explicitamente liberado", () => {
-    expect(normalizeWasmReaderMode(undefined)).toBe("shadow");
+  it("ativa o modo candidato por padrão, ainda restrito ao XLSX", () => {
+    expect(normalizeWasmReaderMode(undefined)).toBe("candidate");
     expect(normalizeWasmReaderMode("CANDIDATE")).toBe("candidate");
     expect(normalizeWasmReaderMode("qualquer")).toBe("shadow");
+    expect(normalizeWasmCandidateFormats(undefined)).toEqual(["xlsx"]);
     expect(normalizeWasmCandidateFormats(" xlsx, XLSM, xlsx, xltx ")).toEqual(["xlsx"]);
     expect(canUseWasmCandidate("xlsx", ["xlsx"])).toBe(true);
     expect(canUseWasmCandidate("xlsm", ["xlsx", "xlsm"])).toBe(false);

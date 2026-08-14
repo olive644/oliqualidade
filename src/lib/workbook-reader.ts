@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 
 import { sheetsWithData, type SheetOption } from "@/lib/import";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
+import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 import {
   compareAndRepairWithOoxml,
   inspectOoxml,
@@ -21,6 +22,7 @@ import {
   workbookFormat,
   WASM_INVENTORY_SCHEMA_VERSION,
   type WorkbookReadResult,
+  type WasmWorkbookInventory,
   type WasmCandidateStatus,
   type WasmFallbackReason,
   type WasmReaderMode,
@@ -186,6 +188,126 @@ export function detectDelimiter(text: string): "," | ";" | "\t" | "|" {
   return [...candidates].sort((a, b) => score(b) - score(a))[0]!;
 }
 
+function wasmCellValue(cell: WasmWorkbookInventory["sheets"][number]["cells"][number]) {
+  if (cell.cellType !== "Date" || !cell.dateValue) return cell.rawValue ?? "";
+  const parsed = new Date(cell.dateValue);
+  return Number.isNaN(parsed.getTime()) ? (cell.rawValue ?? "") : parsed;
+}
+
+/**
+ * Materializa um workbook SheetJS a partir do contrato Rust. O restante do
+ * pipeline continua recebendo o mesmo tipo de worksheet, sem conhecer WASM.
+ */
+export function workbookFromWasmInventory(inventory: WasmWorkbookInventory): XLSX.WorkBook {
+  const workbook = XLSX.utils.book_new();
+  for (const sheet of inventory.sheets) {
+    const worksheet: XLSX.WorkSheet = {};
+    let calculatedRange: XLSX.Range | undefined;
+    for (const sourceCell of sheet.cells) {
+      const address = XLSX.utils.decode_cell(sourceCell.address);
+      calculatedRange = calculatedRange
+        ? {
+            s: {
+              r: Math.min(calculatedRange.s.r, address.r),
+              c: Math.min(calculatedRange.s.c, address.c),
+            },
+            e: {
+              r: Math.max(calculatedRange.e.r, address.r),
+              c: Math.max(calculatedRange.e.c, address.c),
+            },
+          }
+        : { s: address, e: address };
+      const value = wasmCellValue(sourceCell);
+      const cell: XLSX.CellObject = {
+        t:
+          value instanceof Date
+            ? "d"
+            : typeof value === "boolean"
+              ? "b"
+              : typeof value === "number"
+                ? "n"
+                : "s",
+        v: value,
+        w: sourceCell.displayValue,
+        z: sourceCell.numberFormat ?? "General",
+        ...(sourceCell.formula ? { f: sourceCell.formula.replace(/^=/, "") } : {}),
+      };
+      worksheet[sourceCell.address] = cell;
+    }
+    worksheet["!ref"] = sheet.actualDimension
+      ? `${sheet.actualDimension.start}:${sheet.actualDimension.end}`
+      : calculatedRange
+        ? XLSX.utils.encode_range(calculatedRange)
+        : "A1";
+    if (sheet.mergedRanges.length)
+      worksheet["!merges"] = sheet.mergedRanges.map((range) => XLSX.utils.decode_range(range));
+    if (sheet.hiddenRows.length) {
+      const rows: XLSX.RowInfo[] = [];
+      for (const row of sheet.hiddenRows) rows[row - 1] = { hidden: true };
+      worksheet["!rows"] = rows;
+    }
+    if (sheet.hiddenColumns.length) {
+      const columns: XLSX.ColInfo[] = [];
+      for (const { start, end } of sheet.hiddenColumns)
+        for (let column = start; column <= end; column++) columns[column - 1] = { hidden: true };
+      worksheet["!cols"] = columns;
+    }
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+  }
+  return workbook;
+}
+
+function sameImportedValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  if (left instanceof Date || right instanceof Date)
+    return left instanceof Date && right instanceof Date && left.getTime() === right.getTime();
+  if (Array.isArray(left) || Array.isArray(right))
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameImportedValue(value, right[index]))
+    );
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(rightRecord, key) &&
+        sameImportedValue(leftRecord[key], rightRecord[key]),
+    )
+  );
+}
+
+function sameImportedSheets(left: SheetOption[], right: SheetOption[]): boolean {
+  return sameImportedValue(left, right);
+}
+
+function copyValidatedWorkbookMetadata(source: XLSX.WorkBook, target: XLSX.WorkBook): void {
+  for (const sheetName of target.SheetNames) {
+    const sourceSheet = source.Sheets[sheetName];
+    const targetSheet = target.Sheets[sheetName];
+    if (!sourceSheet || !targetSheet) continue;
+    for (const key of ["!autofilter", "!tables", "!oliAdvanced"] as const) {
+      const value = (sourceSheet as Record<string, unknown>)[key];
+      if (value !== undefined) (targetSheet as Record<string, unknown>)[key] = value;
+    }
+    for (const address of Object.keys(targetSheet).filter((key) => !key.startsWith("!"))) {
+      const sourceCell = worksheetCellAtAddress(sourceSheet, address) as
+        (XLSX.CellObject & { c?: unknown; l?: unknown }) | undefined;
+      const targetCell = targetSheet[address] as
+        (XLSX.CellObject & { c?: unknown; l?: unknown }) | undefined;
+      if (!sourceCell || !targetCell) continue;
+      if (sourceCell.c !== undefined) targetCell.c = sourceCell.c;
+      if (sourceCell.l !== undefined) targetCell.l = sourceCell.l;
+    }
+  }
+}
+
 export async function readWorkbookBytesWithEngine(
   input: ArrayBuffer | Uint8Array,
   fileName: string,
@@ -255,7 +377,7 @@ export async function readWorkbookBytesWithEngine(
     }
   }
   onProgress?.("analyzing");
-  const sheets = sheetsWithData(wb);
+  let sheets = sheetsWithData(wb);
   const format = workbookFormat(fileName);
   const wasmReaderMode = options.wasmReaderMode ?? configuredWasmReaderMode();
   const wasmCandidateFormats = options.wasmCandidateFormats ?? configuredWasmCandidateFormats();
@@ -287,6 +409,7 @@ export async function readWorkbookBytesWithEngine(
     wasmReaderMode === "shadow" ? "shadow" : candidateEligible ? "fallback" : "not-eligible";
   let wasmFallbackReason: WasmFallbackReason | null =
     candidateEligible && !registeredReader ? "unavailable" : null;
+  let wasmOutputUsed = false;
   if (wasmReader) {
     const wasmStartedAt = performance.now();
     try {
@@ -311,8 +434,17 @@ export async function readWorkbookBytesWithEngine(
         } else if (wasmShadowStatus === "diverged") {
           wasmFallbackReason = "diverged";
         } else {
-          wasmCandidateStatus = "verified";
-          wasmFallbackReason = null;
+          const wasmWorkbook = workbookFromWasmInventory(inventory);
+          copyValidatedWorkbookMetadata(wb, wasmWorkbook);
+          const wasmSheets = sheetsWithData(wasmWorkbook);
+          if (sameImportedSheets(wasmSheets, sheets)) {
+            sheets = wasmSheets;
+            wasmCandidateStatus = "primary";
+            wasmFallbackReason = null;
+            wasmOutputUsed = true;
+          } else {
+            wasmFallbackReason = "output-diverged";
+          }
         }
       }
     } catch {
@@ -327,8 +459,8 @@ export async function readWorkbookBytesWithEngine(
     report: {
       reader: fallbackUsed
         ? "ooxml-recovery"
-        : wasmCandidateStatus === "verified"
-          ? "sheetjs-wasm-verified"
+        : wasmOutputUsed
+          ? "rust-wasm"
           : ZIP_WORKBOOK_EXTENSIONS.test(fileName)
             ? "sheetjs-verified"
             : "sheetjs",
@@ -344,6 +476,7 @@ export async function readWorkbookBytesWithEngine(
       wasmReaderMode,
       wasmCandidateStatus,
       wasmFallbackReason,
+      wasmOutputUsed,
       wasmSampleRate,
       wasmShadowStatus,
       wasmShadowMs,

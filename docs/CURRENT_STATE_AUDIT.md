@@ -451,3 +451,15 @@ indisponibilidade acionam fallback automático para o leitor TypeScript validado
 O relatório registra modo, estado do candidato e motivo do fallback. O inventário
 Rust ainda não cria, substitui ou repara células; publicar a allowlist continua
 condicionado ao gate real sanitizado e a uma decisão humana por formato.
+
+## 19. XLSX Rust/WASM primário com fallback validado — fase 9
+
+O modo candidato e a allowlist `xlsx` passaram a ser os padrões. O inventário
+Rust agora é materializado como workbook e percorre o pipeline real de
+importação. Sua saída só é usada quando células, estruturas e o resultado final
+são idênticos ao caminho TypeScript, sendo identificada como `rust-wasm`.
+
+Filtros, tabelas, comentários e links já validados são preservados na
+materialização. `VITE_WASM_READER_MODE=shadow` continua disponível como rollback
+imediato. O corpus real sanitizado ainda é necessário antes de remover a
+validação dupla e obter ganho efetivo de desempenho.
