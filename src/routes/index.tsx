@@ -277,8 +277,9 @@ import {
 import {
   captureScale,
   EXPORT_SURFACE_WIDTH,
+  pdfColumnRanges,
   pdfPageSlices,
-  pdfTablePages,
+  pdfVariableRowPages,
 } from "@/lib/export-layout";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
 import {
@@ -4015,12 +4016,22 @@ function Dashboard(p: {
   const exportBreakpoints = (el: HTMLElement) => {
     const rootTop = el.getBoundingClientRect().top;
     const rows = new Map<number, number>();
+    const points = new Set<number>();
     for (const widget of el.querySelectorAll<HTMLElement>(".oliam-widget")) {
       const rect = widget.getBoundingClientRect();
       const rowTop = Math.round(rect.top - rootTop);
       rows.set(rowTop, Math.max(rows.get(rowTop) ?? 0, rect.bottom - rootTop + 12));
     }
-    return [...rows.values()].sort((a, b) => a - b);
+    rows.forEach((point) => points.add(point));
+    // Textos extensos fora da grade (observações, listas e assinatura) também
+    // oferecem pontos seguros para o PDF não cortar uma linha ao meio.
+    for (const block of el.querySelectorAll<HTMLElement>(
+      ".oliam-export-header, details li, [data-export-break-after], .oliam-export-footer",
+    )) {
+      const rect = block.getBoundingClientRect();
+      points.add(Math.round(rect.bottom - rootTop + 6));
+    }
+    return [...points].filter((point) => point > 0).sort((a, b) => a - b);
   };
   const captureContent = async () => {
     const el = contentRef.current;
@@ -4086,6 +4097,22 @@ function Dashboard(p: {
         quality,
       ),
     );
+  const rasterizeExportMark = async (opacity = 1) => {
+    const image = new Image();
+    image.src = "/oli-mark.svg";
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = 192;
+    canvas.height = 192;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("export-mark-context");
+    context.globalAlpha = opacity;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/png");
+    canvas.width = 1;
+    canvas.height = 1;
+    return dataUrl;
+  };
   const exportPng = async () => {
     setExporting("png");
     setExportError(null);
@@ -4093,6 +4120,7 @@ function Dashboard(p: {
       const capture = await captureContent();
       if (!capture) return;
       downloadBlob(await canvasBlob(capture.canvas, "image/png"), `${slug}.png`);
+      toast.success("PNG completo exportado com assinatura OliQualidade.");
     } catch (err) {
       console.error("Falha ao exportar PNG:", err);
       setExportError("Não foi possível gerar o PNG. Tente novamente.");
@@ -4108,13 +4136,21 @@ function Dashboard(p: {
       if (!capture) return;
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth(),
-        pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 28,
-        headerHeight = 28,
-        footerHeight = 18,
-        contentWidth = pageWidth - margin * 2,
-        contentHeight = pageHeight - margin * 2 - headerHeight - footerHeight;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 28;
+      const headerHeight = 34;
+      const footerHeight = 30;
+      const contentWidth = pageWidth - margin * 2;
+      const contentHeight = pageHeight - margin * 2 - headerHeight - footerHeight;
+      const generatedAt = new Date();
+      const compactDate = generatedAt
+        .toISOString()
+        .replace(/[-:TZ.]/g, "")
+        .slice(0, 14);
+      const reportId = `OQ-${compactDate}-${d.id.slice(0, 8).toUpperCase()}`;
+      const markDataUrl = await rasterizeExportMark();
+      const watermarkDataUrl = await rasterizeExportMark(0.055);
       const slices = pdfPageSlices(
         capture.canvas.width,
         capture.canvas.height,
@@ -4122,49 +4158,10 @@ function Dashboard(p: {
         contentHeight,
         capture.breakpoints,
       );
-      // A visão do painel continua nas primeiras páginas. Se houver widget
-      // de tabela, acrescenta uma versão completa em páginas dedicadas,
-      // dividida por linhas e colunas; assim nenhuma célula depende do
-      // viewport virtualizado nem é cortada no meio por uma fatia do canvas.
       const tableColumns = widgets.some((widget) => widget.type === "table")
         ? sheet.columns.filter((column) => column.visible)
         : [];
-      const tablePages = pdfTablePages(
-        data.length,
-        tableColumns.length,
-        contentWidth,
-        contentHeight,
-        {
-          minColumnWidthPt: 92,
-          rowHeightPt: 18,
-          tableHeaderHeightPt: 24,
-          titleHeightPt: 24,
-        },
-      );
-      const totalPages = slices.length + tablePages.length;
-      const drawPageChrome = (index: number, detail: string) => {
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(12);
-        pdf.setTextColor(30, 41, 59);
-        pdf.text(d.name, margin, margin + 12);
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(
-          `${detail} · ${new Date().toLocaleString("pt-BR")}`,
-          pageWidth - margin,
-          margin + 12,
-          { align: "right" },
-        );
-        pdf.setDrawColor(203, 213, 225);
-        pdf.line(margin, pageHeight - margin - 8, pageWidth - margin, pageHeight - margin - 8);
-        pdf.text(
-          `Oli.Qualidade · página ${index + 1} de ${totalPages}`,
-          pageWidth - margin,
-          pageHeight - margin + 4,
-          { align: "right" },
-        );
-      };
+
       const fitPdfText = (value: string, maxWidth: number) => {
         if (pdf.getTextWidth(value) <= maxWidth) return value;
         let low = 0;
@@ -4186,6 +4183,102 @@ function Dashboard(p: {
             ]
           : null;
       };
+
+      type TableExportPage = {
+        columnStart: number;
+        columnEnd: number;
+        rowStart: number;
+        rowEnd: number;
+        heights: number[];
+        cells: string[][][];
+      };
+      const tablePages: TableExportPage[] = [];
+      const tableTitleHeight = 24;
+      const tableHeaderHeight = 26;
+      const tableBodyHeight = contentHeight - tableTitleHeight - tableHeaderHeight;
+      const lineHeight = 8;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7.5);
+      for (const range of pdfColumnRanges(tableColumns.length, contentWidth, 112)) {
+        const columnsOnPage = tableColumns.slice(range.columnStart, range.columnEnd);
+        const columnWidth = contentWidth / columnsOnPage.length;
+        const maximumLines = Math.max(1, Math.floor((tableBodyHeight - 8) / lineHeight));
+        const allCells = data.map((row) =>
+          columnsOnPage.map((column) => {
+            const shown = fmt(row[column.key] ?? null, column.kind) ?? "—";
+            const lines = pdf.splitTextToSize(shown, columnWidth - 10) as string[];
+            if (lines.length <= maximumLines) return lines;
+            const visible = lines.slice(0, maximumLines);
+            visible[visible.length - 1] = fitPdfText(
+              `${visible[visible.length - 1] ?? ""}…`,
+              columnWidth - 10,
+            );
+            return visible;
+          }),
+        );
+        const rowHeights = allCells.map((cells) =>
+          Math.max(20, Math.max(1, ...cells.map((lines) => lines.length)) * lineHeight + 8),
+        );
+        for (const page of pdfVariableRowPages(rowHeights, tableBodyHeight)) {
+          tablePages.push({
+            ...range,
+            rowStart: page.rowStart,
+            rowEnd: page.rowEnd,
+            heights: page.heights,
+            cells: allCells.slice(page.rowStart, page.rowEnd),
+          });
+        }
+      }
+
+      const totalPages = slices.length + tablePages.length;
+      const drawPageBranding = (index: number, detail: string) => {
+        const finalPage = index === totalPages - 1;
+        const watermarkSize = 124;
+        pdf.addImage(
+          watermarkDataUrl,
+          "PNG",
+          (pageWidth - watermarkSize) / 2,
+          (pageHeight - watermarkSize) / 2,
+          watermarkSize,
+          watermarkSize,
+          undefined,
+          "FAST",
+        );
+        pdf.addImage(markDataUrl, "PNG", margin, margin - 2, 22, 22, undefined, "FAST");
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.setTextColor(20, 42, 50);
+        pdf.text(fitPdfText(d.name, pageWidth * 0.42), margin + 28, margin + 10);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(
+          `${detail} · ${generatedAt.toLocaleString("pt-BR")}`,
+          pageWidth - margin,
+          margin + 10,
+          { align: "right" },
+        );
+        const footerLineY = pageHeight - margin - 11;
+        pdf.setDrawColor(14, 138, 141);
+        pdf.line(margin, footerLineY, pageWidth - margin, footerLineY);
+        pdf.addImage(markDataUrl, "PNG", margin, footerLineY + 4, 13, 13, undefined, "FAST");
+        pdf.setFontSize(7);
+        pdf.setTextColor(71, 85, 105);
+        pdf.text(
+          finalPage
+            ? "Assinatura de origem OliQualidade · uso licenciado · documento gerado pela plataforma"
+            : "Documento gerado por OliQualidade",
+          margin + 17,
+          footerLineY + 13,
+        );
+        pdf.setFont("courier", "normal");
+        pdf.text(reportId, pageWidth / 2, footerLineY + 13, { align: "center" });
+        pdf.setFont("helvetica", "normal");
+        pdf.text(`Página ${index + 1} de ${totalPages}`, pageWidth - margin, footerLineY + 13, {
+          align: "right",
+        });
+      };
+
       for (const [index, slice] of slices.entries()) {
         if (index > 0) pdf.addPage();
         const pageCanvas = document.createElement("canvas");
@@ -4205,7 +4298,6 @@ function Dashboard(p: {
           pageCanvas.height,
         );
         const imageHeight = (slice.height * contentWidth) / capture.canvas.width;
-        drawPageChrome(index, `${data.length} linhas na visão atual`);
         pdf.addImage(
           pageCanvas.toDataURL("image/jpeg", 0.94),
           "JPEG",
@@ -4216,16 +4308,17 @@ function Dashboard(p: {
           undefined,
           "FAST",
         );
+        drawPageBranding(index, `${data.length} linhas na visão atual`);
         pageCanvas.width = 1;
         pageCanvas.height = 1;
       }
+
       for (const [tableIndex, plan] of tablePages.entries()) {
         const pageIndex = slices.length + tableIndex;
         if (pageIndex > 0) pdf.addPage();
         const columnsOnPage = tableColumns.slice(plan.columnStart, plan.columnEnd);
         const columnWidth = contentWidth / columnsOnPage.length;
         const contentTop = margin + headerHeight;
-        drawPageChrome(pageIndex, `${data.length} linhas na tabela completa`);
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(10);
         pdf.setTextColor(30, 41, 59);
@@ -4236,40 +4329,46 @@ function Dashboard(p: {
           margin,
           contentTop + 15,
         );
-        const headerY = contentTop + 24;
-        pdf.setFillColor(241, 245, 249);
-        pdf.setDrawColor(203, 213, 225);
-        pdf.rect(margin, headerY, contentWidth, 24, "FD");
+        const headerY = contentTop + tableTitleHeight;
+        pdf.setFillColor(234, 245, 244);
+        pdf.setDrawColor(173, 211, 211);
+        pdf.rect(margin, headerY, contentWidth, tableHeaderHeight, "FD");
         pdf.setFontSize(7.5);
         columnsOnPage.forEach((column, columnIndex) => {
           const x = margin + columnIndex * columnWidth;
-          if (columnIndex > 0) pdf.line(x, headerY, x, headerY + 24);
-          pdf.text(fitPdfText(column.label, columnWidth - 10), x + 5, headerY + 15);
+          if (columnIndex > 0) pdf.line(x, headerY, x, headerY + tableHeaderHeight);
+          pdf.text(fitPdfText(column.label, columnWidth - 10), x + 5, headerY + 16);
         });
-        data.slice(plan.rowStart, plan.rowEnd).forEach((row, rowOffset) => {
-          const y = headerY + 24 + rowOffset * 18;
+
+        let y = headerY + tableHeaderHeight;
+        plan.cells.forEach((cells, rowOffset) => {
+          const height = plan.heights[rowOffset] ?? 20;
           if ((plan.rowStart + rowOffset) % 2 === 1) {
             pdf.setFillColor(248, 250, 252);
-            pdf.rect(margin, y, contentWidth, 18, "F");
+            pdf.rect(margin, y, contentWidth, height, "F");
           }
           pdf.setDrawColor(226, 232, 240);
-          pdf.line(margin, y + 18, margin + contentWidth, y + 18);
+          pdf.line(margin, y + height, margin + contentWidth, y + height);
           columnsOnPage.forEach((column, columnIndex) => {
             const x = margin + columnIndex * columnWidth;
-            if (columnIndex > 0) pdf.line(x, y, x, y + 18);
-            const raw = row[column.key] ?? null;
-            const shown = fmt(raw, column.kind) ?? "—";
+            if (columnIndex > 0) pdf.line(x, y, x, y + height);
+            const raw = data[plan.rowStart + rowOffset]?.[column.key] ?? null;
             const style = conditionalStyle(raw, column.kind, column.conditionalFormat);
             const textColor = style?.color ? hexRgb(style.color) : null;
             if (textColor) pdf.setTextColor(...textColor);
             else pdf.setTextColor(30, 41, 59);
             pdf.setFont("helvetica", "normal");
             pdf.setFontSize(7.5);
-            pdf.text(fitPdfText(shown, columnWidth - 10), x + 5, y + 12);
+            pdf.text(cells[columnIndex] ?? ["—"], x + 5, y + 11, {
+              lineHeightFactor: 1.05,
+            });
           });
+          y += height;
         });
+        drawPageBranding(pageIndex, `${data.length} linhas na tabela completa`);
       }
       downloadBlob(pdf.output("blob"), `${slug}.pdf`);
+      toast.success("PDF exportado com paginação e assinatura OliQualidade.");
     } catch (err) {
       console.error("Falha ao exportar PDF:", err);
       setExportError("Não foi possível gerar o PDF. Tente novamente.");
@@ -5441,15 +5540,19 @@ function Dashboard(p: {
         )}
         <div className="flex min-h-0 flex-1">
           <div ref={contentRef} className="min-w-0 flex-1 overflow-auto bg-canvas p-4 md:p-6">
+            <div className="oliam-export-watermark" aria-hidden="true" />
             <div className="oliam-export-header" aria-hidden="true">
               <div>
-                <p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">
-                  Oli.Qualidade
-                </p>
-                <h1 className="mt-1 font-display text-2xl font-bold">{d.name}</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Aba {sheet.name} · {data.length} de {sheet.rows.length} linhas
-                </p>
+                <Mark />
+                <div className="oliam-export-brand-copy">
+                  <p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">
+                    Oli.Qualidade
+                  </p>
+                  <h1 className="mt-1 font-display text-2xl font-bold">{d.name}</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Aba {sheet.name} · {data.length} de {sheet.rows.length} linhas
+                  </p>
+                </div>
               </div>
               <div className="text-right text-xs text-muted-foreground">
                 <p>Relatório gerado em</p>
@@ -5516,6 +5619,23 @@ function Dashboard(p: {
             )}
             {sourceNotesPanel}
             {gridContent}
+            <footer className="oliam-export-footer" aria-hidden="true">
+              <div className="oliam-export-signature">
+                <Mark />
+                <div>
+                  <p className="font-display text-sm font-bold text-foreground">
+                    Assinatura de origem OliQualidade
+                  </p>
+                  <p className="mt-0.5 text-[10px]">
+                    Relatório gerado pela plataforma a partir da aba {sheet.name}.
+                  </p>
+                </div>
+              </div>
+              <div className="oliam-export-license text-right">
+                <p className="font-semibold text-foreground">Uso licenciado</p>
+                <p className="font-mono">Painel {d.id.slice(0, 8).toUpperCase()}</p>
+              </div>
+            </footer>
           </div>
           {insightOpen && (
             <aside className="oliam-insight-sidebar hidden shrink-0 overflow-auto lg:block">

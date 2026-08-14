@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { captureScale, pdfPageSlices, pdfTablePages } from "@/lib/export-layout";
+import {
+  captureScale,
+  pdfColumnRanges,
+  pdfPageSlices,
+  pdfTablePages,
+  pdfVariableRowPages,
+} from "@/lib/export-layout";
 
 describe("export layout", () => {
   it("mantém alta resolução sem ultrapassar o limite seguro de pixels", () => {
     expect(captureScale(1000, 1000)).toBe(2);
     expect(captureScale(2000, 8000)).toBeCloseTo(Math.sqrt(18_000_000 / 16_000_000));
+    expect(captureScale(1440, 40_000)).toBeCloseTo(Math.sqrt(18_000_000 / 57_600_000));
+    expect(captureScale(1000, 100_000, 2, 1_000_000_000)).toBeCloseTo(0.28);
     expect(captureScale(0, 100)).toBe(1);
   });
 
@@ -45,6 +53,25 @@ describe("export layout", () => {
   it("gera uma página de cabeçalho para uma tabela vazia", () => {
     expect(pdfTablePages(0, 3, 700, 500)).toEqual([
       { columnStart: 0, columnEnd: 3, rowStart: 0, rowEnd: 0 },
+    ]);
+  });
+
+  it("pagina alturas variáveis sem cortar linhas com texto longo", () => {
+    expect(pdfVariableRowPages([18, 42, 18, 54, 18], 80)).toEqual([
+      { rowStart: 0, rowEnd: 3, heights: [18, 42, 18] },
+      { rowStart: 3, rowEnd: 5, heights: [54, 18] },
+    ]);
+  });
+
+  it("mantém uma página vazia para o cabeçalho e limita linhas gigantes", () => {
+    expect(pdfVariableRowPages([], 80)).toEqual([{ rowStart: 0, rowEnd: 0, heights: [] }]);
+    expect(pdfVariableRowPages([120], 80)).toEqual([{ rowStart: 0, rowEnd: 1, heights: [80] }]);
+  });
+
+  it("divide colunas largas em faixas legíveis", () => {
+    expect(pdfColumnRanges(12, 700, 112)).toEqual([
+      { columnStart: 0, columnEnd: 6 },
+      { columnStart: 6, columnEnd: 12 },
     ]);
   });
 });

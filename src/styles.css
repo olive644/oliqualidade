@@ -1262,7 +1262,9 @@
 
 /* Superfície determinística para PNG/PDF: independe do tamanho da janela e
    remove apenas os controles de edição, preservando os dados e gráficos. */
-.oliam-export-header {
+.oliam-export-header,
+.oliam-export-footer,
+.oliam-export-watermark {
   display: none;
 }
 .oliam-export-mode {
@@ -1273,6 +1275,8 @@
   flex: none !important;
   overflow: visible !important;
   padding: 32px !important;
+  position: relative !important;
+  isolation: isolate;
   background: var(--canvas) !important;
   scrollbar-width: none;
 }
@@ -1289,6 +1293,79 @@
   background: var(--card);
   padding: 22px 24px;
   box-shadow: 0 8px 24px color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+.oliam-export-mode .oliam-export-header > div:first-child {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 14px;
+}
+.oliam-export-mode .oliam-export-header .oliam-export-brand-copy {
+  min-width: 0;
+}
+.oliam-export-mode .oliam-export-header .oliam-mark {
+  grid-row: 1 / span 3;
+  width: 54px;
+  height: 54px;
+}
+.oliam-export-mode .oliam-export-watermark {
+  position: absolute;
+  inset: 112px 0 104px;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+  background-image: url("/oli-mark.svg");
+  background-position: center 180px;
+  background-repeat: repeat-y;
+  background-size: 260px 260px;
+  opacity: 0.035;
+}
+.oliam-export-mode > :not(.oliam-export-watermark) {
+  position: relative;
+  z-index: 1;
+}
+.oliam-export-mode .oliam-export-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 24px;
+  border-top: 1px solid color-mix(in oklab, var(--primary) 34%, var(--border));
+  border-radius: var(--radius-xl);
+  background: color-mix(in oklab, var(--card) 94%, var(--primary));
+  padding: 18px 22px;
+  color: var(--muted-foreground);
+}
+.oliam-export-mode .oliam-export-signature {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+.oliam-export-mode .oliam-export-signature .oliam-mark {
+  width: 42px;
+  height: 42px;
+  flex: none;
+}
+.oliam-export-mode .oliam-export-license {
+  border-left: 2px solid color-mix(in oklab, var(--primary) 62%, transparent);
+  padding-left: 12px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.oliam-export-mode .truncate,
+.oliam-export-mode .line-clamp-1,
+.oliam-export-mode .line-clamp-2 {
+  overflow: visible !important;
+  white-space: normal !important;
+  text-overflow: clip !important;
+  -webkit-line-clamp: unset !important;
+  overflow-wrap: anywhere !important;
+}
+.oliam-export-mode .overflow-y-auto:not([data-export-keep-scroll]),
+.oliam-export-mode .overflow-auto:not([data-export-keep-scroll]) {
+  max-height: none !important;
+  overflow: visible !important;
 }
 .oliam-export-mode > .grid {
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
