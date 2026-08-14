@@ -187,6 +187,7 @@ import {
   limitChartSeriesForRendering,
   matchesRange,
   NOT_INFORMED,
+  pieComparisonFor,
   pieRoundnessFor,
   relevantAggregationOps,
   semanticAggregationOps,
@@ -9107,19 +9108,20 @@ function WidgetCard({
     })();
     const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
     const displayedPieIndex = activePieIndex ?? selectedPieIndex;
-    const selectedPie = displayedPieIndex !== null ? pieSeries[displayedPieIndex] : null;
-    const selectedPiePosition = selectedPie
-      ? [...pieSeries].sort((a, b) => b.total - a.total).findIndex((item) => item === selectedPie) +
-        1
-      : null;
-    const selectedPiePrevious =
-      displayedPieIndex !== null && displayedPieIndex > 0
-        ? pieSeries[displayedPieIndex - 1]?.total
-        : undefined;
-    const selectedPieChange =
-      selectedPie && selectedPiePrevious !== undefined && selectedPiePrevious !== 0
-        ? (selectedPie.total - selectedPiePrevious) / Math.abs(selectedPiePrevious)
-        : null;
+    const largestPieIndex = pieSeries.reduce(
+      (largest, entry, index, entries) =>
+        largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
+          ? index
+          : largest,
+      -1,
+    );
+    // A leitura detalhada fica visível desde o início usando a maior fatia;
+    // hover/clique apenas troca o foco. O gráfico continua sem escurecer as
+    // demais fatias enquanto nenhuma seleção explícita foi feita.
+    const summaryPieIndex = displayedPieIndex ?? (largestPieIndex >= 0 ? largestPieIndex : null);
+    const selectedPie = summaryPieIndex !== null ? pieSeries[summaryPieIndex] : null;
+    const selectedPieComparison =
+      summaryPieIndex !== null ? pieComparisonFor(pieSeries, summaryPieIndex) : null;
     const pieLegendItems = pieSeries.map((entry, i) => ({
       ...entry,
       color:
@@ -9370,10 +9372,19 @@ function WidgetCard({
                         entry: { payload?: { count?: number } },
                       ) => {
                         const formatted = fmt(v, valueCol.kind) ?? String(v);
+                        const share = pieTotal
+                          ? (v / pieTotal).toLocaleString("pt-BR", {
+                              style: "percent",
+                              maximumFractionDigits: 1,
+                            })
+                          : "participação indisponível";
                         const count = entry?.payload?.count;
-                        return count
-                          ? `${formatted} · ${count.toLocaleString("pt-BR")} categorias agrupadas`
-                          : formatted;
+                        return [
+                          formatted,
+                          count
+                            ? `${share} do total · ${count.toLocaleString("pt-BR")} categorias agrupadas`
+                            : `${share} do total`,
+                        ];
                       }}
                     />
                     <Pie
@@ -9437,6 +9448,20 @@ function WidgetCard({
                                 >
                                   {label}
                                 </tspan>
+                                {active && pieTotal > 0 && (
+                                  <tspan
+                                    x={box.cx}
+                                    dy="1.35em"
+                                    fontSize={9}
+                                    fill="var(--muted-foreground)"
+                                  >
+                                    {(active.total / pieTotal).toLocaleString("pt-BR", {
+                                      style: "percent",
+                                      maximumFractionDigits: 1,
+                                    })}{" "}
+                                    do total
+                                  </tspan>
+                                )}
                               </text>
                             </g>
                           );
@@ -9462,13 +9487,21 @@ function WidgetCard({
                   <p className="truncate text-sm font-semibold" title={selectedPie.name}>
                     {selectedPie.name}
                   </p>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">
-                    Clique em outra fatia para comparar sem alterar os filtros.
+                  <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+                    {selectedPieComparison
+                      ? `Posição ${selectedPieComparison.rank} de ${selectedPieComparison.categoryCount} categorias visíveis`
+                      : "Categoria selecionada"}
+                    {selectedPieComparison?.reference
+                      ? ` · comparação com ${selectedPieComparison.reference.name}, a maior outra categoria.`
+                      : " · não há outra categoria para comparar."}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Métrica
+                  <p
+                    className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+                    title={`Valor de ${selectedPie.name}`}
+                  >
+                    Valor de {selectedPie.name}
                   </p>
                   <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
                     {fmt(selectedPie.total, valueCol.kind)}
@@ -9479,8 +9512,9 @@ function WidgetCard({
                     Participação
                   </p>
                   <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-                    {pieTotal
-                      ? (selectedPie.total / pieTotal).toLocaleString("pt-BR", {
+                    {selectedPieComparison?.share !== null &&
+                    selectedPieComparison?.share !== undefined
+                      ? selectedPieComparison.share.toLocaleString("pt-BR", {
                           style: "percent",
                           maximumFractionDigits: 1,
                         })
@@ -9488,20 +9522,35 @@ function WidgetCard({
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Tendência
+                  <p
+                    className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+                    title={
+                      selectedPieComparison?.reference
+                        ? `Diferença para ${selectedPieComparison.reference.name}`
+                        : "Comparação"
+                    }
+                  >
+                    {selectedPieComparison?.reference
+                      ? `Diferença para ${selectedPieComparison.reference.name}`
+                      : "Comparação"}
                   </p>
                   <p
                     className={cn(
                       "mt-0.5 font-mono text-sm font-semibold tabular-nums",
-                      selectedPieChange !== null && selectedPieChange < 0
+                      selectedPieComparison?.difference !== null &&
+                        selectedPieComparison?.difference !== undefined &&
+                        selectedPieComparison.difference < 0
                         ? "text-destructive"
                         : "text-emerald-700 dark:text-emerald-300",
                     )}
                   >
-                    {selectedPieChange === null
-                      ? `posição ${selectedPiePosition}`
-                      : `${selectedPieChange >= 0 ? "+" : ""}${selectedPieChange.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })} vs. anterior`}
+                    {selectedPieComparison?.difference !== null &&
+                    selectedPieComparison?.difference !== undefined
+                      ? `${selectedPieComparison.difference >= 0 ? "+" : ""}${fmt(
+                          selectedPieComparison.difference,
+                          valueCol.kind,
+                        )}${selectedPieComparison.relativeDifference !== null ? ` · ${selectedPieComparison.relativeDifference >= 0 ? "+" : ""}${selectedPieComparison.relativeDifference.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })}` : ""}`
+                      : "Sem referência"}
                   </p>
                 </div>
                 {selectedPie.name !== "Outros" && (
