@@ -4261,16 +4261,7 @@ function Dashboard(p: {
         const footerLineY = pageHeight - margin - 11;
         pdf.setDrawColor(14, 138, 141);
         pdf.line(margin, footerLineY, pageWidth - margin, footerLineY);
-        pdf.addImage(
-          markDataUrl,
-          "PNG",
-          margin,
-          footerLineY + 4,
-          13,
-          13,
-          undefined,
-          "FAST",
-        );
+        pdf.addImage(markDataUrl, "PNG", margin, footerLineY + 4, 13, 13, undefined, "FAST");
         pdf.setFontSize(7);
         pdf.setTextColor(71, 85, 105);
         pdf.text(
@@ -4283,12 +4274,9 @@ function Dashboard(p: {
         pdf.setFont("courier", "normal");
         pdf.text(reportId, pageWidth / 2, footerLineY + 13, { align: "center" });
         pdf.setFont("helvetica", "normal");
-        pdf.text(
-          `Página ${index + 1} de ${totalPages}`,
-          pageWidth - margin,
-          footerLineY + 13,
-          { align: "right" },
-        );
+        pdf.text(`Página ${index + 1} de ${totalPages}`, pageWidth - margin, footerLineY + 13, {
+          align: "right",
+        });
       };
 
       for (const [index, slice] of slices.entries()) {
@@ -4335,9 +4323,7 @@ function Dashboard(p: {
         pdf.setFontSize(10);
         pdf.setTextColor(30, 41, 59);
         const rowRange =
-          plan.rowEnd > plan.rowStart
-            ? `linhas ${plan.rowStart + 1}–${plan.rowEnd}`
-            : "sem linhas";
+          plan.rowEnd > plan.rowStart ? `linhas ${plan.rowStart + 1}–${plan.rowEnd}` : "sem linhas";
         pdf.text(
           `Base detalhada · ${rowRange} · colunas ${plan.columnStart + 1}–${plan.columnEnd}`,
           margin,
