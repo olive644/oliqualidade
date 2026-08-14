@@ -41,6 +41,23 @@ promoção. O campo `source` distingue `synthetic` de `sanitized-real`, e o gate
 permanece bloqueado enquanto não houver cinco arquivos reais sanitizados para o
 formato avaliado.
 
+## Candidate mode
+
+O caminho de ativação gradual permanece desligado por padrão. Ele exige as
+duas configurações abaixo e, nesta fase, aceita somente `xlsx`:
+
+```dotenv
+VITE_WASM_READER_MODE=candidate
+VITE_WASM_CANDIDATE_FORMATS=xlsx
+```
+
+Essas variáveis só devem ser publicadas depois que o relatório local do formato
+estiver elegível e a decisão tiver revisão humana. O modo candidato ignora a
+amostragem e verifica 100% dos XLSX. Contrato incompatível, divergência, falha ou
+indisponibilidade mantém o resultado do leitor TypeScript e registra o motivo do
+fallback. Um match integral identifica o leitor como `sheetjs-wasm-verified`,
+sem permitir que o inventário Rust crie ou repare células.
+
 O procedimento local, suas garantias e seus limites estão em
 `docs/WASM_CORPUS_SANITIZATION.md`. O comando `npm run corpus:sanitize` cria
 cópias XLSX com nomes neutros em uma pasta ignorada pelo Git. Quando o destino é

@@ -1,4 +1,7 @@
-import type { WasmShadowStatus } from "@/lib/workbook-reading-engine";
+import {
+  WASM_INVENTORY_SCHEMA_VERSION,
+  type WasmShadowStatus,
+} from "@/lib/workbook-reading-engine";
 
 export type WasmCorpusObservation = {
   format: string;
@@ -26,7 +29,7 @@ export type WasmPromotionCriteria = {
 };
 
 export const DEFAULT_WASM_PROMOTION_CRITERIA: WasmPromotionCriteria = {
-  requiredSchemaVersion: "3.0.0",
+  requiredSchemaVersion: WASM_INVENTORY_SCHEMA_VERSION,
   minimumWorkbooks: 25,
   minimumComparedCells: 10_000,
   minimumSanitizedRealWorkbooks: 5,

@@ -72,6 +72,152 @@ describe("leitor universal de planilhas", () => {
     }
   });
 
+  it("verifica o XLSX no modo candidato somente quando o formato foi liberado", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    const inspection = inspectOoxml(bytes);
+    registerWasmWorkbookReader({
+      inventory: async () => ({
+        schemaVersion: "3.0.0",
+        sheets: [...inspection.sheets].map(([name, cells]) => ({
+          name,
+          mergedRanges: inspection.structures.get(name)?.mergedRanges ?? [],
+          hiddenRows: inspection.structures.get(name)?.hiddenRows ?? [],
+          hiddenColumns: inspection.structures.get(name)?.hiddenColumns ?? [],
+          cells: [...cells.values()],
+        })),
+      }),
+    });
+
+    try {
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "candidate",
+        wasmCandidateFormats: ["xlsx"],
+        wasmSampleRate: 0,
+      });
+      expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
+      expect(result.report).toMatchObject({
+        reader: "sheetjs-wasm-verified",
+        wasmReaderMode: "candidate",
+        wasmCandidateStatus: "verified",
+        wasmFallbackReason: null,
+        wasmSampleRate: 1,
+        wasmShadowStatus: "matched",
+      });
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
+  });
+
+  it("recua para o leitor validado quando o candidato diverge", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    const inspection = inspectOoxml(bytes);
+    registerWasmWorkbookReader({
+      inventory: async () => ({
+        schemaVersion: "3.0.0",
+        sheets: [...inspection.sheets].map(([name, cells]) => ({
+          name,
+          mergedRanges: inspection.structures.get(name)?.mergedRanges ?? [],
+          hiddenRows: inspection.structures.get(name)?.hiddenRows ?? [],
+          hiddenColumns: inspection.structures.get(name)?.hiddenColumns ?? [],
+          cells: [...cells.values()].map((cell, index) =>
+            index === 0 ? { ...cell, rawValue: "divergente" } : cell,
+          ),
+        })),
+      }),
+    });
+
+    try {
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "candidate",
+        wasmCandidateFormats: ["xlsx"],
+      });
+      expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo" }]);
+      expect(result.report).toMatchObject({
+        reader: "sheetjs-verified",
+        wasmCandidateStatus: "fallback",
+        wasmFallbackReason: "diverged",
+        wasmShadowStatus: "diverged",
+      });
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
+  });
+
+  it("recua quando o contrato do candidato é incompatível", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    const inspection = inspectOoxml(bytes);
+    registerWasmWorkbookReader({
+      inventory: async () => ({
+        schemaVersion: "2.0.0",
+        sheets: [...inspection.sheets].map(([name, cells]) => ({
+          name,
+          mergedRanges: inspection.structures.get(name)?.mergedRanges ?? [],
+          hiddenRows: inspection.structures.get(name)?.hiddenRows ?? [],
+          hiddenColumns: inspection.structures.get(name)?.hiddenColumns ?? [],
+          cells: [...cells.values()],
+        })),
+      }),
+    });
+
+    try {
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "candidate",
+        wasmCandidateFormats: ["xlsx"],
+      });
+      expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo" }]);
+      expect(result.report).toMatchObject({
+        reader: "sheetjs-verified",
+        wasmCandidateStatus: "fallback",
+        wasmFallbackReason: "schema-mismatch",
+        wasmShadowStatus: "matched",
+        wasmSchemaVersion: "2.0.0",
+      });
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
+  });
+
+  it("não habilita candidato sem allowlist ou adaptador disponível", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    registerWasmWorkbookReader(undefined);
+
+    const notEligible = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+      wasmReaderMode: "candidate",
+      wasmCandidateFormats: [],
+      wasmSampleRate: 0,
+    });
+    expect(notEligible.report).toMatchObject({
+      reader: "sheetjs-verified",
+      wasmCandidateStatus: "not-eligible",
+      wasmFallbackReason: null,
+    });
+
+    const unavailable = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+      wasmReaderMode: "candidate",
+      wasmCandidateFormats: ["xlsx"],
+    });
+    expect(unavailable.report).toMatchObject({
+      reader: "sheetjs-verified",
+      wasmCandidateStatus: "fallback",
+      wasmFallbackReason: "unavailable",
+    });
+  });
+
   it("mantém a importação quando o shadow WASM falha", async () => {
     const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
     const workbook = XLSX.utils.book_new();
