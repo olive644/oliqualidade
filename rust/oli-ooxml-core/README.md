@@ -1,7 +1,7 @@
 # oli-ooxml-core
 
-Núcleo Rust isolado para inventariar workbooks OOXML sem participar ainda do
-caminho produtivo do aplicativo.
+Núcleo Rust para inventariar workbooks OOXML e materializar o caminho produtivo
+de XLSX quando a validação ponta a ponta confirma paridade integral.
 
 Nesta fase, ele lê `workbook.xml`, relações e worksheets por eventos XML,
 preserva a ordem e visibilidade das abas, identifica o sistema de datas 1900 ou
@@ -25,6 +25,7 @@ cargo run --locked --manifest-path rust/oli-ooxml-core/Cargo.toml -- arquivo.xls
 
 O crate também expõe `inventory_ooxml_json` para `wasm32-unknown-unknown`. O
 pacote web versionado é reconstruído com `npm run wasm:build` e validado com
-`npm run wasm:smoke`. No aplicativo ele roda em shadow mode dentro do worker:
-mede a paridade com o leitor OOXML TypeScript, mas não monta, repara nem
-substitui as planilhas entregues ao usuário.
+`npm run wasm:smoke`. No aplicativo ele roda dentro do worker e materializa XLSX
+quando inventário, estruturas e saída final coincidem com o leitor TypeScript.
+Qualquer diferença aciona o fallback validado; o modo `shadow` permanece como
+rollback operacional.

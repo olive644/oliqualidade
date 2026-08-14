@@ -57,7 +57,9 @@ describe("leitor universal de planilhas", () => {
     });
 
     try {
-      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx");
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "shadow",
+      });
       expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
       expect(result.report).toMatchObject({
         reader: "sheetjs-verified",
@@ -102,10 +104,11 @@ describe("leitor universal de planilhas", () => {
       });
       expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
       expect(result.report).toMatchObject({
-        reader: "sheetjs-wasm-verified",
+        reader: "rust-wasm",
         wasmReaderMode: "candidate",
-        wasmCandidateStatus: "verified",
+        wasmCandidateStatus: "primary",
         wasmFallbackReason: null,
+        wasmOutputUsed: true,
         wasmSampleRate: 1,
         wasmShadowStatus: "matched",
       });
@@ -146,6 +149,49 @@ describe("leitor universal de planilhas", () => {
         wasmCandidateStatus: "fallback",
         wasmFallbackReason: "diverged",
         wasmShadowStatus: "diverged",
+      });
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
+  });
+
+  it("recua quando a materialização Rust altera a saída final da importação", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    const inspection = inspectOoxml(bytes);
+    registerWasmWorkbookReader({
+      inventory: async () => ({
+        schemaVersion: "3.0.0",
+        sheets: [...inspection.sheets].map(([name, cells]) => ({
+          name,
+          actualDimension: {
+            start: "A1",
+            end: "Z1000",
+            rows: 1000,
+            columns: 26,
+            cellCount: cells.size,
+          },
+          mergedRanges: inspection.structures.get(name)?.mergedRanges ?? [],
+          hiddenRows: inspection.structures.get(name)?.hiddenRows ?? [],
+          hiddenColumns: inspection.structures.get(name)?.hiddenColumns ?? [],
+          cells: [...cells.values()],
+        })),
+      }),
+    });
+
+    try {
+      const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "candidate",
+        wasmCandidateFormats: ["xlsx"],
+      });
+      expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo" }]);
+      expect(result.report).toMatchObject({
+        reader: "sheetjs-verified",
+        wasmCandidateStatus: "fallback",
+        wasmFallbackReason: "output-diverged",
+        wasmOutputUsed: false,
       });
     } finally {
       registerWasmWorkbookReader(undefined);
@@ -245,6 +291,7 @@ describe("leitor universal de planilhas", () => {
 
     try {
       const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "shadow",
         wasmSampleRate: 0,
       });
       expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo" }]);

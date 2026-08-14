@@ -70,11 +70,12 @@ describe("corpus público com o binário WASM real", () => {
       wasmReaderMode: "candidate",
       wasmCandidateFormats: ["xlsx"],
     });
-    expect(result.report.reader).toBe("sheetjs-wasm-verified");
+    expect(result.report.reader).toBe("rust-wasm");
     expect(result.report.wasmSchemaVersion).toBe("3.0.0");
     expect(result.report.wasmShadowStatus).toMatch(/^(matched|diverged)$/);
-    expect(result.report.wasmCandidateStatus).toBe("verified");
+    expect(result.report.wasmCandidateStatus).toBe("primary");
     expect(result.report.wasmFallbackReason).toBeNull();
+    expect(result.report.wasmOutputUsed).toBe(true);
     expect(result.report.wasmSampleRate).toBe(1);
     expect(result.report.wasmComparedCells).toBeGreaterThan(0);
 

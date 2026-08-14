@@ -1,12 +1,12 @@
 import type { SheetOption } from "@/lib/import";
 import type { OoxmlInspection } from "@/lib/ooxml-reader";
 
-export type WorkbookReaderId =
-  "sheetjs" | "sheetjs-verified" | "sheetjs-wasm-verified" | "ooxml-recovery";
+export type WorkbookReaderId = "sheetjs" | "sheetjs-verified" | "rust-wasm" | "ooxml-recovery";
 export type WasmShadowStatus = "unavailable" | "sampled-out" | "matched" | "diverged" | "failed";
 export type WasmReaderMode = "shadow" | "candidate";
-export type WasmCandidateStatus = "shadow" | "not-eligible" | "verified" | "fallback";
-export type WasmFallbackReason = "unavailable" | "schema-mismatch" | "diverged" | "failed";
+export type WasmCandidateStatus = "shadow" | "not-eligible" | "primary" | "fallback";
+export type WasmFallbackReason =
+  "unavailable" | "schema-mismatch" | "diverged" | "output-diverged" | "failed";
 
 export const WASM_INVENTORY_SCHEMA_VERSION = "3.0.0";
 const WASM_CANDIDATE_FORMATS = new Set(["xlsx"]);
@@ -25,6 +25,7 @@ export type WorkbookReadReport = {
   wasmReaderMode: WasmReaderMode;
   wasmCandidateStatus: WasmCandidateStatus;
   wasmFallbackReason: WasmFallbackReason | null;
+  wasmOutputUsed: boolean;
   wasmSampleRate: number;
   wasmShadowStatus: WasmShadowStatus;
   wasmShadowMs: number;
@@ -45,13 +46,25 @@ export type WasmInventoryCell = {
   address: string;
   rawValue: string | number | boolean | null;
   displayValue: string;
+  cellType?: "Blank" | "Number" | "Boolean" | "String" | "Error" | "Date";
+  styleIndex?: number;
+  numberFormat?: string;
+  dateValue?: string;
   formula?: string;
 };
 
 export type WasmWorkbookInventory = {
   schemaVersion: string;
+  dateSystem?: "1900" | "1904";
   sheets: Array<{
     name: string;
+    actualDimension?: {
+      start: string;
+      end: string;
+      rows: number;
+      columns: number;
+      cellCount: number;
+    };
     mergedRanges: string[];
     hiddenRows: number[];
     hiddenColumns: Array<{ start: number; end: number }>;
@@ -84,9 +97,9 @@ export function workbookFormat(fileName: string): string {
 }
 
 /**
- * Ponto de extensão para o núcleo Rust/WASM em shadow mode. O adaptador apenas
- * inventaria o arquivo depois da leitura validada em TypeScript; seu resultado
- * é medido, nunca usado para montar ou reparar a importação do usuário.
+ * Ponto de extensão para o núcleo Rust/WASM. Em candidate mode o inventário
+ * pode materializar a saída depois de passar pelas comparações de paridade; em
+ * shadow mode ele continua sendo apenas medido.
  */
 export function registeredWasmWorkbookReader(): WasmWorkbookReader | undefined {
   return globalThis.__oliWorkbookWasmReader;
@@ -111,7 +124,9 @@ export function configuredWasmSampleRate(): number {
 }
 
 export function normalizeWasmReaderMode(value: string | undefined): WasmReaderMode {
-  return value?.trim().toLowerCase() === "candidate" ? "candidate" : "shadow";
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "candidate") return "candidate";
+  return "shadow";
 }
 
 export function configuredWasmReaderMode(): WasmReaderMode {
@@ -121,7 +136,8 @@ export function configuredWasmReaderMode(): WasmReaderMode {
 export function normalizeWasmCandidateFormats(
   value: string | readonly string[] | undefined,
 ): string[] {
-  const formats: readonly string[] = typeof value === "string" ? value.split(",") : (value ?? []);
+  const formats: readonly string[] =
+    typeof value === "string" ? value.split(",") : (value ?? ["xlsx"]);
   return [
     ...new Set(
       formats
