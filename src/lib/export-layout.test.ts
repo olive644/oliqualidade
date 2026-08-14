@@ -59,8 +59,7 @@ describe("export layout", () => {
   it("pagina alturas variáveis sem cortar linhas com texto longo", () => {
     expect(pdfVariableRowPages([18, 42, 18, 54, 18], 80)).toEqual([
       { rowStart: 0, rowEnd: 3, heights: [18, 42, 18] },
-      { rowStart: 3, rowEnd: 4, heights: [54] },
-      { rowStart: 4, rowEnd: 5, heights: [18] },
+      { rowStart: 3, rowEnd: 5, heights: [54, 18] },
     ]);
   });
 
