@@ -503,6 +503,55 @@ const PIE_THIN_SLICE_THRESHOLD = 0.03;
  * qualquer valor maior que zero ainda consegue "comer" uma fatia desse
  * tamanho e quebrar o desenho.
  */
+export type PieComparison = {
+  selected: { name: string; total: number };
+  total: number;
+  share: number | null;
+  rank: number;
+  categoryCount: number;
+  reference: { name: string; total: number } | null;
+  difference: number | null;
+  relativeDifference: number | null;
+};
+
+/**
+ * Resume uma fatia sem fingir que categorias formam uma linha do tempo.
+ * A referência é a maior outra categoria visível (ignorando o agrupador
+ * "Outros" quando existe uma categoria individual para comparar).
+ */
+export function pieComparisonFor(
+  series: { name: string; total: number }[],
+  selectedIndex: number,
+): PieComparison | null {
+  const selected = series[selectedIndex];
+  if (!selected) return null;
+
+  const total = series.reduce((sum, item) => sum + item.total, 0);
+  const ranked = [...series].sort((a, b) => b.total - a.total);
+  const alternatives = series.filter((_, index) => index !== selectedIndex);
+  const namedAlternatives = alternatives.filter((item) => item.name !== "Outros");
+  const reference =
+    [...(namedAlternatives.length ? namedAlternatives : alternatives)].sort(
+      (a, b) => b.total - a.total,
+    )[0] ?? null;
+  const difference = reference ? selected.total - reference.total : null;
+  const relativeDifference =
+    reference && reference.total !== 0 && difference !== null
+      ? difference / Math.abs(reference.total)
+      : null;
+
+  return {
+    selected,
+    total,
+    share: total !== 0 ? selected.total / total : null,
+    rank: ranked.findIndex((item) => item === selected) + 1,
+    categoryCount: series.length,
+    reference,
+    difference,
+    relativeDifference,
+  };
+}
+
 export function pieRoundnessFor(series: { total: number }[]): {
   cornerRadius: number;
   paddingAngle: number;

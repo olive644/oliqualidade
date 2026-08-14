@@ -10,6 +10,7 @@ import {
   leftJoin,
   limitChartSeriesForRendering,
   NOT_INFORMED,
+  pieComparisonFor,
   pieRoundnessFor,
   relevantAggregationOps,
   semanticAggregationOps,
@@ -450,5 +451,47 @@ describe("pieRoundnessFor", () => {
       cornerRadius: 6,
       paddingAngle: 3,
     });
+  });
+});
+
+describe("pieComparisonFor", () => {
+  const series = [
+    { name: "Norte", total: 1_200 },
+    { name: "Sul", total: 900 },
+    { name: "Outros", total: 2_000 },
+  ];
+
+  it("nomeia a maior outra categoria e calcula participação e diferença", () => {
+    expect(pieComparisonFor(series, 0)).toEqual({
+      selected: series[0],
+      total: 4_100,
+      share: 1_200 / 4_100,
+      rank: 2,
+      categoryCount: 3,
+      reference: series[1],
+      difference: 300,
+      relativeDifference: 1 / 3,
+    });
+  });
+
+  it("não usa o agrupador Outros como referência de uma categoria individual", () => {
+    expect(pieComparisonFor(series, 1)?.reference).toBe(series[0]);
+  });
+
+  it("compara Outros com a maior categoria individual e trata base zero", () => {
+    expect(pieComparisonFor(series, 2)?.reference).toBe(series[0]);
+    expect(
+      pieComparisonFor(
+        [
+          { name: "A", total: 5 },
+          { name: "B", total: 0 },
+        ],
+        0,
+      ),
+    ).toMatchObject({ difference: 5, relativeDifference: null });
+  });
+
+  it("retorna null para uma seleção inexistente", () => {
+    expect(pieComparisonFor(series, 8)).toBeNull();
   });
 });
