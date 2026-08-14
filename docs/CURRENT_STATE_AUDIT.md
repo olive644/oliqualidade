@@ -303,6 +303,31 @@ Cobertura entregue:
 
 Os testes incluem fixture sintética com abas ocultas e data 1904, caminho ZIP
 inseguro, limite de recurso reduzido e paridade de inventário com
-`test-fixtures/problematic-import.xlsx`. A próxima fase continua sendo leitura
-de shared strings, células, fórmulas/cache e formatos; somente depois disso o
-crate será compilado para WASM e executado lado a lado com o leitor atual.
+`test-fixtures/problematic-import.xlsx`. A fase seguinte de shared strings,
+células, fórmulas/cache e formatos é registrada abaixo; o crate ainda não foi
+compilado para WASM nem executado lado a lado com o leitor atual.
+
+## 12. Núcleo Rust de células OOXML — fase 2
+
+O crate `oli-ooxml-core` passou a emitir o contrato JSON `2.0.0`. A mudança de
+versão é intencional porque cada aba agora inclui o inventário de células, além
+dos metadados da fase 1.
+
+Cobertura acrescentada:
+
+- shared strings simples e rich text, preservando a concatenação dos trechos;
+- strings inline, strings armazenadas, números, booleanos, erros e datas ISO;
+- fórmula separada do valor em cache, mantendo `rawValue` e `displayValue`;
+- índice de estilo, formatos numéricos nativos conhecidos e formatos customizados;
+- exibição conservadora para inteiros, decimais e percentuais, sem inventar a
+  renderização de formatos Excel ainda não implementados;
+- limites de 2 milhões de células, 2 milhões de shared strings e 256 MiB de
+  texto por parte XML, além dos limites de ZIP e eventos já existentes;
+- rejeição de entidades XML não predefinidas, mantendo DOCTYPE proibido.
+
+A paridade da fixture pública agora verifica também as 34 células da primeira
+aba, o cabeçalho `A4`, a fórmula `G5` e seu cache numérico. A fixture sintética
+cobre rich text, entidade XML, booleano, percentual, formato customizado, erro
+e data. O crate permanece fora do caminho produtivo; a próxima etapa é ampliar
+a cobertura de datas/formatos, mesclagens e regiões ocultas antes do adaptador
+WASM em shadow mode.

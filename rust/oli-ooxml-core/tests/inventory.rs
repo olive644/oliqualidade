@@ -1,7 +1,7 @@
 use std::io::{Cursor, Write};
 
 use oli_ooxml_core::{
-    DateSystem, InventoryError, InventoryLimits, SheetState, inventory_ooxml,
+    CellType, CellValue, DateSystem, InventoryError, InventoryLimits, SheetState, inventory_ooxml,
     inventory_ooxml_with_limits,
 };
 use zip::{ZipWriter, write::SimpleFileOptions};
@@ -76,6 +76,50 @@ fn inventories_date_system_visibility_and_real_dimensions() {
 }
 
 #[test]
+fn reads_shared_inline_typed_formula_and_formatted_cells() {
+    let shared_strings = r#"<sst>
+<si><t>Hello &amp; </t><r><t>world</t></r></si>
+</sst>"#;
+    let styles = r#"<styleSheet>
+<numFmts count="1"><numFmt numFmtId="164" formatCode="R$ #,##0.00"/></numFmts>
+<cellXfs count="3"><xf numFmtId="0"/><xf numFmtId="10"/><xf numFmtId="164"/></cellXfs>
+</styleSheet>"#;
+    let sheet = r#"<worksheet><dimension ref="A1:G1"/><sheetData><row r="1">
+<c r="A1" t="s"><v>0</v></c>
+<c r="B1" t="b"><v>1</v></c>
+<c r="C1" s="1"><v>0.125</v></c>
+<c r="D1" t="inlineStr"><is><r><t>rich </t></r><r><t>text</t></r></is></c>
+<c r="E1" s="2"><f>SUM(C1, 12)</f><v>12.5</v></c>
+<c r="F1" t="e"><v>#DIV/0!</v></c>
+<c r="G1" t="d"><v>2026-08-13T00:00:00Z</v></c>
+</row></sheetData></worksheet>"#;
+    let bytes = workbook_package(&[
+        ("xl/sharedStrings.xml", shared_strings),
+        ("xl/styles.xml", styles),
+        ("xl/worksheets/sheet1.xml", sheet),
+    ]);
+    let inventory = inventory_ooxml(&bytes).unwrap();
+    let cells = &inventory.sheets[0].cells;
+
+    assert_eq!(cells.len(), 7);
+    assert_eq!(
+        cells[0].raw_value,
+        Some(CellValue::String("Hello & world".into()))
+    );
+    assert_eq!(cells[1].raw_value, Some(CellValue::Boolean(true)));
+    assert_eq!(cells[2].display_value, "12.50%");
+    assert_eq!(
+        cells[3].raw_value,
+        Some(CellValue::String("rich text".into()))
+    );
+    assert_eq!(cells[4].formula.as_deref(), Some("=SUM(C1, 12)"));
+    assert_eq!(cells[4].raw_value, Some(CellValue::Number(12.5)));
+    assert_eq!(cells[4].number_format.as_deref(), Some("R$ #,##0.00"));
+    assert_eq!(cells[5].cell_type, CellType::Error);
+    assert_eq!(cells[6].cell_type, CellType::Date);
+}
+
+#[test]
 fn rejects_unsafe_archive_paths() {
     for name in ["../evil.xml", "xl/../evil.xml"] {
         let bytes = package(&[(name, "nope")]);
@@ -100,6 +144,19 @@ fn enforces_configurable_resource_limits_without_large_fixture() {
 
     let limits = InventoryLimits {
         max_sheets: 2,
+        ..InventoryLimits::default()
+    };
+    assert!(matches!(
+        inventory_ooxml_with_limits(&bytes, limits),
+        Err(InventoryError::ResourceLimit(_))
+    ));
+
+    let sheet = r#"<worksheet><sheetData><row r="1">
+<c r="A1"><v>1</v></c><c r="B1"><v>2</v></c><c r="C1"><v>3</v></c>
+</row></sheetData></worksheet>"#;
+    let bytes = workbook_package(&[("xl/worksheets/sheet1.xml", sheet)]);
+    let limits = InventoryLimits {
+        max_cells: 2,
         ..InventoryLimits::default()
     };
     assert!(matches!(
@@ -138,4 +195,19 @@ fn matches_the_public_problematic_fixture() {
         inventory.sheets[1].actual_dimension.as_ref().unwrap().end,
         "F4"
     );
+    let first_sheet = &inventory.sheets[0];
+    assert_eq!(first_sheet.cells.len(), 34);
+    let header = first_sheet
+        .cells
+        .iter()
+        .find(|cell| cell.address == "A4")
+        .unwrap();
+    assert_eq!(header.raw_value, Some(CellValue::String("Data".into())));
+    let formula = first_sheet
+        .cells
+        .iter()
+        .find(|cell| cell.address == "G5")
+        .unwrap();
+    assert_eq!(formula.formula.as_deref(), Some("=E5"));
+    assert_eq!(formula.raw_value, Some(CellValue::Number(1234.56)));
 }
