@@ -11,7 +11,11 @@ use serde::Serialize;
 use thiserror::Error;
 use zip::ZipArchive;
 
-pub const CONTRACT_VERSION: &str = "2.0.0";
+mod excel_date;
+
+use excel_date::{format_excel_date, is_date_format, parse_excel_serial};
+
+pub const CONTRACT_VERSION: &str = "3.0.0";
 const WORKBOOK_PART: &str = "xl/workbook.xml";
 const WORKBOOK_RELS_PART: &str = "xl/_rels/workbook.xml.rels";
 const SHARED_STRINGS_PART: &str = "xl/sharedStrings.xml";
@@ -23,6 +27,7 @@ pub struct InventoryLimits {
     pub max_sheets: usize,
     pub max_cells: u64,
     pub max_shared_strings: usize,
+    pub max_structural_records: u64,
     pub max_text_bytes: u64,
     pub max_total_uncompressed_bytes: u64,
     pub max_entry_uncompressed_bytes: u64,
@@ -38,6 +43,7 @@ impl Default for InventoryLimits {
             max_sheets: 100,
             max_cells: 2_000_000,
             max_shared_strings: 2_000_000,
+            max_structural_records: 500_000,
             max_text_bytes: 256 * 1024 * 1024,
             max_total_uncompressed_bytes: 1024 * 1024 * 1024,
             max_entry_uncompressed_bytes: 512 * 1024 * 1024,
@@ -76,6 +82,7 @@ pub struct AppliedLimits {
     pub max_sheets: usize,
     pub max_cells: u64,
     pub max_shared_strings: usize,
+    pub max_structural_records: u64,
     pub max_text_bytes: u64,
     pub max_total_uncompressed_bytes: u64,
     pub max_entry_uncompressed_bytes: u64,
@@ -91,6 +98,7 @@ impl From<InventoryLimits> for AppliedLimits {
             max_sheets: value.max_sheets,
             max_cells: value.max_cells,
             max_shared_strings: value.max_shared_strings,
+            max_structural_records: value.max_structural_records,
             max_text_bytes: value.max_text_bytes,
             max_total_uncompressed_bytes: value.max_total_uncompressed_bytes,
             max_entry_uncompressed_bytes: value.max_entry_uncompressed_bytes,
@@ -101,7 +109,7 @@ impl From<InventoryLimits> for AppliedLimits {
     }
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum DateSystem {
     #[serde(rename = "1900")]
     Excel1900,
@@ -119,7 +127,17 @@ pub struct SheetInventory {
     pub state: SheetState,
     pub declared_dimension: Option<String>,
     pub actual_dimension: Option<ActualDimension>,
+    pub merged_ranges: Vec<String>,
+    pub hidden_rows: Vec<u32>,
+    pub hidden_columns: Vec<HiddenColumnRange>,
     pub cells: Vec<CellInventory>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HiddenColumnRange {
+    pub start: u32,
+    pub end: u32,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -132,6 +150,8 @@ pub struct CellInventory {
     pub style_index: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub number_format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date_value: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub formula: Option<String>,
 }
@@ -247,11 +267,21 @@ enum CellTextTarget {
     Formula,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct ParsedWorksheet {
     declared_dimension: Option<String>,
     actual_dimension: Option<ActualDimension>,
+    merged_ranges: Vec<String>,
+    hidden_rows: Vec<u32>,
+    hidden_columns: Vec<HiddenColumnRange>,
     cells: Vec<CellInventory>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WorksheetResources<'a> {
+    shared_strings: &'a [String],
+    style_formats: &'a [String],
+    date_system: DateSystem,
 }
 
 pub fn inventory_ooxml(bytes: &[u8]) -> Result<WorkbookInventory, InventoryError> {
@@ -287,7 +317,7 @@ pub fn inventory_ooxml_with_limits(
             .filter(|relationship| !relationship.external)
             .and_then(|relationship| resolve_relationship_target("xl", &relationship.target));
 
-        let (declared_dimension, actual_dimension, cells) = if let Some(path) = path.as_deref() {
+        let parsed = if let Some(path) = path.as_deref() {
             if part_indexes.contains_key(path) {
                 let xml = read_part(&mut archive, &part_indexes, path, limits)?;
                 let parsed = parse_worksheet(
@@ -295,8 +325,11 @@ pub fn inventory_ooxml_with_limits(
                     path,
                     limits,
                     &sheet.name,
-                    &shared_strings,
-                    &style_formats,
+                    WorksheetResources {
+                        shared_strings: &shared_strings,
+                        style_formats: &style_formats,
+                        date_system,
+                    },
                     &mut diagnostics,
                 )?;
                 workbook_cell_count = workbook_cell_count
@@ -310,11 +343,7 @@ pub fn inventory_ooxml_with_limits(
                         limits.max_cells
                     )));
                 }
-                (
-                    parsed.declared_dimension,
-                    parsed.actual_dimension,
-                    parsed.cells,
-                )
+                parsed
             } else {
                 diagnostics.push(Diagnostic {
                     code: "missing-sheet-part",
@@ -322,7 +351,7 @@ pub fn inventory_ooxml_with_limits(
                     message: format!("A parte OOXML '{path}' não existe no pacote."),
                     sheet: Some(sheet.name.clone()),
                 });
-                (None, None, Vec::new())
+                ParsedWorksheet::default()
             }
         } else {
             diagnostics.push(Diagnostic {
@@ -334,7 +363,7 @@ pub fn inventory_ooxml_with_limits(
                 ),
                 sheet: Some(sheet.name.clone()),
             });
-            (None, None, Vec::new())
+            ParsedWorksheet::default()
         };
 
         sheets.push(SheetInventory {
@@ -343,9 +372,12 @@ pub fn inventory_ooxml_with_limits(
             relationship_id: sheet.relationship_id,
             path,
             state: sheet.state,
-            declared_dimension,
-            actual_dimension,
-            cells,
+            declared_dimension: parsed.declared_dimension,
+            actual_dimension: parsed.actual_dimension,
+            merged_ranges: parsed.merged_ranges,
+            hidden_rows: parsed.hidden_rows,
+            hidden_columns: parsed.hidden_columns,
+            cells: parsed.cells,
         });
     }
 
@@ -609,8 +641,7 @@ fn parse_worksheet(
     part: &str,
     limits: InventoryLimits,
     sheet_name: &str,
-    shared_strings: &[String],
-    style_formats: &[String],
+    resources: WorksheetResources<'_>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<ParsedWorksheet, InventoryError> {
     let mut reader = Reader::from_reader(xml);
@@ -619,6 +650,10 @@ fn parse_worksheet(
     let mut bounds: Option<(u32, u32, u32, u32)> = None;
     let mut cell_count = 0_u64;
     let mut cells = Vec::new();
+    let mut merged_ranges = Vec::new();
+    let mut hidden_rows = Vec::new();
+    let mut hidden_columns = Vec::new();
+    let mut structural_records = 0_u64;
     let mut current_cell: Option<CellBuilder> = None;
     let mut text_target = None;
     let mut text_bytes = 0_u64;
@@ -638,6 +673,84 @@ fn parse_worksheet(
                     .get("ref")
                     .cloned();
             }
+            Event::Start(ref element) | Event::Empty(ref element)
+                if element.local_name().as_ref() == b"row" =>
+            {
+                let attrs = attributes(element, reader.decoder(), part)?;
+                if attrs.get("hidden").is_some_and(|value| is_true(value)) {
+                    push_structural_record(
+                        &mut structural_records,
+                        limits,
+                        sheet_name,
+                        "linhas/colunas ocultas e mesclagens",
+                    )?;
+                    if let Some(row) = attrs
+                        .get("r")
+                        .and_then(|value| value.parse::<u32>().ok())
+                        .filter(|row| (1..=1_048_576).contains(row))
+                    {
+                        hidden_rows.push(row);
+                    } else {
+                        push_invalid_structure_diagnostic(
+                            diagnostics,
+                            sheet_name,
+                            "invalid-hidden-row",
+                            "Uma linha oculta possui índice inválido e foi ignorada.",
+                        );
+                    }
+                }
+            }
+            Event::Start(ref element) | Event::Empty(ref element)
+                if element.local_name().as_ref() == b"col" =>
+            {
+                let attrs = attributes(element, reader.decoder(), part)?;
+                if attrs.get("hidden").is_some_and(|value| is_true(value)) {
+                    push_structural_record(
+                        &mut structural_records,
+                        limits,
+                        sheet_name,
+                        "linhas/colunas ocultas e mesclagens",
+                    )?;
+                    let range = attrs
+                        .get("min")
+                        .and_then(|value| value.parse::<u32>().ok())
+                        .zip(attrs.get("max").and_then(|value| value.parse::<u32>().ok()))
+                        .filter(|(start, end)| *start >= 1 && *start <= *end && *end <= 16_384);
+                    if let Some((start, end)) = range {
+                        hidden_columns.push(HiddenColumnRange { start, end });
+                    } else {
+                        push_invalid_structure_diagnostic(
+                            diagnostics,
+                            sheet_name,
+                            "invalid-hidden-column-range",
+                            "Um intervalo de colunas ocultas é inválido e foi ignorado.",
+                        );
+                    }
+                }
+            }
+            Event::Start(ref element) | Event::Empty(ref element)
+                if element.local_name().as_ref() == b"mergeCell" =>
+            {
+                push_structural_record(
+                    &mut structural_records,
+                    limits,
+                    sheet_name,
+                    "linhas/colunas ocultas e mesclagens",
+                )?;
+                let reference = attributes(element, reader.decoder(), part)?
+                    .get("ref")
+                    .cloned();
+                if let Some(reference) = reference.filter(|value| is_valid_cell_range(value)) {
+                    merged_ranges.push(reference);
+                } else {
+                    push_invalid_structure_diagnostic(
+                        diagnostics,
+                        sheet_name,
+                        "invalid-merged-range",
+                        "Uma mesclagem possui referência inválida e foi ignorada.",
+                    );
+                }
+            }
             Event::Start(ref element) if element.local_name().as_ref() == b"c" => {
                 cell_count += 1;
                 enforce_cell_limit(cell_count, limits, sheet_name)?;
@@ -649,10 +762,11 @@ fn parse_worksheet(
                 if let Some(builder) = start_cell(element, reader.decoder(), part, &mut bounds)? {
                     cells.push(finish_cell(
                         builder,
-                        shared_strings,
-                        style_formats,
+                        resources.shared_strings,
+                        resources.style_formats,
                         diagnostics,
                         sheet_name,
+                        resources.date_system,
                     ));
                 }
             }
@@ -738,10 +852,11 @@ fn parse_worksheet(
                         if let Some(builder) = current_cell.take() {
                             cells.push(finish_cell(
                                 builder,
-                                shared_strings,
-                                style_formats,
+                                resources.shared_strings,
+                                resources.style_formats,
                                 diagnostics,
                                 sheet_name,
+                                resources.date_system,
                             ));
                         }
                         text_target = None;
@@ -786,6 +901,9 @@ fn parse_worksheet(
     Ok(ParsedWorksheet {
         declared_dimension,
         actual_dimension,
+        merged_ranges,
+        hidden_rows,
+        hidden_columns,
         cells,
     })
 }
@@ -972,8 +1090,9 @@ fn finish_cell(
     style_formats: &[String],
     diagnostics: &mut Vec<Diagnostic>,
     sheet_name: &str,
+    date_system: DateSystem,
 ) -> CellInventory {
-    let (cell_type, raw_value) = match builder.data_type.as_str() {
+    let (mut cell_type, raw_value) = match builder.data_type.as_str() {
         "s" => match builder.value_text.parse::<usize>() {
             Ok(index) => match shared_strings.get(index) {
                 Some(value) => (CellType::String, Some(CellValue::String(value.clone()))),
@@ -1025,7 +1144,32 @@ fn finish_cell(
         .get(builder.style_index as usize)
         .cloned()
         .unwrap_or_else(|| "General".to_owned());
-    let display_value = display_cell_value(raw_value.as_ref(), &number_format);
+    let parsed_date = match raw_value.as_ref() {
+        Some(CellValue::Number(value)) if is_date_format(&number_format) => {
+            parse_excel_serial(*value, date_system)
+        }
+        _ => None,
+    };
+    if parsed_date.is_some() {
+        cell_type = CellType::Date;
+    }
+    if parsed_date.is_some_and(|value| value.excel_leap_day) {
+        diagnostics.push(Diagnostic {
+            code: "excel-1900-leap-day",
+            severity: DiagnosticSeverity::Info,
+            message: format!(
+                "A célula '{}' usa o dia fictício 29/02/1900 preservado pelo Excel.",
+                builder.address
+            ),
+            sheet: Some(sheet_name.to_owned()),
+        });
+    }
+    let display_value = match (raw_value.as_ref(), parsed_date) {
+        (Some(CellValue::Number(value)), Some(date)) => {
+            format_excel_date(*value, &number_format, date)
+        }
+        _ => display_cell_value(raw_value.as_ref(), &number_format),
+    };
     CellInventory {
         address: builder.address,
         cell_type,
@@ -1033,6 +1177,7 @@ fn finish_cell(
         display_value,
         style_index: builder.style_index,
         number_format: (number_format != "General").then_some(number_format),
+        date_value: parsed_date.and_then(|value| value.iso_value()),
         formula: (!builder.formula_text.is_empty()).then(|| format!("={}", builder.formula_text)),
     }
 }
@@ -1086,6 +1231,38 @@ fn enforce_cell_limit(
         )));
     }
     Ok(())
+}
+
+fn push_structural_record(
+    count: &mut u64,
+    limits: InventoryLimits,
+    sheet_name: &str,
+    description: &str,
+) -> Result<(), InventoryError> {
+    *count = count.checked_add(1).ok_or_else(|| {
+        InventoryError::ResourceLimit("contagem de registros estruturais excedeu u64".into())
+    })?;
+    if *count > limits.max_structural_records {
+        return Err(InventoryError::ResourceLimit(format!(
+            "a aba '{sheet_name}' possui mais de {} registros de {description}",
+            limits.max_structural_records
+        )));
+    }
+    Ok(())
+}
+
+fn push_invalid_structure_diagnostic(
+    diagnostics: &mut Vec<Diagnostic>,
+    sheet_name: &str,
+    code: &'static str,
+    message: &str,
+) {
+    diagnostics.push(Diagnostic {
+        code,
+        severity: DiagnosticSeverity::Warning,
+        message: message.to_owned(),
+        sheet: Some(sheet_name.to_owned()),
+    });
 }
 
 fn add_text_bytes(
@@ -1214,6 +1391,23 @@ fn parse_cell_reference(reference: &str) -> Option<(u32, u32)> {
     (row > 0).then_some((column, row))
 }
 
+fn is_valid_cell_range(reference: &str) -> bool {
+    let mut parts = reference.split(':');
+    let start = parts.next().and_then(parse_cell_reference);
+    let end = parts.next().and_then(parse_cell_reference);
+    if parts.next().is_some() {
+        return false;
+    }
+    matches!(
+        (start, end),
+        (Some((start_column, start_row)), Some((end_column, end_row)))
+            if start_column <= end_column
+                && start_row <= end_row
+                && end_column <= 16_384
+                && end_row <= 1_048_576
+    )
+}
+
 fn encode_cell_reference(mut column: u32, row: u32) -> String {
     let mut letters = Vec::new();
     while column > 0 {
@@ -1251,5 +1445,8 @@ mod unit_tests {
         assert_eq!(parse_cell_reference("$AA$42"), Some((27, 42)));
         assert_eq!(encode_cell_reference(27, 42), "AA42");
         assert_eq!(parse_cell_reference("A0"), None);
+        assert!(is_valid_cell_range("A1:XFD1048576"));
+        assert!(!is_valid_cell_range("B2:A1"));
+        assert!(!is_valid_cell_range("A1:XFE1"));
     }
 }
