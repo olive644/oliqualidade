@@ -44,8 +44,10 @@ fn workbook_package(extra_parts: &[(&str, &str)]) -> Vec<u8> {
 
 #[test]
 fn inventories_date_system_visibility_and_real_dimensions() {
-    let sheet1 = r#"<worksheet><dimension ref="A1:Z99"/><sheetData>
-<row r="2"><c r="B2"><v>1</v></c><c r="D2"><v>2</v></c></row>
+    let sheet1 = r#"<worksheet><dimension ref="A1:Z99"/><cols>
+<col min="3" max="5" hidden="1"/>
+</cols><sheetData>
+<row r="2" hidden="true"><c r="B2"><v>1</v></c><c r="D2"><v>2</v></c></row>
 <row r="5"><c r="C5"><v>3</v></c></row></sheetData></worksheet>"#;
     let empty = r#"<worksheet><dimension ref="A1"/><sheetData/></worksheet>"#;
     let bytes = workbook_package(&[
@@ -67,12 +69,46 @@ fn inventories_date_system_visibility_and_real_dimensions() {
     let actual = inventory.sheets[0].actual_dimension.as_ref().unwrap();
     assert_eq!((actual.start.as_str(), actual.end.as_str()), ("B2", "D5"));
     assert_eq!((actual.rows, actual.columns, actual.cell_count), (4, 3, 3));
+    assert_eq!(inventory.sheets[0].hidden_rows, [2]);
+    assert_eq!(inventory.sheets[0].hidden_columns[0].start, 3);
+    assert_eq!(inventory.sheets[0].hidden_columns[0].end, 5);
     assert!(
         inventory
             .diagnostics
             .iter()
             .any(|item| item.code == "dimension-mismatch")
     );
+}
+
+#[test]
+fn normalizes_and_formats_serial_dates_and_preserves_merges() {
+    let styles = r#"<styleSheet>
+<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts>
+<cellXfs count="5"><xf numFmtId="0"/><xf numFmtId="14"/><xf numFmtId="22"/><xf numFmtId="46"/><xf numFmtId="164"/></cellXfs>
+</styleSheet>"#;
+    let sheet = r#"<worksheet><dimension ref="A1:D2"/><sheetData><row r="1">
+<c r="A1" s="1"><v>0</v></c>
+<c r="B1" s="2"><v>1.5</v></c>
+<c r="C1" s="3"><v>1.5</v></c>
+<c r="D1" s="4"><v>44555</v></c>
+</row></sheetData><mergeCells count="2"><mergeCell ref="A1:B1"/><mergeCell ref="C1:D2"/></mergeCells></worksheet>"#;
+    let bytes = workbook_package(&[
+        ("xl/styles.xml", styles),
+        ("xl/worksheets/sheet1.xml", sheet),
+    ]);
+    let inventory = inventory_ooxml(&bytes).unwrap();
+    let sheet = &inventory.sheets[0];
+
+    assert_eq!(sheet.merged_ranges, ["A1:B1", "C1:D2"]);
+    assert_eq!(sheet.cells[0].cell_type, CellType::Date);
+    assert_eq!(
+        sheet.cells[0].date_value.as_deref(),
+        Some("1904-01-01T00:00:00")
+    );
+    assert_eq!(sheet.cells[0].display_value, "1/1/04");
+    assert_eq!(sheet.cells[1].display_value, "1/2/04 12:00");
+    assert_eq!(sheet.cells[2].display_value, "36:00:00");
+    assert_eq!(sheet.cells[3].display_value, "2025-12-26");
 }
 
 #[test]
@@ -163,6 +199,19 @@ fn enforces_configurable_resource_limits_without_large_fixture() {
         inventory_ooxml_with_limits(&bytes, limits),
         Err(InventoryError::ResourceLimit(_))
     ));
+
+    let sheet = r#"<worksheet><sheetData/><mergeCells count="2">
+<mergeCell ref="A1:B1"/><mergeCell ref="C1:D1"/>
+</mergeCells></worksheet>"#;
+    let bytes = workbook_package(&[("xl/worksheets/sheet1.xml", sheet)]);
+    let limits = InventoryLimits {
+        max_structural_records: 1,
+        ..InventoryLimits::default()
+    };
+    assert!(matches!(
+        inventory_ooxml_with_limits(&bytes, limits),
+        Err(InventoryError::ResourceLimit(_))
+    ));
 }
 
 #[test]
@@ -195,6 +244,24 @@ fn matches_the_public_problematic_fixture() {
         inventory.sheets[1].actual_dimension.as_ref().unwrap().end,
         "F4"
     );
+    assert!(
+        inventory
+            .sheets
+            .iter()
+            .any(|sheet| sheet.merged_ranges.iter().any(|range| range == "A1:F1"))
+    );
+    assert!(
+        inventory
+            .sheets
+            .iter()
+            .any(|sheet| !sheet.hidden_rows.is_empty())
+    );
+    assert!(
+        inventory
+            .sheets
+            .iter()
+            .any(|sheet| !sheet.hidden_columns.is_empty())
+    );
     let first_sheet = &inventory.sheets[0];
     assert_eq!(first_sheet.cells.len(), 34);
     let header = first_sheet
@@ -210,4 +277,18 @@ fn matches_the_public_problematic_fixture() {
         .unwrap();
     assert_eq!(formula.formula.as_deref(), Some("=E5"));
     assert_eq!(formula.raw_value, Some(CellValue::Number(1234.56)));
+}
+
+#[test]
+fn serializes_the_version_three_contract_keys() {
+    let sheet = r#"<worksheet><sheetData><row r="1" hidden="1">
+<c r="A1"><v>1</v></c></row></sheetData><mergeCells><mergeCell ref="A1:B1"/></mergeCells></worksheet>"#;
+    let bytes = workbook_package(&[("xl/worksheets/sheet1.xml", sheet)]);
+    let json = serde_json::to_value(inventory_ooxml(&bytes).unwrap()).unwrap();
+
+    assert_eq!(json["schemaVersion"], "3.0.0");
+    assert_eq!(json["archive"]["limits"]["maxStructuralRecords"], 500_000);
+    assert_eq!(json["sheets"][0]["mergedRanges"][0], "A1:B1");
+    assert_eq!(json["sheets"][0]["hiddenRows"][0], 1);
+    assert!(json["sheets"][0]["hiddenColumns"].is_array());
 }

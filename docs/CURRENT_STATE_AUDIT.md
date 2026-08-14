@@ -328,6 +328,32 @@ Cobertura acrescentada:
 A paridade da fixture pública agora verifica também as 34 células da primeira
 aba, o cabeçalho `A4`, a fórmula `G5` e seu cache numérico. A fixture sintética
 cobre rich text, entidade XML, booleano, percentual, formato customizado, erro
-e data. O crate permanece fora do caminho produtivo; a próxima etapa é ampliar
-a cobertura de datas/formatos, mesclagens e regiões ocultas antes do adaptador
-WASM em shadow mode.
+e data. O crate permanece fora do caminho produtivo; a cobertura de
+datas/formatos, mesclagens e regiões ocultas foi concluída abaixo antes do
+adaptador WASM em shadow mode.
+
+## 13. Núcleo Rust de fidelidade estrutural OOXML — fase 3
+
+O contrato JSON passa para `3.0.0`, pois cada aba agora exige também os campos
+`mergedRanges`, `hiddenRows` e `hiddenColumns`. O crate passa da versão `0.2.0`
+para `0.3.0` e continua isolado do caminho produtivo.
+
+Cobertura acrescentada:
+
+- conversão de datas seriais nos sistemas Excel 1900 e 1904, preservando o
+  valor numérico bruto e emitindo `dateValue` local normalizado;
+- tratamento explícito do dia fictício 29/02/1900: a exibição compatível é
+  preservada, o valor ISO inválido não é emitido e um diagnóstico é registrado;
+- reconhecimento conservador de formatos de data/hora, formatos nativos 14–22
+  e 45–47, duração `[h]:mm:ss` e formatos customizados comuns;
+- inventário validado de mesclagens, linhas ocultas e intervalos compactos de
+  colunas ocultas, sem expandir intervalos potencialmente grandes;
+- limite configurável de 500 mil registros estruturais por aba, somado aos
+  limites de células, texto, eventos XML e pacote ZIP;
+- regressões sintéticas para data 1904, duração, formato customizado, mesclagem,
+  estruturas ocultas e limite reduzido, além da paridade estrutural da fixture
+  pública.
+
+A próxima etapa recomendada é compilar um adaptador WASM e executá-lo em shadow
+mode contra o leitor TypeScript, medindo divergências sem alterar o resultado
+entregue ao usuário.
