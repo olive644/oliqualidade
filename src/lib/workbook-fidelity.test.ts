@@ -17,6 +17,13 @@ describe("fidelidade entre leitores independentes", () => {
     const fallback = inspectOoxml(bytes);
     expect(fallback.sheets.get("Cabeçalho deslocado")?.get("A4")?.rawValue).toBe("Data");
     expect(fallback.workbook.SheetNames).toContain("Regiões lado a lado");
+    expect(fallback.structures.get("Cabeçalho deslocado")).toEqual({
+      mergedRanges: ["A1:F1"],
+      hiddenRows: [2],
+      hiddenColumns: [{ start: 3, end: 3 }],
+    });
+    expect(fallback.workbook.Sheets["Cabeçalho deslocado"]?.["!merges"]).toHaveLength(1);
+    expect(fallback.workbook.Sheets["Cabeçalho deslocado"]?.["!cols"]?.[2]?.hidden).toBe(true);
   });
 
   it("compara SheetJS com OOXML célula a célula", () => {

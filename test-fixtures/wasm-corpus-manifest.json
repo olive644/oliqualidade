@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1.0.0",
+  "profiles": [
+    {
+      "id": "baseline-1900",
+      "copies": 7,
+      "format": "xlsx",
+      "seedStart": 100,
+      "rows": 32,
+      "columns": 16,
+      "dateSystem": "1900",
+      "features": ["strings", "numbers", "booleans", "dates"]
+    },
+    {
+      "id": "formulas-1900",
+      "copies": 6,
+      "format": "xlsx",
+      "seedStart": 200,
+      "rows": 32,
+      "columns": 16,
+      "dateSystem": "1900",
+      "features": ["strings", "numbers", "booleans", "dates", "formulas"]
+    },
+    {
+      "id": "structure-1900",
+      "copies": 6,
+      "format": "xlsx",
+      "seedStart": 300,
+      "rows": 32,
+      "columns": 16,
+      "dateSystem": "1900",
+      "features": [
+        "strings",
+        "numbers",
+        "booleans",
+        "dates",
+        "formulas",
+        "merges",
+        "hiddenRows",
+        "hiddenColumns"
+      ]
+    },
+    {
+      "id": "date-system-1904",
+      "copies": 6,
+      "format": "xlsx",
+      "seedStart": 400,
+      "rows": 32,
+      "columns": 16,
+      "dateSystem": "1904",
+      "features": ["strings", "numbers", "booleans", "dates", "formulas"]
+    }
+  ]
+}

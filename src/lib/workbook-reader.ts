@@ -262,6 +262,8 @@ export async function readWorkbookBytesWithEngine(
   let wasmShadowMs = 0;
   let wasmComparedCells = 0;
   let wasmDivergentCells = 0;
+  let wasmComparedStructures = 0;
+  let wasmDivergentStructures = 0;
   let wasmDivergentSheets = 0;
   let wasmSchemaVersion: string | null = null;
   if (wasmReader) {
@@ -275,9 +277,13 @@ export async function readWorkbookBytesWithEngine(
       );
       wasmComparedCells = comparison.comparedCells;
       wasmDivergentCells = comparison.divergentCells;
+      wasmComparedStructures = comparison.comparedStructures;
+      wasmDivergentStructures = comparison.divergentStructures;
       wasmDivergentSheets = comparison.divergentSheets;
       wasmShadowStatus =
-        comparison.divergentCells || comparison.divergentSheets ? "diverged" : "matched";
+        comparison.divergentCells || comparison.divergentStructures || comparison.divergentSheets
+          ? "diverged"
+          : "matched";
     } catch {
       // Shadow mode nunca interfere no resultado já produzido pelo leitor validado.
     } finally {
@@ -306,6 +312,8 @@ export async function readWorkbookBytesWithEngine(
       wasmShadowMs,
       wasmComparedCells,
       wasmDivergentCells,
+      wasmComparedStructures,
+      wasmDivergentStructures,
       wasmDivergentSheets,
       wasmSchemaVersion,
     },

@@ -19,8 +19,9 @@ O avaliador `assessWasmPromotion` exige simultaneamente:
 - contrato de inventário `3.0.0` em todas as medições;
 - pelo menos 25 arquivos efetivamente medidos;
 - pelo menos 10.000 células comparadas;
+- pelo menos 5 arquivos reais sanitizados por formato;
 - zero falhas do adaptador;
-- zero arquivos, abas ou células divergentes;
+- zero arquivos, abas, células ou estruturas divergentes;
 - latência p95 do shadow mode de até 1.500 ms.
 
 Estados `unavailable` e `sampled-out` não contam como arquivos medidos. O gate
@@ -28,10 +29,17 @@ retorna todos os motivos de bloqueio, em vez de apenas o primeiro.
 
 ## Corpus e decisão
 
-O comando `npm run wasm:corpus` executa o binário WebAssembly versionado contra
-a fixture pública, compara valores brutos, textos exibidos e fórmulas com o
-inventário OOXML TypeScript e imprime a métrica observada. Esse teste também
-confirma que uma fixture isolada é insuficiente para promoção.
+O comando `npm run wasm:corpus` gera 25 planilhas determinísticas a partir de
+`test-fixtures/wasm-corpus-manifest.json`, executa o binário WebAssembly
+versionado e compara valores brutos, textos exibidos, fórmulas, mesclagens,
+linhas ocultas e colunas ocultas com o inventário OOXML TypeScript. O relatório
+JSON completo é salvo em `test-results/wasm-corpus-report.json` e publicado como
+artefato da CI.
+
+O corpus sintético cobre volume e recursos, mas não pode aprovar sozinho a
+promoção. O campo `source` distingue `synthetic` de `sanitized-real`, e o gate
+permanece bloqueado enquanto não houver cinco arquivos reais sanitizados para o
+formato avaliado.
 
 Arquivos reais adicionais podem continuar no corpus local sanitizado. A
 promoção futura deverá ser separada por formato e acompanhada de revisão humana

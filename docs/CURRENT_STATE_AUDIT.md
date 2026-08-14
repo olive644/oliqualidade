@@ -403,3 +403,20 @@ Os critérios padrão exigem contrato `3.0.0`, no mínimo 25 arquivos e 10.000
 células, zero falhas e divergências e p95 de até 1.500 ms. A fixture pública
 isolada é deliberadamente classificada como corpus insuficiente. Os critérios e
 o processo de decisão estão documentados em `docs/WASM_PROMOTION_CRITERIA.md`.
+
+## 16. Corpus reproduzível e paridade estrutural — fase 6
+
+O corpus WASM agora é gerado de forma determinística a partir de um manifesto
+versionado. São 25 arquivos XLSX e 13.200 células cobrindo strings, números,
+booleanos, fórmulas, datas nos sistemas 1900/1904, mesclagens e regiões ocultas.
+Os binários gerados não são versionados; a CI os recria e publica o relatório de
+medição como artefato.
+
+O inspetor OOXML TypeScript passou a preservar mesclagens, linhas ocultas e
+colunas ocultas também no workbook de fallback. O shadow mode confronta essas
+estruturas com o inventário Rust e reporta quantidades comparadas e divergentes.
+
+Na medição de referência, os 25 arquivos, 13.200 células e 24 estruturas tiveram
+paridade total, sem falhas ou divergências e com p95 abaixo do limite. O gate
+permanece corretamente bloqueado: corpus sintético comprova cobertura, mas a
+promoção exige pelo menos cinco arquivos reais sanitizados por formato.

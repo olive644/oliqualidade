@@ -22,7 +22,14 @@ export type ReaderDivergence = {
 
 export type OoxmlInspection = {
   sheets: Map<string, Map<string, ReaderCell>>;
+  structures: Map<string, OoxmlSheetStructure>;
   workbook: XLSX.WorkBook;
+};
+
+export type OoxmlSheetStructure = {
+  mergedRanges: string[];
+  hiddenRows: number[];
+  hiddenColumns: Array<{ start: number; end: number }>;
 };
 
 type Archive = Record<string, Uint8Array>;
@@ -124,14 +131,44 @@ function readSheet(xml: string, strings: string[], formats: string[]) {
   const worksheet: XLSX.WorkSheet = {};
   let range: XLSX.Range | null = null;
   const rows: XLSX.RowInfo[] = [];
+  const hiddenRows: number[] = [];
+  const hiddenColumns: Array<{ start: number; end: number }> = [];
+  const mergedRanges: string[] = [];
   for (const match of xml.matchAll(/<row\b[^>]*(?:\/>|>)/g)) {
     const attrs = attributes(match[0]);
     const rowNumber = Number(attrs["r"]);
     if (!Number.isInteger(rowNumber) || rowNumber < 1) continue;
     const hidden = attrs["hidden"] === "1" || attrs["hidden"] === "true";
-    if (hidden) rows[rowNumber - 1] = { hidden: true };
+    if (hidden) {
+      rows[rowNumber - 1] = { hidden: true };
+      hiddenRows.push(rowNumber);
+    }
   }
   if (rows.length) worksheet["!rows"] = rows;
+  for (const match of xml.matchAll(/<col\b[^>]*(?:\/>|>)/g)) {
+    const attrs = attributes(match[0]);
+    if (attrs["hidden"] !== "1" && attrs["hidden"] !== "true") continue;
+    const start = Number(attrs["min"]);
+    const end = Number(attrs["max"]);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) continue;
+    hiddenColumns.push({ start, end });
+  }
+  if (hiddenColumns.length) {
+    const columns: XLSX.ColInfo[] = [];
+    for (const { start, end } of hiddenColumns)
+      for (let column = start; column <= end; column++) columns[column - 1] = { hidden: true };
+    worksheet["!cols"] = columns;
+  }
+  for (const match of xml.matchAll(/<mergeCell\b[^>]*\bref="([^"]+)"[^>]*\/>/g)) {
+    const reference = match[1]!;
+    try {
+      worksheet["!merges"] ??= [];
+      worksheet["!merges"].push(XLSX.utils.decode_range(reference));
+      mergedRanges.push(reference);
+    } catch {
+      // Estruturas inválidas são ignoradas pelo verificador independente.
+    }
+  }
   // A alternativa autocontida precisa vir primeiro. Caso contrário, `<c .../>`
   // também casa como uma tag de abertura e captura o conteúdo da próxima
   // célula até `</c>`, transformando formatação vazia em dado inexistente.
@@ -197,7 +234,7 @@ function readSheet(xml: string, strings: string[], formats: string[]) {
   }
   const dimension = /<dimension\b[^>]*ref="([^"]+)"/.exec(xml)?.[1];
   worksheet["!ref"] = dimension || (range ? XLSX.utils.encode_range(range) : "A1");
-  return { cells, worksheet };
+  return { cells, worksheet, structure: { mergedRanges, hiddenRows, hiddenColumns } };
 }
 
 export function inspectOoxml(input: ArrayBuffer | Uint8Array): OoxmlInspection {
@@ -210,6 +247,7 @@ export function inspectOoxml(input: ArrayBuffer | Uint8Array): OoxmlInspection {
   const formats = styleFormats(archiveText(archive, "xl/styles.xml"));
   const workbook = XLSX.utils.book_new();
   const sheets = new Map<string, Map<string, ReaderCell>>();
+  const structures = new Map<string, OoxmlSheetStructure>();
   for (const match of workbookXml.matchAll(/<sheet\b[^>]*\/>/g)) {
     const attrs = attributes(match[0]);
     const name = xmlText(attrs["name"] ?? "Planilha");
@@ -218,9 +256,10 @@ export function inspectOoxml(input: ArrayBuffer | Uint8Array): OoxmlInspection {
     const parsed = readSheet(archiveText(archive, path), strings, formats);
     XLSX.utils.book_append_sheet(workbook, parsed.worksheet, name.slice(0, 31));
     sheets.set(name, parsed.cells);
+    structures.set(name, parsed.structure);
   }
   if (!workbook.SheetNames.length) throw new Error("Nenhuma aba OOXML legível foi encontrada.");
-  return { sheets, workbook };
+  return { sheets, structures, workbook };
 }
 
 function comparable(value: unknown): string {

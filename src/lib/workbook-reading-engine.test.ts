@@ -47,6 +47,16 @@ describe("contrato do Reading Engine v2", () => {
           ]),
         ],
       ]),
+      structures: new Map([
+        [
+          "Dados",
+          {
+            mergedRanges: ["A1:B1"],
+            hiddenRows: [3],
+            hiddenColumns: [{ start: 4, end: 5 }],
+          },
+        ],
+      ]),
       workbook: { SheetNames: [], Sheets: {} },
     } satisfies OoxmlInspection;
 
@@ -57,6 +67,9 @@ describe("contrato do Reading Engine v2", () => {
           sheets: [
             {
               name: "Dados",
+              mergedRanges: ["A1:B1"],
+              hiddenRows: [3],
+              hiddenColumns: [{ start: 4, end: 6 }],
               cells: [
                 { address: "A1", rawValue: "Produto", displayValue: "Produto" },
                 { address: "A2", rawValue: 43, displayValue: "43" },
@@ -66,6 +79,12 @@ describe("contrato do Reading Engine v2", () => {
         },
         inspection,
       ),
-    ).toEqual({ comparedCells: 2, divergentCells: 1, divergentSheets: 1 });
+    ).toEqual({
+      comparedCells: 2,
+      divergentCells: 1,
+      comparedStructures: 4,
+      divergentStructures: 2,
+      divergentSheets: 1,
+    });
   });
 });
