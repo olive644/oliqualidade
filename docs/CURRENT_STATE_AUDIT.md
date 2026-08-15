@@ -736,12 +736,153 @@ uma caixa de aviso já renderizada e testada, sobre campos já tipados e
 cobertos por teste no motor de leitura — mas fica registrado como
 verificação pendente, não como confirmado.
 
-Itens ainda não abordados da auditoria de explicabilidade: regiões
-descartadas e o motivo (não existe nenhum modelo de dados para isso hoje,
-não é só falta de exibição) e uma matriz de confiança por aba/sheet (hoje
-só há confiança global e por região/coluna).
+Itens da auditoria de explicabilidade da seção 26: a matriz de confiança
+por aba foi implementada na seção 28, e regiões descartadas e o motivo na
+seção 29.
 
-## 27. Etapa 4 — XLSM entra no corpus determinístico; XLTX/XLTM seguem sem medição
+## 27. Etapa 3 — teste de rollback dedicado e documentação do desligamento do candidato Rust
+
+Fechava a lacuna registrada na seção 19: o modo candidato e a allowlist
+`xlsx` já eram o padrão de produção, e `VITE_WASM_READER_MODE=shadow` já
+existia como variável de rollback, mas não havia teste que provasse esse
+comportamento isoladamente nem documentação explícita do procedimento.
+
+Nenhum bug foi encontrado — a lógica em `readWorkbookBytesWithEngine`
+(`src/lib/workbook-reader.ts`) já garantia que a materialização Rust só
+ocorre dentro do bloco condicionado a `candidateEligible`, que por sua vez
+exige `wasmReaderMode === "candidate"`. A lacuna era puramente de prova e
+de documentação:
+
+- **Teste** (`src/lib/workbook-reader.test.ts`): registra o mesmo adaptador
+  Rust simulado, com dados que dariam paridade total, e roda o mesmo
+  arquivo duas vezes — uma em modo candidato (confirma promoção a
+  `reader: "rust-wasm"`) e outra alterando somente `wasmReaderMode` para
+  `"shadow"` (confirma reversão para `reader: "sheetjs-verified"`,
+  `wasmOutputUsed: false`, linhas importadas idênticas, e que a medição de
+  paridade continua ativa via `wasmShadowStatus: "matched"`). Isso prova
+  que o único parâmetro que precisa mudar é o modo, sem depender de
+  desregistrar o adaptador ou reverter qualquer outro código.
+- **Documentação** (`docs/WASM_PROMOTION_CRITERIA.md`, nova seção "Como
+  desativar o candidato Rust (rollback)"): explicita que
+  `VITE_WASM_READER_MODE` é lido via `import.meta.env`, ou seja, é
+  substituído em **tempo de build** pelo Vite, não é um flag dinâmico de
+  execução. Isso corrige uma imprecisão do texto anterior ("rollback
+  operacional é imediato"): a mudança de variável não exige nenhuma
+  alteração de código, PR ou commit novo, mas ainda exige um novo
+  build/deploy (na Vercel, basta redeploy do commit atual, sem novo
+  commit) para que o valor embutido no bundle publicado mude.
+  `.env.example` recebeu a mesma correção de forma resumida.
+
+Verificado com `npx vitest run src/lib/workbook-reader.test.ts` (37 testes,
+todos passando) e a suíte completa (`npx vitest run`, 442 passou/11
+pulados, era 441 — o novo teste soma um caso, sem alterar nenhum
+pré-existente, incluindo o teste de shadow mode genérico já registrado na
+seção 26).
+
+## 28. Matriz de confiança por aba
+
+Fechava parte da lacuna registrada ao final da seção 26: "uma matriz de
+confiança por aba/sheet (hoje só há confiança global e por região/coluna)".
+
+Como no caso do leitor/fallback da seção 26, não havia bug nem lacuna de
+cálculo — `sheetsWithData` (`import.ts`) já roda `diagnoseImportedSheet`
+para **toda** aba com dado no workbook, não só a aba ativa, então
+`SheetOption.diagnostics.confidence` e `.confidenceReasons` já existiam
+para todas as abas simultaneamente. A lacuna era puramente de agregação e
+exibição: nada juntava esses valores num lugar comparável lado a lado, e a
+interface só mostrava a confiança da aba selecionada no momento.
+
+- **Função pura nova**: `buildSheetConfidenceMatrix` em
+  `import-intelligence.ts`, ao lado do tipo `ImportDiagnostics` que ela
+  consome. Recebe `Array<{ name; diagnostics? }>` (compatível
+  estruturalmente com `SheetOption`, sem criar dependência circular com
+  `import.ts`) e devolve, por aba: `confidence` (número ou `null` quando
+  não há diagnóstico), `level` (`"alta"` ≥85, `"média"` ≥60, `"baixa"`
+  abaixo disso, ou `"sem diagnóstico"`), os `reasons` já calculados e a
+  contagem de divergências do leitor daquela aba especificamente. Não
+  recalcula nada — só lê e classifica o que já existe.
+- **Interface**: a barra de abas da revisão (`routes/index.tsx`, dentro de
+  `Review`) ganhou um indicador colorido por aba (verde/âmbar/vermelho,
+  omitido quando não há diagnóstico) com `title` explicando o percentual e
+  os motivos, sem alterar a navegação entre abas nem nenhum cálculo
+  existente.
+
+Testes em `import-intelligence.test.ts` (`describe("matriz de confiança por
+aba")`) cobrem: classificação alta/média/baixa a partir de diagnósticos
+reais gerados por `diagnoseImportedSheet` (não valores inventados), aba sem
+diagnóstico retornando `null`/`"sem diagnóstico"` sem quebrar, e contagem de
+divergências do leitor isolada por aba.
+
+Verificado com `npx vitest run` (444 passou, 11 pulados, era 442 após a
+Etapa 3 da seção 27), `npx tsc --noEmit` sem erros e `npm run build`
+aprovado. **Não foi possível verificar
+visualmente no navegador** — mesma limitação já registrada na seção 26: a
+ferramenta de automação deste sandbox não simula o diálogo de upload de
+arquivo do sistema operacional, e o indicador só aparece depois de importar
+um workbook com mais de uma aba. Confirmado que a página carrega sem erros
+de console antes e depois da mudança; a integração em si é composição de
+JSX sobre uma função pura já testada, seguindo o mesmo padrão de risco
+baixo da seção 26 — mas fica registrado como verificação pendente, não como
+confirmado.
+
+## 29. Regiões independentes mantidas juntas por segurança, agora auditadas
+
+Fechava parte da lacuna registrada ao final da seção 26: "regiões
+descartadas e o motivo (não existe nenhum modelo de dados para isso hoje,
+não é só falta de exibição)".
+
+`import-intelligence.ts` já detecta regiões independentes por aba
+(`ImportDiagnostics.tableRegions`), e `regionsAreSafeToSplit` (`import.ts`)
+decide, com vários critérios de segurança (matriz de identificadores +
+períodos, cabeçalho numérico, poucas linhas de dado, cobertura insuficiente
+da área ocupada), se essas regiões viram opções de importação separadas.
+Quando a resposta é não — o caso mais comum é justamente o correto, uma
+matriz de identificadores à esquerda com colunas de período à direita, que
+`regionsAreSafeToSplit` recusa deliberadamente para não quebrar a relação
+entre item e seus valores — a aba continuava importando como uma única
+tabela sem nenhum registro de que a separação automática foi considerada e
+recusada. `diagnostics.tableRegions` continuava existindo internamente, mas
+nada da decisão chegava ao usuário nem à auditoria.
+
+Este recorte é deliberadamente menor que "modelo de dados para regiões
+descartadas": em vez de decompor `regionsAreSafeToSplit` num motivo
+nomeado por critério de recusa (o que exigiria reescrever uma função
+delicada com muitos ramos de retorno antecipado, usada pelos testes já
+existentes de separação de tabelas), a mudança é só observabilidade —
+registra que N regiões foram detectadas e mantidas juntas, sem alterar
+nenhuma decisão de separação:
+
+- `ImportAudit` (`import.ts`) ganha o campo opcional
+  `regionsKeptTogether?: number`.
+- `sheetsWithData` grava esse número quando `diagnostics.tableRegions.length
+  > 1` e a aba não foi dividida acima (nem por `regionsAreSafeToSplit`, nem
+  pela separação por seções tituladas) — sem mudar a condição de divisão em
+  si, só observando o resultado dela.
+- A interface (`routes/index.tsx`, grade "Balanço verificável da
+  importação") ganha o item "Regiões mantidas juntas", exibido apenas
+  quando o valor é maior que zero, no mesmo padrão dos outros contadores já
+  existentes.
+
+Teste em `import.test.ts` estende o caso já existente "mantém
+identificadores e períodos na mesma tabela quando há só uma coluna de
+respiro" (`regionsAreSafeToSplit` recusa por critério temporal) para
+confirmar `audit.regionsKeptTogether === diagnostics.tableRegions.length`
+(2), e um novo teste confirma que uma aba com uma única região não recebe o
+campo (`undefined`, não `0` ou `1`).
+
+O motivo específico da recusa (qual dos vários critérios de
+`regionsAreSafeToSplit` disparou) continua não exposto — decompor essa
+função em motivos nomeados é trabalho futuro maior, de maior risco de
+regressão por tocar a lógica de separação em si, não só observá-la.
+
+Verificado com `npx vitest run` (445 passou, 11 pulados, era 444 após as
+etapas 27/28), `npx tsc --noEmit` sem erros e `npm run build` aprovado.
+Assim como as seções 26 e anterior, **não foi possível verificar
+visualmente no navegador** pela mesma limitação de upload de arquivo do
+sandbox; a mudança é só leitura de dado já computado mais um item
+condicional na grade de auditoria já renderizada e testada.
+
+## 30. Etapa 4 — XLSM entra no corpus determinístico; XLTX/XLTM seguem sem medição
 
 Primeira avaliação de propósito de outros formatos OOXML para promoção do
 Rust (o roteiro original listava XLSM, XLTX, XLTM, XLS, CSV e ODS; esta
@@ -793,5 +934,5 @@ real por formato (`divergentWorkbooks: 1`, `divergentCells: 12` para
 xlsm) — deliberadamente não zerado para não esconder o achado, seguindo a
 regra do projeto contra reduzir critério para forçar verde.
 
-Verificado com `npx vitest run` (442 passou, 11 pulados, era 441), `npx tsc
+Verificado com `npx vitest run` (445 passou, 11 pulados), `npx tsc
 --noEmit` sem erros e `npm run build` aprovado.

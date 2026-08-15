@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import {
+  buildSheetConfidenceMatrix,
   diagnoseImportedSheet,
   getFormulaSummary,
   normalizeImportedValue,
@@ -328,4 +329,71 @@ it("classifica condições e agregações condicionais locais como compatíveis"
   ]);
   const summary = getFormulaSummary(diagnostics);
   expect(summary).toMatchObject({ total: 2, supported: 2, unsupported: 0 });
+});
+
+describe("matriz de confiança por aba", () => {
+  it("classifica cada aba em alta/média/baixa a partir da confiança já calculada, sem recalcular nada", () => {
+    const wsAlta = sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+      ["Torta", 18],
+    ]);
+    const wsBaixa = sheet([
+      ["A", "B", "C"],
+      [1, null, "x"],
+      [null, 2, null],
+    ]);
+    const diagnosticsAlta = diagnoseImportedSheet(wsAlta, [
+      { Produto: "Bolo", Valor: 42 },
+      { Produto: "Torta", Valor: 18 },
+    ]);
+    const diagnosticsBaixa = diagnoseImportedSheet(wsBaixa, [{ A: 1, B: null, C: "x" }]);
+
+    const matrix = buildSheetConfidenceMatrix([
+      { name: "Vendas", diagnostics: diagnosticsAlta },
+      { name: "Rascunho", diagnostics: diagnosticsBaixa },
+      { name: "Sem dado" },
+    ]);
+
+    expect(matrix).toHaveLength(3);
+    expect(matrix[0]).toMatchObject({
+      name: "Vendas",
+      confidence: diagnosticsAlta.confidence,
+      reasons: diagnosticsAlta.confidenceReasons,
+    });
+    expect(matrix[0]!.level).toBe(diagnosticsAlta.confidence >= 85 ? "alta" : "média");
+    expect(matrix[1]).toMatchObject({
+      name: "Rascunho",
+      confidence: diagnosticsBaixa.confidence,
+    });
+    expect(matrix[2]).toEqual({
+      name: "Sem dado",
+      confidence: null,
+      level: "sem diagnóstico",
+      reasons: [],
+      readerDivergenceCount: 0,
+    });
+  });
+
+  it("conta divergências do leitor por aba sem misturar com a de outra aba", () => {
+    const ws = sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+    ]);
+    const diagnostics = diagnoseImportedSheet(ws, [{ Produto: "Bolo", Valor: 42 }]);
+    diagnostics.readerDivergences = [
+      {
+        sheet: "Vendas",
+        address: "A2",
+        primary: "Bolo",
+        independent: "Bolinho",
+        severity: "warning",
+        repaired: false,
+      },
+    ];
+
+    const matrix = buildSheetConfidenceMatrix([{ name: "Vendas", diagnostics }]);
+
+    expect(matrix[0]!.readerDivergenceCount).toBe(1);
+  });
 });

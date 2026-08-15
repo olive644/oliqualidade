@@ -120,6 +120,49 @@ export type ImportDiagnostics = {
   header: { row: number; confidence: number };
 };
 
+export type SheetConfidenceLevel = "alta" | "média" | "baixa" | "sem diagnóstico";
+
+export type SheetConfidenceEntry = {
+  name: string;
+  confidence: number | null;
+  level: SheetConfidenceLevel;
+  reasons: string[];
+  readerDivergenceCount: number;
+};
+
+/**
+ * Confiança por aba já era computada para toda aba com dado (`sheetsWithData`
+ * roda `diagnoseImportedSheet` em todas elas, não só na aba ativa), mas nunca
+ * era agregada num único lugar para comparação lado a lado — só a aba
+ * selecionada exibia sua própria confiança. Função pura, sem novo cálculo:
+ * só lê o que cada `ImportDiagnostics` já expõe.
+ */
+export function buildSheetConfidenceMatrix(
+  sheets: ReadonlyArray<{ name: string; diagnostics?: ImportDiagnostics }>,
+): SheetConfidenceEntry[] {
+  return sheets.map((sheet) => {
+    const diagnostics = sheet.diagnostics;
+    if (!diagnostics) {
+      return {
+        name: sheet.name,
+        confidence: null,
+        level: "sem diagnóstico",
+        reasons: [],
+        readerDivergenceCount: 0,
+      };
+    }
+    const level: SheetConfidenceLevel =
+      diagnostics.confidence >= 85 ? "alta" : diagnostics.confidence >= 60 ? "média" : "baixa";
+    return {
+      name: sheet.name,
+      confidence: diagnostics.confidence,
+      level,
+      reasons: diagnostics.confidenceReasons,
+      readerDivergenceCount: diagnostics.readerDivergences?.length ?? 0,
+    };
+  });
+}
+
 const SENSITIVE_NAME =
   /(cpf|cnpj|rg|senha|password|token|secret|api[_ -]?key|telefone|celular|phone|email|e-mail|endereco|endereço|address|pix|conta banc)/i;
 const CPF = /^\d{11}$/;
