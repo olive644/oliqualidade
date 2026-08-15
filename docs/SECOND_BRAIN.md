@@ -84,20 +84,20 @@ flowchart TD
 
 ## Onde mexer
 
-| Necessidade                         | Fonte principal                                                   | Prova mínima                 |
-| ----------------------------------- | ----------------------------------------------------------------- | ---------------------------- |
-| Novo formato ou fidelidade de Excel | `workbook-reader.ts`, `ooxml-reader.ts`, `import.ts`              | fixture + teste de corpus    |
-| Inventário Rust de planilha universal (ODS) | `rust/oli-ooxml-core/src/ods.rs`                          | `rust/oli-ooxml-core/tests/ods_inventory.rs` |
-| Cabeçalhos, blocos e regiões        | `import.ts`, `structural-model.ts`                                | `import.test.ts`             |
-| Tipos, fórmulas e semântica         | `format.ts`, `formula.ts`, `spreadsheet-intelligence.ts`          | teste dedicado               |
-| Widget novo ou recomendação         | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `routes/index.tsx` | widgets + auto-dashboard     |
-| Cálculos e séries                   | `data-pipeline.ts`                                                | `data-pipeline.test.ts`      |
-| Cronograma                          | `schedule-normalizer.ts`, `operational-widgets.ts`                | testes dos dois módulos      |
-| Revisão, auditoria e versões        | `data-review.ts`, `import-workbench.ts`, `review-export.ts`       | testes de revisão/exportação |
-| Armazenamento e privacidade         | `storage.ts`, `encrypted-backup.ts`                               | storage/privacy + backup     |
-| IA                                  | `gemini-security.ts`, `gemini-server.ts`, `assistant-context.ts`  | segurança + contexto         |
-| Exportação PNG/PDF e tabelas        | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação |
-| Desempenho                          | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets     | `npm run verify`             |
+| Necessidade                                 | Fonte principal                                                       | Prova mínima                                 |
+| ------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------- |
+| Novo formato ou fidelidade de Excel         | `workbook-reader.ts`, `ooxml-reader.ts`, `import.ts`                  | fixture + teste de corpus                    |
+| Inventário Rust de planilha universal (ODS) | `rust/oli-ooxml-core/src/ods.rs`                                      | `rust/oli-ooxml-core/tests/ods_inventory.rs` |
+| Cabeçalhos, blocos e regiões                | `import.ts`, `structural-model.ts`                                    | `import.test.ts`                             |
+| Tipos, fórmulas e semântica                 | `format.ts`, `formula.ts`, `spreadsheet-intelligence.ts`              | teste dedicado                               |
+| Widget novo ou recomendação                 | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `routes/index.tsx`     | widgets + auto-dashboard                     |
+| Cálculos e séries                           | `data-pipeline.ts`                                                    | `data-pipeline.test.ts`                      |
+| Cronograma                                  | `schedule-normalizer.ts`, `operational-widgets.ts`                    | testes dos dois módulos                      |
+| Revisão, auditoria e versões                | `data-review.ts`, `import-workbench.ts`, `review-export.ts`           | testes de revisão/exportação                 |
+| Armazenamento e privacidade                 | `storage.ts`, `encrypted-backup.ts`                                   | storage/privacy + backup                     |
+| IA                                          | `gemini-security.ts`, `gemini-server.ts`, `assistant-context.ts`      | segurança + contexto                         |
+| Exportação PNG/PDF e tabelas                | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação                 |
+| Desempenho                                  | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets         | `npm run verify`                             |
 
 ## Regras de produto que não podem regredir
 
@@ -196,17 +196,18 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 
 ## Decisões registradas
 
-| Decisão                                     | Motivo                                              | Consequência                                                                |
-| ------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------- |
-| Processar workbook fora da thread principal | planilhas grandes congelavam a UI                   | worker é parte obrigatória do caminho de importação                         |
-| Preservar original e agregado               | soma automática distorcia planilhas já consolidadas | widgets guardam `dataMode` e operação                                       |
-| Exceções/validação apenas manuais           | criavam ruído e pouca explicação no painel inicial  | continuam disponíveis no catálogo                                           |
-| Calculadora como controle progressivo       | operações expostas ocupavam espaço e confundiam     | cálculo abre sob demanda                                                    |
-| Notas fora da matriz de dados               | observações soltas não são registros nem métricas   | painel preserva texto, autor e célula sem contaminar cálculos               |
-| Métricas semânticas no cronograma           | códigos planejados pareciam resultados executados   | cobertura e conformidade usam estados distintos e limites por linha         |
-| Prévia visual segura                        | SVG/DOM não escala para milhares de pontos          | tabela mantém acesso integral                                               |
-| Persistência latest-wins                    | snapshots completos intermediários são desperdício  | primeira e última versão são gravadas, intermediárias podem ser coalescidas |
-| "Não suportado" não altera a pontuação      | recurso nunca comparado não é validado nem incorreto | `fidelity-meter.ts` expõe `unsupportedFeatures` e `warnings` à parte do score |
+| Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
+| ------------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Processar workbook fora da thread principal                  | planilhas grandes congelavam a UI                               | worker é parte obrigatória do caminho de importação                                           |
+| Preservar original e agregado                                | soma automática distorcia planilhas já consolidadas             | widgets guardam `dataMode` e operação                                                         |
+| Exceções/validação apenas manuais                            | criavam ruído e pouca explicação no painel inicial              | continuam disponíveis no catálogo                                                             |
+| Calculadora como controle progressivo                        | operações expostas ocupavam espaço e confundiam                 | cálculo abre sob demanda                                                                      |
+| Notas fora da matriz de dados                                | observações soltas não são registros nem métricas               | painel preserva texto, autor e célula sem contaminar cálculos                                 |
+| Métricas semânticas no cronograma                            | códigos planejados pareciam resultados executados               | cobertura e conformidade usam estados distintos e limites por linha                           |
+| Prévia visual segura                                         | SVG/DOM não escala para milhares de pontos                      | tabela mantém acesso integral                                                                 |
+| Persistência latest-wins                                     | snapshots completos intermediários são desperdício              | primeira e última versão são gravadas, intermediárias podem ser coalescidas                   |
+| "Não suportado" não altera a pontuação                       | recurso nunca comparado não é validado nem incorreto            | `fidelity-meter.ts` expõe `unsupportedFeatures` e `warnings` à parte do score                 |
+| Repetição literal do cabeçalho vira linha ignorada, não dado | relatórios paginados repetem o cabeçalho sem separador de bloco | `sheetToRows` filtra e reporta em `audit.repeatedHeaderRowsIgnored`, exige 2+ colunas batendo |
 
 ## Checklist antes de publicar
 

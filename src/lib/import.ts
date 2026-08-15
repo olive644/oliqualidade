@@ -32,6 +32,7 @@ export type ImportAudit = {
   trailingRowsIgnored: number;
   columnsIgnored: number;
   notesPreserved?: number;
+  repeatedHeaderRowsIgnored?: number;
 };
 
 export type SourceGrid = {
@@ -1679,9 +1680,32 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     });
   const footerRowIndex = footerMerge?.s.r ?? aoa.length;
   const footerRowsIgnored = Math.max(0, aoa.length - footerRowIndex);
+  // Relatórios paginados/exportados costumam repetir a linha de cabeçalho
+  // no meio dos dados (ex: a cada quebra de página), sem linha em branco
+  // nem título separando o "bloco" — por isso `detectBlocks` não pega esse
+  // caso. Sem este filtro, a repetição virava um registro de dado com o
+  // próprio texto do cabeçalho nas colunas (ex: {"Nome":"Nome"}).
+  // Exigimos pelo menos 2 colunas com cabeçalho não vazio batendo
+  // exatamente para não descartar por engano uma linha de dado que só por
+  // coincidência repete o texto de uma única coluna.
+  let repeatedHeaderRowsSkipped = 0;
+  const isRepeatedHeaderRow = (row: (string | number | Date | null)[]) => {
+    const meaningfulColumns = headerRow.filter((h) => !headerIsInvalid(h));
+    if (meaningfulColumns.length < 2) return false;
+    return headerRow.every((h, i) => {
+      if (headerIsInvalid(h)) return true;
+      const value = row[i];
+      return typeof value === "string" && value.trim() === String(h).trim();
+    });
+  };
   const sourceDataRows = aoa
     .slice(headerRowEnd + 1, footerRowIndex)
-    .filter((_, offset) => !hiddenRows.has(headerRowEnd + 1 + offset));
+    .filter((_, offset) => !hiddenRows.has(headerRowEnd + 1 + offset))
+    .filter((row) => {
+      if (!isRepeatedHeaderRow(row)) return true;
+      repeatedHeaderRowsSkipped++;
+      return false;
+    });
   const headers = refineGenericDocumentHeaders(initialHeaders, sourceDataRows);
   let placeholderCellsNormalized = 0;
 
@@ -1911,6 +1935,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       `${blankSkipped} linha${blankSkipped > 1 ? "s" : ""} em branco no meio dos dados ${blankSkipped > 1 ? "foram" : "foi"} ignorada${blankSkipped > 1 ? "s" : ""}.`,
     );
   }
+  if (repeatedHeaderRowsSkipped > 0) {
+    messages.push(
+      `${repeatedHeaderRowsSkipped} linha${repeatedHeaderRowsSkipped > 1 ? "s repetiam" : " repetia"} o cabeçalho no meio dos dados (comum em relatórios paginados) e ${repeatedHeaderRowsSkipped > 1 ? "foram ignoradas" : "foi ignorada"}, em vez de virar${repeatedHeaderRowsSkipped > 1 ? "em" : ""} um registro com o próprio texto do cabeçalho.`,
+    );
+  }
 
   const diagnostics = diagnoseImportedSheet(ws, normalizedRows);
   return {
@@ -1934,6 +1963,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       trailingRowsIgnored: trailingNotesTrimmed + footerRowsIgnored,
       columnsIgnored: ghostColumns.length + redundantColumns.length,
       notesPreserved: diagnostics.sourceNotes.length,
+      repeatedHeaderRowsIgnored: repeatedHeaderRowsSkipped,
     },
   };
 }
