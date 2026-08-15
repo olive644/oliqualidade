@@ -9459,24 +9459,36 @@ function WidgetCard({
                         stroke={seriesColor}
                         strokeWidth={2}
                         fill={`url(#area-${w.id})`}
-                        dot={(dotProps: ChartDotProps) => (
-                          <ChartDot
-                            {...dotProps}
-                            r={3}
-                            groupCol={groupCol}
-                            valueCol={valueCol}
-                            onSelect={handleGroupClick}
-                          />
-                        )}
-                        activeDot={(dotProps: ChartDotProps) => (
-                          <ChartDot
-                            {...dotProps}
-                            r={5}
-                            groupCol={groupCol}
-                            valueCol={valueCol}
-                            onSelect={handleGroupClick}
-                          />
-                        )}
+                        dot={(dotProps: ChartDotProps) => {
+                          const { key, ...rest } = dotProps as ChartDotProps & {
+                            key?: string | number;
+                          };
+                          return (
+                            <ChartDot
+                              key={key}
+                              {...rest}
+                              r={3}
+                              groupCol={groupCol}
+                              valueCol={valueCol}
+                              onSelect={handleGroupClick}
+                            />
+                          );
+                        }}
+                        activeDot={(dotProps: ChartDotProps) => {
+                          const { key, ...rest } = dotProps as ChartDotProps & {
+                            key?: string | number;
+                          };
+                          return (
+                            <ChartDot
+                              key={key}
+                              {...rest}
+                              r={5}
+                              groupCol={groupCol}
+                              valueCol={valueCol}
+                              onSelect={handleGroupClick}
+                            />
+                          );
+                        }}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -9552,24 +9564,36 @@ function WidgetCard({
                         dataKey="total"
                         stroke={seriesColor}
                         strokeWidth={2}
-                        dot={(dotProps: ChartDotProps) => (
-                          <ChartDot
-                            {...dotProps}
-                            r={3}
-                            groupCol={groupCol}
-                            valueCol={valueCol}
-                            onSelect={handleGroupClick}
-                          />
-                        )}
-                        activeDot={(dotProps: ChartDotProps) => (
-                          <ChartDot
-                            {...dotProps}
-                            r={5}
-                            groupCol={groupCol}
-                            valueCol={valueCol}
-                            onSelect={handleGroupClick}
-                          />
-                        )}
+                        dot={(dotProps: ChartDotProps) => {
+                          const { key, ...rest } = dotProps as ChartDotProps & {
+                            key?: string | number;
+                          };
+                          return (
+                            <ChartDot
+                              key={key}
+                              {...rest}
+                              r={3}
+                              groupCol={groupCol}
+                              valueCol={valueCol}
+                              onSelect={handleGroupClick}
+                            />
+                          );
+                        }}
+                        activeDot={(dotProps: ChartDotProps) => {
+                          const { key, ...rest } = dotProps as ChartDotProps & {
+                            key?: string | number;
+                          };
+                          return (
+                            <ChartDot
+                              key={key}
+                              {...rest}
+                              r={5}
+                              groupCol={groupCol}
+                              valueCol={valueCol}
+                              onSelect={handleGroupClick}
+                            />
+                          );
+                        }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -9718,7 +9742,7 @@ function WidgetCard({
         ) : (
           <ul className="flex flex-col gap-2 p-4">
             {ranked.map((g, i) => (
-              <li key={g.name}>
+              <li key={`${g.name}-${g.sourceRow ?? i}`}>
                 <button
                   type="button"
                   className="oliam-ranking-row w-full text-left"
