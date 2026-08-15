@@ -134,35 +134,26 @@ describe.skipIf(!existsSync(generatedManifestPath))(
       // XLSM reaproveita o mesmo inventário Rust do XLSX (mesma estrutura
       // ZIP/OOXML); mede paridade estrutural isolada por formato antes de
       // qualquer decisão de promoção. O adaptador nunca falha (nenhum
-      // crash), mas este corpus expõe um divergente determinístico e já
-      // conhecido: números "General" com muitas casas decimais (ex.:
-      // 111.03999999999999) são exibidos como o valor bruto pelo Rust
-      // (display_cell_value só arredonda formatos explícitos "0"/"0.00"/
-      // percentuais; General cai em value.to_string()), enquanto o
-      // TypeScript/SheetJS arredonda para exibição como o Excel faz
-      // (111.04). O valor bruto é idêntico nos dois leitores — só a
-      // representação exibida diverge. Isso já era uma lacuna registrada
-      // (seção 12 do CURRENT_STATE_AUDIT.md, "exibição conservadora... sem
-      // inventar a renderização de formatos Excel ainda não
-      // implementados"); o corpus original de XLSX não a expunha porque
-      // suas sementes não geravam esse padrão de ponto flutuante — não
-      // porque XLSX seja imune a ela. Em produção isso não corrompe dado
-      // nenhum: candidate mode trata qualquer divergência de shadow como
-      // motivo de fallback automático para o leitor validado, antes de
-      // sequer tentar materializar a saída (ver workbook-reader.ts).
+      // crash) e, desde a correção de display_cell_value para o formato
+      // "General" (arredondamento a 11 dígitos significativos, como o
+      // Excel), zero divergências: antes desta correção, 1 dos 25 arquivos
+      // divergia em 12 células por números "General" com muitas casas
+      // decimais (ex.: 111.03999999999999) sendo exibidos como valor bruto
+      // pelo Rust em vez do arredondamento de exibição do Excel/SheetJS
+      // (111.04) — o valor bruto sempre foi idêntico nos dois leitores, só
+      // a representação exibida divergia. Ver seção 12 e seção 30 do
+      // CURRENT_STATE_AUDIT.md para o histórico completo do achado e da
+      // correção.
       const xlsmByFormat = assessWasmPromotionByFormat(observations)["xlsm"];
       expect(xlsmByFormat?.measuredWorkbooks).toBe(25);
       expect(xlsmByFormat?.failedWorkbooks).toBe(0);
-      expect(xlsmByFormat?.divergentWorkbooks).toBe(1);
-      expect(xlsmByFormat?.divergentCells).toBe(12);
+      expect(xlsmByFormat?.divergentWorkbooks).toBe(0);
+      expect(xlsmByFormat?.divergentCells).toBe(0);
       expect(xlsmByFormat?.comparedCells).toBeGreaterThanOrEqual(10_000);
       expect(xlsmByFormat?.sanitizedRealWorkbooks).toBe(0);
       expect(xlsmByFormat?.eligible).toBe(false);
       expect(xlsmByFormat?.reasons).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining("corpus real sanitizado insuficiente"),
-          expect.stringContaining("arquivos divergentes acima do limite"),
-        ]),
+        expect.arrayContaining([expect.stringContaining("corpus real sanitizado insuficiente")]),
       );
 
       let sanitizedManifest: GeneratedManifest | undefined;
