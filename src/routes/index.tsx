@@ -2428,9 +2428,7 @@ function ImportWorkbench({
                   ["Linhas vazias ignoradas", audit.blankRowsIgnored],
                   ["Rodapés/colunas ignorados", audit.trailingRowsIgnored + audit.columnsIgnored],
                   ...(audit.regionsKeptTogether
-                    ? ([
-                        ["Regiões mantidas juntas", audit.regionsKeptTogether],
-                      ] as const)
+                    ? ([["Regiões mantidas juntas", audit.regionsKeptTogether]] as const)
                     : []),
                 ].map(([label, value]) => (
                   <div key={String(label)} className="rounded-lg border border-border px-3 py-2">
