@@ -385,6 +385,29 @@ describe("leitor universal de planilhas", () => {
       }),
     ).toThrow("2 milhões de células");
   });
+  it("lê com sucesso uma planilha grande (bem abaixo do limite de rejeição)", () => {
+    // O teste acima só cobre o caminho de rejeição (dimensão abusiva
+    // declarada). Este cobre o caminho positivo: um volume real, mas
+    // seguro, precisa continuar íntegro linha a linha, sem truncar nem
+    // embaralhar.
+    const rowCount = 5_000;
+    const rows: (string | number)[][] = [["Id", "Nome", "Valor"]];
+    for (let i = 1; i <= rowCount; i++) rows.push([i, `Item ${i}`, i * 1.5]);
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Dados");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const [sheet] = readWorkbookBytes(bytes, "grande.xlsx");
+    expect(sheet?.rows).toHaveLength(rowCount);
+    expect(sheet?.rows[0]).toEqual({ Id: 1, Nome: "Item 1", Valor: 1.5 });
+    expect(sheet?.rows[rowCount - 1]).toEqual({
+      Id: rowCount,
+      Nome: `Item ${rowCount}`,
+      Valor: rowCount * 1.5,
+    });
+  });
+
   it("detecta separadores sem contar delimitadores dentro de campos entre aspas", () => {
     expect(detectDelimiter('produto;observação;valor\nBolo;"doce, caseiro";12,50')).toBe(";");
     expect(detectDelimiter("produto\tvalor\nBolo\t12")).toBe("\t");
@@ -407,6 +430,18 @@ describe("leitor universal de planilhas", () => {
       região: "São Paulo",
       valor: 1234.5,
     });
+  });
+
+  it("remove o BOM UTF-8 do CSV sem deixá-lo grudado no nome da primeira coluna", () => {
+    // Excel e outras ferramentas gravam um BOM (U+FEFF) no início do CSV
+    // UTF-8 para sinalizar a codificação. Sem removê-lo, o nome da primeira
+    // coluna fica com o BOM grudado no início — quebra silenciosamente
+    // qualquer lookup por nome de coluna feito no restante do sistema.
+    const source = "\uFEFFProduto;Valor\nBolo;42";
+    const bytes = new TextEncoder().encode(source);
+    const [sheet] = readWorkbookBytes(bytes, "vendas.csv");
+    expect(Object.keys(sheet?.rows[0] ?? {})).toEqual(["Produto", "Valor"]);
+    expect(sheet?.rows[0]).toEqual({ Produto: "Bolo", Valor: 42 });
   });
 
   it("não confunde vírgulas decimais com o separador do CSV brasileiro", () => {
@@ -528,6 +563,43 @@ describe("leitor universal de planilhas", () => {
     expect(() => validateZipWorkbook(Uint8Array.of(0x50, 0x4b, 0x03, 0x04))).toThrow(
       "incompleto ou corrompido",
     );
+  });
+
+  it("rejeita um ZIP que declara arquivos internos demais, sem ler o diretório", () => {
+    // A checagem só lê o registro EOCD (fim do diretório central) e o
+    // total de entradas declarado; nem precisa de um diretório real para
+    // recusar, então um arquivo hostil que só mente sobre a contagem já é
+    // barrado antes de qualquer tentativa de percorrê-lo.
+    const eocd = new Uint8Array(22);
+    const view = new DataView(eocd.buffer);
+    view.setUint32(0, 0x06054b50, true); // assinatura EOCD
+    view.setUint16(10, 10_001, true); // total de entradas > MAX_ZIP_ENTRIES
+    expect(() => validateZipWorkbook(eocd)).toThrow("arquivos internos demais");
+  });
+
+  it("rejeita uma entrada com razão de compressão suspeita (zip bomb)", () => {
+    // Uma entrada de diretório central que declara 100 MB descompactados a
+    // partir de 100 bytes compactados (razão ~1 milhão) é o padrão clássico
+    // de zip bomb: nunca precisa ser descompactada de verdade para ser
+    // recusada, pois a checagem só lê os tamanhos declarados no cabeçalho.
+    const centralDirectory = new Uint8Array(46); // sem nome/extra/comentário
+    const directoryView = new DataView(centralDirectory.buffer);
+    directoryView.setUint32(0, 0x02014b50, true); // assinatura de entrada
+    directoryView.setUint32(20, 100, true); // compactado: 100 bytes
+    directoryView.setUint32(24, 100 * 1024 * 1024, true); // descompactado: 100 MB
+
+    const eocd = new Uint8Array(22);
+    const eocdView = new DataView(eocd.buffer);
+    eocdView.setUint32(0, 0x06054b50, true);
+    eocdView.setUint16(10, 1, true); // 1 entrada
+    eocdView.setUint32(12, centralDirectory.length, true); // tamanho do diretório
+    eocdView.setUint32(16, 0, true); // diretório começa no início do buffer
+
+    const bytes = new Uint8Array(centralDirectory.length + eocd.length);
+    bytes.set(centralDirectory, 0);
+    bytes.set(eocd, centralDirectory.length);
+
+    expect(() => validateZipWorkbook(bytes)).toThrow("taxa de compressão potencialmente insegura");
   });
 
   it("preserva valor bruto, exibição e formato de células relevantes", () => {
