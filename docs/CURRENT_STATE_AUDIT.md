@@ -1501,3 +1501,18 @@ parte só é validável de fato rodando o script pela CI real — o YAML do
 workflow foi validado sintaticamente (`npx js-yaml`), mas o
 comportamento fim a fim da nova etapa `security-smoke` deve ser
 conferido no primeiro run real da CI depois deste PR.
+
+**Duas falhas reais só visíveis rodando a CI de verdade** (não
+reproduzíveis neste sandbox, que não alcança o servidor de dev via
+Bash — ver limitação de rede isolada já registrada): a primeira
+tentativa de wiring falhou porque `curl -sf --max-time 3` cortava
+antes do primeiro pré-empacotamento frio de dependências (recharts/
+xlsx/leaflet/radix-ui, sem cache de `.vite` numa checkout nova)
+terminar — corrigido subindo para `--max-time 60`. A segunda tentativa
+ainda falhou, agora com toda chamada de `curl` recusada mesmo depois
+do Vite já ter impresso "ready" — o próprio banner do Vite avisa
+"Network: use --host to expose"; sem esse flag, a porta não fica
+alcançável em todas as interfaces locais do runner da GitHub Actions.
+Corrigido com `npm run dev -- --host`. Terceira execução: os dois jobs
+passam (`security-smoke` em 31s), incluindo a asserção de 403
+cross-origin que só era validável rodando de verdade.

@@ -1,0 +1,7 @@
+{
+	"nodes":[
+		{"id":"4ed508007edf7191","x":0,"y":0,"width":400,"height":400,"type":"file","file":"CURRENT_STATE_AUDIT.md"},
+		{"id":"2342c890cb9717fe","x":0,"y":440,"width":400,"height":239,"type":"file","file":"SECOND_BRAIN.md"}
+	],
+	"edges":[]
+}
