@@ -1194,3 +1194,109 @@ Verificado com `npx vitest run` (445 passou, 11 pulados, mesma
 contagem — só a asserção de um teste existente mudou, refletindo o
 resultado real e não mais o bug), `npx tsc --noEmit` sem erros e
 `npm run build` aprovado.
+
+## 36. Quebra estrutural de `routes/index.tsx` (10.282 → 3.715 linhas)
+
+Prioridade "Média" do roteiro de melhorias: `src/routes/index.tsx` tinha
+10.282 linhas (429 KB) e concentrava o fluxo de importação/revisão, a
+orquestração do painel e o editor de widgets num único arquivo — a
+maior fonte de risco de regressão do projeto (seção 5, item 1 deste
+documento). Nenhuma linha de comportamento foi alterada nesta etapa;
+é reorganização estrutural pura, verificada a cada corte com a suíte
+completa.
+
+**Mapeamento prévio** (via agente de exploração, sem editar nada):
+identificou clusters por responsabilidade e ordem de extração por
+risco crescente — componentes-folha sem estado compartilhado primeiro,
+depois o fluxo de importação/revisão (prop-driven), depois as peças de
+suporte de widget e o próprio `WidgetCard` (o maior bloco, ~3.060
+linhas, mas também prop-driven e sem closures sobre o estado de
+`Dashboard`), deixando `Dashboard` (~2.500 linhas, dezenas de
+`useState` locais) e `OliAm` (a raiz de orquestração) para uma etapa
+futura dedicada — extrair `Dashboard` exigiria primeiro consolidar seu
+estado (ex.: um reducer), risco maior que mover código já isolado.
+
+**Técnica de extração**: para os dois primeiros cortes (componentes-
+folha e fluxo de importação/revisão, juntos ~1.780 linhas), o código foi
+lido e reescrito diretamente. A partir do corte de `WidgetCard` (~3.060
+linhas sozinho), a técnica mudou para reduzir risco de erro de
+transcrição num bloco desse tamanho: `sed` corta o intervalo de linhas
+exato do componente (sem retranscrição manual do JSX), e um script Node
+(`gen-imports.mjs`, descartável, não commitado) cruza cada identificador
+do bloco de import original de `index.tsx` com o uso real no corpo
+extraído, gerando a lista de imports do novo arquivo por interseção —
+em vez de "o que pode ser necessário", é "o que o texto realmente usa".
+Isso pega tanto import faltando quanto import morto automaticamente.
+Falsos positivos do script (identificador citado só em comentário, ex.:
+`useTheme`, `X`, `toggleClickFilter`) foram confirmados manualmente
+antes de descartar; o sinal mais forte de correção, porém, foi rodar
+`npx tsc --noEmit` logo após montar cada arquivo — import faltando vira
+erro de tipo imediato, e o projeto desliga
+`@typescript-eslint/no-unused-vars` (`eslint.config.*`), então import
+sobrando não quebra lint, só fica como limpeza de legibilidade
+(feita à parte, com outro script que compara cada nome importado contra
+o uso no restante do arquivo).
+
+**Arquivos criados** em `src/components/oliam/`:
+
+- Componentes-folha: `mark.tsx`, `oli-loader.tsx`, `oli-welcome-scene.tsx`,
+  `oli-face.tsx`, `theme-toggle.tsx`, `animated-number.tsx`,
+  `onboarding.tsx`, `sheet-picker-dialog.tsx`, `gemini-chat-panel.tsx`.
+- Fluxo de importação/revisão: `home.tsx`, `empty.tsx`,
+  `import-workbench.tsx`, `review.tsx` (este último importa
+  `ImportWorkbench` e renderiza a matriz de confiança por aba da
+  seção 28).
+- Editor de widget: `widget-support.tsx` (peças compartilhadas entre
+  `Dashboard` e `WidgetCard` — `FieldDropSlot`, `WidgetHead`,
+  `WidgetPickerIcon`, tooltips/eixos de gráfico, `CalculationButton`,
+  `PieLegend`, `MapWidgetBody`, `ChartDot` — tudo exportado porque
+  ambos os consumidores precisavam), `widget-card.tsx` (`WidgetCard` +
+  `EmptyWidget`, único consumidor de `widget-support.tsx` que sobrou em
+  `index.tsx`), `format-rules-editor.tsx`.
+
+`index.tsx` hoje contém só `OliAm` (orquestração de rota/estágio) e
+`Dashboard` (o maior estado local restante).
+
+**Regressão real de bundle, encontrada e corrigida antes do commit
+final**: depois do corte de `WidgetCard`, `npm run performance:check`
+acusou um chunk `format-rules-editor-*.js` de 961,1 KiB — mais que o
+dobro do limite de 420 KiB por chunk genérico. Isolado comparando o
+build desta branch contra `main` sem nenhuma mudança de código (branch
+trocada com os dois arquivos novos, ainda não commitados, temporariamente
+fora de `src/` para não contaminar o build de `main`): `main` fecha em
+295 KiB no maior chunk genérico compartilhado entre as rotas `/` e
+`/painel/$id`; a mesma quantidade de código, só reorganizada em mais
+arquivos sem alterar o grafo de módulos em si, faz o bundler (Rolldown,
+via Vite) escolher um "módulo fachada" diferente para nomear esse
+mesmo chunk compartilhado — e, ao fazer isso, consolida `recharts`
+inteiro e vários pacotes `@radix-ui`/`@floating-ui`/`cmdk`/`sonner`
+dentro dele, que antes ficavam distribuídos entre os chunks de rota.
+Nada foi duplicado nem ficou maior em bytes totais (o total de JS do
+build até caiu, de 3,6 MB para 3,4 MB, por deduplicação real de código
+antes espalhado por três chunks de rota) — o problema é puramente de
+qual *um* chunk concentra esse peso.
+
+Corrigido com `manualChunks` explícito em `vite.config.ts`, isolando
+`recharts`/`d3-*` num chunk `recharts-vendor` (407 KiB) e
+`@radix-ui`/`@floating-ui`/`cmdk`/`sonner` num chunk `radix-vendor`
+(154 KiB), sem introduzir nenhum carregamento tardio novo — é só
+reorganização de chunk de vendor. O carregamento sob demanda já
+existente (Leaflet, xlsx, jsPDF, html2canvas) não foi tocado e continua
+funcionando como antes. Resultado final: maior chunk genérico
+`format-rules-editor-*.js` em 400,4 KiB, dentro do limite de 420 KiB.
+
+**Lição registrada para o futuro**: mover código entre arquivos sem
+mudar o que ele faz *pode* ainda assim quebrar o orçamento de bundle,
+porque o nome/composição de um chunk compartilhado depende de detalhes
+internos do bundler sensíveis à estrutura de arquivos, não só ao grafo
+de dependências lógico. `npm run performance:check` precisa rodar
+depois de qualquer reorganização de arquivos que mova código
+significativo entre módulos, não só depois de mudanças de
+comportamento.
+
+Verificado a cada um dos quatro commits desta refatoração com
+`npx vitest run` (445 passou, 11 pulados, contagem idêntica em todos —
+nenhum teste foi criado, modificado ou removido, confirmando que
+nenhum comportamento mudou), `npx tsc --noEmit` sem erros, `npm run
+build` aprovado, e `npm run performance:check` aprovado no commit
+final (400,4 KiB no maior chunk genérico, abaixo do limite de 420 KiB).
