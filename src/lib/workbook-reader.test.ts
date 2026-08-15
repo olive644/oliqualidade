@@ -34,6 +34,38 @@ describe("leitor universal de planilhas", () => {
     expect(result.report.elapsedMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("registra bytes de origem e bytes descompactados no relatório", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+
+    const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx");
+    const zipInfo = validateZipWorkbook(new Uint8Array(bytes));
+
+    expect(result.report.sourceBytes).toBe(bytes.byteLength);
+    // Soma exata declarada no diretório central do ZIP (mesmo valor que
+    // `validateZipWorkbook` calcula para os limites de segurança) — não
+    // necessariamente maior que o arquivo compactado inteiro, já que o
+    // contêiner ZIP tem overhead estrutural por entrada (cabeçalhos locais,
+    // diretório central) que não entra nessa soma.
+    expect(result.report.expandedBytes).toBe(zipInfo.totalUncompressedBytes);
+    expect(result.report.expandedBytes).toBeGreaterThan(0);
+  });
+
+  it("iguala bytes de origem e descompactados para formatos sem compressão (CSV)", async () => {
+    const csv = "Produto,Valor\nBolo,42\n";
+    const bytes = strToU8(csv);
+
+    const result = await readWorkbookBytesWithEngine(bytes, "vendas.csv");
+
+    expect(result.report.sourceBytes).toBe(bytes.length);
+    expect(result.report.expandedBytes).toBe(bytes.length);
+  });
+
   it("executa o inventário WASM em shadow mode sem substituir as planilhas", async () => {
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["Produto", "Valor"],

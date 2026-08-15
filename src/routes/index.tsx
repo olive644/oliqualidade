@@ -154,7 +154,12 @@ import {
   type SpreadsheetIntelligence,
 } from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFile, readWorkbookFileWithReport } from "@/lib/workbook-reader-client";
-import { describeReaderOutcome } from "@/lib/workbook-reading-engine";
+import { describeReaderOutcome, workbookFormat } from "@/lib/workbook-reading-engine";
+import {
+  buildFailedImportMetricEntry,
+  buildImportMetricEntry,
+  recordImportMetric,
+} from "@/lib/import-metrics";
 import { analyzeReviewInBackground } from "@/lib/review-analysis-client";
 import type { ReviewAnalysisProgress, ReviewAnalysisResult } from "@/lib/review-analysis";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
@@ -425,11 +430,20 @@ export function OliAm({ routeId }: { routeId?: string }) {
       parsing: "Lendo células, fórmulas e formatação…",
       analyzing: "Analisando cabeçalhos e regiões de dados…",
     };
-    const result = await readWorkbookFileWithReport(
-      file,
-      (progress) => setImportProgressLabel(labels[progress]),
-      signal,
-    );
+    let result: Awaited<ReturnType<typeof readWorkbookFileWithReport>>;
+    try {
+      result = await readWorkbookFileWithReport(
+        file,
+        (progress) => setImportProgressLabel(labels[progress]),
+        signal,
+      );
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        void recordImportMetric(buildFailedImportMetricEntry(error, workbookFormat(file.name)));
+      }
+      throw error;
+    }
+    void recordImportMetric(buildImportMetricEntry(result.report));
     const sheets = result.sheets;
     if (!sheets.length) throw new Error("empty-workbook");
     const readerMessages = describeReaderOutcome(result.report);

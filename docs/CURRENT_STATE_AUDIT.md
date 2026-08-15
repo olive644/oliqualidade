@@ -178,9 +178,11 @@ demanda/teste, **C** contrato sem implementação e **—** sem cobertura.
 - O orçamento de produção passa, mas o build alerta para módulos acima de 500 kB
   no servidor; esses módulos devem permanecer fora do caminho inicial.
 
-Métricas que ainda precisam ser registradas por importação: bytes compactados e
-expandidos, células realmente visitadas, pico estimado de memória, tempo por
-leitor, tempo de reconciliação, truncamentos de diagnóstico e cancelamento.
+Métricas que ainda precisam ser registradas por importação: ~~bytes compactados
+e expandidos~~, ~~tempo por leitor~~ — registrados desde a seção 37 —, células
+realmente visitadas, pico estimado de memória, tempo de reconciliação,
+truncamentos de diagnóstico e cancelamento (cancelamento por `AbortError` é
+deliberadamente excluído do registro de falhas, ver seção 37).
 
 ## 7. Plano incremental para o núcleo Rust
 
@@ -1300,3 +1302,73 @@ nenhum teste foi criado, modificado ou removido, confirmando que
 nenhum comportamento mudou), `npx tsc --noEmit` sem erros, `npm run
 build` aprovado, e `npm run performance:check` aprovado no commit
 final (400,4 KiB no maior chunk genérico, abaixo do limite de 420 KiB).
+
+## 37. Métricas reais de importação (sem dado de planilha)
+
+Fecha parte da lacuna registrada na seção 6 ("Métricas que ainda
+precisam ser registradas por importação"): tempo por leitor já existia
+por importação em `WorkbookReadReport` (`workbook-reading-engine.ts`),
+mas nunca era persistido nem agregado entre importações — cada
+relatório vivia e morria dentro de uma única chamada, sem histórico
+para responder "o candidato Rust/WASM está ajudando ou só custando
+mais caro, ao longo do tempo?".
+
+**Bytes compactados/expandidos, novo no relatório**: `validateZipWorkbook`
+(`workbook-reader.ts`) já calculava `totalUncompressed` para aplicar o
+limite de segurança pós-descompactação, mas descartava o valor.
+Passou a retornar `{ totalUncompressedBytes }`; `readWorkbookBytesWithEngine`
+grava isso em dois campos novos de `WorkbookReadReport`: `sourceBytes`
+(tamanho do arquivo como recebido) e `expandedBytes` (soma declarada no
+diretório central do ZIP; igual a `sourceBytes` para CSV/TXT, que não
+tem camada de compressão). Importante: `expandedBytes` não é
+necessariamente maior que `sourceBytes` para arquivos pequenos — o
+contêiner ZIP tem overhead estrutural por entrada (cabeçalhos locais,
+diretório central, ~30-70 bytes cada) que não entra nessa soma, então
+um XLSX minúsculo com muitas partes internas pequenas pode ter
+`sourceBytes` maior. O teste de regressão usa o valor exato calculado
+por `validateZipWorkbook`, não uma comparação de maior/menor.
+
+**Novo módulo `src/lib/import-metrics.ts`**: constrói uma
+`ImportMetricEntry` a partir de um `WorkbookReadReport` bem-sucedido
+(`buildImportMetricEntry`) ou de um erro capturado
+(`buildFailedImportMetricEntry`) — nunca a partir de linhas/células da
+planilha. Mensagens de erro são truncadas a 200 caracteres por
+segurança, mas na prática todas as mensagens lançadas pelo pipeline de
+leitura são estáticas (auditado: nenhuma interpola nome de arquivo ou
+conteúdo de célula, só constantes de limite como "mais de 100 abas").
+`recordImportMetric` acumula no IndexedDB local (via
+`storage.ts`, mesmo idioma de `loadGeocodeCache`/`saveGeocodeCache`),
+mantendo só as últimas 200 entradas, e respeita modo privado (grava só
+em `sessionStorage`, some ao fechar a aba — `setPrivateMode(false)`
+já limpa essa chave junto com `PRIVATE_DASH_KEY`).
+`summarizeImportMetrics` agrega por leitor (contagem, tempo médio),
+taxa de fallback e estados do shadow mode WASM (`matched`/`diverged`/
+`failed`) — a agregação pensada especificamente para a pergunta "o
+WASM ajuda ou só custa" citada acima; ainda sem consumidor de UI (fica
+para uma etapa futura, um pequeno painel de diagnóstico).
+
+**Ponto de gravação único**: `readWorkbook` em `routes/index.tsx`
+(usado tanto pela importação principal quanto pela ressincronização de
+pasta monitorada) grava a métrica de sucesso logo após
+`readWorkbookFileWithReport` retornar, e a métrica de falha no
+`catch`, antes de relançar o erro para o tratamento existente (que
+continua intacto — a gravação de métrica não muda nenhuma mensagem de
+erro exibida ao usuário). Cancelamento pelo usuário
+(`DOMException`/`AbortError`, ex.: botão "Cancelar importação") é
+deliberadamente excluído do registro de falha — não é uma falha do
+leitor, e contá-lo junto inflaria artificialmente a taxa de erro.
+
+Testado em `workbook-reader.test.ts` (bytes de origem/expandidos,
+inclusive o caso CSV sem compressão) e `import-metrics.test.ts`
+(construção de entrada de sucesso/falha, truncamento de mensagem,
+acumulação e limite de 200 entradas, comportamento em modo privado via
+o mesmo padrão de `vi.stubGlobal` de `storage-privacy.test.ts`,
+limpeza do histórico, e agregação por leitor/fallback/shadow status).
+
+Verificado com `npx vitest run` (455 passou, 11 pulados — 10 testes
+novos, nenhum teste existente alterado além dos dois `baseReport`
+fixtures que ganharam `sourceBytes`/`expandedBytes`), `npx tsc --noEmit`
+sem erros, `npm run build` aprovado e `npm run performance:check`
+aprovado (402,2 KiB no maior chunk genérico, dentro do limite de
+420 KiB — os dois campos novos e o módulo de métricas não têm peso
+relevante no bundle).

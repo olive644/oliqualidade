@@ -5,6 +5,7 @@ import type {
   FolderMonitorView,
   LocalDirectoryHandle,
 } from "@/lib/folder-monitor";
+import type { ImportMetricEntry } from "@/lib/import-metrics";
 
 export const DASH_KEY = "oliam-dashboards";
 export const THEME_KEY = "oliam-theme";
@@ -12,6 +13,7 @@ export const ONBOARDING_KEY = "oliam-onboarding-seen";
 export const TERM_HINTS_KEY = "oliam-term-hints-seen";
 export const PRIVACY_MODE_KEY = "oliam-private-mode";
 const PRIVATE_DASH_KEY = "oliam-private-dashboards";
+const PRIVATE_IMPORT_METRICS_KEY = "oliam-private-import-metrics";
 
 export function isPrivateMode(): boolean {
   return typeof localStorage !== "undefined" && localStorage.getItem(PRIVACY_MODE_KEY) === "1";
@@ -23,6 +25,7 @@ export function setPrivateMode(enabled: boolean): void {
   else {
     localStorage.removeItem(PRIVACY_MODE_KEY);
     sessionStorage.removeItem(PRIVATE_DASH_KEY);
+    sessionStorage.removeItem(PRIVATE_IMPORT_METRICS_KEY);
   }
 }
 
@@ -255,4 +258,68 @@ export async function saveGeocodeCache(cache: GeocodeCache): Promise<void> {
     return;
   }
   await idbSet(db, GEOCODE_KEY, cache);
+}
+
+export const IMPORT_METRICS_KEY = "oliam-import-metrics";
+
+/**
+ * Métricas por importação (tempo por leitor, fallback, bytes, divergências
+ * do WASM) para diagnosticar se o candidato Rust/WASM está ajudando ou só
+ * custando mais caro — nunca contém dado de célula/linha da planilha, ver
+ * `import-metrics.ts`. Em modo privado, fica só em `sessionStorage` e some
+ * ao fechar a aba, como os painéis privados.
+ */
+export async function loadImportMetrics(): Promise<ImportMetricEntry[]> {
+  if (isPrivateMode()) {
+    try {
+      return JSON.parse(
+        sessionStorage.getItem(PRIVATE_IMPORT_METRICS_KEY) ?? "[]",
+      ) as ImportMetricEntry[];
+    } catch {
+      return [];
+    }
+  }
+  const db = await openDb();
+  if (!db) {
+    try {
+      const raw = localStorage.getItem(IMPORT_METRICS_KEY);
+      return raw ? (JSON.parse(raw) as ImportMetricEntry[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  const existing = await idbGet<ImportMetricEntry[]>(db, IMPORT_METRICS_KEY);
+  return existing ?? [];
+}
+
+export async function saveImportMetrics(entries: ImportMetricEntry[]): Promise<void> {
+  if (isPrivateMode()) {
+    try {
+      sessionStorage.setItem(PRIVATE_IMPORT_METRICS_KEY, JSON.stringify(entries));
+    } catch {
+      // Métricas são só diagnóstico; falhar em salvar não é crítico.
+    }
+    return;
+  }
+  const db = await openDb();
+  if (!db) {
+    try {
+      localStorage.setItem(IMPORT_METRICS_KEY, JSON.stringify(entries));
+    } catch {
+      // Métricas são só diagnóstico; falhar em salvar não é crítico.
+    }
+    return;
+  }
+  await idbSet(db, IMPORT_METRICS_KEY, entries);
+}
+
+export async function clearImportMetrics(): Promise<void> {
+  sessionStorage.removeItem(PRIVATE_IMPORT_METRICS_KEY);
+  try {
+    localStorage.removeItem(IMPORT_METRICS_KEY);
+  } catch {
+    // Sem localStorage disponível; nada a limpar aí.
+  }
+  const db = await openDb();
+  if (db) await idbDelete(db, IMPORT_METRICS_KEY);
 }

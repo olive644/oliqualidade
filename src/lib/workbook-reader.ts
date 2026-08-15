@@ -61,7 +61,7 @@ export type WorkbookReadEngineOptions = {
  * expandem para gigabytes. A checagem ocorre antes do SheetJS e do extrator
  * de metadados para evitar consumo abusivo de memória no navegador.
  */
-export function validateZipWorkbook(bytes: Uint8Array): void {
+export function validateZipWorkbook(bytes: Uint8Array): { totalUncompressedBytes: number } {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const searchStart = Math.max(0, bytes.length - 65_557);
   let eocd = -1;
@@ -102,6 +102,7 @@ export function validateZipWorkbook(bytes: Uint8Array): void {
       throw new Error("A planilha ultrapassa o limite seguro após descompactação.");
     offset += 46 + nameLength + extraLength + commentLength;
   }
+  return { totalUncompressedBytes: totalUncompressed };
 }
 
 export function validateWorkbookComplexity(workbook: XLSX.WorkBook): void {
@@ -296,7 +297,7 @@ export async function readWorkbookBytesWithEngine(
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   onProgress?.("decoding");
   const textFile = TEXT_EXTENSIONS.test(fileName);
-  if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) validateZipWorkbook(bytes);
+  const zipInfo = ZIP_WORKBOOK_EXTENSIONS.test(fileName) ? validateZipWorkbook(bytes) : null;
   const source = textFile ? decodeText(bytes) : bytes;
   onProgress?.("parsing");
   const parseStartedAt = performance.now();
@@ -445,6 +446,8 @@ export async function readWorkbookBytesWithEngine(
       elapsedMs: Math.round(performance.now() - startedAt),
       parseMs,
       verificationMs: Math.round(performance.now() - verificationStartedAt),
+      sourceBytes: bytes.length,
+      expandedBytes: zipInfo?.totalUncompressedBytes ?? bytes.length,
       sheets: sheets.length,
       repairedCells,
       divergentCells,
