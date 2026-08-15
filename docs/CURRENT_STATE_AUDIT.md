@@ -736,10 +736,9 @@ uma caixa de aviso já renderizada e testada, sobre campos já tipados e
 cobertos por teste no motor de leitura — mas fica registrado como
 verificação pendente, não como confirmado.
 
-Itens ainda não abordados da auditoria de explicabilidade: regiões
-descartadas e o motivo (não existe nenhum modelo de dados para isso hoje,
-não é só falta de exibição). A matriz de confiança por aba/sheet foi
-implementada na seção 28.
+Itens da auditoria de explicabilidade da seção 26: a matriz de confiança
+por aba foi implementada na seção 28, e regiões descartadas e o motivo na
+seção 29.
 
 ## 27. Etapa 3 — teste de rollback dedicado e documentação do desligamento do candidato Rust
 
@@ -825,3 +824,60 @@ de console antes e depois da mudança; a integração em si é composição de
 JSX sobre uma função pura já testada, seguindo o mesmo padrão de risco
 baixo da seção 26 — mas fica registrado como verificação pendente, não como
 confirmado.
+
+## 29. Regiões independentes mantidas juntas por segurança, agora auditadas
+
+Fechava parte da lacuna registrada ao final da seção 26: "regiões
+descartadas e o motivo (não existe nenhum modelo de dados para isso hoje,
+não é só falta de exibição)".
+
+`import-intelligence.ts` já detecta regiões independentes por aba
+(`ImportDiagnostics.tableRegions`), e `regionsAreSafeToSplit` (`import.ts`)
+decide, com vários critérios de segurança (matriz de identificadores +
+períodos, cabeçalho numérico, poucas linhas de dado, cobertura insuficiente
+da área ocupada), se essas regiões viram opções de importação separadas.
+Quando a resposta é não — o caso mais comum é justamente o correto, uma
+matriz de identificadores à esquerda com colunas de período à direita, que
+`regionsAreSafeToSplit` recusa deliberadamente para não quebrar a relação
+entre item e seus valores — a aba continuava importando como uma única
+tabela sem nenhum registro de que a separação automática foi considerada e
+recusada. `diagnostics.tableRegions` continuava existindo internamente, mas
+nada da decisão chegava ao usuário nem à auditoria.
+
+Este recorte é deliberadamente menor que "modelo de dados para regiões
+descartadas": em vez de decompor `regionsAreSafeToSplit` num motivo
+nomeado por critério de recusa (o que exigiria reescrever uma função
+delicada com muitos ramos de retorno antecipado, usada pelos testes já
+existentes de separação de tabelas), a mudança é só observabilidade —
+registra que N regiões foram detectadas e mantidas juntas, sem alterar
+nenhuma decisão de separação:
+
+- `ImportAudit` (`import.ts`) ganha o campo opcional
+  `regionsKeptTogether?: number`.
+- `sheetsWithData` grava esse número quando `diagnostics.tableRegions.length
+  > 1` e a aba não foi dividida acima (nem por `regionsAreSafeToSplit`, nem
+  pela separação por seções tituladas) — sem mudar a condição de divisão em
+  si, só observando o resultado dela.
+- A interface (`routes/index.tsx`, grade "Balanço verificável da
+  importação") ganha o item "Regiões mantidas juntas", exibido apenas
+  quando o valor é maior que zero, no mesmo padrão dos outros contadores já
+  existentes.
+
+Teste em `import.test.ts` estende o caso já existente "mantém
+identificadores e períodos na mesma tabela quando há só uma coluna de
+respiro" (`regionsAreSafeToSplit` recusa por critério temporal) para
+confirmar `audit.regionsKeptTogether === diagnostics.tableRegions.length`
+(2), e um novo teste confirma que uma aba com uma única região não recebe o
+campo (`undefined`, não `0` ou `1`).
+
+O motivo específico da recusa (qual dos vários critérios de
+`regionsAreSafeToSplit` disparou) continua não exposto — decompor essa
+função em motivos nomeados é trabalho futuro maior, de maior risco de
+regressão por tocar a lógica de separação em si, não só observá-la.
+
+Verificado com `npx vitest run` (445 passou, 11 pulados, era 444 após as
+etapas 27/28), `npx tsc --noEmit` sem erros e `npm run build` aprovado.
+Assim como as seções 26 e anterior, **não foi possível verificar
+visualmente no navegador** pela mesma limitação de upload de arquivo do
+sandbox; a mudança é só leitura de dado já computado mais um item
+condicional na grade de auditoria já renderizada e testada.

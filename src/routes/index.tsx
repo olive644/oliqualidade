@@ -2427,6 +2427,9 @@ function ImportWorkbench({
                   ["Linhas ocultas respeitadas", audit.hiddenRowsIgnored],
                   ["Linhas vazias ignoradas", audit.blankRowsIgnored],
                   ["Rodapés/colunas ignorados", audit.trailingRowsIgnored + audit.columnsIgnored],
+                  ...(audit.regionsKeptTogether
+                    ? ([["Regiões mantidas juntas", audit.regionsKeptTogether]] as const)
+                    : []),
                 ].map(([label, value]) => (
                   <div key={String(label)} className="rounded-lg border border-border px-3 py-2">
                     <div className="text-[11px] text-muted-foreground">{label}</div>

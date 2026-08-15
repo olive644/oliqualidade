@@ -1104,6 +1104,13 @@ describe("sheetsWithData", () => {
     expect(options[0]?.rows).toEqual([{ nome: "Bolo" }]);
   });
 
+  it("não marca regionsKeptTogether quando a aba tem só uma região", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet([["nome"], ["Bolo"]]), "Vendas");
+    const options = sheetsWithData(wb);
+    expect(options[0]?.audit?.regionsKeptTogether).toBeUndefined();
+  });
+
   it("separa tabelas diferentes lado a lado em opções próprias de importação", () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
@@ -1158,6 +1165,13 @@ describe("sheetsWithData", () => {
       "3-Jul",
       "4-Jul",
     ]);
+    // Duas regiões foram detectadas (identificadores + matriz de períodos) mas
+    // mantidas juntas por segurança: isso precisa ficar registrado no
+    // auditoria, não descartado silenciosamente.
+    expect(options[0]?.audit?.regionsKeptTogether).toBe(
+      options[0]?.diagnostics?.tableRegions.length,
+    );
+    expect(options[0]?.diagnostics?.tableRegions.length).toBeGreaterThan(1);
   });
 
   it("separa tabelas diferentes empilhadas quando ambas têm estrutura própria", () => {
