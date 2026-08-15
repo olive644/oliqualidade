@@ -936,3 +936,76 @@ regra do projeto contra reduzir critério para forçar verde.
 
 Verificado com `npx vitest run` (445 passou, 11 pulados), `npx tsc
 --noEmit` sem erros e `npm run build` aprovado.
+
+## 31. Etapa 8 — bug real de chave duplicada no widget de ranking; auditoria de exportação parcialmente bloqueada pelo ambiente
+
+A ferramenta de "Colar dados"/"Ver demonstração" contorna a limitação de
+upload de arquivo já registrada nas etapas anteriores: dá para navegar até
+um painel real com widgets renderizados e testar exportação PNG/PDF de
+ponta a ponta. Duas descobertas, uma corrigida e uma documentada como
+bloqueio de ambiente.
+
+**Bug real corrigido**: o widget "ranking" (`w.type === "ranking"`), em
+modo `dataMode: "raw"` (linha a linha, sem agregar por grupo — o padrão
+sugerido pelo dashboard automático), renderizava sua lista Top N com
+`<li key={g.name}>` (`routes/index.tsx`), usando só o nome da categoria
+como chave React. Como o modo raw produz uma entrada por linha da
+planilha, a mesma categoria (ex.: "Linha A", "Manhã") aparece várias vezes
+no Top N sempre que o mesmo grupo tiver os valores mais altos — um cenário
+comum, não um caso extremo. React avisava "Encontrado two children with
+the same key" e "pode causar duplicação ou omissão" dos itens
+renderizados; capturado consistentemente no console do navegador com o
+painel de demonstração (`Ranking de Unidade/Turno por Resultado`).
+Corrigido reaproveitando o campo `sourceRow` que `chartSeries()`
+(`data-pipeline.ts`) já emite por linha em modo raw — mesmo padrão já
+usado para o gráfico de barras e de pizza (`entry.sourceRow ?? index`),
+só nunca aplicado a este widget: `key={`${g.name}-${g.sourceRow ?? i}`}`.
+
+Como o widget-porta de exportação PNG/PDF captura o DOM renderizado via
+`html2canvas`, uma renderização com itens duplicados/omitidos por chave
+colidida afetaria também o conteúdo exportado, não só a tela ao vivo —
+por isso esse achado entra no escopo da Etapa 8, mesmo sendo um bug de
+renderização geral, não específico do módulo de exportação.
+
+**Também ajustado, sem confirmação completa**: quatro usos de
+`dot`/`activeDot` do Recharts (gráficos de área e linha) passavam
+`{...dotProps}` diretamente para `<ChartDot>`, incluindo silenciosamente
+o campo `key` que o Recharts injeta no objeto de props — o antipadrão que
+o próprio React avisa ("A props object containing a 'key' prop is being
+spread into JSX"), porque `key` espalhado via `{...props}` não é lido
+corretamente pelo React como identificador de lista. Corrigido
+desestruturando `key` explicitamente e passando como atributo JSX direto
+(`key={key}`), o padrão oficialmente recomendado. **Esse aviso específico
+continuou aparecendo no console mesmo depois da correção** — indício de
+que o Recharts, internamente, também manipula/clona esses elementos com
+seu próprio `key`, fora do controle direto do código da aplicação. A
+mudança é mantida por seguir a prática correta e não ter nenhum efeito
+colateral negativo, mas fica registrado que não eliminou o aviso.
+
+**Bloqueio de ambiente descoberto**: `document.hidden` é `true` e
+`document.visibilityState` é `"hidden"` neste sandbox — o painel do
+navegador não compõe frames (mesma causa raiz já documentada para
+`computer{action:"screenshot"}`). Como consequência, `requestAnimationFrame`
+nunca dispara neste ambiente, o que trava indefinidamente qualquer código
+que dependa dele: o contador animado dos KPIs (`AnimatedNumber`,
+`routes/index.tsx`) fica congelado em "0", e `settleExportLayout()`
+(`dashboard-export.ts`, que usa duas chamadas de RAF) nunca resolve,
+deixando a classe `oliam-export-mode` presa no DOM porque o `finally` da
+captura nunca é alcançado. Confirmado que isso é puramente um artefato
+deste sandbox — não um bug do produto — aplicando um polyfill temporário
+de `requestAnimationFrame` (via `setTimeout`) só para inspeção: com o RAF
+funcionando, a exportação PNG completa normalmente e a classe é removida
+corretamente. Consequência prática: não foi possível auditar visualmente
+o conteúdo exportado (textos longos, tabelas largas, modo escuro,
+acentos, layout A4) neste ambiente — os downloads não são inspecionáveis
+e capturas de tela não funcionam com o painel oculto. Essa auditoria
+visual completa da Etapa 8 continua pendente e exigiria um navegador real
+e visível (ex.: preview da Vercel testado manualmente).
+
+Verificado com `npx vitest run` (445 passou, 11 pulados, mesma contagem —
+correção de JSX sem cobertura de teste de componente disponível no
+projeto, que não usa `@testing-library/react`), `npx tsc --noEmit` sem
+erros, `npm run build` aprovado e reprodução/correção confirmada
+manualmente no navegador via console (antes: aviso presente a cada
+carregamento do painel de demonstração; depois: aviso do ranking
+desaparece, aviso do ChartDot persiste pelo motivo explicado acima).
