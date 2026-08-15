@@ -115,6 +115,18 @@ describe("fidelidade entre leitores independentes", () => {
     expect(report.unsupportedFeatures).toContain("Macros VBA");
   });
 
+  it("concatena os trechos de shared string rich text (múltiplos <r>)", () => {
+    // Uma string rica no Excel ("negrito" + "normal" na mesma célula) grava
+    // um <r> (run) por trecho de formatação diferente, cada um com seu
+    // próprio <t>. O leitor precisa juntar todos os trechos de um mesmo
+    // <si>, não só o primeiro <t>.
+    const bytes = minimalWorkbookPackage(
+      "<sst><si><r><rPr><b/></rPr><t>Alerta: </t></r><r><t>limite excedido</t></r></si></sst>",
+    );
+    const inspection = inspectOoxml(bytes);
+    expect(inspection.sheets.get("Teste")?.get("A1")?.rawValue).toBe("Alerta: limite excedido");
+  });
+
   it("decodifica referências numéricas de caractere no texto OOXML", () => {
     // Algumas ferramentas exportam XLSX com acentos como &#199; (decimal) ou
     // &#xC7; (hex) em vez do caractere UTF-8 direto. Isso é XML válido e
@@ -127,6 +139,40 @@ describe("fidelidade entre leitores independentes", () => {
     expect(inspection.sheets.get("Teste")?.get("A1")?.rawValue).toBe(
       "SOLICITAÇÕES / é válido & escapado &#38;",
     );
+  });
+
+  it("respeita workbookPr date1904 ao converter datas seriais no leitor OOXML", () => {
+    // O inventário OOXML independente (usado para reconciliação e como
+    // referência do shadow mode) nunca lia `workbookPr date1904` e sempre
+    // assumia o sistema 1900. Num arquivo de origem Mac (1904), isso
+    // produzia datas ~4 anos erradas silenciosamente.
+    const packageFor = (date1904: string) =>
+      zipSync({
+        "xl/workbook.xml": strToU8(
+          `<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookPr date1904="${date1904}"/><sheets><sheet name="Teste" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+        ),
+        "xl/_rels/workbook.xml.rels": strToU8(
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+        ),
+        "xl/styles.xml": strToU8(
+          '<styleSheet><cellXfs count="1"><xf numFmtId="14"/></cellXfs></styleSheet>',
+        ),
+        "xl/worksheets/sheet1.xml": strToU8(
+          '<worksheet><dimension ref="A1"/><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>',
+        ),
+      });
+
+    const inspection1900 = inspectOoxml(packageFor("0"));
+    expect(inspection1900.sheets.get("Teste")?.get("A1")?.displayValue).toBe("1/1/00");
+    const materialized1900 = inspection1900.workbook.Sheets["Teste"]?.["A1"] as XLSX.CellObject;
+    expect(materialized1900.v).toBeInstanceOf(Date);
+    expect((materialized1900.v as Date).toISOString().slice(0, 10)).toBe("1900-01-01");
+
+    const inspection1904 = inspectOoxml(packageFor("1"));
+    expect(inspection1904.sheets.get("Teste")?.get("A1")?.displayValue).toBe("1/2/04");
+    const materialized1904 = inspection1904.workbook.Sheets["Teste"]?.["A1"] as XLSX.CellObject;
+    expect(materialized1904.v).toBeInstanceOf(Date);
+    expect((materialized1904.v as Date).toISOString().slice(0, 10)).toBe("1904-01-02");
   });
 
   it("não transforma célula autocontida de estilo no valor da célula seguinte", () => {

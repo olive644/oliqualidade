@@ -62,18 +62,18 @@ O grafo estrutural existente confirma os maiores pontos de acoplamento:
 
 ## 2. Lacunas de fidelidade
 
-| Prioridade                | Lacuna                                                                      | Evidência                                                                                                                                     | Impacto                                                                                           |
-| ------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| P0, corrigida nesta etapa | Aba ausente era ignorada pela reconciliação                                 | `compareAndRepairWithOoxml` seguia para a próxima aba quando `primary.Sheets[name]` não existia                                               | perda silenciosa de aba e pontuação enganosa                                                      |
+| Prioridade                | Lacuna                                                                      | Evidência                                                                                                                                       | Impacto                                                                                           |
+| ------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| P0, corrigida nesta etapa | Aba ausente era ignorada pela reconciliação                                 | `compareAndRepairWithOoxml` seguia para a próxima aba quando `primary.Sheets[name]` não existia                                                 | perda silenciosa de aba e pontuação enganosa                                                      |
 | P0, corrigida na seção 22 | Pontuação mede principalmente divergências celulares com severidade `error` | `fidelity-meter.ts` deduplica erros por endereço; avisos e recursos não suportados não entravam no denominador nem em lugar nenhum do relatório | “100%” podia significar apenas valores comparáveis sem erro                                       |
-| P0                        | Inspeção OOXML usa `unzipSync` e regex sobre XML completo                   | `ooxml-reader.ts` e `workbook-metadata.ts` descompactam o pacote separadamente                                                                | memória duplicada e risco em arquivos grandes                                                     |
-| P1                        | Leitor OOXML não preserva colunas ocultas, estado de abas nem sistema 1904  | `readSheet` lê linhas ocultas e formatos, mas não `cols`, `sheet state` ou `workbookPr date1904`                                              | datas e visibilidade podem divergir no fallback                                                   |
-| P1                        | Estilo preservado é principalmente formato numérico/texto exibido           | `ReaderCell` não carrega preenchimento, fonte, borda ou proteção                                                                              | cores com significado não entram na reconciliação                                                 |
-| P1                        | Limites de diagnósticos truncam sem contabilizar excedente                  | divergências: 2.000; representações/notas: 500; períodos: 2.000                                                                               | auditoria pode parecer completa quando foi limitada                                               |
-| P1                        | ExcelJS não participa do fluxo normal de cada importação                    | é usado por `fidelity-meter.ts` e testes, não pelo worker de leitura                                                                          | terceira opinião existe apenas sob demanda                                                        |
-| P2                        | Recursos OOXML apenas detectados ou ainda não inventariados                 | tabelas e pivôs são diagnosticados; imagens, gráficos nativos, validações, nomes definidos, links externos e desenhos não têm modelo completo | o valor visível pode sobreviver, mas o recurso não é explicável                                   |
-| P2                        | Fórmulas entre abas e funções fora da lista dependem do cache               | `formula.ts` recusa referências externas/entre abas não suportadas                                                                            | resultado sem cache fica indisponível, corretamente sem invenção                                  |
-| P2                        | Abas vazias são removidas da lista analítica                                | `sheetsWithData` retorna somente opções com linhas                                                                                            | útil para painel, mas exige inventário separado para afirmar que todas as abas foram reconhecidas |
+| P0                        | Inspeção OOXML usa `unzipSync` e regex sobre XML completo                   | `ooxml-reader.ts` e `workbook-metadata.ts` descompactam o pacote separadamente                                                                  | memória duplicada e risco em arquivos grandes                                                     |
+| P1, sistema 1904 corrigido na seção 25 | Leitor OOXML não preserva colunas ocultas nem estado de abas          | `readSheet` lê linhas ocultas e formatos, mas não `cols` nem `sheet state`; `workbookPr date1904` já é lido e propagado            | visibilidade ainda pode divergir no fallback; datas já respeitam o sistema 1904                   |
+| P1                        | Estilo preservado é principalmente formato numérico/texto exibido           | `ReaderCell` não carrega preenchimento, fonte, borda ou proteção                                                                                | cores com significado não entram na reconciliação                                                 |
+| P1                        | Limites de diagnósticos truncam sem contabilizar excedente                  | divergências: 2.000; representações/notas: 500; períodos: 2.000                                                                                 | auditoria pode parecer completa quando foi limitada                                               |
+| P1                        | ExcelJS não participa do fluxo normal de cada importação                    | é usado por `fidelity-meter.ts` e testes, não pelo worker de leitura                                                                            | terceira opinião existe apenas sob demanda                                                        |
+| P2                        | Recursos OOXML apenas detectados ou ainda não inventariados                 | tabelas e pivôs são diagnosticados; imagens, gráficos nativos, validações, nomes definidos, links externos e desenhos não têm modelo completo   | o valor visível pode sobreviver, mas o recurso não é explicável                                   |
+| P2                        | Fórmulas entre abas e funções fora da lista dependem do cache               | `formula.ts` recusa referências externas/entre abas não suportadas                                                                              | resultado sem cache fica indisponível, corretamente sem invenção                                  |
+| P2                        | Abas vazias são removidas da lista analítica                                | `sheetsWithData` retorna somente opções com linhas                                                                                              | útil para painel, mas exige inventário separado para afirmar que todas as abas foram reconhecidas |
 
 “Não suportado” deve virar um estado explícito na auditoria; não deve reduzir
 automaticamente a nota como “incorreto”, nem ser contado como “validado”.
@@ -571,7 +571,7 @@ teste sintético havia coberto:
 1. **`verifyWorkbookWithExcelJs` derrubava a medição inteira.** ExcelJS tem
    bugs conhecidos ao carregar certos desenhos/âncoras de imagem em XLSX real
    (`Cannot read properties of undefined (reading 'name')` e `(reading
-   'anchors')`, lançados de dentro de `workbook.xlsx.load`). Como
+'anchors')`, lançados de dentro de `workbook.xlsx.load`). Como
    `measureWorkbookFidelity` não capturava essa exceção, o relatório inteiro
    quebrava — nenhuma pontuação, nenhum diagnóstico, só um erro não tratado.
    Corrigido isolando a chamada em `try/catch`: uma falha de leitor agora vira
@@ -640,3 +640,46 @@ O leitor continua isolado do `workbook.worker`. Os itens restantes da
 revisão — corpus real ODS sanitizado, e manter SheetJS como resultado
 produtivo até paridade comprovada — seguem como pré-condição para
 qualquer integração em shadow mode, na mesma ordem recomendada.
+
+## 25. Etapa 5 — auditoria de corpus de regressão e duas falhas reais
+
+Antes de ampliar fixtures, uma auditoria comparou 20 cenários de leitura
+universal contra a suíte existente. Bem cobertos: cabeçalho deslocado,
+múltiplas tabelas empilhadas/lado a lado, mesclagens, linhas/colunas
+ocultas, células de erro, delimitadores de CSV ambíguos. Parciais: filtros
+sem congelamento, fórmulas cacheadas vs. recalculadas, grandes planilhas
+(só o caminho de rejeição), ZIP hostil (só limites de dimensão/tamanho),
+codificação de CSV, ODS/XLS além de um smoke test básico. Lacunas claras:
+cabeçalho repetido inline, sistema de datas 1904 no leitor OOXML
+independente, shared strings rich text, imagens/gráficos incorporados.
+
+Escrever os testes das duas primeiras lacunas expôs bugs reais, não só
+ausência de cobertura:
+
+1. **`ooxml-reader.ts` nunca lia `workbookPr date1904`.** `serialDate`
+   sempre assumia o sistema 1900 (`XLSX.SSF.parse_date_code` sem opções).
+   Num arquivo de origem Mac (1904), qualquer data reconciliada por este
+   leitor — usado na reparação de abas/células ausentes e como referência
+   do shadow mode — saía ~4 anos errada, silenciosamente. Corrigido lendo
+   `date1904` do `workbookPr` em `inspectOoxml` e propagando para
+   `serialDate` e `XLSX.SSF.format` (que também precisa da opção para
+   exibir a data certa). Teste em `workbook-fidelity.test.ts` confirma
+   serial `1` virando `1900-01-01`/`"1/1/00"` sem a flag e
+   `1904-01-02`/`"1/2/04"` com ela.
+2. **Repetição literal do cabeçalho no meio dos dados virava um registro
+   de dado.** Relatórios paginados/exportados costumam repetir a linha de
+   cabeçalho a cada quebra de página, sem linha em branco nem título
+   separando um bloco novo — por isso a detecção de blocos empilhados (que
+   já lida com um caso relacionado, mas diferente) não pegava esse caso.
+   `sheetToRows` agora filtra uma linha de dado que repete o cabeçalho
+   original em pelo menos duas colunas (exigência deliberada para não
+   descartar por engano um item de catálogo que só coincide numa coluna),
+   registra a contagem em `audit.repeatedHeaderRowsIgnored` e explica no
+   aviso ao usuário, em vez de silenciosamente incluir
+   `{"Nome": "Nome", "Valor": "Valor"}` como se fosse um registro.
+
+A lacuna de shared strings rich text (múltiplos `<r>` num `<si>`) já
+estava implementada corretamente (`sharedStrings` concatena todo `<t>`
+dentro do `<si>`, dentro ou fora de `<r>`); ganhou um teste travando o
+comportamento, sem precisar de correção. Imagens/gráficos incorporados
+continuam como lacuna registrada na seção 3, não abordada nesta etapa.

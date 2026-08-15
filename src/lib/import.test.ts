@@ -689,6 +689,49 @@ describe("sheetToRows", () => {
     expect(Object.keys(rows[0] as object)).toEqual(["Métrica", "Valor"]);
   });
 
+  it("ignora uma repetição literal do cabeçalho no meio dos dados (sem separador de bloco)", () => {
+    // Relatórios paginados costumam repetir a linha de cabeçalho a cada
+    // quebra de página, sem linha em branco nem título separando um
+    // "bloco" novo — por isso a lógica de blocos empilhados (teste acima)
+    // não cobre esse caso. Sem o filtro, essa linha virava um registro de
+    // dado com o próprio texto do cabeçalho: {"Nome":"Nome","Valor":"Valor"}.
+    const ws = sheet([
+      ["Nome", "Valor"],
+      ["Item 1", 10],
+      ["Item 2", 20],
+      ["Nome", "Valor"],
+      ["Item 3", 30],
+      ["Item 4", 40],
+    ]);
+    const { rows, warning, audit } = sheetToRows(ws);
+    expect(rows).toEqual([
+      { Nome: "Item 1", Valor: 10 },
+      { Nome: "Item 2", Valor: 20 },
+      { Nome: "Item 3", Valor: 30 },
+      { Nome: "Item 4", Valor: 40 },
+    ]);
+    expect(audit?.repeatedHeaderRowsIgnored).toBe(1);
+    expect(warning).toContain("repetia o cabeçalho no meio dos dados");
+  });
+
+  it("não descarta uma linha de dado que só coincide com o cabeçalho em uma única coluna", () => {
+    // A exigência de pelo menos 2 colunas batendo evita falso positivo:
+    // um item de catálogo pode legitimamente se chamar "Nome" ou "Valor".
+    const ws = sheet([
+      ["Nome", "Valor"],
+      ["Item 1", 10],
+      ["Nome", 99],
+      ["Item 2", 20],
+    ]);
+    const { rows, audit } = sheetToRows(ws);
+    expect(rows).toEqual([
+      { Nome: "Item 1", Valor: 10 },
+      { Nome: "Nome", Valor: 99 },
+      { Nome: "Item 2", Valor: 20 },
+    ]);
+    expect(audit?.repeatedHeaderRowsIgnored ?? 0).toBe(0);
+  });
+
   it("combina blocos repetidos (mesmo cabeçalho, empilhados) numa única tabela com coluna de origem", () => {
     const ws = sheet([
       ["Núcleo 1"],

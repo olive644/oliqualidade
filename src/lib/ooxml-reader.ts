@@ -126,15 +126,15 @@ function styleFormats(xml: string): string[] {
   });
 }
 
-function serialDate(value: number): Date | null {
-  const parsed = XLSX.SSF.parse_date_code(value);
+function serialDate(value: number, date1904: boolean): Date | null {
+  const parsed = XLSX.SSF.parse_date_code(value, { date1904 });
   if (!parsed) return null;
   return new Date(
     Date.UTC(parsed.y, parsed.m - 1, parsed.d, parsed.H, parsed.M, Math.floor(parsed.S)),
   );
 }
 
-function readSheet(xml: string, strings: string[], formats: string[]) {
+function readSheet(xml: string, strings: string[], formats: string[], date1904: boolean) {
   const cells = new Map<string, ReaderCell>();
   const worksheet: XLSX.WorkSheet = {};
   let range: XLSX.Range | null = null;
@@ -204,7 +204,7 @@ function readSheet(xml: string, strings: string[], formats: string[]) {
     let displayValue = rawValue == null ? "" : String(rawValue);
     if (typeof rawValue === "number") {
       try {
-        displayValue = XLSX.SSF.format(numberFormat, rawValue);
+        displayValue = XLSX.SSF.format(numberFormat, rawValue, { date1904 });
       } catch {
         displayValue = String(rawValue);
       }
@@ -225,7 +225,7 @@ function readSheet(xml: string, strings: string[], formats: string[]) {
       ...(formula ? { f: xmlText(formula) } : {}),
     };
     if (typeof rawValue === "number" && XLSX.SSF.is_date(numberFormat)) {
-      const converted = serialDate(rawValue);
+      const converted = serialDate(rawValue, date1904);
       if (converted) {
         cell.t = "d";
         cell.v = converted;
@@ -253,6 +253,8 @@ export function inspectOoxml(input: ArrayBuffer | Uint8Array): OoxmlInspection {
   const rels = relationshipMap(archiveText(archive, "xl/_rels/workbook.xml.rels"), "xl");
   const strings = sharedStrings(archiveText(archive, "xl/sharedStrings.xml"));
   const formats = styleFormats(archiveText(archive, "xl/styles.xml"));
+  const workbookPrAttrs = attributes(/<workbookPr\b[^>]*\/?>/.exec(workbookXml)?.[0] ?? "");
+  const date1904 = workbookPrAttrs["date1904"] === "1" || workbookPrAttrs["date1904"] === "true";
   const workbook = XLSX.utils.book_new();
   const sheets = new Map<string, Map<string, ReaderCell>>();
   const structures = new Map<string, OoxmlSheetStructure>();
@@ -261,7 +263,7 @@ export function inspectOoxml(input: ArrayBuffer | Uint8Array): OoxmlInspection {
     const name = xmlText(attrs["name"] ?? "Planilha");
     const path = rels.get(attrs["r:id"] ?? "");
     if (!path) continue;
-    const parsed = readSheet(archiveText(archive, path), strings, formats);
+    const parsed = readSheet(archiveText(archive, path), strings, formats, date1904);
     XLSX.utils.book_append_sheet(workbook, parsed.worksheet, name.slice(0, 31));
     sheets.set(name, parsed.cells);
     structures.set(name, parsed.structure);
