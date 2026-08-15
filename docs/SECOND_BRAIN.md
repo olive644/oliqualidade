@@ -90,7 +90,8 @@ flowchart TD
 | Inventário Rust de planilha universal (ODS) | `rust/oli-ooxml-core/src/ods.rs`                                      | `rust/oli-ooxml-core/tests/ods_inventory.rs` |
 | Cabeçalhos, blocos e regiões                | `import.ts`, `structural-model.ts`                                    | `import.test.ts`                             |
 | Tipos, fórmulas e semântica                 | `format.ts`, `formula.ts`, `spreadsheet-intelligence.ts`              | teste dedicado                               |
-| Widget novo ou recomendação                 | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `routes/index.tsx`     | widgets + auto-dashboard                     |
+| Widget novo ou recomendação                 | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `components/oliam/widget-card.tsx`, `components/oliam/widget-support.tsx` | widgets + auto-dashboard                     |
+| Importação/revisão (UI)                     | `components/oliam/{home,empty,import-workbench,review}.tsx`          | `routes/index.tsx` orquestra via props        |
 | Cálculos e séries                           | `data-pipeline.ts`                                                    | `data-pipeline.test.ts`                      |
 | Cronograma                                  | `schedule-normalizer.ts`, `operational-widgets.ts`                    | testes dos dois módulos                      |
 | Revisão, auditoria e versões                | `data-review.ts`, `import-workbench.ts`, `review-export.ts`           | testes de revisão/exportação                 |
@@ -217,6 +218,7 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 | Alvos de toque de 28px nos botões de widget ficam abaixo do recomendado | `size-7` do Tailwind sem variante responsiva, 5 botões agrupados por widget | corrigido com `pointer-coarse:` (media feature de ponteiro, não largura): 36px em toque, 28px em mouse, cabeçalho com `h-auto` em toque para acomodar quebra de linha |
 | `pointer: coarse` (Tailwind `pointer-coarse:`) é verificável neste sandbox, ao contrário de RAF/screenshot | preset mobile emula corretamente a media feature via `matchMedia`, mesmo sem compor frames | preferir variantes de mídia CSS a testes que dependam de pintura real para ajustes específicos de toque |
 | Filtro semântico de operação por coluna já é maduro e testado | `semanticAggregationOps`/`relevantAggregationOps` aplicados uniformemente em 6+ tipos de widget | bug semântico futuro provavelmente está na classificação da coluna, não na lógica de filtragem |
+| Dividir `routes/index.tsx` em vários arquivos, sem mudar o grafo de módulos, pode estourar o orçamento de bundle | o bundler escolhe o "módulo fachada" de um chunk compartilhado por algum critério interno; qual arquivo vira fachada muda ao reorganizar imports, mesmo com o mesmo código | `vite.config.ts` ganhou `manualChunks` explícito para `recharts`/`d3-*` e `@radix-ui`/`@floating-ui`/`cmdk`/`sonner`; sempre rodar `npm run performance:check` depois de mover código entre arquivos, não só depois de mudar o que o código faz |
 
 ## Checklist antes de publicar
 
@@ -234,11 +236,18 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 - A aplicação é deliberadamente local-first e usa IndexedDB no navegador.
 - Leitura pesada, análise de revisão e exportações pesadas são separadas do
   caminho interativo sempre que possível.
-- `src/routes/index.tsx` ainda concentra a orquestração visual. O motor de
-  exportação PNG/PDF está em `dashboard-export.ts` e a tabela detalhada já foi
-  extraída para `data-table-widget.tsx`, com uma representação semântica de
-  altura automática exclusiva para exportação. O próximo recorte recomendado é
-  extrair gráficos e métricas sem alterar comportamento.
+- `src/routes/index.tsx` caiu de 10.282 para 3.715 linhas (64%) numa
+  refatoração puramente estrutural: `Home`, `Empty`, `ImportWorkbench`,
+  `Review`, `WidgetCard`/`EmptyWidget`, as peças de suporte de widget
+  (`FieldDropSlot`, `WidgetHead`, tooltips/eixos de gráfico, `MapWidgetBody`
+  etc.) e `FormatRulesEditor` foram movidos para arquivos próprios em
+  `src/components/oliam/`, sem mudar comportamento. O que resta em
+  `index.tsx` é `OliAm` (orquestração de rota/estágio) e `Dashboard` (o
+  maior estado local restante, ~2.500 linhas) — ver seção 36 do
+  `CURRENT_STATE_AUDIT.md` para o mapa completo e a regressão de bundle
+  descoberta e corrigida no processo. Extrair `Dashboard` exigiria primeiro
+  consolidar suas dezenas de `useState` (ex.: um reducer), então é um corte
+  maior e mais arriscado, deixado para uma etapa dedicada futura.
 - O mapa estrutural gerado em `graphify-out/` é um artefato derivado. Este
   documento explica intenção; o grafo mostra dependências extraídas do código.
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por
