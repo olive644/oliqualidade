@@ -738,5 +738,50 @@ verificação pendente, não como confirmado.
 
 Itens ainda não abordados da auditoria de explicabilidade: regiões
 descartadas e o motivo (não existe nenhum modelo de dados para isso hoje,
-não é só falta de exibição) e uma matriz de confiança por aba/sheet (hoje
-só há confiança global e por região/coluna).
+não é só falta de exibição). A matriz de confiança por aba/sheet foi
+implementada na seção 27.
+
+## 27. Matriz de confiança por aba
+
+Fechava parte da lacuna registrada ao final da seção 26: "uma matriz de
+confiança por aba/sheet (hoje só há confiança global e por região/coluna)".
+
+Como no caso do leitor/fallback da seção 26, não havia bug nem lacuna de
+cálculo — `sheetsWithData` (`import.ts`) já roda `diagnoseImportedSheet`
+para **toda** aba com dado no workbook, não só a aba ativa, então
+`SheetOption.diagnostics.confidence` e `.confidenceReasons` já existiam
+para todas as abas simultaneamente. A lacuna era puramente de agregação e
+exibição: nada juntava esses valores num lugar comparável lado a lado, e a
+interface só mostrava a confiança da aba selecionada no momento.
+
+- **Função pura nova**: `buildSheetConfidenceMatrix` em
+  `import-intelligence.ts`, ao lado do tipo `ImportDiagnostics` que ela
+  consome. Recebe `Array<{ name; diagnostics? }>` (compatível
+  estruturalmente com `SheetOption`, sem criar dependência circular com
+  `import.ts`) e devolve, por aba: `confidence` (número ou `null` quando
+  não há diagnóstico), `level` (`"alta"` ≥85, `"média"` ≥60, `"baixa"`
+  abaixo disso, ou `"sem diagnóstico"`), os `reasons` já calculados e a
+  contagem de divergências do leitor daquela aba especificamente. Não
+  recalcula nada — só lê e classifica o que já existe.
+- **Interface**: a barra de abas da revisão (`routes/index.tsx`, dentro de
+  `Review`) ganhou um indicador colorido por aba (verde/âmbar/vermelho,
+  omitido quando não há diagnóstico) com `title` explicando o percentual e
+  os motivos, sem alterar a navegação entre abas nem nenhum cálculo
+  existente.
+
+Testes em `import-intelligence.test.ts` (`describe("matriz de confiança por
+aba")`) cobrem: classificação alta/média/baixa a partir de diagnósticos
+reais gerados por `diagnoseImportedSheet` (não valores inventados), aba sem
+diagnóstico retornando `null`/`"sem diagnóstico"` sem quebrar, e contagem de
+divergências do leitor isolada por aba.
+
+Verificado com `npx vitest run` (443 passou, 11 pulados, era 441), `npx tsc
+--noEmit` sem erros e `npm run build` aprovado. **Não foi possível verificar
+visualmente no navegador** — mesma limitação já registrada na seção 26: a
+ferramenta de automação deste sandbox não simula o diálogo de upload de
+arquivo do sistema operacional, e o indicador só aparece depois de importar
+um workbook com mais de uma aba. Confirmado que a página carrega sem erros
+de console antes e depois da mudança; a integração em si é composição de
+JSX sobre uma função pura já testada, seguindo o mesmo padrão de risco
+baixo da seção 26 — mas fica registrado como verificação pendente, não como
+confirmado.
