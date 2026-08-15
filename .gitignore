@@ -13,3 +13,4 @@ test-fixtures/private/
 test-fixtures/sanitized-real/
 test-results/
 docs/.obsidian/
+docs/*.canvas
