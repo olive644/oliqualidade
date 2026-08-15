@@ -170,6 +170,67 @@ describe("leitor universal de planilhas", () => {
     }
   });
 
+  it("rollback: VITE_WASM_READER_MODE=shadow desativa o candidato Rust mesmo quando ele seria promovido", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+    const inspection = inspectOoxml(bytes);
+    registerWasmWorkbookReader({
+      inventory: async () => ({
+        schemaVersion: "3.0.0",
+        sheets: [...inspection.sheets].map(([name, cells]) => ({
+          name,
+          mergedRanges: inspection.structures.get(name)?.mergedRanges ?? [],
+          hiddenRows: inspection.structures.get(name)?.hiddenRows ?? [],
+          hiddenColumns: inspection.structures.get(name)?.hiddenColumns ?? [],
+          cells: [...cells.values()],
+        })),
+      }),
+    });
+
+    try {
+      // Mesmo arquivo, mesmo adaptador Rust registrado, dados idênticos: em modo
+      // candidato (padrão de produção) o resultado é promovido a "rust-wasm".
+      const candidateResult = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "candidate",
+        wasmCandidateFormats: ["xlsx"],
+      });
+      expect(candidateResult.report).toMatchObject({
+        reader: "rust-wasm",
+        wasmCandidateStatus: "primary",
+        wasmOutputUsed: true,
+      });
+
+      // Único parâmetro alterado: wasmReaderMode "shadow", equivalente a mudar
+      // apenas a variável de ambiente VITE_WASM_READER_MODE, sem tocar em código.
+      // A allowlist de formatos permanece igual e o adaptador Rust continua
+      // registrado e disponível — o rollback precisa ser suficiente sozinho.
+      const shadowResult = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", undefined, {
+        wasmReaderMode: "shadow",
+        wasmCandidateFormats: ["xlsx"],
+      });
+      expect(shadowResult.sheets[0]?.rows).toEqual(candidateResult.sheets[0]?.rows);
+      expect(shadowResult.report).toMatchObject({
+        reader: "sheetjs-verified",
+        wasmReaderMode: "shadow",
+        wasmCandidateStatus: "shadow",
+        wasmFallbackReason: null,
+        wasmOutputUsed: false,
+        // O adaptador continua disponível e é medido silenciosamente: o
+        // rollback desativa a promoção, não a observabilidade.
+        wasmAvailable: true,
+        wasmShadowStatus: "matched",
+      });
+      expect(shadowResult.report.wasmComparedCells).toBeGreaterThan(0);
+    } finally {
+      registerWasmWorkbookReader(undefined);
+    }
+  });
+
   it("recua para o leitor validado quando o candidato diverge", async () => {
     const worksheet = XLSX.utils.aoa_to_sheet([["Produto"], ["Bolo"]]);
     const workbook = XLSX.utils.book_new();

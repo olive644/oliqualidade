@@ -198,6 +198,7 @@ import {
   type AggregationOp,
   type QualitySignal,
 } from "@/lib/data-pipeline";
+import { buildSheetConfidenceMatrix } from "@/lib/import-intelligence";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
@@ -2646,6 +2647,7 @@ function Review(p: {
     });
     toast.success(`${safe.length} sugestão(ões) segura(s) aplicada(s).`);
   };
+  const sheetConfidenceMatrix = buildSheetConfidenceMatrix(p.sheets);
   return (
     <div className="min-h-screen bg-canvas">
       <header className="oliam-topbar">
@@ -3157,25 +3159,50 @@ function Review(p: {
         />
         {p.sheets.length > 1 && (
           <div className="mb-4 flex flex-wrap gap-1.5" role="tablist" aria-label="Abas da planilha">
-            {p.sheets.map((s, i) => (
-              <button
-                key={s.name + i}
-                role="tab"
-                aria-selected={i === p.activeIndex}
-                onClick={() => p.setActiveIndex(i)}
-                className={cn(
-                  "rounded-t-lg border border-b-0 px-3.5 py-2 text-sm font-medium transition-colors",
-                  i === p.activeIndex
-                    ? "border-border bg-card text-foreground"
-                    : "border-transparent bg-transparent text-muted-foreground hover:bg-accent",
-                )}
-              >
-                {s.name}
-                <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-                  {s.rows.length}
-                </span>
-              </button>
-            ))}
+            {p.sheets.map((s, i) => {
+              const sheetConfidence = sheetConfidenceMatrix[i];
+              return (
+                <button
+                  key={s.name + i}
+                  role="tab"
+                  aria-selected={i === p.activeIndex}
+                  onClick={() => p.setActiveIndex(i)}
+                  title={
+                    sheetConfidence?.confidence == null
+                      ? undefined
+                      : `Confiança ${sheetConfidence.level}: ${sheetConfidence.confidence}%${
+                          sheetConfidence.reasons.length
+                            ? ` — ${sheetConfidence.reasons.join("; ")}`
+                            : ""
+                        }`
+                  }
+                  className={cn(
+                    "rounded-t-lg border border-b-0 px-3.5 py-2 text-sm font-medium transition-colors",
+                    i === p.activeIndex
+                      ? "border-border bg-card text-foreground"
+                      : "border-transparent bg-transparent text-muted-foreground hover:bg-accent",
+                  )}
+                >
+                  {sheetConfidence?.confidence != null && (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "mr-1.5 inline-block size-1.5 rounded-full align-middle",
+                        sheetConfidence.level === "alta"
+                          ? "bg-emerald-500"
+                          : sheetConfidence.level === "média"
+                            ? "bg-amber-500"
+                            : "bg-rose-500",
+                      )}
+                    />
+                  )}
+                  {s.name}
+                  <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                    {s.rows.length}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
