@@ -1222,9 +1222,37 @@ fn display_cell_value(value: Option<&CellValue>, number_format: &str) -> String 
         Some(CellValue::Number(value)) if number_format == "0.00%" => {
             format!("{:.2}%", value * 100.0)
         }
-        Some(CellValue::Number(value)) => value.to_string(),
+        Some(CellValue::Number(value)) => format_general_number(*value),
         None => String::new(),
     }
+}
+
+/// Reproduz a exibição do formato "General" do Excel: até 11 dígitos
+/// significativos, sem o ruído de arredondamento binário que
+/// `f64::to_string()` exibiria (ex.: `111.03999999999999` em vez de
+/// `111.04`). Excel arredonda a exibição de "General" a 11 dígitos
+/// significativos mesmo guardando mais precisão internamente; o valor
+/// bruto (`rawValue`) do contrato continua sendo o `f64` original, sem
+/// nenhuma perda — só a representação textual muda.
+fn format_general_number(value: f64) -> String {
+    const SIGNIFICANT_DIGITS: i32 = 11;
+    if !value.is_finite() || value == 0.0 {
+        return value.to_string();
+    }
+    let magnitude = value.abs().log10().floor() as i32;
+    let decimals = (SIGNIFICANT_DIGITS - 1 - magnitude).clamp(0, 15) as usize;
+    let formatted = format!("{value:.decimals$}");
+    trim_trailing_zeros(&formatted)
+}
+
+fn trim_trailing_zeros(formatted: &str) -> String {
+    if !formatted.contains('.') {
+        return formatted.to_string();
+    }
+    formatted
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
 }
 
 fn builtin_number_format(id: u32) -> &'static str {
@@ -1478,5 +1506,41 @@ mod unit_tests {
         assert!(is_valid_cell_range("A1:XFD1048576"));
         assert!(!is_valid_cell_range("B2:A1"));
         assert!(!is_valid_cell_range("A1:XFE1"));
+    }
+
+    #[test]
+    fn general_format_rounds_binary_noise_like_excel() {
+        // Achado real do corpus XLSM (Etapa 4 / seção 30 do audit): antes
+        // desta correção, value.to_string() expunha o ruído de ponto
+        // flutuante binário que o Excel/SheetJS arredondam para exibição.
+        assert_eq!(format_general_number(111.03999999999999), "111.04");
+        assert_eq!(format_general_number(87.91666666666667), "87.916666667");
+    }
+
+    #[test]
+    fn general_format_preserves_integers_without_trailing_dot() {
+        assert_eq!(format_general_number(91.0), "91");
+        assert_eq!(format_general_number(0.0), "0");
+        assert_eq!(format_general_number(-91.0), "-91");
+    }
+
+    #[test]
+    fn general_format_handles_simple_decimals_and_negatives() {
+        assert_eq!(format_general_number(1234.5), "1234.5");
+        assert_eq!(format_general_number(-0.25), "-0.25");
+        assert_eq!(format_general_number(0.1), "0.1");
+    }
+
+    #[test]
+    fn general_format_caps_at_eleven_significant_digits() {
+        // Um valor com mais de 11 dígitos significativos é arredondado,
+        // não truncado bruto — mesma convenção do Excel para "General".
+        assert_eq!(format_general_number(1.234567891234), "1.2345678912");
+    }
+
+    #[test]
+    fn display_cell_value_uses_general_formatting_for_unformatted_numbers() {
+        let value = CellValue::Number(111.03999999999999);
+        assert_eq!(display_cell_value(Some(&value), "General"), "111.04");
     }
 }

@@ -1137,3 +1137,60 @@ comportamento anterior à mudança.
 Verificado com `npx vitest run` (445 passou, 11 pulados, sem mudança —
 CSS/JSX sem cobertura de teste de componente disponível), `npx tsc
 --noEmit` sem erros e `npm run build` aprovado.
+
+## 35. Correção do formato "General" no Rust — divergência do corpus XLSM eliminada
+
+Corrige o gap identificado nas seções 12 e 30: `display_cell_value`
+(`rust/oli-ooxml-core/src/lib.rs`) só arredondava formatos numéricos
+explícitos (`0`, `0.00`, `0%`, `0.00%`); fora deles, caía em
+`value.to_string()`, expondo ruído de ponto flutuante binário que o
+Excel/SheetJS arredondam para exibição (`111.03999999999999` em vez de
+`111.04`). O valor bruto (`rawValue`) do contrato nunca foi afetado — só
+a representação textual estava errada.
+
+- `format_general_number()`: arredonda a 11 dígitos significativos, a
+  mesma convenção documentada do Excel para o formato "General" (Excel
+  guarda mais precisão internamente, mas limita a exibição em "General"
+  a 11 dígitos), depois remove zeros à direita e o ponto decimal
+  sobrando. Testado com o ruído binário real do corpus, inteiros,
+  decimais simples, negativos, o limite de 11 dígitos e o caminho
+  completo via `display_cell_value`.
+- `Cargo.toml`: `0.4.0` → `0.4.1` (correção de comportamento; o
+  contrato JSON `3.0.0` não muda — mesmo formato de saída, só o valor
+  textual de células "General" com muitas casas decimais muda).
+
+**Processo de validação, dado que este sandbox não linka nem roda
+`cargo test` de verdade (seção "Armadilhas de ambiente" do prompt desta
+sessão):**
+
+1. Matemática de arredondamento cross-validada em Node.js antes de
+   escrever os testes Rust (mesma fórmula, mesmos casos de teste).
+2. `cargo fmt --check` e `cargo clippy` via toolchain `gnullvm` local:
+   valida tipos e lints, sem rodar os testes de verdade.
+3. Disparado `.github/workflows/wasm-build.yml` manualmente
+   (`gh workflow run wasm-build.yml --ref fix-rust-general-format`) —
+   esse workflow builda em Ubuntu e roda `cargo test --locked` de
+   verdade como um dos passos. **Passou** (`Test Rust core ✓`),
+   confirmando os testes unitários novos (incluindo o caso do ruído
+   binário real) executados de fato, não só compilados.
+4. Artefato `oli-ooxml-core-wasm` baixado da execução da CI e usado
+   para substituir `src/wasm/oli-ooxml-core/` localmente.
+5. `npm run wasm:corpus` re-executado com o binário corrigido: o XLSM
+   que antes divergia em 1/25 arquivos e 12 células agora fecha em
+   **zero divergências** (`divergentWorkbooks: 0`, `divergentCells: 0`),
+   confirmando a correção contra o mesmo corpus que expôs o bug.
+   `wasm-shadow-corpus.test.ts` atualizado para afirmar o resultado
+   limpo. O gate de promoção do XLSM continua bloqueado pelo motivo já
+   conhecido (corpus real sanitizado insuficiente, 0/5), não mais por
+   divergência.
+
+O binário WASM reconstruído (`src/wasm/oli-ooxml-core/`) é commitado
+junto com a mudança de fonte, seguindo o mesmo processo já documentado
+em `WASM_PROMOTION_CRITERIA.md`/seção 14: o pacote web é versionado
+porque `wasm-pack` não funciona de forma confiável em todo ambiente
+local (incluindo este sandbox).
+
+Verificado com `npx vitest run` (445 passou, 11 pulados, mesma
+contagem — só a asserção de um teste existente mudou, refletindo o
+resultado real e não mais o bug), `npx tsc --noEmit` sem erros e
+`npm run build` aprovado.

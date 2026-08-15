@@ -133,29 +133,36 @@ outros três formatos nunca tinham sido medidos de propósito.
   mesma trilha de "arquivo real indisponível" que já bloqueia a promoção
   final do XLSX).
 
-Medição de referência do corpus XLSM expandido (25 arquivos, ≥10.000
-células): **1 arquivo divergente em 12 células**, sempre a mesma causa —
-números em formato "General" com muitas casas decimais (ex.:
-`111.03999999999999`) são exibidos pelo Rust como o valor bruto
-(`display_cell_value` só arredonda os formatos explícitos `0`/`0.00`/`0%`/
-`0.00%`; fora deles cai em `value.to_string()`), enquanto o SheetJS
-arredonda para exibição como o Excel faz (`111.04`). O valor bruto
-(`rawValue`) é idêntico nos dois leitores; só a representação exibida
-diverge. Essa é a lacuna já registrada na seção 12 de
-`docs/CURRENT_STATE_AUDIT.md` ("exibição conservadora... sem inventar a
-renderização de formatos Excel ainda não implementados") — o corpus
-original de XLSX não a expunha porque suas sementes fixas não geravam esse
-padrão de ponto flutuante, não porque XLSX seja imune a ela. Em produção
-isso não corrompe nenhum dado: candidate mode trata qualquer divergência de
-shadow (`wasmShadowStatus === "diverged"`) como motivo de fallback
-automático para o leitor validado, antes mesmo de tentar materializar a
-saída — exatamente o comportamento que essa medição comprova funcionando.
+Medição original do corpus XLSM expandido (25 arquivos, ≥10.000 células):
+**1 arquivo divergente em 12 células**, sempre a mesma causa — números em
+formato "General" com muitas casas decimais (ex.: `111.03999999999999`)
+eram exibidos pelo Rust como o valor bruto (`display_cell_value` só
+arredondava os formatos explícitos `0`/`0.00`/`0%`/`0.00%`; fora deles
+caía em `value.to_string()`), enquanto o SheetJS arredonda para exibição
+como o Excel faz (`111.04`). O valor bruto (`rawValue`) sempre foi
+idêntico nos dois leitores; só a representação exibida divergia. Essa era
+a lacuna já registrada na seção 12 de `docs/CURRENT_STATE_AUDIT.md`
+("exibição conservadora... sem inventar a renderização de formatos Excel
+ainda não implementados") — o corpus original de XLSX não a expunha
+porque suas sementes fixas não geravam esse padrão de ponto flutuante,
+não porque XLSX fosse imune a ela. Em produção isso nunca corrompeu
+nenhum dado: candidate mode trata qualquer divergência de shadow
+(`wasmShadowStatus === "diverged"`) como motivo de fallback automático
+para o leitor validado, antes mesmo de tentar materializar a saída.
 
-**Estado por formato após esta etapa**: XLSM tem corpus sintético
-comparável em volume ao XLSX (25 arquivos, ≥10.000 células) e uma
-divergência real e explicada, mas segue tão bloqueado para promoção quanto
-antes — falta o mesmo corpus real sanitizado exigido para XLSX (5 arquivos
-por formato) e a taxa de divergência atual não fecha o gate de qualquer
-forma. XLTX e XLTM seguem sem nenhuma medição. Nenhum dos três teve a
-allowlist de candidato (`VITE_WASM_CANDIDATE_FORMATS`) alterada; XLSX
-continua sendo o único formato liberado para materializar saída Rust.
+**Corrigido**: `display_cell_value` agora arredonda o formato "General" a
+11 dígitos significativos, a mesma convenção do Excel (seção 35 do
+`CURRENT_STATE_AUDIT.md`). Medição após a correção, mesmo corpus de 25
+arquivos: **zero divergências** (`divergentWorkbooks: 0`,
+`divergentCells: 0`). Validado rodando `cargo test` de verdade via
+`.github/workflows/wasm-build.yml` (disparado manualmente), já que este
+tipo de sandbox local não linka o crate para testes reais.
+
+**Estado por formato após a correção**: XLSM tem corpus sintético
+comparável em volume ao XLSX (25 arquivos, ≥10.000 células) e zero
+divergências, mas segue bloqueado para promoção pelo mesmo motivo que
+sempre bloqueou — falta o corpus real sanitizado exigido (5 arquivos por
+formato, hoje 0/5). XLTX e XLTM seguem sem nenhuma medição. Nenhum dos
+três teve a allowlist de candidato (`VITE_WASM_CANDIDATE_FORMATS`)
+alterada; XLSX continua sendo o único formato liberado para materializar
+saída Rust.
