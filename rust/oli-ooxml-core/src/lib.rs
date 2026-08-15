@@ -12,8 +12,11 @@ use thiserror::Error;
 use zip::ZipArchive;
 
 mod excel_date;
+mod ods;
 
 use excel_date::{format_excel_date, is_date_format, parse_excel_serial};
+
+pub use ods::{inventory_ods, inventory_ods_with_limits};
 
 pub const CONTRACT_VERSION: &str = "3.0.0";
 const WORKBOOK_PART: &str = "xl/workbook.xml";
