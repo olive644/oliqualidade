@@ -33,6 +33,14 @@ export type WorkbookFidelityReport = {
   warnings: ReaderDivergence[];
   unsupportedFeatures: readonly string[];
   readers: ["SheetJS", "OOXML", "ExcelJS"];
+  /**
+   * Nomes de `readers` que não conseguiram sequer carregar o arquivo (ex.:
+   * ExcelJS falha em alguns workbooks reais com desenhos/imagens). Uma
+   * falha de leitor não pode virar "sem divergências" por omissão: o score
+   * só considera as divergências dos leitores que responderam, e este campo
+   * torna essa ausência visível em vez de inflar a pontuação silenciosamente.
+   */
+  failedReaders: string[];
 };
 
 /** Mede preservação de células, sem confundir vazio legítimo com falha. */
@@ -52,7 +60,16 @@ export async function measureWorkbookFidelity(
   });
   const ooxml = inspectOoxml(bytes);
   const ooxmlDivergences = compareAndRepairWithOoxml(primary, ooxml);
-  const excelJsDivergences = await verifyWorkbookWithExcelJs(bytes, primary);
+  const failedReaders: string[] = [];
+  let excelJsDivergences: ReaderDivergence[] = [];
+  try {
+    excelJsDivergences = await verifyWorkbookWithExcelJs(bytes, primary);
+  } catch {
+    // ExcelJS tem bugs conhecidos ao carregar certos workbooks reais com
+    // desenhos/imagens (ver docs/CURRENT_STATE_AUDIT.md). Uma falha de
+    // parsing não pode derrubar a medição inteira nem virar "0 divergências".
+    failedReaders.push("ExcelJS");
+  }
   const errorsByCell = new Map<string, ReaderDivergence>();
   const warningsByCell = new Map<string, ReaderDivergence>();
   for (const divergence of [...ooxmlDivergences, ...excelJsDivergences]) {
@@ -70,5 +87,6 @@ export async function measureWorkbookFidelity(
     warnings: [...warningsByCell.values()],
     unsupportedFeatures: UNSUPPORTED_FIDELITY_FEATURES,
     readers: ["SheetJS", "OOXML", "ExcelJS"],
+    failedReaders,
   };
 }
