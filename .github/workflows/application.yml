@@ -37,3 +37,74 @@ jobs:
 
       - name: Test, typecheck, build and check performance budget
         run: npm run verify
+
+  security-smoke:
+    name: Security headers and CORS smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start dev server
+        # Roda o mesmo server.ts (fetch handler) que a produção, via a
+        # pipeline de SSR do dev server do TanStack Start — não é o bundle
+        # exato do preset Vercel (que exige o formato de runtime do próprio
+        # Vercel para rodar fora da plataforma), mas exercita o mesmo
+        # caminho de código de segurança/sessão.
+        #
+        # --host é necessário: sem ele, duas execuções reais desta CI
+        # tiveram toda tentativa de curl para 127.0.0.1 recusada durante
+        # todo o laço de espera, mesmo com o Vite já tendo impresso
+        # "ready" e "Local: http://localhost:3000/" — o próprio banner do
+        # Vite avisa "Network: use --host to expose", ou seja, por padrão
+        # ele não fica alcançável em todas as interfaces locais neste
+        # runner. `-- --host` repassa o flag para o Vite por baixo do
+        # script npm.
+        run: |
+          OLI_SESSION_SECRET="ci-smoke-test-session-secret-not-a-real-credential" \
+            npm run dev -- --host > dev-server.log 2>&1 &
+          echo $! > dev-server.pid
+
+      - name: Wait for dev server
+        run: |
+          # O Vite anuncia "ready" e libera a porta antes de terminar o
+          # pré-empacotamento de dependências ("bundling dependencies...");
+          # numa checkout fria de CI (sem cache de node_modules/.vite),
+          # empacotar recharts/xlsx/leaflet/radix-ui pela primeira vez
+          # atrasa a PRIMEIRA resposta HTTP real por bem mais que alguns
+          # segundos — confirmado em duas execuções reais desta CI com
+          # --max-time 3: cada tentativa era cortada antes de terminar, o
+          # empacotamento nunca progredia o suficiente e o laço esgotava
+          # sem nunca conseguir uma resposta completa. Cada tentativa
+          # agora tem até 60s para completar.
+          for i in $(seq 1 10); do
+            if curl -sf --max-time 60 -o /dev/null http://127.0.0.1:3000/; then
+              echo "Servidor pronto."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Servidor não respondeu a tempo."
+          cat dev-server.log
+          exit 1
+
+      - name: Run security smoke test
+        env:
+          OLI_SMOKE_BASE_URL: http://127.0.0.1:3000
+          OLI_EXPECT_CHAT_SESSION: "1"
+        run: npm run test:security-smoke
+
+      - name: Stop dev server
+        if: always()
+        run: kill "$(cat dev-server.pid)" 2>/dev/null || true

@@ -183,6 +183,7 @@ npm run build               # typecheck + produção
 npm run performance:check   # orçamento dos artefatos gerados
 npm run verify              # testes + build + orçamento de desempenho
 npm run graph:build         # graphify-out/graph.json + relatório + HTML
+npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servidor rodando (roda na CI, job security-smoke)
 ```
 
 ## Diagnóstico rápido
