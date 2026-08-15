@@ -65,7 +65,7 @@ O grafo estrutural existente confirma os maiores pontos de acoplamento:
 | Prioridade                | Lacuna                                                                      | Evidência                                                                                                                                     | Impacto                                                                                           |
 | ------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | P0, corrigida nesta etapa | Aba ausente era ignorada pela reconciliação                                 | `compareAndRepairWithOoxml` seguia para a próxima aba quando `primary.Sheets[name]` não existia                                               | perda silenciosa de aba e pontuação enganosa                                                      |
-| P0                        | Pontuação mede principalmente divergências celulares com severidade `error` | `fidelity-meter.ts` deduplica erros por endereço; avisos e recursos não suportados não entram no denominador                                  | “100%” pode significar apenas valores comparáveis sem erro                                        |
+| P0, corrigida na seção 22 | Pontuação mede principalmente divergências celulares com severidade `error` | `fidelity-meter.ts` deduplica erros por endereço; avisos e recursos não suportados não entravam no denominador nem em lugar nenhum do relatório | “100%” podia significar apenas valores comparáveis sem erro                                       |
 | P0                        | Inspeção OOXML usa `unzipSync` e regex sobre XML completo                   | `ooxml-reader.ts` e `workbook-metadata.ts` descompactam o pacote separadamente                                                                | memória duplicada e risco em arquivos grandes                                                     |
 | P1                        | Leitor OOXML não preserva colunas ocultas, estado de abas nem sistema 1904  | `readSheet` lê linhas ocultas e formatos, mas não `cols`, `sheet state` ou `workbookPr date1904`                                              | datas e visibilidade podem divergir no fallback                                                   |
 | P1                        | Estilo preservado é principalmente formato numérico/texto exibido           | `ReaderCell` não carrega preenchimento, fonte, borda ou proteção                                                                              | cores com significado não entram na reconciliação                                                 |
@@ -433,6 +433,37 @@ qualquer integração no caminho produtivo. Os próximos passos seguros são:
 compilar para `wasm32-unknown-unknown`, expor `inventory_ods_json` ao
 worker como leitor adicional (não substituto do SheetJS) e só então avaliar
 paridade contra um corpus real de arquivos ODS sanitizados.
+
+## 22. "Não suportado" como estado explícito na pontuação de fidelidade
+
+Corrige a lacuna P0 registrada na seção 2: `fidelity-meter.ts` deduplicava
+apenas divergências de severidade `error` num único mapa e descartava
+qualquer coisa de severidade `warning` sem registrar em lugar nenhum do
+relatório. Um score de 100% podia então significar tanto "tudo comparado e
+igual" quanto "vários avisos silenciados". Não havia, além disso, nenhum
+jeito de o relatório dizer que fills, imagens, validações de dados, nomes
+definidos/hyperlinks, macros VBA e recálculo integral de fórmulas nunca são
+comparados célula a célula por nenhum leitor — esses recursos eram
+invisíveis ao medidor de fidelidade, nem contados como validados nem como
+divergentes.
+
+`WorkbookFidelityReport` ganhou dois campos, sem alterar a fórmula da
+pontuação nem o campo `divergences` existente (que continua sendo apenas
+erros, preservando os testes de meta mínima de 99%):
+
+- `warnings`: as divergências de severidade `warning`, deduplicadas por
+  endereço como antes, agora visíveis em vez de descartadas;
+- `unsupportedFeatures`: lista estática e explícita dos recursos da seção 3
+  que nenhum leitor reconcilia hoje. Por decisão de projeto, "não suportado"
+  não soma nem subtrai da pontuação — é um estado próprio, nem "validado"
+  nem "incorreto", como já estava registrado como princípio neste documento
+  mas ainda não implementado.
+
+Teste adicionado em `workbook-fidelity.test.ts` confirma que `warnings` só
+contém severidade `warning`, que `divergences` só contém severidade `error`
+e que `unsupportedFeatures` inclui "Macros VBA". Nenhum consumidor de
+produção usa `fidelity-meter.ts` hoje (só os dois arquivos de teste), então
+a mudança de forma do retorno não tem risco de regressão na UI.
 
 ## 15. Medição de corpus e gate de promoção — fase 5
 

@@ -206,6 +206,7 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 | Métricas semânticas no cronograma           | códigos planejados pareciam resultados executados   | cobertura e conformidade usam estados distintos e limites por linha         |
 | Prévia visual segura                        | SVG/DOM não escala para milhares de pontos          | tabela mantém acesso integral                                               |
 | Persistência latest-wins                    | snapshots completos intermediários são desperdício  | primeira e última versão são gravadas, intermediárias podem ser coalescidas |
+| "Não suportado" não altera a pontuação      | recurso nunca comparado não é validado nem incorreto | `fidelity-meter.ts` expõe `unsupportedFeatures` e `warnings` à parte do score |
 
 ## Checklist antes de publicar
 

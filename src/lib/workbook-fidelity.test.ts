@@ -88,6 +88,18 @@ describe("fidelidade entre leitores independentes", () => {
     expect(report.score).toBeGreaterThanOrEqual(99);
   });
 
+  it("expõe avisos e recursos não suportados sem alterar a pontuação", async () => {
+    const report = await measureWorkbookFidelity(bytes);
+    // Avisos (severidade "warning") não entram no denominador de erro, mas
+    // não podem mais desaparecer silenciosamente do relatório.
+    expect(Array.isArray(report.warnings)).toBe(true);
+    for (const warning of report.warnings) expect(warning.severity).toBe("warning");
+    for (const divergence of report.divergences) expect(divergence.severity).toBe("error");
+    // "Não suportado" é um estado explícito, não uma redução silenciosa da nota.
+    expect(report.unsupportedFeatures.length).toBeGreaterThan(0);
+    expect(report.unsupportedFeatures).toContain("Macros VBA");
+  });
+
   it("não transforma célula autocontida de estilo no valor da célula seguinte", () => {
     const bytes = zipSync({
       "xl/workbook.xml": strToU8(
