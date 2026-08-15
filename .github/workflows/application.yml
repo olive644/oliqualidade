@@ -69,12 +69,18 @@ jobs:
 
       - name: Wait for dev server
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf -o /dev/null http://127.0.0.1:3000/; then
+          # --max-time é essencial aqui: o Vite anuncia "ready" e libera a
+          # porta antes de terminar o pré-empacotamento de dependências
+          # ("bundling dependencies..."), então a primeira requisição real
+          # pode ficar pendurada esperando isso terminar. Sem limite de
+          # tempo por tentativa, uma única chamada lenta consome quase todo
+          # o orçamento do laço antes de tentar de novo.
+          for i in $(seq 1 60); do
+            if curl -sf --max-time 3 -o /dev/null http://127.0.0.1:3000/; then
               echo "Servidor pronto."
               exit 0
             fi
-            sleep 1
+            sleep 2
           done
           echo "Servidor não respondeu a tempo."
           cat dev-server.log
