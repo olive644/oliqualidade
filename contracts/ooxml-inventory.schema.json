@@ -7,7 +7,7 @@
   "required": ["schemaVersion", "format", "dateSystem", "archive", "sheets", "diagnostics"],
   "properties": {
     "schemaVersion": { "const": "3.0.0" },
-    "format": { "const": "ooxml" },
+    "format": { "enum": ["ooxml", "ods"] },
     "dateSystem": { "enum": ["1900", "1904"] },
     "archive": { "$ref": "#/$defs/archive" },
     "sheets": { "type": "array", "items": { "$ref": "#/$defs/sheet" } },

@@ -123,7 +123,7 @@ demanda/teste, **C** contrato sem implementação e **—** sem cobertura.
 | XLSM         |       P |            V | D parcial |         C |
 | XLTX/XLTM    |       P |            V | D parcial |         C |
 | XLS/XLSB     |       P |            — |         — |         — |
-| ODS          |       P |            — |         — |         C |
+| ODS          |       P |            — |         — |         D |
 | FODS         |       P |            — |         — |         — |
 | CSV/TSV/TXT  |       P |            — |         — |         — |
 | XML/HTML/HTM |       P |            — |         — |         — |
@@ -386,6 +386,53 @@ Integração entregue:
 O próximo passo seguro é coletar a distribuição das divergências no corpus de
 produção e definir critérios objetivos de promoção por formato antes de permitir
 que o Rust participe do resultado produtivo.
+
+## 21. Inventário ODS complementar — fase 11
+
+O crate `oli-ooxml-core` ganhou um segundo leitor, isolado do fluxo XLSX, para
+OpenDocument Spreadsheet (ODS), o formato universal ISO/IEC 26300 que hoje só
+tinha cobertura via SheetJS no caminho TypeScript (linha "ODS" da matriz de
+formatos, coluna Rust/WASM: de contrato sem implementação para diagnóstico
+testado). O contrato JSON continua `3.0.0`; o campo `format` passa a aceitar
+`"ooxml"` ou `"ods"`, mantendo o restante do formato do inventário.
+
+Cobertura entregue pelo módulo `src/ods.rs`:
+
+- reaproveita a validação de pacote ZIP, os limites de recursos e o modelo de
+  inventário (abas, dimensões, mesclagens, ocultos, células) já usados pelo
+  núcleo OOXML, sem duplicar a lógica de segurança;
+- abas, células tipadas (texto, número, booleano, data/hora, percentual,
+  moeda), fórmulas (`table:formula`, normalizadas para o mesmo prefixo `=`
+  usado no XLSX) e mesclagens por `number-columns/rows-spanned`;
+- colunas e linhas ocultas via `table:visibility="collapse"/"filter"`;
+- datas ODF já vêm como texto ISO em `office:date-value`; quando o arquivo
+  grava só a data, o horário é normalizado para meia-noite para manter o
+  mesmo formato `dateValue` do contrato compartilhado.
+
+Decisão de projeto deliberada sobre células e linhas repetidas
+(`table:number-columns-repeated`, `table:number-rows-repeated`, usadas pelo
+ODF sobretudo para preencher espaço vazio à direita/abaixo com contadores que
+podem chegar a centenas de milhares): apenas a primeira ocorrência com
+conteúdo real é materializada; o ponteiro de posição avança pelo total
+declarado e um diagnóstico (`ods-repeated-cell-truncated` ou
+`ods-repeated-row-truncated`) registra a truncagem. Isso segue o mesmo
+princípio de "não inventar" já registrado neste documento e evita qualquer
+laço proporcional a um contador hostil — o custo de processar um valor
+repetido é O(1) independentemente do número declarado de repetições.
+
+Testes sintéticos em `tests/ods_inventory.rs` cobrem tipos de célula e
+dimensão real, fórmula e mesclagem preservadas com linha/coluna oculta,
+truncagem diagnosticada de células/linhas repetidas (incluindo um caso de
+1.000.000 de linhas repetidas vazias) e os limites de abas e de parte
+ausente.
+
+O leitor ODS ainda não está integrado ao `workbook.worker` nem ao adaptador
+WASM em shadow mode; é uma capacidade isolada do crate, seguindo a mesma
+progressão incremental usada para o XLSX (fases 1 a 10 acima) antes de
+qualquer integração no caminho produtivo. Os próximos passos seguros são:
+compilar para `wasm32-unknown-unknown`, expor `inventory_ods_json` ao
+worker como leitor adicional (não substituto do SheetJS) e só então avaliar
+paridade contra um corpus real de arquivos ODS sanitizados.
 
 ## 15. Medição de corpus e gate de promoção — fase 5
 

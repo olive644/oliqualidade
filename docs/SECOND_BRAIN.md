@@ -15,6 +15,7 @@ mindmap
     Entrada
       Arquivo local
       Texto e CSV
+      Planilha universal ODS
       Google Sheets
       Pasta monitorada
     Leitura
@@ -86,6 +87,7 @@ flowchart TD
 | Necessidade                         | Fonte principal                                                   | Prova mínima                 |
 | ----------------------------------- | ----------------------------------------------------------------- | ---------------------------- |
 | Novo formato ou fidelidade de Excel | `workbook-reader.ts`, `ooxml-reader.ts`, `import.ts`              | fixture + teste de corpus    |
+| Inventário Rust de planilha universal (ODS) | `rust/oli-ooxml-core/src/ods.rs`                          | `rust/oli-ooxml-core/tests/ods_inventory.rs` |
 | Cabeçalhos, blocos e regiões        | `import.ts`, `structural-model.ts`                                | `import.test.ts`             |
 | Tipos, fórmulas e semântica         | `format.ts`, `formula.ts`, `spreadsheet-intelligence.ts`          | teste dedicado               |
 | Widget novo ou recomendação         | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `routes/index.tsx` | widgets + auto-dashboard     |
@@ -234,3 +236,7 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
   corpus. O gate exige cinco fontes reais sanitizadas e únicas por formato;
   duplicatas e fontes sem identidade privada não contam. O fallback TypeScript
   continua obrigatório para compatibilidade.
+- O crate Rust também inventaria ODS (planilha universal ISO/IEC 26300) de
+  forma isolada em `rust/oli-ooxml-core/src/ods.rs`. Ainda não está ligado ao
+  worker de leitura; segue a mesma progressão incremental usada para o XLSX
+  antes de qualquer shadow mode. Ver `CURRENT_STATE_AUDIT.md`, seção 21.
