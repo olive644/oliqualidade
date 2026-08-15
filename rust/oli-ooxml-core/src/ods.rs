@@ -4,12 +4,16 @@
 //! de inventário já usados pelo núcleo OOXML; documenta as próprias lacunas
 //! em vez de inventar comportamento não implementado.
 //!
-//! Por decisão de projeto (ver `docs/CURRENT_STATE_AUDIT.md`), células e
-//! linhas repetidas (`table:number-columns-repeated`,
-//! `table:number-rows-repeated`) só materializam a primeira ocorrência
-//! quando carregam conteúdo real; o ponteiro avança pelo total declarado e
-//! um diagnóstico registra a truncagem. Isso evita tanto invenção de dados
-//! quanto laços proporcionais a contadores hostis de repetição.
+//! Células e linhas repetidas (`table:number-columns-repeated`,
+//! `table:number-rows-repeated`) são representadas de forma compacta e sem
+//! perda: um único registro de célula carrega `repeatColumns`/`repeatRows`
+//! quando o bloco tem mais de uma ocorrência, em vez de materializar cada
+//! célula individualmente ou descartar a repetição. `actualDimension` e a
+//! contagem de células refletem a extensão lógica real do bloco, não apenas
+//! a âncora. Isso preserva o dado, evita laços proporcionais a contadores
+//! hostis de repetição (o custo continua O(1) por elemento do XML) e ainda
+//! usa o limite de células do pacote sobre a extensão lógica, não sobre o
+//! número de registros JSON.
 
 use std::io::Cursor;
 
@@ -17,10 +21,9 @@ use quick_xml::{Reader, events::Event};
 use zip::ZipArchive;
 
 use crate::{
-    ActualDimension, CellInventory, CellType, CellValue, DateSystem, Diagnostic,
-    DiagnosticSeverity, HiddenColumnRange, InventoryError, InventoryLimits, SheetInventory,
-    SheetState, WorkbookInventory, attributes, count_event, encode_cell_reference, read_part,
-    validate_archive,
+    ActualDimension, CellInventory, CellType, CellValue, DateSystem, Diagnostic, HiddenColumnRange,
+    InventoryError, InventoryLimits, SheetInventory, SheetState, WorkbookInventory, attributes,
+    count_event, encode_cell_reference, read_part, validate_archive,
 };
 
 const CONTENT_PART: &str = "content.xml";
@@ -53,10 +56,8 @@ pub fn inventory_ods_with_limits(
         schema_version: crate::CONTRACT_VERSION,
         format: "ods",
         // ODF grava data/hora como texto ISO 8601 em `office:date-value`;
-        // não existe sistema de série 1900/1904 a resolver. O campo é
-        // mantido pelo contrato compartilhado e não deve ser interpretado
-        // para este formato.
-        date_system: DateSystem::Excel1900,
+        // não existe sistema de série 1900/1904 a resolver.
+        date_system: DateSystem::NotApplicable,
         archive: archive_inventory,
         sheets,
         diagnostics,
@@ -98,7 +99,7 @@ fn parse_spreadsheet(
     reader.config_mut().trim_text(false);
 
     let mut sheets = Vec::new();
-    let mut diagnostics = Vec::new();
+    let diagnostics = Vec::new();
     let mut events = 0_u64;
 
     let mut sheet: Option<SheetBuilder> = None;
@@ -202,7 +203,6 @@ fn parse_spreadsheet(
                     hidden,
                     &[],
                     limits,
-                    &mut diagnostics,
                 )?;
             }
             Event::Start(ref element) | Event::Empty(ref element)
@@ -302,7 +302,6 @@ fn parse_spreadsheet(
                     row_hidden,
                     &templates,
                     limits,
-                    &mut diagnostics,
                 )?;
             }
             Event::End(ref element)
@@ -340,7 +339,6 @@ fn parse_spreadsheet(
     Ok((sheets, diagnostics))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn close_row(
     sheet: &mut SheetBuilder,
     row_cursor: &mut u32,
@@ -348,7 +346,6 @@ fn close_row(
     hidden: bool,
     templates: &[CellTemplate],
     limits: InventoryLimits,
-    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), InventoryError> {
     let row_number = row_cursor.saturating_add(1).min(MAX_ROW);
     *row_cursor = row_cursor.saturating_add(repeated).min(MAX_ROW);
@@ -361,16 +358,6 @@ fn close_row(
                 sheet.name, limits.max_structural_records
             )));
         }
-    }
-    if repeated > 1 && !templates.is_empty() {
-        diagnostics.push(Diagnostic {
-            code: "ods-repeated-row-truncated",
-            severity: DiagnosticSeverity::Info,
-            message: format!(
-                "A linha {row_number} repete {repeated} vezes; apenas a primeira ocorrência foi materializada."
-            ),
-            sheet: Some(sheet.name.clone()),
-        });
     }
 
     let mut column_cursor = 1_u32;
@@ -385,7 +372,15 @@ fn close_row(
                 && template.text.is_empty());
 
         if !is_blank {
-            sheet.cell_count += 1;
+            // Um bloco repetido conta como sua extensão lógica real, não
+            // como uma única célula: uma célula repetida 5.000 vezes numa
+            // linha repetida 10.000 vezes vale 50.000.000 células, e o
+            // limite protege exatamente esse total, não a contagem de
+            // registros JSON (que continua sendo O(1)).
+            let logical_cells = u64::from(template.columns_repeated) * u64::from(repeated);
+            sheet.cell_count = sheet.cell_count.checked_add(logical_cells).ok_or_else(|| {
+                InventoryError::ResourceLimit("contagem de células excedeu u64".into())
+            })?;
             if sheet.cell_count > limits.max_cells {
                 return Err(InventoryError::ResourceLimit(format!(
                     "a aba '{}' possui mais de {} células",
@@ -393,40 +388,35 @@ fn close_row(
                 )));
             }
             let address = encode_cell_reference(column_cursor.min(MAX_COLUMN), row_number);
+            let end_col = column_cursor
+                .saturating_add(template.columns_repeated.saturating_sub(1))
+                .min(MAX_COLUMN);
+            let end_row = row_number
+                .saturating_add(repeated.saturating_sub(1))
+                .min(MAX_ROW);
             sheet.bounds = Some(match sheet.bounds {
                 Some((min_col, min_row, max_col, max_row)) => (
                     min_col.min(column_cursor),
                     min_row.min(row_number),
-                    max_col.max(column_cursor),
-                    max_row.max(row_number),
+                    max_col.max(end_col),
+                    max_row.max(end_row),
                 ),
-                None => (column_cursor, row_number, column_cursor, row_number),
+                None => (column_cursor, row_number, end_col, end_row),
             });
-            sheet.cells.push(build_cell(&address, template));
+            sheet.cells.push(build_cell(&address, template, repeated));
 
             if template.columns_spanned > 1 || template.rows_spanned > 1 {
-                let end_col = column_cursor
+                let merge_end_col = column_cursor
                     .saturating_add(template.columns_spanned - 1)
                     .min(MAX_COLUMN);
-                let end_row = row_number
+                let merge_end_row = row_number
                     .saturating_add(template.rows_spanned - 1)
                     .min(MAX_ROW);
                 sheet.merged_ranges.push(format!(
                     "{}:{}",
                     address,
-                    encode_cell_reference(end_col, end_row)
+                    encode_cell_reference(merge_end_col, merge_end_row)
                 ));
-            }
-            if template.columns_repeated > 1 {
-                diagnostics.push(Diagnostic {
-                    code: "ods-repeated-cell-truncated",
-                    severity: DiagnosticSeverity::Info,
-                    message: format!(
-                        "A célula '{address}' repete {} vezes; apenas a primeira ocorrência foi materializada.",
-                        template.columns_repeated
-                    ),
-                    sheet: Some(sheet.name.clone()),
-                });
             }
         }
         column_cursor = column_cursor
@@ -436,7 +426,7 @@ fn close_row(
     Ok(())
 }
 
-fn build_cell(address: &str, template: &CellTemplate) -> CellInventory {
+fn build_cell(address: &str, template: &CellTemplate, row_repeated: u32) -> CellInventory {
     let value_type = template
         .value_type
         .as_deref()
@@ -505,6 +495,8 @@ fn build_cell(address: &str, template: &CellTemplate) -> CellInventory {
         number_format: None,
         date_value,
         formula: template.formula.clone(),
+        repeat_columns: (template.columns_repeated > 1).then_some(template.columns_repeated),
+        repeat_rows: (row_repeated > 1).then_some(row_repeated),
     }
 }
 

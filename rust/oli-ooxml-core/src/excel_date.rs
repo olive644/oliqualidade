@@ -45,6 +45,9 @@ pub(crate) fn parse_excel_serial(value: f64, system: DateSystem) -> Option<Excel
             let (year, month, day) = civil_from_days(serial_day - 24_107);
             (year, month, day, false)
         }
+        // Nunca chamado para formatos sem sistema de série Excel; devolver
+        // "sem data" é o comportamento seguro caso isso mude no futuro.
+        DateSystem::NotApplicable => return None,
     };
 
     Some(ExcelDateTime {

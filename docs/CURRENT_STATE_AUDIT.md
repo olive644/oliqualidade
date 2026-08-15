@@ -409,22 +409,28 @@ Cobertura entregue pelo módulo `src/ods.rs`:
   grava só a data, o horário é normalizado para meia-noite para manter o
   mesmo formato `dateValue` do contrato compartilhado.
 
-Decisão de projeto deliberada sobre células e linhas repetidas
-(`table:number-columns-repeated`, `table:number-rows-repeated`, usadas pelo
-ODF sobretudo para preencher espaço vazio à direita/abaixo com contadores que
-podem chegar a centenas de milhares): apenas a primeira ocorrência com
-conteúdo real é materializada; o ponteiro de posição avança pelo total
-declarado e um diagnóstico (`ods-repeated-cell-truncated` ou
-`ods-repeated-row-truncated`) registra a truncagem. Isso segue o mesmo
-princípio de "não inventar" já registrado neste documento e evita qualquer
-laço proporcional a um contador hostil — o custo de processar um valor
-repetido é O(1) independentemente do número declarado de repetições.
+Células e linhas repetidas (`table:number-columns-repeated`,
+`table:number-rows-repeated`, usadas pelo ODF sobretudo para preencher
+espaço vazio à direita/abaixo, com contadores que podem chegar a centenas
+de milhares) são representadas de forma **compacta e sem perda**: cada
+bloco retangular de células idênticas vira um único registro de célula com
+os novos campos `repeatColumns`/`repeatRows` (contrato JSON, ambos
+opcionais, omitidos quando o valor é 1). `actualDimension` e a contagem de
+células da aba refletem a extensão lógica real do bloco, não apenas a
+âncora — corrigindo uma limitação da primeira versão deste leitor, em que
+somente a primeira ocorrência era materializada e a dimensão/contagem
+podiam parecer menores que a estrutura declarada. O custo de processar um
+bloco repetido continua O(1) por elemento do XML (nenhum laço proporcional
+ao contador de repetição), e o limite de células do pacote passa a ser
+aplicado sobre a extensão lógica total, não sobre o número de registros
+JSON.
 
-Testes sintéticos em `tests/ods_inventory.rs` cobrem tipos de célula e
-dimensão real, fórmula e mesclagem preservadas com linha/coluna oculta,
-truncagem diagnosticada de células/linhas repetidas (incluindo um caso de
-1.000.000 de linhas repetidas vazias) e os limites de abas e de parte
-ausente.
+Testes em `tests/ods_inventory.rs` cobrem tipos de célula e dimensão real,
+fórmula e mesclagem preservadas com linha/coluna oculta, e a representação
+compacta de blocos repetidos (incluindo um caso de 1.000.000 de linhas
+repetidas vazias), confirmando `repeatColumns`/`repeatRows`, a dimensão
+real completa e a contagem de células lógica — sem materializar nem
+descartar nenhuma célula.
 
 O leitor ODS ainda não está integrado ao `workbook.worker` nem ao adaptador
 WASM em shadow mode; é uma capacidade isolada do crate, seguindo a mesma
@@ -593,3 +599,44 @@ Depois das duas correções, os seis arquivos reais fecham em 100%, zero
 divergências de erro. As diferenças de `\n` vs `\r\n` entre leitores
 continuam aparecendo como `warning` — representação equivalente, não erro,
 consistente com a regra já registrada neste documento.
+
+## 24. Representação compacta de repetições e sistema de datas do ODS
+
+Revisão da fase 11 (seção 21) apontou dois problemas antes de o leitor ODS
+poder integrar o shadow mode:
+
+1. **Perda de fidelidade em células/linhas repetidas.** A primeira versão
+   materializava só a primeira ocorrência de um bloco repetido e descartava
+   o resto com um diagnóstico de "truncagem". Isso fazia a dimensão real e
+   a contagem de células parecerem menores que a estrutura declarada — o
+   próprio problema que a seção 23 corrige para outro leitor, agora
+   corrigido aqui na origem. `CellInventory` ganhou os campos opcionais
+   `repeatColumns`/`repeatRows` (contrato compartilhado com o XLSX, que
+   nunca os emite): um único registro representa um bloco retangular de
+   células idênticas de forma compacta e sem perda, com `address` no canto
+   superior esquerdo. `actualDimension` e a contagem de células da aba
+   passaram a somar a extensão lógica real do bloco, não apenas a âncora.
+   O custo de processar um bloco continua O(1) por elemento do XML — não é
+   um laço de materialização, é aritmética sobre o tamanho declarado — e o
+   limite de células do pacote agora é aplicado sobre essa extensão lógica.
+   Os diagnósticos `ods-repeated-cell-truncated`/`ods-repeated-row-truncated`
+   foram removidos por não haver mais truncagem para relatar.
+2. **`dateSystem` afirmava "1900" para um formato que não usa esse
+   conceito.** ODF grava data/hora como texto ISO 8601 direto; não há
+   série numérica 1900/1904 a resolver. `DateSystem` ganhou a variante
+   `NotApplicable` (JSON `"notApplicable"`), e o leitor ODS a emite em vez
+   de um `Excel1900` que nunca é interpretado. `parse_excel_serial` trata
+   essa variante devolvendo "sem data" em vez de assumir uma convenção
+   Excel — ela nunca é chamada para ODS hoje, mas o comportamento fica
+   seguro mesmo que isso mude.
+
+`tests/ods_inventory.rs` foi atualizado: o teste de repetição agora chama-se
+`represents_repeated_cells_and_rows_compactly_without_loss` e confirma
+`repeatColumns`/`repeatRows`, a dimensão real completa e a contagem lógica
+de células para um bloco de 5.000 colunas repetidas e uma linha repetida
+10.000 vezes, sem descartar nada.
+
+O leitor continua isolado do `workbook.worker`. Os itens restantes da
+revisão — corpus real ODS sanitizado, e manter SheetJS como resultado
+produtivo até paridade comprovada — seguem como pré-condição para
+qualquer integração em shadow mode, na mesma ordem recomendada.
