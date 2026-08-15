@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": { "const": "3.0.0" },
     "format": { "enum": ["ooxml", "ods"] },
-    "dateSystem": { "enum": ["1900", "1904"] },
+    "dateSystem": { "enum": ["1900", "1904", "notApplicable"] },
     "archive": { "$ref": "#/$defs/archive" },
     "sheets": { "type": "array", "items": { "$ref": "#/$defs/sheet" } },
     "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
@@ -142,7 +142,9 @@
           "type": "string",
           "pattern": "^-?[0-9]{4,}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$"
         },
-        "formula": { "type": "string" }
+        "formula": { "type": "string" },
+        "repeatColumns": { "type": "integer", "minimum": 2 },
+        "repeatRows": { "type": "integer", "minimum": 2 }
       }
     },
     "diagnostic": {

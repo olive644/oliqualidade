@@ -118,6 +118,12 @@ pub enum DateSystem {
     Excel1900,
     #[serde(rename = "1904")]
     Excel1904,
+    /// Formatos sem sistema de datas serial do Excel (ex.: ODS, que grava
+    /// data/hora como texto ISO 8601 direto em `office:date-value`). Emitir
+    /// `Excel1900` por omissão nesses formatos afirmaria uma convenção que
+    /// nunca é usada nem interpretada; este estado é explícito em vez disso.
+    #[serde(rename = "notApplicable")]
+    NotApplicable,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -157,6 +163,16 @@ pub struct CellInventory {
     pub date_value: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub formula: Option<String>,
+    /// Formatos com células repetidas (ODS `table:number-columns-repeated` /
+    /// `table:number-rows-repeated`) representam um bloco retangular de
+    /// células idênticas de forma compacta em vez de materializar cada
+    /// ocorrência: `address` é o canto superior esquerdo do bloco e estes
+    /// campos informam a largura/altura real. `None`/omitido equivale a 1
+    /// (sem repetição); nunca aparece para OOXML, que não tem este conceito.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_columns: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_rows: Option<u32>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -1191,6 +1207,8 @@ fn finish_cell(
         number_format: (number_format != "General").then_some(number_format),
         date_value: parsed_date.and_then(|value| value.iso_value()),
         formula: (!builder.formula_text.is_empty()).then(|| format!("={}", builder.formula_text)),
+        repeat_columns: None,
+        repeat_rows: None,
     }
 }
 

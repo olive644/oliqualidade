@@ -1,6 +1,8 @@
 use std::io::{Cursor, Write};
 
-use oli_ooxml_core::{CellType, CellValue, InventoryError, InventoryLimits, inventory_ods};
+use oli_ooxml_core::{
+    CellType, CellValue, DateSystem, InventoryError, InventoryLimits, inventory_ods,
+};
 use zip::{ZipWriter, write::SimpleFileOptions};
 
 fn package(parts: &[(&str, &str)]) -> Vec<u8> {
@@ -53,6 +55,9 @@ fn inventories_sheets_types_and_dimensions() {
     let inventory = inventory_ods(&bytes).unwrap();
 
     assert_eq!(inventory.format, "ods");
+    // ODF grava data/hora como texto ISO 8601; não há série 1900/1904 a
+    // afirmar, então o campo compartilhado com o contrato XLSX é explícito.
+    assert_eq!(inventory.date_system, DateSystem::NotApplicable);
     assert_eq!(inventory.sheets.len(), 2);
     assert_eq!(inventory.sheets[0].name, "Dados");
     assert_eq!(inventory.sheets[1].name, "Vazia");
@@ -118,7 +123,7 @@ fn preserves_formulas_merges_and_hidden_structures() {
 }
 
 #[test]
-fn truncates_repeated_cells_and_rows_with_a_diagnostic() {
+fn represents_repeated_cells_and_rows_compactly_without_loss() {
     let bytes = ods_package(
         r#"<table:table table:name="Filler">
  <table:table-row>
@@ -135,22 +140,22 @@ fn truncates_repeated_cells_and_rows_with_a_diagnostic() {
     let inventory = inventory_ods(&bytes).unwrap();
     let sheet = &inventory.sheets[0];
 
-    // Apenas a primeira ocorrência de cada célula/linha repetida é materializada.
+    // Cada bloco repetido vira um único registro compacto, não N células
+    // materializadas nem uma repetição descartada.
     assert_eq!(sheet.cells.len(), 2);
     assert_eq!(sheet.cells[0].address, "A1");
+    assert_eq!(sheet.cells[0].repeat_columns, Some(5000));
+    assert_eq!(sheet.cells[0].repeat_rows, None);
     assert_eq!(sheet.cells[1].address, "A2");
-    assert!(
-        inventory
-            .diagnostics
-            .iter()
-            .any(|item| item.code == "ods-repeated-cell-truncated")
-    );
-    assert!(
-        inventory
-            .diagnostics
-            .iter()
-            .any(|item| item.code == "ods-repeated-row-truncated")
-    );
+    assert_eq!(sheet.cells[1].repeat_columns, None);
+    assert_eq!(sheet.cells[1].repeat_rows, Some(10000));
+
+    // A dimensão real e a contagem de células refletem a extensão lógica
+    // completa dos blocos, não apenas a âncora de cada um.
+    let actual = sheet.actual_dimension.as_ref().unwrap();
+    assert_eq!(actual.start, "A1");
+    assert_eq!(actual.end, "GJH10001");
+    assert_eq!(actual.cell_count, 5000 + 10000);
 }
 
 #[test]
