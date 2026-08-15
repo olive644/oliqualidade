@@ -1446,3 +1446,58 @@ novos), `npx tsc --noEmit` sem erros, `npm run build` aprovado
 Vercel configurado) e `npm run performance:check` aprovado (mesmos
 402,2 KiB no maior chunk genérico — mudança é só no bundle de
 servidor, que este orçamento não mede).
+
+## 39. `test:security-smoke` passa a rodar na CI
+
+`scripts/security-smoke.mjs` já existia (confere cabeçalhos de
+segurança CSP/`x-content-type-options`/`x-frame-options`/`referrer-policy`
+contra um servidor rodando, o cookie de sessão de chat quando
+`OLI_EXPECT_CHAT_SESSION=1`, e que uma origem cross-site recebe 403 em
+`/api/gemini/chat`), mas nunca era executado automaticamente —
+`.github/workflows/application.yml` só rodava `npm run lint` e
+`npm run verify` (testes + build + orçamento de desempenho), nenhum
+dos dois sobe um servidor de verdade para testar cabeçalhos HTTP reais.
+
+Novo job `security-smoke` (paralelo ao job `quality` existente,
+mesmo runner/Node): sobe `npm run dev` em segundo plano com
+`OLI_SESSION_SECRET` de CI (valor fixo só para essa execução efêmera,
+nunca um segredo real, existe só para exercitar o ramo de código que
+assina o cookie de sessão), espera o servidor responder em
+`http://127.0.0.1:3000/` com um laço de repetição de até 30 segundos,
+roda `npm run test:security-smoke` com `OLI_EXPECT_CHAT_SESSION=1`
+(cobrindo também a asserção do cookie, não só os cabeçalhos), e
+encerra o servidor no fim (`if: always()`, mesmo se o smoke test
+falhar).
+
+**Por que `npm run dev`, não o build de produção do preset Vercel**:
+o `server.ts` exporta um handler `fetch` padrão Web, mas o build
+gerado por `nitro({ preset: "vercel" })` (`.vercel/output/functions/__server.func/`)
+está no formato específico de runtime Node da Vercel (`NodeResponse`
+do h3, `.vc-config.json` com `"launcherType": "Nodejs"`) — rodar isso
+fora da própria plataforma Vercel exigiria replicar o contrato de
+invocação deles, fora de escopo aqui. `vite dev` executa o mesmo
+`server.ts` através do pipeline de SSR de desenvolvimento do TanStack
+Start, no mesmo processo — os cabeçalhos de segurança não têm nenhum
+branch condicional a build/dev (`http-security.ts`/`chat-session.ts`
+auditados, sem `NODE_ENV`/`import.meta.env`), então o smoke test
+exercita o mesmo código de produção mesmo não sendo o artefato exato
+implantado.
+
+**Validado sem rodar de fato pela CI** (o ambiente local não linka
+com o servidor de dev de forma alcançável por `curl` do lado do Bash
+neste sandbox — limitação já conhecida de rede isolada entre
+ferramentas): os cabeçalhos e o status da requisição cross-origin
+foram conferidos manualmente contra `npm run dev` através do
+`fetch()` da própria página no navegador do preview deste ambiente
+(via `javascript_tool`), confirmando CSP com `frame-ancestors 'none'`,
+`x-content-type-options: nosniff`, `x-frame-options: DENY` e
+`referrer-policy: strict-origin-when-cross-origin` presentes. A
+asserção de 403 cross-origin não pôde ser confirmada dessa forma —
+`fetch()` de dentro de uma página não pode sobrescrever o cabeçalho
+`Origin` (é um cabeçalho proibido pela spec Fetch para requisições de
+página), então o navegador sempre envia a origem real; o script Node
+não tem essa restrição (só o `fetch` de navegador a impõe), então essa
+parte só é validável de fato rodando o script pela CI real — o YAML do
+workflow foi validado sintaticamente (`npx js-yaml`), mas o
+comportamento fim a fim da nova etapa `security-smoke` deve ser
+conferido no primeiro run real da CI depois deste PR.
