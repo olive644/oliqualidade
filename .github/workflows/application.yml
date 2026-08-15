@@ -62,9 +62,18 @@ jobs:
         # exato do preset Vercel (que exige o formato de runtime do próprio
         # Vercel para rodar fora da plataforma), mas exercita o mesmo
         # caminho de código de segurança/sessão.
+        #
+        # --host é necessário: sem ele, duas execuções reais desta CI
+        # tiveram toda tentativa de curl para 127.0.0.1 recusada durante
+        # todo o laço de espera, mesmo com o Vite já tendo impresso
+        # "ready" e "Local: http://localhost:3000/" — o próprio banner do
+        # Vite avisa "Network: use --host to expose", ou seja, por padrão
+        # ele não fica alcançável em todas as interfaces locais neste
+        # runner. `-- --host` repassa o flag para o Vite por baixo do
+        # script npm.
         run: |
           OLI_SESSION_SECRET="ci-smoke-test-session-secret-not-a-real-credential" \
-            npm run dev > dev-server.log 2>&1 &
+            npm run dev -- --host > dev-server.log 2>&1 &
           echo $! > dev-server.pid
 
       - name: Wait for dev server
