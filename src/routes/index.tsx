@@ -6148,7 +6148,7 @@ function WidgetHead({
   const interactive = !!(onRemove || onCopy || onPaste || onMoveBack || onMoveForward);
   return (
     <div
-      className="flex h-12 flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 px-3"
+      className="flex h-12 flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 px-3 pointer-coarse:h-auto pointer-coarse:min-h-12 pointer-coarse:py-1.5"
       draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -6167,11 +6167,14 @@ function WidgetHead({
         <h2 className="truncate font-display text-[13px] font-semibold tracking-tight">{title}</h2>
       </div>
       {interactive && (
-        <div className="flex shrink-0 items-center gap-0.5" data-export-controls>
+        <div
+          className="flex shrink-0 items-center gap-0.5 pointer-coarse:gap-1"
+          data-export-controls
+        >
           <Button
             variant="ghost"
             size="icon"
-            className="size-7"
+            className="size-7 pointer-coarse:size-9"
             aria-label={`Copiar ${title}`}
             title="Copiar widget"
             onClick={onCopy}
@@ -6181,7 +6184,7 @@ function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7"
+            className="size-7 pointer-coarse:size-9"
             aria-label={`Colar widget após ${title}`}
             title={canPaste ? "Colar widget após este" : "Copie um widget primeiro"}
             disabled={!canPaste}
@@ -6192,7 +6195,7 @@ function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7"
+            className="size-7 pointer-coarse:size-9"
             aria-label={`Mover ${title} para trás`}
             disabled={disableBack}
             onClick={onMoveBack}
@@ -6202,7 +6205,7 @@ function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7"
+            className="size-7 pointer-coarse:size-9"
             aria-label={`Mover ${title} para frente`}
             disabled={disableForward}
             onClick={onMoveForward}
@@ -6212,7 +6215,7 @@ function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 hover:bg-destructive/10 hover:text-destructive"
+            className="size-7 pointer-coarse:size-9 hover:bg-destructive/10 hover:text-destructive"
             aria-label={`Remover ${title}`}
             onClick={onRemove}
           >

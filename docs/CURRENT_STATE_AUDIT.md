@@ -1095,3 +1095,45 @@ uma coluna), o ponto de partida é `semanticAggregationOps`/
 o bug mais provável estaria na *classificação* da coluna (perfil
 semântico incorreto vindo de `spreadsheet-intelligence.ts`), não na
 lógica de filtragem de operações em si.
+
+## 34. Alvos de toque dos botões de widget aumentados só em dispositivos de toque
+
+Corrige o achado registrado na seção 32: os cinco botões de gerenciamento
+de widget (copiar, colar, mover para trás/frente, remover — componente
+`WidgetHead` em `routes/index.tsx`) eram fixados em `size-7` (28×28px do
+Tailwind) em qualquer dispositivo, abaixo dos ~44px recomendados para
+alvos de toque.
+
+Correção usando a media feature CSS `pointer: coarse` (variante nativa do
+Tailwind v4, `pointer-coarse:`), que distingue o tipo de ponteiro
+primário do dispositivo — coarse para toque, fine para mouse/trackpad —
+em vez de um breakpoint de largura, que erraria tanto para uma janela
+desktop estreita quanto para um tablet grande com mouse conectado:
+
+- Botões passam de `size-7` para `pointer-coarse:size-9` (28px → 36px em
+  toque; mouse/trackpad continuam em 28px, zero mudança visual em
+  desktop).
+- O espaçamento entre os botões cresce de `gap-0.5` para
+  `pointer-coarse:gap-1`.
+- O cabeçalho do widget (`h-12` fixo, 48px) ganha
+  `pointer-coarse:h-auto pointer-coarse:min-h-12` porque o crescimento
+  dos botões, em títulos mais longos (ex.: "Resultado por linha de
+  Turno"), empurra o grupo de botões para quebrar numa segunda linha
+  (`flex-wrap` já existente no contêiner) — sem essa mudança, a altura
+  fixa cortava a segunda linha. Em desktop essa quebra nunca ocorre (os
+  botões continuam pequenos o suficiente para caber numa linha só), então
+  a altura automática não tem efeito lá.
+
+Verificado manualmente no navegador redimensionando para 375×812 (preset
+mobile deste sandbox emula corretamente `pointer: coarse` — confirmado
+via `matchMedia`, ao contrário da limitação de composição de frames que
+bloqueia `requestAnimationFrame`/screenshot): botões em 36×36px, nenhum
+cabeçalho de widget com `scrollHeight > clientHeight` (sem corte) entre os
+13 widgets do painel de demonstração, incluindo os 10 com título longo o
+suficiente para quebrar linha. Em desktop, confirmado que os botões
+permanecem em 28×28px e a altura do cabeçalho em 48px, idêntico ao
+comportamento anterior à mudança.
+
+Verificado com `npx vitest run` (445 passou, 11 pulados, sem mudança —
+CSS/JSX sem cobertura de teste de componente disponível), `npx tsc
+--noEmit` sem erros e `npm run build` aprovado.
