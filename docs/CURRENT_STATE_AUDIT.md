@@ -740,3 +740,42 @@ Itens ainda não abordados da auditoria de explicabilidade: regiões
 descartadas e o motivo (não existe nenhum modelo de dados para isso hoje,
 não é só falta de exibição) e uma matriz de confiança por aba/sheet (hoje
 só há confiança global e por região/coluna).
+
+## 27. Etapa 3 — teste de rollback dedicado e documentação do desligamento do candidato Rust
+
+Fechava a lacuna registrada na seção 19: o modo candidato e a allowlist
+`xlsx` já eram o padrão de produção, e `VITE_WASM_READER_MODE=shadow` já
+existia como variável de rollback, mas não havia teste que provasse esse
+comportamento isoladamente nem documentação explícita do procedimento.
+
+Nenhum bug foi encontrado — a lógica em `readWorkbookBytesWithEngine`
+(`src/lib/workbook-reader.ts`) já garantia que a materialização Rust só
+ocorre dentro do bloco condicionado a `candidateEligible`, que por sua vez
+exige `wasmReaderMode === "candidate"`. A lacuna era puramente de prova e
+de documentação:
+
+- **Teste** (`src/lib/workbook-reader.test.ts`): registra o mesmo adaptador
+  Rust simulado, com dados que dariam paridade total, e roda o mesmo
+  arquivo duas vezes — uma em modo candidato (confirma promoção a
+  `reader: "rust-wasm"`) e outra alterando somente `wasmReaderMode` para
+  `"shadow"` (confirma reversão para `reader: "sheetjs-verified"`,
+  `wasmOutputUsed: false`, linhas importadas idênticas, e que a medição de
+  paridade continua ativa via `wasmShadowStatus: "matched"`). Isso prova
+  que o único parâmetro que precisa mudar é o modo, sem depender de
+  desregistrar o adaptador ou reverter qualquer outro código.
+- **Documentação** (`docs/WASM_PROMOTION_CRITERIA.md`, nova seção "Como
+  desativar o candidato Rust (rollback)"): explicita que
+  `VITE_WASM_READER_MODE` é lido via `import.meta.env`, ou seja, é
+  substituído em **tempo de build** pelo Vite, não é um flag dinâmico de
+  execução. Isso corrige uma imprecisão do texto anterior ("rollback
+  operacional é imediato"): a mudança de variável não exige nenhuma
+  alteração de código, PR ou commit novo, mas ainda exige um novo
+  build/deploy (na Vercel, basta redeploy do commit atual, sem novo
+  commit) para que o valor embutido no bundle publicado mude.
+  `.env.example` recebeu a mesma correção de forma resumida.
+
+Verificado com `npx vitest run src/lib/workbook-reader.test.ts` (37 testes,
+todos passando) e a suíte completa (`npx vitest run`, 442 passou/11
+pulados, era 441 — o novo teste soma um caso, sem alterar nenhum
+pré-existente, incluindo o teste de shadow mode genérico já registrado na
+seção 26).
