@@ -214,6 +214,8 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 | Rust "General" não arredonda ponto flutuante como Excel/SheetJS | `display_cell_value` só trata formatos explícitos; General cai em `value.to_string()` bruto | corpus XLSM expôs o gap com dado real; fallback de shadow mode já protege produção, sem correção Rust ainda |
 | Widget "linha a linha" precisa de chave composta, nunca só o nome da categoria | modo raw repete a mesma categoria várias vezes no Top N/eixo; `key={g.name}` sozinho colide | seguir o padrão já usado no gráfico de barras/pizza: `sourceRow` de `chartSeries` ou índice como desempate |
 | `requestAnimationFrame` nunca dispara neste sandbox (`document.hidden === true`) | o painel do navegador não compõe frames, mesma causa do bloqueio de screenshot | qualquer código dependente de RAF (animações, `settleExportLayout`) trava aqui; confirmado sandbox-only via polyfill temporário, não é bug de produção |
+| Alvos de toque de 28px nos botões de widget ficam abaixo do recomendado | `size-7` do Tailwind sem variante responsiva, 5 botões agrupados por widget | achado registrado, não corrigido — mudança de design compartilhado exige verificação visual que este sandbox não faz |
+| Filtro semântico de operação por coluna já é maduro e testado | `semanticAggregationOps`/`relevantAggregationOps` aplicados uniformemente em 6+ tipos de widget | bug semântico futuro provavelmente está na classificação da coluna, não na lógica de filtragem |
 
 ## Checklist antes de publicar
 

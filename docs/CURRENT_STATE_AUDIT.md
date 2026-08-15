@@ -1009,3 +1009,89 @@ erros, `npm run build` aprovado e reprodução/correção confirmada
 manualmente no navegador via console (antes: aviso presente a cada
 carregamento do painel de demonstração; depois: aviso do ranking
 desaparece, aviso do ChartDot persiste pelo motivo explicado acima).
+
+## 32. Etapa 9 — responsividade mobile: sólida no essencial, alvos de toque abaixo do recomendado
+
+Auditoria do painel real (via "Ver demonstração") em viewport 375×812
+(preset mobile), usando `resize_window` e inspeção via `javascript_tool`
+em vez de captura de tela — a limitação de compositação de frames deste
+sandbox (seção anterior) também impede `computer{action:"screenshot"}`,
+mas não impede leitura de layout computado via DOM/CSSOM, que não depende
+de pintura real.
+
+**Funciona corretamente:**
+
+- Sem overflow horizontal acidental na página: `document.documentElement
+  .scrollWidth === window.innerWidth` mesmo com 13 widgets carregados.
+- Grade de widgets usa `grid-cols-1` em mobile e `lg:grid-cols-3` a partir
+  do breakpoint largo — empilhamento de coluna única correto.
+- Gráficos largos e a tabela detalhada (`Base detalhada`) rolam
+  horizontalmente **dentro do próprio contêiner** (`overflow-x-auto`,
+  classe `oliam-chart-drag-scroll`/`oliam-data-table`), sem vazar para a
+  página — padrão já comunicado ao usuário via "use as setas, arraste ou
+  role para os lados".
+- A barra lateral (`.oliam-sidebar`) é `position: fixed` com
+  `left: -260px` por padrão em mobile (fora da tela) e desliza para
+  `left: 0` ao alternar — padrão de gaveta (drawer) funcional, não
+  empurra o conteúdo.
+- O painel de insights (`.oliam-insight-sidebar`, "Visão geral") usa
+  `hidden lg:block` — corretamente ausente em mobile em vez de
+  espremido.
+
+**Achado real, não corrigido nesta etapa:** os botões de gerenciamento de
+widget (copiar, colar, mover para trás/frente, remover — ex.: aria-label
+"Copiar Resultado") são fixados em `size-7` (28×28px do Tailwind), sem
+nenhuma variante responsiva (`sm:size-9` ou equivalente) para aumentar o
+alvo de toque em telas estreitas. 28px está abaixo dos ~44px recomendados
+pelas diretrizes de acessibilidade móvel (Apple HIG/Material Design), e
+esses botões ficam agrupados lado a lado (5 por widget), aumentando o
+risco de toque errado num dispositivo real. Confirmado que os botões
+estão sempre visíveis e clicáveis (`opacity: 1`, `pointer-events: auto`,
+não dependem de hover) — o problema é só o tamanho do alvo, não
+visibilidade. Não corrigido nesta etapa porque é um padrão de design
+compartilhado por toda a interface (não um widget isolado); mudar o
+tamanho de ícone globalmente exige verificação visual em várias telas que
+este sandbox não consegue fazer (sem captura de tela funcional). Fica
+registrado como recomendação para uma etapa dedicada, com verificação
+visual num navegador real.
+
+## 33. Etapa 10 — auditoria semântica dos widgets: sistema já maduro, nenhum bug novo encontrado
+
+Revisão da coerência entre operação de agregação oferecida e o papel
+semântico da coluna (`semanticAggregationOps`, `relevantAggregationOps`
+em `data-pipeline.ts`), aplicada a partir de `routes/index.tsx` nos seis
+tipos de widget que agregam (`metric-trend`, `bar`, `pie`, `line`,
+`area`, `ranking`, `pivot-table`/`matrix-heatmap`).
+
+Verificado, sem bug encontrado:
+
+- `semanticAggregationOps` já remove soma/multiplicação/divisão de
+  colunas não aditivas (percentuais, resultados, metas, notas, médias,
+  temperatura, concentração — por papel semântico, família de unidade ou
+  nome da coluna via regex), mantendo médias/contagem/faixa. Já coberto
+  por `describe("semanticAggregationOps", …)` em `data-pipeline.test.ts`.
+- `relevantAggregationOps` já evita oferecer 7 operações equivalentes
+  quando os dados não sustentam a distinção (ex.: uma aba já pré-agregada
+  com uma linha por grupo) — reduz para as operações que realmente mudam
+  o resultado.
+- `numericKinds` (`number`/`currency`/`percentage`) e `groupableKinds`
+  (`category`/`text`/`date`) são aplicados de forma consistente: nenhuma
+  coluna de texto/categoria aparece como métrica somável, nenhuma coluna
+  numérica aparece como dimensão de agrupamento por padrão.
+- Gráfico de pizza só é sugerido automaticamente pelo dashboard
+  automático (`auto-dashboard.ts`) quando a cardinalidade da dimensão
+  está entre 2 e 8 categorias — evita pizzas ilegíveis com dezenas de
+  fatias; cardinalidade alta gera aviso explícito em vez de sugestão
+  silenciosa.
+- Os quatro tipos de gráfico (`bar`, `pie`, `line`, `area`) compartilham
+  o mesmo bloco de código e a mesma chamada de `semanticAggregationOps` —
+  não há caminho onde um tipo aplica o filtro semântico e outro não.
+
+Nenhuma mudança de código nesta seção — é uma auditoria de confirmação,
+não uma correção. Fica registrado como base de referência: se um bug
+semântico for reportado no futuro (operação nonsensical oferecida para
+uma coluna), o ponto de partida é `semanticAggregationOps`/
+`relevantAggregationOps`, já testados e já aplicados de forma uniforme —
+o bug mais provável estaria na *classificação* da coluna (perfil
+semântico incorreto vindo de `spreadsheet-intelligence.ts`), não na
+lógica de filtragem de operações em si.
