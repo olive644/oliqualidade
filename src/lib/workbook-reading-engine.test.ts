@@ -23,6 +23,8 @@ function baseReport(overrides: Partial<WorkbookReadReport> = {}): WorkbookReadRe
     elapsedMs: 10,
     parseMs: 5,
     verificationMs: 5,
+    sourceBytes: 1000,
+    expandedBytes: 1000,
     sheets: 1,
     repairedCells: 0,
     divergentCells: 0,

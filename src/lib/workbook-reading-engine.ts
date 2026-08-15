@@ -17,6 +17,10 @@ export type WorkbookReadReport = {
   elapsedMs: number;
   parseMs: number;
   verificationMs: number;
+  /** Tamanho em bytes do arquivo como recebido (compactado, para ZIP/OOXML). */
+  sourceBytes: number;
+  /** Tamanho descompactado estimado a partir do diretório central do ZIP; igual a `sourceBytes` para formatos sem compressão (CSV/TXT). */
+  expandedBytes: number;
   sheets: number;
   repairedCells: number;
   divergentCells: number;
