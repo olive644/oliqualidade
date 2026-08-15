@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import * as XLSX from "xlsx";
 
@@ -9,6 +9,21 @@ import { measureWorkbookFidelity } from "@/lib/fidelity-meter";
 import { compareAndRepairWithOoxml, inspectOoxml } from "@/lib/ooxml-reader";
 import { verifyWorkbookWithExcelJs } from "@/lib/workbook-verifier";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
+
+function minimalWorkbookPackage(sharedStringXml: string): Uint8Array {
+  return zipSync({
+    "xl/workbook.xml": strToU8(
+      '<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Teste" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    ),
+    "xl/_rels/workbook.xml.rels": strToU8(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    ),
+    "xl/sharedStrings.xml": strToU8(sharedStringXml),
+    "xl/worksheets/sheet1.xml": strToU8(
+      '<worksheet><dimension ref="A1"/><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>',
+    ),
+  });
+}
 
 describe("fidelidade entre leitores independentes", () => {
   const bytes = readFileSync("test-fixtures/problematic-import.xlsx");
@@ -98,6 +113,20 @@ describe("fidelidade entre leitores independentes", () => {
     // "Não suportado" é um estado explícito, não uma redução silenciosa da nota.
     expect(report.unsupportedFeatures.length).toBeGreaterThan(0);
     expect(report.unsupportedFeatures).toContain("Macros VBA");
+  });
+
+  it("decodifica referências numéricas de caractere no texto OOXML", () => {
+    // Algumas ferramentas exportam XLSX com acentos como &#199; (decimal) ou
+    // &#xC7; (hex) em vez do caractere UTF-8 direto. Isso é XML válido e
+    // apareceu em arquivos reais; o leitor independente não pode devolver o
+    // texto cru da entidade como se fosse o conteúdo da célula.
+    const bytes = minimalWorkbookPackage(
+      "<sst><si><t>SOLICITA&#199;&#213;ES / &#xE9; v&#xE1;lido &amp; escapado &amp;#38;</t></si></sst>",
+    );
+    const inspection = inspectOoxml(bytes);
+    expect(inspection.sheets.get("Teste")?.get("A1")?.rawValue).toBe(
+      "SOLICITAÇÕES / é válido & escapado &#38;",
+    );
   });
 
   it("não transforma célula autocontida de estilo no valor da célula seguinte", () => {

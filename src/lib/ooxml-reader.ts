@@ -55,13 +55,21 @@ const BUILTIN_FORMATS: Record<number, string> = {
 };
 
 function xmlText(value: string): string {
-  return value
-    .replace(/<[^>]+>/g, "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
+  return (
+    value
+      .replace(/<[^>]+>/g, "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      // Referências numéricas de caractere (`&#199;`, `&#xC7;`) são XML válido
+      // e aparecem em arquivos reais exportados por algumas ferramentas.
+      // Decodificadas antes de `&amp;` para que um `&amp;#199;` literal (texto
+      // escapado de propósito) continue como texto, não como caractere.
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, decimal: string) => String.fromCodePoint(parseInt(decimal, 10)))
+      .replace(/&amp;/g, "&")
+  );
 }
 
 function attributes(tag: string): Record<string, string> {

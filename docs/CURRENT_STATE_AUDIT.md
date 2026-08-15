@@ -553,3 +553,43 @@ O leitor TypeScript continua executando como oráculo de paridade e fallback: a
 saída Rust somente é publicada quando o resultado final permanece idêntico. Isso
 remove um acoplamento da materialização sem antecipar a promoção independente,
 que ainda depende de cinco arquivos XLSX reais sanitizados e do gate completo.
+
+## 23. Duas falhas reais encontradas com planilhas de produção
+
+Seis arquivos XLSX reais fornecidos pelo usuário (fora do repositório, nunca
+versionados) foram medidos com `measureWorkbookFidelity`. Três continham
+apenas texto/números e já fechavam em 100% com zero divergências. Os outros
+três — todos contendo imagens/logotipos — expuseram duas falhas que nenhum
+teste sintético havia coberto:
+
+1. **`verifyWorkbookWithExcelJs` derrubava a medição inteira.** ExcelJS tem
+   bugs conhecidos ao carregar certos desenhos/âncoras de imagem em XLSX real
+   (`Cannot read properties of undefined (reading 'name')` e `(reading
+   'anchors')`, lançados de dentro de `workbook.xlsx.load`). Como
+   `measureWorkbookFidelity` não capturava essa exceção, o relatório inteiro
+   quebrava — nenhuma pontuação, nenhum diagnóstico, só um erro não tratado.
+   Corrigido isolando a chamada em `try/catch`: uma falha de leitor agora vira
+   `failedReaders: ["ExcelJS"]`, um estado explícito e visível, em vez de
+   "0 divergências" silencioso ou um crash. Como nenhum código de produção usa
+   `ExcelJS` no caminho de importação (só `fidelity-meter.ts` e testes), não
+   havia risco de regressão na UI, mas a medição em si ficava inutilizável
+   para esses arquivos.
+2. **`ooxml-reader.ts` não decodificava referências numéricas de caractere.**
+   A função `xmlText` só tratava as cinco entidades nomeadas do XML (`&lt;`,
+   `&gt;`, `&quot;`, `&apos;`, `&amp;`). Referências numéricas válidas
+   (`&#199;`, `&#xC7;`) — usadas por algumas ferramentas de exportação para
+   acentos — passavam intactas, produzindo texto corrompido como
+   `SOLICITA&#199;&#213;ES` em vez de `SOLICITAÇÕES`. Isso gerava até 850
+   avisos por arquivo real. Corrigido com decodificação hex/decimal antes do
+   `&amp;` final, preservando o caso em que `&amp;#38;` é texto escapado de
+   propósito (não deve virar `&`).
+
+Testes de regressão: `workbook-fidelity.test.ts` cobre a decodificação
+numérica com um pacote OOXML sintético mínimo; `fidelity-meter-resilience.test.ts`
+mocka `verifyWorkbookWithExcelJs` para lançar e confirma que a medição
+continua, reportando `failedReaders` em vez de propagar a exceção.
+
+Depois das duas correções, os seis arquivos reais fecham em 100%, zero
+divergências de erro. As diferenças de `\n` vs `\r\n` entre leitores
+continuam aparecendo como `warning` — representação equivalente, não erro,
+consistente com a regra já registrada neste documento.
