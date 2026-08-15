@@ -105,7 +105,7 @@ describe.skipIf(!existsSync(generatedManifestPath))(
     it("mede volume, cobertura estrutural e promoção por formato", async () => {
       const manifest = JSON.parse(readFileSync(generatedManifestPath, "utf8")) as GeneratedManifest;
       expect(manifest.schemaVersion).toBe("1.0.0");
-      expect(manifest.cases).toHaveLength(25);
+      expect(manifest.cases).toHaveLength(50);
 
       const observations: WasmCorpusObservation[] = [];
       const cases = [];
@@ -122,13 +122,47 @@ describe.skipIf(!existsSync(generatedManifestPath))(
       }
 
       const syntheticAssessment = assessWasmPromotion(observations);
-      expect(syntheticAssessment.measuredWorkbooks).toBe(25);
+      expect(syntheticAssessment.measuredWorkbooks).toBe(50);
       expect(syntheticAssessment.comparedCells).toBeGreaterThanOrEqual(10_000);
       expect(syntheticAssessment.failedWorkbooks).toBe(0);
       expect(syntheticAssessment.sanitizedRealWorkbooks).toBe(0);
       expect(syntheticAssessment.eligible).toBe(false);
       expect(syntheticAssessment.reasons).toEqual(
         expect.arrayContaining([expect.stringContaining("corpus real sanitizado insuficiente")]),
+      );
+
+      // XLSM reaproveita o mesmo inventário Rust do XLSX (mesma estrutura
+      // ZIP/OOXML); mede paridade estrutural isolada por formato antes de
+      // qualquer decisão de promoção. O adaptador nunca falha (nenhum
+      // crash), mas este corpus expõe um divergente determinístico e já
+      // conhecido: números "General" com muitas casas decimais (ex.:
+      // 111.03999999999999) são exibidos como o valor bruto pelo Rust
+      // (display_cell_value só arredonda formatos explícitos "0"/"0.00"/
+      // percentuais; General cai em value.to_string()), enquanto o
+      // TypeScript/SheetJS arredonda para exibição como o Excel faz
+      // (111.04). O valor bruto é idêntico nos dois leitores — só a
+      // representação exibida diverge. Isso já era uma lacuna registrada
+      // (seção 12 do CURRENT_STATE_AUDIT.md, "exibição conservadora... sem
+      // inventar a renderização de formatos Excel ainda não
+      // implementados"); o corpus original de XLSX não a expunha porque
+      // suas sementes não geravam esse padrão de ponto flutuante — não
+      // porque XLSX seja imune a ela. Em produção isso não corrompe dado
+      // nenhum: candidate mode trata qualquer divergência de shadow como
+      // motivo de fallback automático para o leitor validado, antes de
+      // sequer tentar materializar a saída (ver workbook-reader.ts).
+      const xlsmByFormat = assessWasmPromotionByFormat(observations)["xlsm"];
+      expect(xlsmByFormat?.measuredWorkbooks).toBe(25);
+      expect(xlsmByFormat?.failedWorkbooks).toBe(0);
+      expect(xlsmByFormat?.divergentWorkbooks).toBe(1);
+      expect(xlsmByFormat?.divergentCells).toBe(12);
+      expect(xlsmByFormat?.comparedCells).toBeGreaterThanOrEqual(10_000);
+      expect(xlsmByFormat?.sanitizedRealWorkbooks).toBe(0);
+      expect(xlsmByFormat?.eligible).toBe(false);
+      expect(xlsmByFormat?.reasons).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("corpus real sanitizado insuficiente"),
+          expect.stringContaining("arquivos divergentes acima do limite"),
+        ]),
       );
 
       let sanitizedManifest: GeneratedManifest | undefined;

@@ -68,3 +68,54 @@ Arquivos reais adicionais podem continuar no corpus local sanitizado. Esse
 corpus ainda é obrigatório antes de remover a validação dupla e promover o Rust
 para um caminho independente. Até lá, o leitor TypeScript permanece como oráculo
 e fallback, priorizando fidelidade sobre ganho de desempenho.
+
+## Outros formatos OOXML (Etapa 4)
+
+O adaptador Rust já é acionado em shadow mode para XLSM, XLTX e XLTM, não só
+XLSX (`shouldTryWasm` em `workbook-reading-engine.ts` aceita as quatro
+extensões, porque todas compartilham a mesma estrutura ZIP/OOXML que o
+inventário Rust já lê). Antes desta etapa, porém, o corpus determinístico
+(`test-fixtures/wasm-corpus-manifest.json`) só continha perfis `xlsx` — os
+outros três formatos nunca tinham sido medidos de propósito.
+
+- **XLSM**: `scripts/generate-workbook-corpus.mjs` grava esse formato sem
+  mudança nenhuma no script (SheetJS suporta `bookType: "xlsm"` no
+  `XLSX.write`). Quatro perfis foram adicionados (`baseline-xlsm`,
+  `formulas-xlsm`, `structure-xlsm`, `date-system-1904-xlsm`), no mesmo
+  padrão de diversidade já usado para XLSX — 25 arquivos, mais de 10.000
+  células.
+- **XLTX e XLTM**: **não foi possível gerar sinteticamente.** O SheetJS
+  instalado neste projeto só implementa `bookType` `"xlsx"`/`"xlsm"` no
+  caminho de escrita (`XLSX.write`); tentar `"xltx"` lança
+  `Error: Unrecognized bookType |xltx|`. Sem um gerador, esses dois formatos
+  continuam sem nenhuma medição de corpus — nem sintética nem real. Avaliar
+  a promoção deles exigiria arquivos `.xltx`/`.xltm` reais de origem (a
+  mesma trilha de "arquivo real indisponível" que já bloqueia a promoção
+  final do XLSX).
+
+Medição de referência do corpus XLSM expandido (25 arquivos, ≥10.000
+células): **1 arquivo divergente em 12 células**, sempre a mesma causa —
+números em formato "General" com muitas casas decimais (ex.:
+`111.03999999999999`) são exibidos pelo Rust como o valor bruto
+(`display_cell_value` só arredonda os formatos explícitos `0`/`0.00`/`0%`/
+`0.00%`; fora deles cai em `value.to_string()`), enquanto o SheetJS
+arredonda para exibição como o Excel faz (`111.04`). O valor bruto
+(`rawValue`) é idêntico nos dois leitores; só a representação exibida
+diverge. Essa é a lacuna já registrada na seção 12 de
+`docs/CURRENT_STATE_AUDIT.md` ("exibição conservadora... sem inventar a
+renderização de formatos Excel ainda não implementados") — o corpus
+original de XLSX não a expunha porque suas sementes fixas não geravam esse
+padrão de ponto flutuante, não porque XLSX seja imune a ela. Em produção
+isso não corrompe nenhum dado: candidate mode trata qualquer divergência de
+shadow (`wasmShadowStatus === "diverged"`) como motivo de fallback
+automático para o leitor validado, antes mesmo de tentar materializar a
+saída — exatamente o comportamento que essa medição comprova funcionando.
+
+**Estado por formato após esta etapa**: XLSM tem corpus sintético
+comparável em volume ao XLSX (25 arquivos, ≥10.000 células) e uma
+divergência real e explicada, mas segue tão bloqueado para promoção quanto
+antes — falta o mesmo corpus real sanitizado exigido para XLSX (5 arquivos
+por formato) e a taxa de divergência atual não fecha o gate de qualquer
+forma. XLTX e XLTM seguem sem nenhuma medição. Nenhum dos três teve a
+allowlist de candidato (`VITE_WASM_CANDIDATE_FORMATS`) alterada; XLSX
+continua sendo o único formato liberado para materializar saída Rust.

@@ -208,6 +208,7 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 | Persistência latest-wins                                     | snapshots completos intermediários são desperdício              | primeira e última versão são gravadas, intermediárias podem ser coalescidas                   |
 | "Não suportado" não altera a pontuação                       | recurso nunca comparado não é validado nem incorreto            | `fidelity-meter.ts` expõe `unsupportedFeatures` e `warnings` à parte do score                 |
 | Repetição literal do cabeçalho vira linha ignorada, não dado | relatórios paginados repetem o cabeçalho sem separador de bloco | `sheetToRows` filtra e reporta em `audit.repeatedHeaderRowsIgnored`, exige 2+ colunas batendo |
+| Rust "General" não arredonda ponto flutuante como Excel/SheetJS | `display_cell_value` só trata formatos explícitos; General cai em `value.to_string()` bruto | corpus XLSM expôs o gap com dado real; fallback de shadow mode já protege produção, sem correção Rust ainda |
 
 ## Checklist antes de publicar
 

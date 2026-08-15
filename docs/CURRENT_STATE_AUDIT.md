@@ -740,3 +740,58 @@ Itens ainda não abordados da auditoria de explicabilidade: regiões
 descartadas e o motivo (não existe nenhum modelo de dados para isso hoje,
 não é só falta de exibição) e uma matriz de confiança por aba/sheet (hoje
 só há confiança global e por região/coluna).
+
+## 27. Etapa 4 — XLSM entra no corpus determinístico; XLTX/XLTM seguem sem medição
+
+Primeira avaliação de propósito de outros formatos OOXML para promoção do
+Rust (o roteiro original listava XLSM, XLTX, XLTM, XLS, CSV e ODS; esta
+etapa cobre só os três primeiros, os únicos que o adaptador Rust já tenta
+em shadow mode hoje via `shouldTryWasm`).
+
+- **XLSM**: `test-fixtures/wasm-corpus-manifest.json` ganhou quatro perfis
+  (`baseline-xlsm`, `formulas-xlsm`, `structure-xlsm`,
+  `date-system-1904-xlsm`), 25 arquivos e mais de 10.000 células — mesmo
+  volume de rigor já aplicado ao XLSX. `scripts/generate-workbook-corpus.mjs`
+  não precisou de nenhuma mudança (SheetJS já escreve `bookType: "xlsm"`).
+  Medição real: 1 dos 25 arquivos diverge em 12 células, sempre a mesma
+  causa determinística — números "General" com dízima longa
+  (`111.03999999999999`) são exibidos pelo Rust como valor bruto em vez do
+  arredondamento de exibição do Excel/SheetJS (`111.04`); o valor bruto em
+  si é idêntico. Não é um bug novo: é a lacuna já registrada na seção 12
+  ("exibição conservadora... sem inventar a renderização de formatos Excel
+  ainda não implementados"), só nunca antes exposta porque as sementes
+  fixas do corpus XLSX original não geravam esse padrão de ponto
+  flutuante — o mesmo pode acontecer com XLSX real e não foi corrigido
+  aqui. Em produção isso não corrompe dado: candidate mode trata qualquer
+  `wasmShadowStatus === "diverged"` como fallback automático, sem tentar
+  materializar a saída — a medição confirma esse mecanismo funcionando
+  como projetado, não uma falha silenciosa. Detalhe completo em
+  `docs/WASM_PROMOTION_CRITERIA.md`, seção "Outros formatos OOXML (Etapa
+  4)".
+- **XLTX e XLTM**: não avaliados. O SheetJS instalado só escreve
+  `bookType` `"xlsx"`/`"xlsm"`; `XLSX.write({ bookType: "xltx" })` lança
+  `Unrecognized bookType |xltx|`. Sem gerador sintético, e sem arquivos
+  reais `.xltx`/`.xltm` disponíveis, esses dois formatos continuam sem
+  nenhuma medição — nem sintética, nem real. Isso é a mesma categoria de
+  bloqueio "arquivo real indisponível" já registrada nas regras do
+  projeto; não inventado nem contornado.
+- **XLS, CSV, ODS**: fora do escopo desta etapa. XLS (binário, não
+  ZIP/XML) e CSV (texto puro) não têm nenhum leitor Rust — não é uma
+  questão de corpus, é ausência de implementação. ODS tem um leitor Rust
+  isolado (`rust/oli-ooxml-core/src/ods.rs`, seção 21/24) mas nunca foi
+  ligado ao `workbook.worker`/shadow mode; avaliá-lo para promoção exigiria
+  primeiro essa integração, que continua como pré-condição registrada nas
+  seções 21/24, não decidida nesta etapa.
+
+Nenhuma allowlist de candidato mudou (`VITE_WASM_CANDIDATE_FORMATS`
+continua só `xlsx`); esta etapa é só medição, sem promover nenhum formato
+novo.
+
+Testes em `wasm-shadow-corpus.test.ts` foram atualizados para o novo total
+de 50 arquivos (25 xlsx + 25 xlsm) e para afirmar exatamente o resultado
+real por formato (`divergentWorkbooks: 1`, `divergentCells: 12` para
+xlsm) — deliberadamente não zerado para não esconder o achado, seguindo a
+regra do projeto contra reduzir critério para forçar verde.
+
+Verificado com `npx vitest run` (442 passou, 11 pulados, era 441), `npx tsc
+--noEmit` sem erros e `npm run build` aprovado.

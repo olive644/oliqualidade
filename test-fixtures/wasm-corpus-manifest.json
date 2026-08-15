@@ -49,6 +49,55 @@
       "columns": 16,
       "dateSystem": "1904",
       "features": ["strings", "numbers", "booleans", "dates", "formulas"]
+    },
+    {
+      "id": "baseline-xlsm",
+      "copies": 7,
+      "format": "xlsm",
+      "seedStart": 500,
+      "rows": 32,
+      "columns": 16,
+      "dateSystem": "1900",
+      "features": ["strings", "numbers", "booleans", "dates"]
+    },
+    {
+      "id": "formulas-xlsm",
+      "copies": 6,
+      "format": "xlsm",
+      "seedStart": 600,
+      "rows": 32,
+      "columns": 16,
+      "dateSystem": "1900",
+      "features": ["strings", "numbers", "booleans", "dates", "formulas"]
+    },
+    {
+      "id": "structure-xlsm",
+      "copies": 6,
+      "format": "xlsm",
+      "seedStart": 700,
+      "rows": 32,
+      "columns": 16,
+      "dateSystem": "1900",
+      "features": [
+        "strings",
+        "numbers",
+        "booleans",
+        "dates",
+        "formulas",
+        "merges",
+        "hiddenRows",
+        "hiddenColumns"
+      ]
+    },
+    {
+      "id": "date-system-1904-xlsm",
+      "copies": 6,
+      "format": "xlsm",
+      "seedStart": 800,
+      "rows": 32,
+      "columns": 16,
+      "dateSystem": "1904",
+      "features": ["strings", "numbers", "booleans", "dates", "formulas"]
     }
   ]
 }
