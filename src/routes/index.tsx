@@ -257,6 +257,7 @@ import {
   type SpreadsheetIntelligence,
 } from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFile, readWorkbookFileWithReport } from "@/lib/workbook-reader-client";
+import { describeReaderOutcome } from "@/lib/workbook-reading-engine";
 import { analyzeReviewInBackground } from "@/lib/review-analysis-client";
 import type { ReviewAnalysisProgress, ReviewAnalysisResult } from "@/lib/review-analysis";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
@@ -624,11 +625,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
     );
     const sheets = result.sheets;
     if (!sheets.length) throw new Error("empty-workbook");
-    if (result.report.repairedCells) {
-      setImportWarning(
-        `Leitura conferida por dois motores: ${result.report.repairedCells} célula(s) recuperada(s) automaticamente.`,
-      );
-    }
+    const readerMessages = describeReaderOutcome(result.report);
+    if (readerMessages.length) setImportWarning(readerMessages.join(" "));
     return sheets;
   };
   const prepare = (

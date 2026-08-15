@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   canUseWasmCandidate,
   compareWasmInventory,
+  describeReaderOutcome,
   normalizeWasmCandidateFormats,
   normalizeWasmReaderMode,
   normalizeWasmSampleRate,
@@ -11,8 +12,38 @@ import {
   shouldSampleWasm,
   shouldTryWasm,
   workbookFormat,
+  type WorkbookReadReport,
 } from "@/lib/workbook-reading-engine";
 import type { OoxmlInspection } from "@/lib/ooxml-reader";
+
+function baseReport(overrides: Partial<WorkbookReadReport> = {}): WorkbookReadReport {
+  return {
+    reader: "sheetjs-verified",
+    format: "xlsx",
+    elapsedMs: 10,
+    parseMs: 5,
+    verificationMs: 5,
+    sheets: 1,
+    repairedCells: 0,
+    divergentCells: 0,
+    fallbackUsed: false,
+    wasmAvailable: false,
+    wasmReaderMode: "shadow",
+    wasmCandidateStatus: "not-eligible",
+    wasmFallbackReason: null,
+    wasmOutputUsed: false,
+    wasmSampleRate: 1,
+    wasmShadowStatus: "unavailable",
+    wasmShadowMs: 0,
+    wasmComparedCells: 0,
+    wasmDivergentCells: 0,
+    wasmComparedStructures: 0,
+    wasmDivergentStructures: 0,
+    wasmDivergentSheets: 0,
+    wasmSchemaVersion: null,
+    ...overrides,
+  };
+}
 
 describe("contrato do Reading Engine v2", () => {
   it("reconhece o formato sem depender do nome completo", () => {
@@ -100,5 +131,39 @@ describe("contrato do Reading Engine v2", () => {
       divergentStructures: 2,
       divergentSheets: 1,
     });
+  });
+
+  it("não descreve nada no caminho comum (sheetjs-verified, sem reparo)", () => {
+    expect(describeReaderOutcome(baseReport())).toEqual([]);
+  });
+
+  it("explica quando o núcleo Rust produziu o resultado", () => {
+    const messages = describeReaderOutcome(baseReport({ reader: "rust-wasm" }));
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("núcleo Rust");
+  });
+
+  it("explica quando houve fallback do Rust para o motor TypeScript", () => {
+    const messages = describeReaderOutcome(
+      baseReport({ reader: "sheetjs-verified", fallbackUsed: true }),
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("motor TypeScript padrão");
+  });
+
+  it("combina a mensagem de células reparadas com a do leitor Rust", () => {
+    const messages = describeReaderOutcome(baseReport({ reader: "rust-wasm", repairedCells: 3 }));
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toContain("3 célula(s) recuperada(s)");
+    expect(messages[1]).toContain("núcleo Rust");
+  });
+
+  it("prioriza o estado 'processado pelo Rust' sobre o de fallback quando ambos poderiam se aplicar", () => {
+    // reader "rust-wasm" e fallbackUsed nunca coexistem de verdade (o
+    // fallback só ocorre quando o Rust NÃO foi usado), mas a função não
+    // deve emitir as duas mensagens contraditórias se isso acontecer.
+    const messages = describeReaderOutcome(baseReport({ reader: "rust-wasm", fallbackUsed: true }));
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("núcleo Rust");
   });
 });
