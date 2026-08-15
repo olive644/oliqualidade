@@ -67,7 +67,6 @@ import {
   Plus,
   Redo2,
   Search,
-  Send,
   Settings2,
   Sheet as SheetIcon,
   ShieldAlert,
@@ -212,7 +211,6 @@ import {
   saveFolderMonitor,
   saveGeocodeCache,
   TERM_HINTS_KEY,
-  THEME_KEY,
   isPrivateMode,
   setPrivateMode,
   type GeocodeCache,
@@ -263,7 +261,6 @@ import { analyzeReviewInBackground } from "@/lib/review-analysis-client";
 import type { ReviewAnalysisProgress, ReviewAnalysisResult } from "@/lib/review-analysis";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { geocodeMissing } from "@/lib/geocode";
-import { askGemini, type GeminiChatMessage } from "@/lib/gemini-client";
 import { analyzeImportWithAi, markSmartImportAutoAnalysis } from "@/lib/smart-import-client";
 import {
   buildSmartImportInput,
@@ -271,11 +268,7 @@ import {
   type SmartImportAnalysis,
   type SmartImportSuggestion,
 } from "@/lib/smart-import";
-import {
-  buildLiveDashboardContext,
-  buildLiveSuggestedPrompts,
-  type LiveDashboardContext,
-} from "@/lib/assistant-context";
+import { buildLiveDashboardContext } from "@/lib/assistant-context";
 import { exportDashboardPdf, exportDashboardPng } from "@/lib/dashboard-export";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
 import {
@@ -309,6 +302,15 @@ import {
   type LocalDirectoryHandle,
 } from "@/lib/folder-monitor";
 import "leaflet/dist/leaflet.css";
+import { Mark } from "@/components/oliam/mark";
+import { OliLoader } from "@/components/oliam/oli-loader";
+import { OliWelcomeScene } from "@/components/oliam/oli-welcome-scene";
+import { OliFace } from "@/components/oliam/oli-face";
+import { useTheme, ThemeToggle } from "@/components/oliam/theme-toggle";
+import { AnimatedNumber } from "@/components/oliam/animated-number";
+import { Onboarding } from "@/components/oliam/onboarding";
+import { SheetPickerDialog } from "@/components/oliam/sheet-picker-dialog";
+import { GeminiChatPanel } from "@/components/oliam/gemini-chat-panel";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
 // código uma tabela com aparência de dado empresarial real e ainda exercita
@@ -322,96 +324,6 @@ const demo: Row[] = Array.from({ length: 12 }, (_, index) => ({
   amostras: 18 + ((index * 5) % 17),
   conformidade: index === 8 ? null : (91 + ((index * 7) % 11)) / 100,
 }));
-
-function Mark() {
-  return <img className="oliam-mark" src="/oli-mark.svg" alt="" aria-hidden="true" />;
-}
-
-function useTheme() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-  useEffect(() => {
-    const saved = localStorage.getItem(THEME_KEY);
-    const preferred =
-      saved === "dark" || saved === "light"
-        ? saved
-        : window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
-    setTheme(preferred);
-    document.documentElement.classList.toggle("dark", preferred === "dark");
-  }, []);
-  const toggle = () =>
-    setTheme((t) => {
-      const next = t === "dark" ? "light" : "dark";
-      localStorage.setItem(THEME_KEY, next);
-      document.documentElement.classList.toggle("dark", next === "dark");
-      return next;
-    });
-  return { theme, toggle };
-}
-
-function ThemeToggle({ theme, toggle }: { theme: string; toggle: () => void }) {
-  return (
-    <label
-      className="theme-switch shrink-0"
-      title={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
-    >
-      <input
-        type="checkbox"
-        className="theme-switch__checkbox"
-        checked={theme === "dark"}
-        onChange={toggle}
-        aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
-      />
-      <div className="theme-switch__container">
-        <div className="theme-switch__clouds" />
-        <div className="theme-switch__stars-container">
-          <svg viewBox="0 0 55 33.4" fill="currentColor" aria-hidden="true">
-            <circle cx="4" cy="4.5" r="1.1" />
-            <circle cx="16" cy="12" r="0.8" />
-            <circle cx="28" cy="3.5" r="1" />
-            <circle cx="40.5" cy="13.5" r="0.7" />
-            <circle cx="48" cy="5" r="1" />
-            <circle cx="10" cy="21" r="0.7" />
-            <circle cx="34.5" cy="23.5" r="0.9" />
-            <circle cx="22" cy="26" r="0.6" />
-          </svg>
-        </div>
-        <div className="theme-switch__circle-container">
-          <div className="theme-switch__sun-moon-container">
-            <div className="theme-switch__moon">
-              <div className="theme-switch__spot" />
-              <div className="theme-switch__spot" />
-              <div className="theme-switch__spot" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </label>
-  );
-}
-
-function AnimatedNumber({ value, kind }: { value: number; kind: Kind }) {
-  const [display, setDisplay] = useState(0);
-  const prev = useRef(0);
-  useEffect(() => {
-    const from = prev.current,
-      to = value,
-      start = performance.now(),
-      dur = 480;
-    let raf = 0;
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - start) / dur);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setDisplay(from + (to - from) * eased);
-      if (p < 1) raf = requestAnimationFrame(tick);
-      else prev.current = to;
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-  return <>{fmt(display, kind) ?? "–"}</>;
-}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -1339,139 +1251,6 @@ export function OliAm({ routeId }: { routeId?: string }) {
   );
 }
 
-const onboardingSteps = [
-  {
-    title: "Importe seus dados",
-    text: "Envie Excel, CSV, ODS ou Numbers, cole uma URL de Google Sheets ou os dados diretamente. Tudo fica salvo neste navegador.",
-  },
-  {
-    title: "Revise antes de confirmar",
-    text: "Na etapa de revisão você confere o tipo de cada coluna, renomeia o que for preciso e ajusta antes de gerar o painel.",
-  },
-  {
-    title: "Use a paleta de comandos",
-    text: "Dentro de um painel, pressione ⌘K ou Ctrl+K a qualquer momento para buscar ações rapidamente, sem tirar as mãos do teclado.",
-  },
-];
-
-/**
- * Seletor de aba, usado quando um workbook XLSX tem mais de uma aba com
- * dado. Reaproveitado tanto na importação principal (novo painel) quanto no
- * fluxo de "combinar planilha" dentro de um painel existente — ambos só
- * diferem no que fazem com a aba escolhida (`onConfirm`).
- */
-function SheetPickerDialog({
-  fileName,
-  sheets,
-  selected,
-  onSelectedChange,
-  onConfirm,
-  onCancel,
-}: {
-  fileName: string;
-  sheets: SheetOption[];
-  selected: number;
-  onSelectedChange: (i: number) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Escolher aba para importar</DialogTitle>
-          <DialogDescription>
-            {fileName} tem {sheets.length} abas com dado. Escolha qual você quer importar — o resto
-            fica de fora por enquanto.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2">
-          {sheets.map((s, i) => (
-            <button
-              key={s.name}
-              type="button"
-              className={cn(
-                "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                i === selected ? "border-primary bg-primary/5" : "border-border hover:bg-muted",
-              )}
-              onClick={() => onSelectedChange(i)}
-            >
-              <span className="font-medium">{s.name}</span>
-              <span className="text-xs text-muted-foreground">{s.rows.length} linhas</span>
-            </button>
-          ))}
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onCancel}>
-            Cancelar
-          </Button>
-          <Button onClick={onConfirm}>Importar aba selecionada</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function Onboarding({
-  step,
-  setStep,
-  dismiss,
-}: {
-  step: number;
-  setStep: (n: number) => void;
-  dismiss: () => void;
-}) {
-  const current = onboardingSteps[step];
-  if (!current) return null;
-  const last = step === onboardingSteps.length - 1;
-  return (
-    <div
-      role="dialog"
-      aria-label="Boas-vindas ao Oli.Qualidade"
-      className="fixed bottom-5 left-5 z-50 w-[min(20rem,calc(100vw-2.5rem))] overflow-hidden rounded-2xl border border-border bg-card shadow-panel"
-    >
-      <div className="flex items-center gap-1.5 px-4 pt-4" aria-hidden="true">
-        {onboardingSteps.map((_, i) => (
-          <span
-            key={i}
-            className={cn(
-              "h-1 flex-1 rounded-full transition-colors",
-              i <= step ? "bg-primary" : "bg-muted",
-            )}
-          />
-        ))}
-      </div>
-      <div className="flex items-center justify-between px-4 pt-2.5">
-        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-          Passo {step + 1} de {onboardingSteps.length}
-        </span>
-        <button
-          aria-label="Fechar boas-vindas"
-          onClick={dismiss}
-          className="rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <X className="size-4" />
-        </button>
-      </div>
-      <div className="p-4 pt-2.5">
-        <h2 className="font-display text-sm font-semibold">{current.title}</h2>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{current.text}</p>
-      </div>
-      <div className="flex items-center justify-between border-t border-border bg-canvas/60 p-3">
-        <button
-          className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          onClick={dismiss}
-        >
-          Pular
-        </button>
-        <Button size="sm" onClick={() => (last ? dismiss() : setStep(step + 1))}>
-          {last ? "Concluir" : "Próximo"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function Home(p: {
   dashboards: Dashboard[];
   openDash: (id: string) => void;
@@ -1662,50 +1441,6 @@ function Home(p: {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-}
-
-function OliLoader({ compact = false }: { compact?: boolean }) {
-  return (
-    <div
-      className={cn("oliam-loader-wrap", compact && "is-compact")}
-      role="status"
-      aria-label="Carregando"
-    >
-      <div className="oli-typewriter" aria-hidden="true">
-        <span className="oli-typewriter-slide">
-          <i />
-        </span>
-        <span className="oli-typewriter-paper" />
-        <span className="oli-typewriter-keyboard" />
-      </div>
-    </div>
-  );
-}
-
-function OliWelcomeScene({ busy }: { busy: boolean }) {
-  return (
-    <div
-      className="oli-welcome-scene oli-welcome-wordmark"
-      data-busy={busy || undefined}
-      role="img"
-      aria-label="Oli.Qualidade"
-    >
-      <span className="oli-wordmark-ball" aria-hidden="true">
-        <svg viewBox="0 0 440 420" focusable="false">
-          <path
-            className="oli-wordmark-outline"
-            d="M58 210C53 129 106 60 198 45C286 30 365 75 383 160C403 253 369 330 289 365C210 399 113 374 76 308C59 278 54 244 58 210Z"
-          />
-          <path className="oli-wordmark-eye" d="M143 137C149 166 163 176 177 143" />
-          <path className="oli-wordmark-eye" d="M215 126C219 158 235 168 248 132" />
-          <path className="oli-wordmark-smile" d="M121 195C167 234 248 240 300 188" />
-        </svg>
-      </span>
-      <span className="oli-wordmark-name" aria-hidden="true">
-        li.Qualidade
-      </span>
     </div>
   );
 }
@@ -5861,182 +5596,6 @@ function Dashboard(p: {
         </DialogContent>
       </Dialog>
       <GeminiChatPanel dashboard={d} sheet={sheet} liveRows={data} liveView={assistantContext} />
-    </div>
-  );
-}
-
-function OliFace({ compact = false }: { compact?: boolean }) {
-  return (
-    <span className={cn("oli-face", compact && "oli-face-compact")} aria-hidden="true">
-      <svg viewBox="0 0 440 420" focusable="false">
-        <path
-          className="oli-face-outline"
-          d="M58 210C53 129 106 60 198 45C286 30 365 75 383 160C403 253 369 330 289 365C210 399 113 374 76 308C59 278 54 244 58 210Z"
-        />
-        <path className="oli-face-eye" d="M143 137C149 166 163 176 177 143" />
-        <path className="oli-face-eye" d="M215 126C219 158 235 168 248 132" />
-        <path className="oli-face-smile" d="M121 195C167 234 248 240 300 188" />
-      </svg>
-    </span>
-  );
-}
-
-function GeminiChatPanel({
-  dashboard,
-  sheet,
-  liveRows,
-  liveView,
-}: {
-  dashboard: Dashboard;
-  sheet: SheetData;
-  liveRows: Row[];
-  liveView: LiveDashboardContext;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<GeminiChatMessage[]>([]);
-  const suggestedPrompts = useMemo(() => buildLiveSuggestedPrompts(liveView), [liveView]);
-
-  useEffect(() => setMessages([]), [dashboard.id, sheet.name]);
-
-  const submit = async (suggestedMessage?: string) => {
-    const message = (suggestedMessage ?? draft).trim();
-    if (!message || loading) return;
-    setDraft("");
-    setMessages((current) => [...current, { role: "user", text: message }]);
-    setLoading(true);
-    try {
-      const answer = await askGemini(message, dashboard, sheet, liveRows, liveView, messages);
-      setMessages((current) => [...current, { role: "assistant", text: answer }]);
-    } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          text: error instanceof Error ? error.message : "Não foi possível responder.",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="oli-assistant-shell">
-      {open && (
-        <section className="oli-chat-panel" aria-label="Conversa com o assistente Oli">
-          <header className="oli-chat-header">
-            <div className="oli-chat-identity">
-              <span className="oli-chat-avatar">
-                <OliFace compact />
-              </span>
-              <div>
-                <strong>Oli</strong>
-                <p>
-                  {sheet.name} · {liveView.visibleRows} linhas
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setOpen(false)}
-              aria-label="Fechar assistente"
-              className="oli-chat-close"
-            >
-              <X className="size-4" />
-            </Button>
-          </header>
-          <div className="oli-chat-content" aria-live="polite">
-            {!messages.length && (
-              <div className="oli-chat-welcome">
-                <strong>O que você quer entender neste painel?</strong>
-                <span>Use uma sugestão ou escreva sua pergunta.</span>
-              </div>
-            )}
-            {messages.map((message, index) => (
-              <div
-                key={`${message.role}-${index}`}
-                className={cn("oli-chat-message", `oli-chat-message-${message.role}`)}
-              >
-                {message.text}
-              </div>
-            ))}
-            {loading && (
-              <div className="oli-chat-loading" role="status">
-                <OliLoader compact />
-                <span>Analisando o painel…</span>
-              </div>
-            )}
-          </div>
-          <div className="oli-chat-suggestions" aria-label="Perguntas sugeridas para esta visão">
-            {suggestedPrompts.slice(0, 2).map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                disabled={loading}
-                onClick={() => void submit(prompt)}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-          <form
-            className="oli-chat-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit();
-            }}
-          >
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              maxLength={2000}
-              placeholder="Pergunte sobre este painel…"
-              aria-label="Mensagem para o assistente"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!draft.trim() || loading}
-              aria-label="Enviar mensagem"
-            >
-              <Send className="size-4" />
-            </Button>
-          </form>
-        </section>
-      )}
-      <div className="oli-mascot-group" data-open={open || undefined}>
-        <span className="oli-chat-invite" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            width="24"
-            height="24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M8 9h8" />
-            <path d="M8 13h6" />
-            <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h12z" />
-          </svg>
-          <strong>{open ? "Fechar conversa" : "Converse comigo!"}</strong>
-        </span>
-        <button
-          type="button"
-          className="oli-mascot"
-          data-state={loading ? "thinking" : open ? "chatting" : "idle"}
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          aria-label={open ? "Fechar conversa com Oli" : "Conversar com Oli"}
-        >
-          <OliFace />
-          <span className="oli-mascot-name">Oli</span>
-        </button>
-      </div>
     </div>
   );
 }
