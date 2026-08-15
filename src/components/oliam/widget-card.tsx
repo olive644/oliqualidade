@@ -1,4 +1,5 @@
 import { Fragment, useRef, useState } from "react";
+import "leaflet/dist/leaflet.css";
 import {
   Area,
   AreaChart,

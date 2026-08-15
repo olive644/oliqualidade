@@ -2,46 +2,19 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Label,
-  LabelList,
-  Line,
-  LineChart,
-  Pie,
-  PieChart as RPieChart,
-  ResponsiveContainer,
-  Tooltip as ChartTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  Activity,
   AlertTriangle,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  BarChart3,
   Bookmark as BookmarkIcon,
   BookmarkPlus,
   Calculator,
-  CalendarRange,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
   Columns3,
   ClipboardPaste,
-  Copy,
   Download,
   FileImage,
   FileText,
-  Files,
   Filter,
   FolderSync,
   GitMerge,
@@ -51,18 +24,14 @@ import {
   Info,
   LayoutDashboard,
   LayoutGrid,
-  ListOrdered,
-  MapPin,
   Maximize2,
   Menu,
   Minimize2,
   Moon,
   Palette,
   Pause,
-  Pencil,
   PanelRight,
   Pin,
-  PieChart as PieIcon,
   Play,
   Plus,
   Redo2,
@@ -70,13 +39,10 @@ import {
   Settings2,
   Sheet as SheetIcon,
   ShieldAlert,
-  Star,
   Sun,
   Trash2,
-  TrendingUp,
   Undo2,
   Upload,
-  WandSparkles,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -92,16 +58,6 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -113,8 +69,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -123,17 +77,12 @@ import { decodeCellAddress } from "@/lib/cell-address";
 import { createLatestTaskQueue, type LatestTaskQueue } from "@/lib/latest-task-queue";
 import type {
   Column,
-  ChartDataMode,
-  ConditionalFormatRule,
   Dashboard,
   FilterRule,
   Kind,
   Row,
   SheetData,
-  Value,
   Widget,
-  WidgetSize,
-  WidgetSpan,
   WidgetType,
 } from "@/lib/types";
 import { kinds, numericKinds, widgetTypeLabels } from "@/lib/types";
@@ -141,60 +90,27 @@ import {
   createWidget,
   buildDefaultWidgets,
   columnDragType,
-  columnDropAccepted,
-  draggedColumnKind,
   duplicateWidget,
   groupableKinds,
   pickBestGroupColumn,
   schedulePeriodColumns,
-  scheduleItemColumn,
-  scheduleSectionColumn,
-  scheduleStatusColumn,
-  scheduleDetailColumns,
-  spanClass,
-  sizeClass,
 } from "@/lib/widgets";
-import {
-  scheduleCellState,
-  scheduleCriterionForRow,
-  summarizeScheduleRows,
-  type ScheduleCellState,
-} from "@/lib/schedule-normalizer";
 import {
   conditionalColor,
   conditionalStyle,
-  evalFormula,
   fmt,
   hue,
   infer,
   inferColumns,
-  palette,
-  parseDateValue,
-  sortChronologically,
   validateFormula,
   withCalculatedColumns,
 } from "@/lib/format";
 import {
-  aggregate,
-  aggregationLabels,
   applyMissingRules,
   detectQualitySignals,
-  chartSeries,
   groupAndAggregate,
   leftJoin,
-  limitChartSeriesForRendering,
   matchesRange,
-  NOT_INFORMED,
-  pieComparisonFor,
-  pieRoundnessFor,
-  relevantAggregationOps,
-  semanticAggregationOps,
-  sortAllBarCategories,
-  barChartPresentation,
-  timeSeriesChartPresentation,
-  toggleClickFilter,
-  type AggregationOp,
-  type QualitySignal,
 } from "@/lib/data-pipeline";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
@@ -202,17 +118,13 @@ import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
   loadDashboards,
   loadFolderMonitor,
-  loadGeocodeCache,
   ONBOARDING_KEY,
   removeFolderMonitor,
   saveDashboards,
   saveFolderMonitor,
-  saveGeocodeCache,
   TERM_HINTS_KEY,
   isPrivateMode,
   setPrivateMode,
-  type GeocodeCache,
-  type GeoPoint,
   type SaveResult,
 } from "@/lib/storage";
 import {
@@ -232,12 +144,10 @@ import {
 import { compareVersions, type VersionDiff } from "@/lib/import-workbench";
 import {
   analyzeSpreadsheet,
-  buildPivotMatrix,
   semanticRoleLabels,
   semanticUnitOptions,
   type ExceptionDecision,
   type ExceptionDecisions,
-  type ColumnSemanticProfile,
   type SemanticOverrides,
   type SemanticRole,
   type SpreadsheetException,
@@ -260,8 +170,6 @@ import {
   recordUndo,
   stepRedo,
   stepUndo,
-  sourceRowIndexOf,
-  suggestCorrection,
   type AuditEntry,
   type UndoHistory,
 } from "@/lib/data-review";
@@ -282,7 +190,6 @@ import {
   type FolderWorkbookSelection,
   type LocalDirectoryHandle,
 } from "@/lib/folder-monitor";
-import "leaflet/dist/leaflet.css";
 import { Mark } from "@/components/oliam/mark";
 import { OliLoader } from "@/components/oliam/oli-loader";
 import { OliWelcomeScene } from "@/components/oliam/oli-welcome-scene";
@@ -295,27 +202,7 @@ import { GeminiChatPanel } from "@/components/oliam/gemini-chat-panel";
 import { Home } from "@/components/oliam/home";
 import { Empty } from "@/components/oliam/empty";
 import { Review } from "@/components/oliam/review";
-import {
-  FieldDropSlot,
-  WidgetHead,
-  WidgetPickerIcon,
-  widgetSizeLabels,
-  widgetSpanLabels,
-  widgetTypeDescriptions,
-  scheduleCellClass,
-  truncateLabel,
-  BarTooltip,
-  AxisTick,
-  compactAxisValue,
-  exceptionGuidance,
-  ChartReadingGuide,
-  calculationCopy,
-  CalculationButton,
-  PieLegend,
-  MapWidgetBody,
-  ChartDot,
-  type ChartDotProps,
-} from "@/components/oliam/widget-support";
+import { WidgetPickerIcon, widgetTypeDescriptions } from "@/components/oliam/widget-support";
 import { WidgetCard } from "@/components/oliam/widget-card";
 import { FormatRulesEditor } from "@/components/oliam/format-rules-editor";
 
