@@ -1,0 +1,36 @@
+name: Build WASM package (manual)
+
+# Disparo manual apenas. O binário `src/wasm/oli-ooxml-core/` é versionado
+# como artefato pré-compilado (ver scripts/build-ooxml-wasm.mjs); este
+# workflow existe porque o wasm-pack pode não funcionar em toda máquina
+# local (ex.: Universal CRT ausente no Windows). Builda e valida no Ubuntu,
+# onde o crate já compila de forma confiável, e publica o pacote como
+# artefato para download manual — não commita nada sozinho.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+      - name: Build Wasm package
+        run: node scripts/build-ooxml-wasm.mjs
+      - name: Test Rust core
+        run: cargo test --locked --manifest-path rust/oli-ooxml-core/Cargo.toml
+      - name: Smoke test the rebuilt package
+        run: node scripts/test-ooxml-wasm.mjs
+      - name: Upload Wasm package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oli-ooxml-core-wasm
+          path: src/wasm/oli-ooxml-core
+          if-no-files-found: error
