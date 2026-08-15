@@ -113,10 +113,13 @@ pub(crate) fn format_excel_date(value: f64, format: &str, date: ExcelDateTime) -
         "mmm-yy" => format!("{month}-{:02}", date.year.rem_euclid(100)),
         "h:mm am/pm" => format!("{hour12}:{:02} {meridiem}", date.minute),
         "h:mm:ss am/pm" => format!("{hour12}:{:02}:{:02} {meridiem}", date.minute, date.second),
-        "h:mm" | "hh:mm" => format!("{}:{:02}", date.hour, date.minute),
-        "h:mm:ss" | "hh:mm:ss" => {
-            format!("{}:{:02}:{:02}", date.hour, date.minute, date.second)
-        }
+        // "h" (uma letra) não preenche a hora com zero à esquerda; "hh" (duas
+        // letras) preenche. Minutos e segundos sempre têm duas casas nesses
+        // formatos porque "mm"/"ss" é o único par usado no núcleo.
+        "h:mm" => format!("{}:{:02}", date.hour, date.minute),
+        "hh:mm" => format!("{:02}:{:02}", date.hour, date.minute),
+        "h:mm:ss" => format!("{}:{:02}:{:02}", date.hour, date.minute, date.second),
+        "hh:mm:ss" => format!("{:02}:{:02}:{:02}", date.hour, date.minute, date.second),
         "m/d/yy h:mm" => format!(
             "{}/{}/{:02} {}:{:02}",
             date.month,
@@ -208,6 +211,20 @@ mod tests {
             mac_epoch.iso_value().as_deref(),
             Some("1904-01-01T00:00:00")
         );
+    }
+
+    #[test]
+    fn pads_the_hour_only_when_the_format_doubles_the_h() {
+        // Achado medindo paridade contra um workbook real: o núcleo tratava
+        // "h:mm" e "hh:mm" como o mesmo formato e nunca preenchia a hora com
+        // zero à esquerda. Excel só preenche quando o código repete a letra
+        // ("hh"), igual a como TypeScript/SheetJS (`XLSX.SSF.format`) já
+        // formata — divergência silenciosa que o shadow mode detectou.
+        let morning = parse_excel_serial(0.322_222_222_222, DateSystem::Excel1900).unwrap();
+        assert_eq!(format_excel_date(0.0, "h:mm", morning), "7:44");
+        assert_eq!(format_excel_date(0.0, "hh:mm", morning), "07:44");
+        assert_eq!(format_excel_date(0.0, "h:mm:ss", morning), "7:44:00");
+        assert_eq!(format_excel_date(0.0, "hh:mm:ss", morning), "07:44:00");
     }
 
     #[test]
