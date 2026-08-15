@@ -1516,3 +1516,63 @@ alcançável em todas as interfaces locais do runner da GitHub Actions.
 Corrigido com `npm run dev -- --host`. Terceira execução: os dois jobs
 passam (`security-smoke` em 31s), incluindo a asserção de 403
 cross-origin que só era validável rodando de verdade.
+
+## 40. Painel de diagnóstico de importação (consumidor de `import-metrics.ts`)
+
+A coleta de métricas (seção 37) não tinha nenhum consumidor de UI —
+era coleta silenciosa em segundo plano. Novo componente
+`src/components/oliam/import-diagnostics-dialog.tsx`
+(`ImportDiagnosticsDialog`) fecha essa lacuna: carrega
+`loadImportMetrics()` sob demanda (só quando o diálogo abre, sem
+manter nada em cache entre aberturas) e exibe, via
+`summarizeImportMetrics()`, quatro cartões de KPI (importações
+registradas, falhas, quantas usaram fallback para o leitor padrão,
+paridade do shadow mode Rust/WASM: correspondeu/divergiu/falhou) mais
+uma tabela pequena de contagem e tempo médio por leitor. Segue o
+padrão visual já usado em `import-workbench.tsx` ("Balanço verificável
+da importação") para os cartões, não introduz um padrão novo. Um botão
+"Limpar histórico" abre um `AlertDialog` de confirmação idêntico ao
+já usado em `home.tsx` para excluir painel, chamando
+`clearImportMetrics()`.
+
+Acessível pela paleta de comandos (`⌘K`), novo item "Diagnóstico de
+importação" logo depois de "Atalhos de teclado" — mesmo padrão de
+entrada que os outros diálogos utilitários do painel (`CommandItem` +
+`Dialog` controlado por um `useState` booleano em `Dashboard`).
+
+**Verificação neste ambiente foi parcial e inconclusiva por
+instabilidade do próprio servidor de desenvolvimento**, não por
+suspeita de bug no código: a sessão de teste sofreu repetidos erros
+`NitroViteError: Vite environment "nitro" is unavailable` (503) e
+`[vite] server connection lost. Polling for restart...`, quebrando a
+navegação SSR de forma intermitente mesmo depois de reiniciar o
+servidor de preview várias vezes — sintoma novo, não documentado nas
+sessões anteriores. Apesar disso, duas confirmações diretas foram
+obtidas: (1) o item "Diagnóstico de importação" apareceu corretamente
+e foi selecionável na paleta de comandos na primeira tentativa bem-
+sucedida desta sessão, antes da instabilidade se instalar; (2) com a
+navegação quebrada, `fetch()` direto contra `/src/routes/index.tsx` e
+`/src/components/oliam/import-diagnostics-dialog.tsx` (via
+`javascript_tool`, contornando o router) confirmou os dois módulos
+sendo transformados e servidos pelo Vite sem erro (200, conteúdo
+esperado presente), o que descarta erro de sintaxe/transformação como
+causa da instabilidade observada. `npx tsc --noEmit` e `npx eslint`
+também sem erros. Fica registrado como verificação visual pendente
+para quando o ambiente estiver estável (preview da Vercel ou nova
+sessão deste sandbox).
+
+Verificado com `npx vitest run` (465 passou, 11 pulados, mesma
+contagem — nenhum teste novo; o projeto não usa
+`@testing-library/react`, então mudanças de UI aqui seguem o mesmo
+padrão de risco das seções 26/28/29, verificação manual em vez de
+teste automatizado), `npx tsc --noEmit` sem erros, `npm run build`
+aprovado e `npm run performance:check` aprovado — mas com margem menor
+que antes: o chunk que virou "fachada" do grafo compartilhado (mesma
+característica de nomeação de chunk documentada na seção 36, agora
+recaindo sobre `import-diagnostics-dialog-*.js`) subiu para 406,8 KiB,
+contra 402,2 KiB antes desta mudança, ficando a só 13,2 KiB do limite
+de 420 KiB. Não é um bug novo — é a mesma consolidação de código
+compartilhado entre `/` e `/painel/$id` de sempre, só que agora com
+menos margem. Se a próxima mudança em `Dashboard`/`WidgetCard`
+adicionar bytes relevantes, o orçamento pode estourar de novo e exigir
+mais uma categoria de `manualChunks` em `vite.config.ts`.

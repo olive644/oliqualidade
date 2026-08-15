@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  Activity,
   AlertTriangle,
   Bookmark as BookmarkIcon,
   BookmarkPlus,
@@ -210,6 +211,7 @@ import { Review } from "@/components/oliam/review";
 import { WidgetPickerIcon, widgetTypeDescriptions } from "@/components/oliam/widget-support";
 import { WidgetCard } from "@/components/oliam/widget-card";
 import { FormatRulesEditor } from "@/components/oliam/format-rules-editor";
+import { ImportDiagnosticsDialog } from "@/components/oliam/import-diagnostics-dialog";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
 // código uma tabela com aparência de dado empresarial real e ainda exercita
@@ -1220,6 +1222,7 @@ function Dashboard(p: {
   const [formulaError, setFormulaError] = useState<string | null>(null);
   const [formatPanel, setFormatPanel] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
+  const [importDiagnostics, setImportDiagnostics] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
   const [joinRows, setJoinRows] = useState<Row[] | null>(null);
   const [joinFileName, setJoinFileName] = useState("");
@@ -3550,6 +3553,10 @@ function Dashboard(p: {
               <HelpCircle />
               Atalhos de teclado
             </CommandItem>
+            <CommandItem onSelect={() => setImportDiagnostics(true)}>
+              <Activity />
+              Diagnóstico de importação
+            </CommandItem>
             <CommandItem onSelect={() => setPanel(true)}>
               <Columns3 />
               Configurar colunas
@@ -3723,6 +3730,7 @@ function Dashboard(p: {
           </ul>
         </DialogContent>
       </Dialog>
+      <ImportDiagnosticsDialog open={importDiagnostics} onOpenChange={setImportDiagnostics} />
       <GeminiChatPanel dashboard={d} sheet={sheet} liveRows={data} liveView={assistantContext} />
     </div>
   );
