@@ -1372,3 +1372,77 @@ sem erros, `npm run build` aprovado e `npm run performance:check`
 aprovado (402,2 KiB no maior chunk genérico, dentro do limite de
 420 KiB — os dois campos novos e o módulo de métricas não têm peso
 relevante no bundle).
+
+## 38. Captura de erro do servidor por requisição (era global e racy)
+
+Corrige o item "Média" da lista de melhorias trazida pelo usuário:
+`error-capture.ts` (`src/lib/`) guardava o último erro capturado numa
+única variável de módulo (`lastCapturedError`), compartilhada por
+todas as invocações concorrentes de `fetch` no mesmo isolado/worker do
+servidor. `server.ts` usa isso para recuperar o erro real quando h3
+"engole" um throw interno e devolve um 500 genérico
+(`{"unhandled":true,"message":"HTTPError"}`, sem stack nem causa) —
+ver `normalizeCatastrophicSsrResponse`.
+
+**Bug real de concorrência, não só um cheiro de código**: sob duas
+requisições que falham ao mesmo tempo no mesmo processo, a segunda
+chamada a `record()` (disparada pelo próprio `console.error` interno
+do h3) sobrescrevia o erro da primeira antes dela conseguir
+`consumeLastCapturedError()`. Resultado possível: a requisição A loga
+o stack trace da requisição B (atribuição cruzada, confunde
+investigação de incidente), ou nenhuma das duas encontra seu próprio
+erro (cai no fallback genérico `new Error("h3 swallowed SSR error: ...")`,
+perdendo o stack de verdade). Como o erro já tinha sido *consumido*
+por quem chegou primeiro, não é só "podia ficar melhor" — é perda de
+informação de diagnóstico sob carga concorrente real, exatamente o
+cenário em que mais se precisa do log correto.
+
+**Correção**: substituída a variável global por
+`AsyncLocalStorage<RequestErrorContext>` (`node:async_hooks`, nativo
+do runtime Node do Vercel confirmado em
+`.vercel/output/functions/__server.func/.vc-config.json` →
+`"runtime": "nodejs24.x"`). `runWithErrorCapture(secrets, fn)` cria um
+contexto isolado por chamada; `server.ts` envolve o corpo inteiro de
+`fetch` nele. `AsyncLocalStorage` propaga automaticamente por toda a
+cadeia de `await` dentro de `fn`, então `record()`/`consumeLastCapturedError()`
+chamados em qualquer profundidade da mesma requisição enxergam o
+mesmo slot, isolado de outras requisições paralelas no mesmo processo.
+Limitação aceita: os listeners globais de `error`/`unhandledrejection`
+(erros verdadeiramente não tratados, por definição não amarrados a
+uma cadeia de `await` específica) agora só gravam quando disparam
+dentro de algum `runWithErrorCapture` ativo — antes gravavam sempre,
+mas podiam contaminar a requisição errada; o novo comportamento troca
+"sempre grava, às vezes errado" por "só grava quando pode ser
+atribuído corretamente", mesmo trade-off que motivou o resto da
+mudança.
+
+**Logs estruturados com redação de segredos** (segunda parte pedida
+pelo usuário): `runWithErrorCapture` recebe também a lista de segredos
+conhecidos da requisição (`OLI_SESSION_SECRET`, `OLI_CHAT_AUTH_TOKEN`,
+`GEMINI_API_KEY` — os três valores sensíveis que passam pelo `fetch`
+do servidor, lidos de `env`/`process.env` do jeito que
+`handleGeminiChat` já lia). `describeError` compara o texto do log por
+igualdade exata contra cada segredo (não regex de "parece um token" —
+mais confiável, já que o valor exato é conhecido) e substitui por
+`[REDACTED]`; strings com menos de 6 caracteres são ignoradas para não
+redigir texto comum por engano. `console.error` continua sendo o único
+canal de log (não foi trocado por uma lib de logging estruturado, fora
+de escopo desta correção) — "estruturado" aqui significa que o mesmo
+formato de saída (mensagem + stack + cadeia de causas) agora nunca
+carrega segredo em claro, não que o formato de linha mudou.
+
+Testado em `error-capture.test.ts`: duas "requisições" concorrentes
+(uma com atraso artificial via `setTimeout`, outra síncrona) confirmam
+que cada uma só vê seu próprio erro mesmo executando em paralelo —
+esse é o teste de regressão do bug de concorrência descrito acima;
+consumo único (segunda chamada retorna `undefined`); expiração por TTL
+com `vi.useFakeTimers()`; redação de segredo conhecido; segredos
+vazios/indefinidos e strings curtas não quebram nem redigem à toa;
+cadeia de causas e status preservados no texto do erro.
+
+Verificado com `npx vitest run` (465 passou, 11 pulados — 10 testes
+novos), `npx tsc --noEmit` sem erros, `npm run build` aprovado
+(confirma que `node:async_hooks` empacota corretamente para o preset
+Vercel configurado) e `npm run performance:check` aprovado (mesmos
+402,2 KiB no maior chunk genérico — mudança é só no bundle de
+servidor, que este orçamento não mede).
