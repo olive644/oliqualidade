@@ -212,6 +212,8 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 | Confiança por aba já existia para todas as abas, só não era agregada | `sheetsWithData` roda diagnóstico em toda aba com dado, não só na ativa | `buildSheetConfidenceMatrix` em `import-intelligence.ts` só lê e classifica o que já é calculado |
 | Regiões detectadas mas não separadas viram auditoria, não silêncio | `regionsAreSafeToSplit` recusa por segurança (ex: matriz id+período) sem registrar em lugar nenhum | `audit.regionsKeptTogether` conta as regiões, sem mudar a decisão de separar |
 | Rust "General" não arredonda ponto flutuante como Excel/SheetJS | `display_cell_value` só trata formatos explícitos; General cai em `value.to_string()` bruto | corpus XLSM expôs o gap com dado real; fallback de shadow mode já protege produção, sem correção Rust ainda |
+| Alvos de toque de 28px nos botões de widget ficam abaixo do recomendado | `size-7` do Tailwind sem variante responsiva, 5 botões agrupados por widget | achado registrado, não corrigido — mudança de design compartilhado exige verificação visual que este sandbox não faz |
+| Filtro semântico de operação por coluna já é maduro e testado | `semanticAggregationOps`/`relevantAggregationOps` aplicados uniformemente em 6+ tipos de widget | bug semântico futuro provavelmente está na classificação da coluna, não na lógica de filtragem |
 
 ## Checklist antes de publicar
 
