@@ -180,7 +180,7 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
   // também casa como uma tag de abertura e captura o conteúdo da próxima
   // célula até `</c>`, transformando formatação vazia em dado inexistente.
   for (const match of xml.matchAll(/<c\b([^>]*)\/>|<c\b([^>]*?)>([\s\S]*?)<\/c>/g)) {
-    const attrs = attributes(`<c ${match[1] ?? match[2] ?? ""}>`);
+    const attrs = attributes(match[1] ?? match[2] ?? "");
     const address = attrs["r"];
     if (!address) continue;
     const body = match[3] ?? "";
@@ -190,6 +190,7 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
     const rawText = /<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(body)?.[1];
     const inline = /<is\b[^>]*>([\s\S]*?)<\/is>/.exec(body)?.[1];
     const formula = /<f(?:\s[^>]*)?>([\s\S]*?)<\/f>/.exec(body)?.[1];
+    const decodedFormula = formula ? xmlText(formula) : undefined;
     let rawValue: string | number | boolean | null = null;
     if (type === "s") rawValue = strings[Number(rawText)] ?? "";
     else if (type === "inlineStr") rawValue = xmlText(inline ?? "");
@@ -213,7 +214,7 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
       rawValue,
       displayValue,
       ...(numberFormat !== "General" ? { numberFormat } : {}),
-      ...(formula ? { formula: `=${xmlText(formula)}` } : {}),
+      ...(formula ? { formula: `=${decodedFormula!}` } : {}),
     });
     if (rawValue == null && !formula) continue;
     const cell: XLSX.CellObject = {
@@ -221,7 +222,7 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
       v: rawValue ?? "",
       w: displayValue,
       ...(numberFormat !== "General" ? { z: numberFormat } : {}),
-      ...(formula ? { f: xmlText(formula) } : {}),
+      ...(formula ? { f: decodedFormula! } : {}),
     };
     if (typeof rawValue === "number" && XLSX.SSF.is_date(numberFormat)) {
       const converted = serialDate(rawValue, date1904);

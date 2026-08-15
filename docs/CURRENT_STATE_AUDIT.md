@@ -1756,3 +1756,69 @@ Verificado com `npx vitest run` (466 passou, 11 pulados, mesma
 contagem — nenhum teste novo, cobertura já existente), `npx tsc
 --noEmit` sem erros, `npm run build` e `npm run performance:check`
 aprovados (sem mudança de tamanho de bundle relevante).
+
+**Medição contra o corpus real antes de decidir sobre XML streaming.**
+Antes de investir na reescrita mais arriscada da lacuna P0 (leitura de
+XML inteiro em memória, sem streaming — item 3 da seção 2), o custo
+real foi medido contra os 5 arquivos do corpus sanitizado local
+(`test-fixtures/sanitized-real/`, presente nesta máquina), decompondo
+`readWorkbookBytesWithEngine` em descompactação, `inspectOoxml`
+(verificação célula a célula) e `inspectWorkbookFeatures` (metadados
+avançados).
+
+Resultado: a descompactação nunca passou de 86ms, mesmo no arquivo de
+~2MB/67 mil células. O tempo real está concentrado em `inspectOoxml`
+(85-90% do total em todos os arquivos, até 588ms no maior arquivo) —
+não é custo de I/O/descompactação, é o parsing célula a célula via
+regex. Trocar para um parser XML streaming reduziria principalmente o
+**pico de memória** (evitar manter a string XML inteira + todos os
+matches de regex simultâneos), não o tempo de CPU, que é O(células)
+de qualquer forma. O crescimento de heap medido foi modesto (até
+~18,5 MB no maior arquivo real). O cenário de risco genuíno — arquivos
+perto do limite declarado de 2 milhões de células — extrapolaria para
+algo como ~17s/~540MB só nesta função, mas nenhum arquivo real
+disponível chega perto disso.
+
+Decisão registrada: a reescrita para streaming não foi feita.
+Risco/esforço desproporcional ao ganho medido no corpus disponível —
+seria uma mudança grande na lógica de fidelidade mais crítica do
+projeto para resolver um cenário extremo sem evidência real de
+ocorrência. Fica como pendência explícita, condicionada a evidência
+futura de arquivos grandes o suficiente para o problema se manifestar.
+
+**Segundo achado com o mesmo escopo baixo-risco: duas alocações
+desperdiçadas por célula em `readSheet`.** No laço de células
+(o hot path chamado uma vez por célula em toda importação OOXML), dois
+desperdícios comprovados por leitura de código, sem depender de
+mudança de comportamento:
+
+1. `attributes(\`<c ${match[1] ?? match[2] ?? ""}>\`)` envolvia os
+   atributos crus da célula numa string sintética `<c ...>` só para
+   reaproveitar a função `attributes()` — mas o regex interno dela
+   (`/([\w:-]+)="([^"]*)"/g`) não âncora em `<c`, varre `chave="valor"`
+   em qualquer string. O wrapping era uma alocação de string por
+   célula sem nenhum efeito no resultado; removido.
+2. `xmlText(formula)` era chamado **duas vezes** para toda célula com
+   fórmula — uma para `ReaderCell.formula`, outra para `cell.f` — e
+   `xmlText` faz 7 `.replace()` sequenciais. Corrigido computando
+   `decodedFormula` uma vez e reaproveitando nos dois lugares; a
+   checagem de presença continua sobre o `formula` bruto (não sobre
+   `decodedFormula`) para preservar exatamente o comportamento
+   anterior no caso extremo em que a fórmula decodifica para string
+   vazia (ex.: `<f><x/></f>`, onde `formula` cru é truthy mas
+   `xmlText(formula)` resulta em `""`).
+
+Medição comparativa (mesma metodologia, warm, média de 5 execuções,
+antes/depois via `git stash`) mostrou ganho modesto e dentro do ruído
+de medição em alguns arquivos (2% a 16% mais rápido em 5 dos 6
+arquivos, 1 arquivo levemente mais lento dentro da margem de ruído) —
+esperado, já que a alocação eliminada é uma fração pequena do custo
+total por célula, dominado por `XLSX.SSF.format`, múltiplos `exec` de
+regex e `decode_cell`. Nenhum teste novo foi necessário: a suíte de
+fidelidade existente (`workbook-fidelity.test.ts`,
+`problematic-import.test.ts`, `workbook-reader.test.ts`) cobre
+fórmulas e passou sem alteração, confirmando resultado idêntico.
+
+Verificado com `npx vitest run` (466 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, `npm run build` e `npm run
+performance:check` aprovados.
