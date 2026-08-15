@@ -1576,3 +1576,85 @@ compartilhado entre `/` e `/painel/$id` de sempre, só que agora com
 menos margem. Se a próxima mudança em `Dashboard`/`WidgetCard`
 adicionar bytes relevantes, o orçamento pode estourar de novo e exigir
 mais uma categoria de `manualChunks` em `vite.config.ts`.
+
+## 41. Duas falhas reais na exportação PDF/PNG, encontradas por screenshots reais do usuário
+
+A auditoria visual completa de exportação (seção "Estado conhecido",
+`SECOND_BRAIN.md`) continuava bloqueada neste sandbox por falta de
+RAF/screenshot funcional. O usuário trouxe screenshots reais de um PDF
+exportado (fixture FRS-QA-BR-405) que expuseram dois bugs genuínos,
+nenhum deles hipotético.
+
+**1. Colapso vertical letra-por-letra na linha de comparação da fatia
+selecionada do gráfico de pizza.** A palavra "Água Potável" (e outros
+textos da linha: "Filtrar", os valores de KPI) apareciam quebrados em
+uma letra por linha, empilhados verticalmente por toda a página —
+sintoma clássico de uma coluna de grid espremida a quase 0px de
+largura combinada com quebra de palavra forçada. Causa raiz, em
+`widget-card.tsx` (bloco `w.type === "pie"`, painel de comparação
+`selectedPieComparison`/`pieComparisonFor`, `data-pipeline.ts:522-553`):
+a grade `sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(7rem,0.7fr))_auto]`
+tem a primeira coluna (nome + "Posição X de Y categorias") com mínimo
+explícito `0`. Na tela normal isso é inofensivo porque `.truncate`
+(`white-space: nowrap` + reticências) simplesmente corta o texto sem
+quebrar layout. Mas `.oliam-export-mode .truncate` (`styles.css:1356`)
+desliga deliberadamente essa proteção — `white-space: normal` +
+`overflow-wrap: anywhere !important` — para nunca perder texto num
+PDF. Sem essa proteção, e com a grade de exportação forçando 3 colunas
+fixas a 1440px (`EXPORT_SURFACE_WIDTH`, `export-layout.ts`), um widget
+"pie" de largura 1/3 (~450px) não tem espaço para as 3 colunas de
+valor (mínimo 7rem/112px cada) + botão, então a coluna de nome com
+mínimo 0 é espremida até quase desaparecer, e o texto sem `nowrap`
+não tem alternativa a não ser quebrar entre cada caractere.
+
+Corrigido em duas partes: (a) `minmax(0,1.4fr)` → `minmax(8rem,1.4fr)`
+para a coluna nunca colapsar abaixo de uma largura legível mesmo com
+quebra de palavra forçada; (b) nova classe estável
+`oliam-pie-comparison-row` na `div` da linha, com uma regra CSS
+(`styles.css`, logo após o bloco que desliga truncamento) que empilha
+a grade em uma única coluna só em `.oliam-export-mode` — evita que a
+soma dos mínimos das 3 colunas de valor + botão ainda exceda a largura
+real de um widget de span 1 mesmo com a coluna de nome corrigida, sem
+alterar em nada a grade responsiva normal da tela.
+
+**2. `<details>` fechado ("Observações da planilha") capturado num
+estado inconsistente pelo html2canvas**, com texto de notas
+sobreposto/cortado atrás do cabeçalho recolhido em vez de
+completamente escondido ou completamente visível. Causa raiz:
+`exportBreakpoints()` (`dashboard-export.ts:45-46`) já usa o seletor
+`"details li"` para calcular pontos de quebra de página — código que só
+faz sentido presumindo que o `<details>` está aberto — mas nada no
+fluxo de captura de fato abria o elemento antes de capturar. O
+`sourceNotesPanel` (`routes/index.tsx:2063-2089`, o painel
+"Observações da planilha") nasce fechado por padrão (sem atributo
+`open`), então na tela viva o navegador esconde nativamente o
+conteúdo — mas o html2canvas, ao clonar/renderizar o documento para o
+canvas, não reproduz de forma confiável esse comportamento nativo do
+`<details>` fechado, produzindo o estado sobreposto/quebrado
+observado.
+
+Corrigido em `captureDashboard()` (`dashboard-export.ts`): antes de
+capturar, todo `<details>` dentro do elemento exportado é aberto
+(`.open = true`), com o estado original de cada um salvo e restaurado
+no `finally` — mesmo padrão já usado ali para posição de scroll,
+sem efeito colateral na UI viva (só afeta o clone/captura).
+
+**Verificação**: com o RAF ainda não funcional neste sandbox, a
+auditoria visual completa do PDF exportado continua bloqueada (mesma
+limitação da seção anterior sobre exportação). Verificado o que dá
+para verificar sem RAF: `npx tsc --noEmit` sem erros; a regra CSS nova
+confirmada presente e sintaticamente correta no stylesheet servido
+pelo Vite (`fetch` direto do arquivo, via `javascript_tool`); os dois
+módulos alterados (`widget-card.tsx`, `dashboard-export.ts`)
+confirmados sendo transformados e servidos sem erro. A prova
+definitiva de que as duas correções eliminam os bugs observados nos
+screenshots do usuário depende de gerar um novo PDF/PNG num ambiente
+com RAF funcional (preview da Vercel) e comparar visualmente.
+
+Verificado com `npx vitest run` (465 passou, 11 pulados, mesma
+contagem — este código não tem teste unitário hoje, mesma lacuna já
+registrada para `dashboard-export.ts`/`export-layout.ts` por depender
+de DOM real e `html2canvas`; ambiente de teste é `environment: "node"`,
+sem jsdom, então nenhum teste novo foi forçado), `npx tsc --noEmit`
+sem erros, `npm run build` + `npm run performance:check` aprovados
+(sem mudança relevante de tamanho de bundle — é CSS/JSX pequeno).

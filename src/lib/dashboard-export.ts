@@ -55,6 +55,15 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
   const previousScroll = { left: element.scrollLeft, top: element.scrollTop };
   element.classList.add("oliam-export-mode");
   element.scrollTo(0, 0);
+  // <details> fechado (ex.: "Observações da planilha") esconde o conteúdo
+  // nativamente no navegador, mas exportBreakpoints() já assume que está
+  // aberto (usa "details li" para calcular quebra de página) — sem abrir de
+  // verdade aqui, o html2canvas captura um estado inconsistente (conteúdo
+  // parcialmente visível/sobreposto ao resumo em vez de escondido ou
+  // mostrado por completo). Restaurado no finally para não afetar a UI viva.
+  const detailsElements = [...element.querySelectorAll<HTMLDetailsElement>("details")];
+  const previousDetailsOpen = detailsElements.map((node) => node.open);
+  detailsElements.forEach((node) => (node.open = true));
   try {
     await settleExportLayout();
     window.dispatchEvent(new Event("resize"));
@@ -89,6 +98,7 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
   } finally {
     element.classList.remove("oliam-export-mode");
     element.scrollTo(previousScroll.left, previousScroll.top);
+    detailsElements.forEach((node, index) => (node.open = previousDetailsOpen[index] ?? false));
   }
 }
 
