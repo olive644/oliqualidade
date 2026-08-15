@@ -343,14 +343,6 @@ function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
 function sheetMeta(ws: XLSX.WorkSheet) {
   const ref = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
   let formulaCells = 0;
-  if (ref) {
-    for (let r = ref.s.r; r <= ref.e.r; r++) {
-      for (let c = ref.s.c; c <= ref.e.c; c++) {
-        const cell = worksheetCellAtAddress(ws, XLSX.utils.encode_cell({ r, c }));
-        if (cell?.f) formulaCells++;
-      }
-    }
-  }
   const rowsHidden = ref
     ? Array.from(
         { length: ref.e.r - ref.s.r + 1 },
@@ -381,7 +373,10 @@ function sheetMeta(ws: XLSX.WorkSheet) {
       for (let c = ref.s.c; c <= ref.e.c; c++) {
         const address = XLSX.utils.encode_cell({ r, c });
         const cell = worksheetCellAtAddress(ws, address);
-        if (cell?.f && formulaExamples.length < 10) formulaExamples.push(`${address}: =${cell.f}`);
+        if (cell?.f) {
+          formulaCells++;
+          if (formulaExamples.length < 10) formulaExamples.push(`${address}: =${cell.f}`);
+        }
         if (
           cell &&
           sourceCellRepresentations.length < 500 &&

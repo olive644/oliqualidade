@@ -1715,10 +1715,44 @@ performance:check` aprovados (maior chunk genérico ainda em ~407 KiB,
 sem mudança — esta correção não toca em código de UI nem muda o grafo
 de módulos entre arquivos de rota).
 
-Itens restantes da lacuna P0: `sheetMeta` e o parsing SheetJS interno
-continuam sendo passes adicionais sobre o mesmo pacote (fora do
+Itens restantes da lacuna P0 depois desta etapa: o parsing SheetJS
+interno continua sendo um pass adicional sobre o mesmo pacote (fora do
 controle deste módulo, é uma biblioteca de terceiros); e o XML ainda é
 lido inteiro em memória por entrada (sem streaming), que é a parte
 mais arriscada e ainda não abordada — precisa do corpus de regressão
 robusto mencionado na seção 7 antes de qualquer mudança na forma como
 o XML é percorrido.
+
+**Segundo recorte, mesma etapa — `sheetMeta` percorria a dimensão
+declarada duas vezes.** `sheetMeta` (`import-intelligence.ts`), que
+monta os diagnósticos de importação por aba (fórmulas, exemplos,
+representações de célula, notas, modelo temporal), tinha dois laços
+duplos independentes sobre exatamente o mesmo intervalo (`ref.s.r` a
+`ref.e.r`, `ref.s.c` a `ref.e.c`, incluindo células vazias dentro da
+dimensão declarada): um só para contar `formulaCells`, buscando a
+célula em cada endereço via `worksheetCellAtAddress`, e um segundo,
+logo em seguida, que busca a mesma célula no mesmo endereço de novo
+para tudo o resto (exemplos de fórmula, representações de origem,
+notas, células temporais) — inclusive checando `cell?.f` de novo só
+para os 10 primeiros exemplos. Isso dobra o custo de
+`worksheetCellAtAddress` por célula da dimensão declarada, exatamente
+o gargalo descrito na seção 6 ("`sheetMeta` percorre toda a dimensão
+declarada, inclusive células vazias").
+
+Corrigido fundindo a contagem de `formulaCells` dentro do segundo
+laço, no ponto em que a célula já é buscada para os exemplos de
+fórmula — `formulaCells++` roda sempre que `cell?.f` é verdadeiro, e o
+`push` em `formulaExamples` continua limitado aos 10 primeiros como
+antes. O primeiro laço foi removido inteiramente. Resultado idêntico,
+metade das buscas de célula por importação nesta função.
+
+Nenhum teste novo foi necessário: `problematic-import.test.ts` já
+verifica `formulaCells` contra uma fixture real
+(`expect(first?.diagnostics?.formulaCells).toBe(2)`) e continuou
+passando sem alteração, provando que a fusão dos dois laços preserva o
+resultado.
+
+Verificado com `npx vitest run` (466 passou, 11 pulados, mesma
+contagem — nenhum teste novo, cobertura já existente), `npx tsc
+--noEmit` sem erros, `npm run build` e `npm run performance:check`
+aprovados (sem mudança de tamanho de bundle relevante).
