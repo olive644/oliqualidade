@@ -51,12 +51,52 @@ VITE_WASM_READER_MODE=candidate
 VITE_WASM_CANDIDATE_FORMATS=xlsx
 ```
 
-Sem variáveis, esses mesmos valores são assumidos. O rollback operacional é
-imediato com `VITE_WASM_READER_MODE=shadow`. O modo candidato verifica 100% dos
-XLSX e registra `rust-wasm` somente quando o inventário Rust e a saída final são
-equivalentes. Metadados complementares já validados, como filtros, tabelas,
-comentários clássicos e links, são reconstruídos diretamente das partes OOXML
-no workbook materializado. Eles não são mais copiados do workbook SheetJS.
+Sem variáveis, esses mesmos valores são assumidos. O modo candidato verifica
+100% dos XLSX e registra `rust-wasm` somente quando o inventário Rust e a saída
+final são equivalentes. Metadados complementares já validados, como filtros,
+tabelas, comentários clássicos e links, são reconstruídos diretamente das
+partes OOXML no workbook materializado. Eles não são mais copiados do workbook
+SheetJS.
+
+### Como desativar o candidato Rust (rollback)
+
+`VITE_WASM_READER_MODE` e `VITE_WASM_CANDIDATE_FORMATS` são lidos via
+`import.meta.env` em `configuredWasmReaderMode`/`configuredWasmCandidateFormats`
+(`src/lib/workbook-reading-engine.ts`). O Vite substitui esses valores em tempo
+de build — **não é um flag lido em tempo de execução**. Portanto o rollback:
+
+1. **Não exige nenhuma mudança de código, PR ou revisão de lógica** — apenas a
+   variável de ambiente muda.
+2. **Ainda exige um novo build/deploy** para que o valor seja embutido no
+   bundle publicado. Na Vercel, isso significa alterar
+   `VITE_WASM_READER_MODE` para `shadow` nas variáveis de ambiente do projeto
+   e disparar um redeploy (redeploy do último commit é suficiente; não é
+   necessário nenhum commit novo).
+
+Passo a passo:
+
+```dotenv
+VITE_WASM_READER_MODE=shadow
+```
+
+Depois do redeploy, todo XLSX volta a ser servido exclusivamente pelo leitor
+TypeScript validado (`sheetjs-verified`/`ooxml-recovery`); o adaptador Rust,
+se ainda estiver registrado no cliente, continua sendo executado e comparado
+silenciosamente (`wasmShadowStatus`), mas nunca mais substitui a saída
+(`wasmCandidateStatus: "shadow"`, `wasmOutputUsed: false`). Não há caminho de
+código que materialize o resultado Rust fora do bloco `candidateEligible` em
+`readWorkbookBytesWithEngine` (`src/lib/workbook-reader.ts`), então esse
+único flag é suficiente para reverter a promoção — sem depender de reverter
+commits, remover o pacote WASM ou desregistrar o adaptador.
+
+Prova de regressão: `it("rollback: VITE_WASM_READER_MODE=shadow desativa o
+candidato Rust mesmo quando ele seria promovido", …)` em
+`src/lib/workbook-reader.test.ts` registra o mesmo adaptador Rust, com dados
+que dariam paridade total, e confirma que apenas a troca de
+`wasmReaderMode` (equivalente à variável de ambiente) já é suficiente para
+reverter de `reader: "rust-wasm"` para `reader: "sheetjs-verified"`, mantendo
+as linhas importadas idênticas e a medição de paridade (`wasmShadowStatus`)
+ativa.
 
 O procedimento local, suas garantias e seus limites estão em
 `docs/WASM_CORPUS_SANITIZATION.md`. O comando `npm run corpus:sanitize` cria
