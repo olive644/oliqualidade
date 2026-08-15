@@ -262,3 +262,29 @@ export function compareWasmInventory(
     divergentSheets,
   };
 }
+
+/**
+ * Qual motor produziu o resultado e se houve fallback é calculado pelo
+ * Reading Engine em toda importação, mas nunca chegava à interface —
+ * informação de confiança (leitor usado, fallback utilizado) que o
+ * usuário não conseguia ver. Só descreve estados informativos: o caminho
+ * comum (`sheetjs-verified` sem fallback) não gera nenhuma linha.
+ */
+export function describeReaderOutcome(report: WorkbookReadReport): string[] {
+  const messages: string[] = [];
+  if (report.repairedCells) {
+    messages.push(
+      `Leitura conferida por dois motores: ${report.repairedCells} célula(s) recuperada(s) automaticamente.`,
+    );
+  }
+  if (report.reader === "rust-wasm") {
+    messages.push(
+      "Processado pelo núcleo Rust, validado célula a célula contra o motor TypeScript antes de ser aceito.",
+    );
+  } else if (report.fallbackUsed) {
+    messages.push(
+      "O leitor rápido em Rust não pôde ser usado para este arquivo; a leitura seguiu pelo motor TypeScript padrão, sem perda de dados.",
+    );
+  }
+  return messages;
+}

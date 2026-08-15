@@ -700,3 +700,43 @@ comportamento já correto (nenhuma correção necessária):
 - **Planilha grande com sucesso**: só existia o teste do caminho de
   rejeição (dimensão declarada abusiva). Novo teste lê 5.000 linhas por 3
   colunas e confirma integridade da primeira e da última linha.
+
+## 26. Etapa 6 — leitor usado e fallback agora aparecem na interface
+
+Uma auditoria de explicabilidade mapeou 11 itens do relatório de leitura
+contra o que já é calculado e contra o que chega à interface. A maioria já
+estava exposta (estrutura detectada, cabeçalho escolhido e motivo,
+regiões/blocos encontrados, células recuperadas, confiança por
+região/coluna, ações conservadoras, sugestões de revisão) — nenhuma delas
+foi tocada. Dois itens computados por toda importação nunca chegavam ao
+usuário: qual leitor produziu o resultado (`WorkbookReadReport.reader`) e
+se houve fallback do Rust para o TypeScript (`.fallbackUsed`). Essa
+informação de confiança existia só no objeto de relatório interno.
+
+A lógica de descrição foi extraída para `describeReaderOutcome` em
+`workbook-reading-engine.ts` (função pura, sem estado), em vez de inline
+no componente de rota — só assim dá para testar sem precisar simular
+upload de arquivo num navegador de verdade, algo que a ferramenta de
+automação deste ambiente não suporta (só dispara eventos de mudança em
+`<input type="file">`, não abre o diálogo do sistema operacional). A
+função só produz mensagem nos estados informativos: o caminho comum
+(`sheetjs-verified`, sem reparo, sem fallback) continua silencioso, sem
+poluir toda importação. `routes/index.tsx` chama essa função e junta o
+resultado à mesma caixa de aviso já existente na revisão.
+
+Não descoberto nenhum bug aqui — os dois campos já estavam corretos e
+testados no motor; a lacuna era puramente de interface. Verificado com
+`npx vitest run` (441 passou, 11 pulados, era 436), `npx tsc --noEmit` e
+`npm run build`, mas **não foi possível verificar visualmente no
+navegador**: a ferramenta de automação deste sandbox não consegue simular
+o diálogo de seleção de arquivo do sistema operacional, e uma injeção via
+`DataTransfer`/evento `change` sintético não foi concluída de forma
+confiável. Risco considerado baixo: é concatenação de string reaproveitando
+uma caixa de aviso já renderizada e testada, sobre campos já tipados e
+cobertos por teste no motor de leitura — mas fica registrado como
+verificação pendente, não como confirmado.
+
+Itens ainda não abordados da auditoria de explicabilidade: regiões
+descartadas e o motivo (não existe nenhum modelo de dados para isso hoje,
+não é só falta de exibição) e uma matriz de confiança por aba/sheet (hoje
+só há confiança global e por região/coluna).
