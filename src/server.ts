@@ -1,6 +1,6 @@
 import "./lib/error-capture";
 
-import { consumeLastCapturedError } from "./lib/error-capture";
+import { consumeLastCapturedError, runWithErrorCapture } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleGeminiChat, handleSmartImportAnalysis } from "./lib/gemini-server";
 import { withSecurityHeaders } from "./lib/http-security";
@@ -48,33 +48,40 @@ function isH3SwallowedErrorBody(body: string): boolean {
 }
 
 export default {
-  async fetch(request: Request, env: unknown, ctx: unknown) {
+  fetch(request: Request, env: unknown, ctx: unknown) {
     const environment = (env ?? {}) as Record<string, string>;
     const sessionSecret = environment["OLI_SESSION_SECRET"] ?? process.env["OLI_SESSION_SECRET"];
-    try {
-      if (new URL(request.url).pathname === "/api/gemini/chat") {
-        return withSecurityHeaders(await handleGeminiChat(request, environment));
-      }
-      if (new URL(request.url).pathname === "/api/gemini/import-analysis") {
-        return withSecurityHeaders(await handleSmartImportAnalysis(request, environment));
-      }
-      const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-      return withSecurityHeaders(
-        await withChatSession(
-          await normalizeCatastrophicSsrResponse(response),
-          request,
-          sessionSecret,
-        ),
-      );
-    } catch (error) {
-      console.error(error);
-      return withSecurityHeaders(
-        new Response(renderErrorPage(), {
-          status: 500,
-          headers: { "content-type": "text/html; charset=utf-8" },
-        }),
-      );
-    }
+    const chatAuthToken = environment["OLI_CHAT_AUTH_TOKEN"] ?? process.env["OLI_CHAT_AUTH_TOKEN"];
+    const geminiApiKey = environment["GEMINI_API_KEY"] ?? process.env["GEMINI_API_KEY"];
+    return runWithErrorCapture(
+      [sessionSecret, chatAuthToken, geminiApiKey],
+      async (): Promise<Response> => {
+        try {
+          if (new URL(request.url).pathname === "/api/gemini/chat") {
+            return withSecurityHeaders(await handleGeminiChat(request, environment));
+          }
+          if (new URL(request.url).pathname === "/api/gemini/import-analysis") {
+            return withSecurityHeaders(await handleSmartImportAnalysis(request, environment));
+          }
+          const handler = await getServerEntry();
+          const response = await handler.fetch(request, env, ctx);
+          return withSecurityHeaders(
+            await withChatSession(
+              await normalizeCatastrophicSsrResponse(response),
+              request,
+              sessionSecret,
+            ),
+          );
+        } catch (error) {
+          console.error(error);
+          return withSecurityHeaders(
+            new Response(renderErrorPage(), {
+              status: 500,
+              headers: { "content-type": "text/html; charset=utf-8" },
+            }),
+          );
+        }
+      },
+    );
   },
 };
