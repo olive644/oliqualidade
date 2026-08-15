@@ -33,6 +33,8 @@ export type ImportAudit = {
   columnsIgnored: number;
   notesPreserved?: number;
   repeatedHeaderRowsIgnored?: number;
+  /** Regiões independentes detectadas nesta aba, mas mantidas juntas por segurança (ver regionsAreSafeToSplit). */
+  regionsKeptTogether?: number;
 };
 
 export type SourceGrid = {
@@ -2442,6 +2444,16 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
     }
     const { rows, warning, diagnostics, sourceGrid, audit } = result;
     const longScheduleRows = scheduleToLong(rows);
+    // Regiões independentes foram detectadas (diagnostics.tableRegions), mas a
+    // separação automática não ocorreu acima: ou regionsAreSafeToSplit recusou
+    // por segurança (ex: matriz de identificadores + períodos, cabeçalho
+    // numérico, poucas linhas de dado), ou uma das regiões não produziu linha
+    // nenhuma. Nos dois casos as regiões continuam mescladas numa única aba
+    // sem nenhum registro de que a divisão foi considerada e descartada.
+    const regionsKeptTogether =
+      audit && result.tableMode !== "repeated-blocks" && (diagnostics?.tableRegions.length ?? 0) > 1
+        ? diagnostics!.tableRegions.length
+        : undefined;
     return [
       {
         name,
@@ -2449,7 +2461,9 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
         warning,
         ...(diagnostics ? { diagnostics } : {}),
         ...(sourceGrid ? { sourceGrid } : {}),
-        ...(audit ? { audit } : {}),
+        ...(audit
+          ? { audit: regionsKeptTogether ? { ...audit, regionsKeptTogether } : audit }
+          : {}),
         ...(longScheduleRows.length ? { longScheduleRows } : {}),
       },
     ];
