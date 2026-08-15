@@ -1,5 +1,6 @@
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8 } from "fflate";
 import * as XLSX from "xlsx";
+import { isOoxmlArchive, unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
 import { setWorksheetCellAtAddress, worksheetCellAtAddress } from "@/lib/worksheet-cell";
 
 export type StructuredTableDiagnostic = {
@@ -171,9 +172,8 @@ function parsePivot(xml: string): PivotTableDiagnostic {
   };
 }
 
-export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array) {
-  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-  const zip = unzipSync(bytes);
+export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlArchive) {
+  const zip = isOoxmlArchive(data) ? data : unzipOoxmlArchive(data);
   const text = (part: string) => (zip[part] ? strFromU8(zip[part]!) : "");
   const workbookXml = text("xl/workbook.xml");
   const workbookRels = relationships(text("xl/_rels/workbook.xml.rels"), "xl");
@@ -223,7 +223,10 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array) {
   return result;
 }
 
-export function attachWorkbookFeatures(wb: XLSX.WorkBook, data: ArrayBuffer | Uint8Array) {
+export function attachWorkbookFeatures(
+  wb: XLSX.WorkBook,
+  data: ArrayBuffer | Uint8Array | OoxmlArchive,
+) {
   try {
     const metadata = inspectWorkbookFeatures(data);
     for (const [sheetName, advanced] of metadata) {

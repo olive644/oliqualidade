@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 import { sheetsWithData, type SheetOption } from "@/lib/import";
+import { unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import {
   compareAndRepairWithOoxml,
@@ -287,6 +288,16 @@ function sameImportedSheets(left: SheetOption[], right: SheetOption[]): boolean 
   return sameImportedValue(left, right);
 }
 
+function sharedOoxmlArchive(bytes: Uint8Array): OoxmlArchive | Uint8Array {
+  try {
+    return unzipOoxmlArchive(bytes);
+  } catch {
+    // Deixa cada consumidor tentar descompactar individualmente e tratar a
+    // falha do próprio jeito, exatamente como antes de compartilhar o archive.
+    return bytes;
+  }
+}
+
 export async function readWorkbookBytesWithEngine(
   input: ArrayBuffer | Uint8Array,
   fileName: string,
@@ -338,9 +349,10 @@ export async function readWorkbookBytesWithEngine(
   let independentInspection: OoxmlInspection | undefined;
   const verificationStartedAt = performance.now();
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
-    attachWorkbookFeatures(wb, bytes);
+    const archive = sharedOoxmlArchive(bytes);
+    attachWorkbookFeatures(wb, archive);
     try {
-      independentInspection = inspectOoxml(bytes);
+      independentInspection = inspectOoxml(archive);
       const divergences = compareAndRepairWithOoxml(wb, independentInspection);
       repairedCells = divergences.filter((item) => item.repaired).length;
       divergentCells = divergences.length;
@@ -513,9 +525,10 @@ export function readWorkbookBytes(
   }
   validateWorkbookComplexity(wb);
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
-    attachWorkbookFeatures(wb, bytes);
+    const archive = sharedOoxmlArchive(bytes);
+    attachWorkbookFeatures(wb, archive);
     try {
-      const independent = inspectOoxml(bytes);
+      const independent = inspectOoxml(archive);
       const divergences = compareAndRepairWithOoxml(wb, independent);
       for (const sheetName of wb.SheetNames) {
         const perSheet = divergences.filter((item) => item.sheet === sheetName);

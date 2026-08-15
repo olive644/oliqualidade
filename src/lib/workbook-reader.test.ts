@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as XLSX from "xlsx";
 import { strToU8, zipSync } from "fflate";
 
@@ -10,6 +10,7 @@ import {
   validateZipWorkbook,
 } from "@/lib/workbook-reader";
 import { inspectOoxml } from "@/lib/ooxml-reader";
+import * as ooxmlArchive from "@/lib/ooxml-archive";
 import { registerWasmWorkbookReader } from "@/lib/workbook-reading-engine";
 
 describe("leitor universal de planilhas", () => {
@@ -32,6 +33,30 @@ describe("leitor universal de planilhas", () => {
       fallbackUsed: false,
     });
     expect(result.report.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("descompacta o pacote OOXML uma única vez, compartilhada entre metadados e verificação independente", async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as Uint8Array;
+
+    const spy = vi.spyOn(ooxmlArchive, "unzipOoxmlArchive");
+    try {
+      const asyncResult = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx");
+      expect(asyncResult.report.reader).toBe("sheetjs-verified");
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      spy.mockClear();
+      const syncSheets = readWorkbookBytes(bytes, "vendas.xlsx");
+      expect(syncSheets[0]?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("registra bytes de origem e bytes descompactados no relatório", async () => {

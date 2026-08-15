@@ -1,6 +1,7 @@
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8 } from "fflate";
 import * as XLSX from "xlsx";
 
+import { isOoxmlArchive, unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
 import { setWorksheetCellAtAddress, worksheetCellAtAddress } from "@/lib/worksheet-cell";
 
 export type ReaderCell = {
@@ -31,8 +32,6 @@ export type OoxmlSheetStructure = {
   hiddenRows: number[];
   hiddenColumns: Array<{ start: number; end: number }>;
 };
-
-type Archive = Record<string, Uint8Array>;
 
 const BUILTIN_FORMATS: Record<number, string> = {
   0: "General",
@@ -78,7 +77,7 @@ function attributes(tag: string): Record<string, string> {
   return result;
 }
 
-function archiveText(archive: Archive, path: string): string {
+function archiveText(archive: OoxmlArchive, path: string): string {
   const bytes = archive[path];
   return bytes ? strFromU8(bytes) : "";
 }
@@ -245,9 +244,8 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
   return { cells, worksheet, structure: { mergedRanges, hiddenRows, hiddenColumns } };
 }
 
-export function inspectOoxml(input: ArrayBuffer | Uint8Array): OoxmlInspection {
-  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  const archive = unzipSync(bytes) as Archive;
+export function inspectOoxml(input: ArrayBuffer | Uint8Array | OoxmlArchive): OoxmlInspection {
+  const archive = isOoxmlArchive(input) ? input : unzipOoxmlArchive(input);
   const workbookXml = archiveText(archive, "xl/workbook.xml");
   if (!workbookXml) throw new Error("O pacote OOXML não contém xl/workbook.xml.");
   const rels = relationshipMap(archiveText(archive, "xl/_rels/workbook.xml.rels"), "xl");

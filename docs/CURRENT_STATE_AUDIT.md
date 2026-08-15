@@ -1640,16 +1640,22 @@ no `finally` — mesmo padrão já usado ali para posição de scroll,
 sem efeito colateral na UI viva (só afeta o clone/captura).
 
 **Verificação**: com o RAF ainda não funcional neste sandbox, a
-auditoria visual completa do PDF exportado continua bloqueada (mesma
-limitação da seção anterior sobre exportação). Verificado o que dá
-para verificar sem RAF: `npx tsc --noEmit` sem erros; a regra CSS nova
-confirmada presente e sintaticamente correta no stylesheet servido
-pelo Vite (`fetch` direto do arquivo, via `javascript_tool`); os dois
-módulos alterados (`widget-card.tsx`, `dashboard-export.ts`)
-confirmados sendo transformados e servidos sem erro. A prova
-definitiva de que as duas correções eliminam os bugs observados nos
-screenshots do usuário depende de gerar um novo PDF/PNG num ambiente
-com RAF funcional (preview da Vercel) e comparar visualmente.
+auditoria visual completa do PDF exportado continuou bloqueada aqui
+(mesma limitação da seção anterior sobre exportação). Verificado o que
+dava para verificar sem RAF: `npx tsc --noEmit` sem erros; a regra CSS
+nova confirmada presente e sintaticamente correta no stylesheet
+servido pelo Vite (`fetch` direto do arquivo, via `javascript_tool`);
+os dois módulos alterados (`widget-card.tsx`, `dashboard-export.ts`)
+confirmados sendo transformados e servidos sem erro.
+
+**Confirmação visual (2026-08-15)**: o usuário gerou um novo PDF em
+produção (Vercel, RAF funcional) e comparou com os screenshots
+originais que motivaram esta seção — os dois bugs (colapso de texto
+letra-por-letra na comparação de fatia do gráfico de pizza e o
+`<details>` "Observações da planilha" capturado em estado
+inconsistente) não reapareceram. As duas correções desta seção estão
+confirmadas como corretas, não apenas plausíveis por leitura de
+código.
 
 Verificado com `npx vitest run` (465 passou, 11 pulados, mesma
 contagem — este código não tem teste unitário hoje, mesma lacuna já
@@ -1658,3 +1664,61 @@ de DOM real e `html2canvas`; ambiente de teste é `environment: "node"`,
 sem jsdom, então nenhum teste novo foi forçado), `npx tsc --noEmit`
 sem erros, `npm run build` + `npm run performance:check` aprovados
 (sem mudança relevante de tamanho de bundle — é CSS/JSX pequeno).
+
+## 42. Descompactação OOXML única e compartilhada entre metadados e verificação independente
+
+Primeiro recorte da lacuna P0 registrada na seção 2 ("Inspeção OOXML
+usa `unzipSync` e regex sobre XML completo... memória duplicada e
+risco em arquivos grandes"). Escopo deliberadamente pequeno: eliminar
+uma descompactação ZIP inteiramente redundante, sem tocar em nenhuma
+lógica de comparação, fórmula, formato ou reconciliação de fidelidade
+— o caminho crítico é sensível demais para uma mudança maior sem
+corpus de regressão robusto (risco já registrado no plano da seção 7).
+
+Achado: em todo import de XLSX/XLSM/XLTX/XLTM, `readWorkbookBytes` e
+`readWorkbookBytesWithEngine` (`workbook-reader.ts`) sempre chamavam,
+em sequência, `attachWorkbookFeatures(wb, bytes)`
+(`workbook-metadata.ts`) e `inspectOoxml(bytes)` (`ooxml-reader.ts`)
+sobre os mesmos bytes. Cada uma dessas funções fazia seu próprio
+`unzipSync(bytes)` independente — ou seja, todo arquivo OOXML era
+descompactado e todo o XML relevante (planilhas, shared strings,
+estilos, relações, comentários, tabelas) era lido do zip duas vezes
+por importação, mesmo no caminho comum sem erro nem fallback.
+
+Correção: novo módulo `src/lib/ooxml-archive.ts` (`unzipOoxmlArchive`,
+`isOoxmlArchive`, tipo `OoxmlArchive`) concentra a única chamada a
+`unzipSync` que antes existia duplicada em `ooxml-reader.ts` e
+`workbook-metadata.ts`. `inspectOoxml` e `attachWorkbookFeatures`/
+`inspectWorkbookFeatures` passam a aceitar tanto bytes brutos quanto
+um archive já descompactado (`ArrayBuffer | Uint8Array | OoxmlArchive`),
+mantendo compatibilidade total com todo chamador existente que ainda
+passa bytes (testes e `fidelity-meter.ts` não mudam). Em
+`workbook-reader.ts`, os dois pontos de entrada descompactam uma única
+vez (`sharedOoxmlArchive`, com fallback silencioso para bytes brutos
+se a descompactação falhar — preservando o comportamento de erro
+anterior, em que cada função tentaria e trataria a falha por conta
+própria) e passam o mesmo archive para as duas funções.
+
+Nenhuma lógica de leitura, comparação ou reconciliação mudou — os
+mesmos textos XML são extraídos das mesmas entradas do zip, na mesma
+ordem; só a descompactação em si deixou de ser feita duas vezes.
+
+Teste de regressão em `workbook-reader.test.ts` usa `vi.spyOn` sobre
+`unzipOoxmlArchive` e confirma exatamente uma chamada por importação,
+tanto no caminho síncrono (`readWorkbookBytes`) quanto no assíncrono
+(`readWorkbookBytesWithEngine`) — antes da mudança esse teste teria
+contado duas chamadas.
+
+Verificado com `npx vitest run` (466 passou, 11 pulados, era 465),
+`npx tsc --noEmit` sem erros, `npm run build` e `npm run
+performance:check` aprovados (maior chunk genérico ainda em ~407 KiB,
+sem mudança — esta correção não toca em código de UI nem muda o grafo
+de módulos entre arquivos de rota).
+
+Itens restantes da lacuna P0: `sheetMeta` e o parsing SheetJS interno
+continuam sendo passes adicionais sobre o mesmo pacote (fora do
+controle deste módulo, é uma biblioteca de terceiros); e o XML ainda é
+lido inteiro em memória por entrada (sem streaming), que é a parte
+mais arriscada e ainda não abordada — precisa do corpus de regressão
+robusto mencionado na seção 7 antes de qualquer mudança na forma como
+o XML é percorrido.
