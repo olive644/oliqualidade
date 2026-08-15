@@ -2468,7 +2468,7 @@ export function WidgetCard({
               />
             </div>
             {selectedPie && (
-              <div className="grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(7rem,0.7fr))_auto] sm:items-center">
+              <div className="oliam-pie-comparison-row grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(8rem,1.4fr)_repeat(3,minmax(7rem,0.7fr))_auto] sm:items-center">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold" title={selectedPie.name}>
                     {selectedPie.name}
