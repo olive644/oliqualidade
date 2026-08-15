@@ -1,6 +1,8 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export function inventory_ods_json(bytes: Uint8Array): string;
+
 export function inventory_ooxml_json(bytes: Uint8Array): string;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -8,6 +10,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly inventory_ooxml_json: (a: number, b: number) => [number, number, number, number];
+    readonly inventory_ods_json: (a: number, b: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __externref_table_dealloc: (a: number) => void;
