@@ -14,3 +14,6 @@ test-fixtures/sanitized-real/
 test-results/
 docs/.obsidian/
 docs/*.canvas
+client-chunk-report.json
+stats.json
+stats.html

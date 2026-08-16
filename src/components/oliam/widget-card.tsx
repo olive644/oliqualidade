@@ -93,6 +93,7 @@ import {
   aggregate,
   aggregationLabels,
   chartSeries,
+  collapsePieSeries,
   detectQualitySignals,
   groupAndAggregate,
   limitChartSeriesForRendering,
@@ -2083,12 +2084,9 @@ export function WidgetCard({
         ? sortAllBarCategories(completeSeries)
         : completeSeries;
     const renderableSeries =
-      w.type === "pie" && dataMode === "aggregate"
+      w.type === "pie"
         ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
-        : limitChartSeriesForRendering(
-            orderedSeries,
-            w.type === "pie" && dataMode === "raw" ? 120 : undefined,
-          );
+        : limitChartSeriesForRendering(orderedSeries);
     const series = renderableSeries.items;
     const seriesColor = valueCol
       ? (conditionalColor(
@@ -2100,19 +2098,7 @@ export function WidgetCard({
     const barSeries = series;
     const barPresentation = barChartPresentation(barSeries.length);
     const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
-    const pieSeries = (() => {
-      if (w.type !== "pie") return series;
-      if (dataMode === "raw") return series;
-      if (completeSeries.length <= 6) return completeSeries;
-      const sorted = [...completeSeries].sort((a, b) => b.total - a.total);
-      const top = sorted.slice(0, 5),
-        restItems = sorted.slice(5),
-        rest = restItems.reduce((s, x) => s + x.total, 0);
-      // "Outros" carrega quantas categorias foram agrupadas ali dentro
-      // (`count`), pra não virar uma fatia grande e muda: aparece no tooltip
-      // e na legenda, ex. "Outros: 445 (94.7%) · 490 categorias".
-      return rest ? [...top, { name: "Outros", total: rest, count: restItems.length }] : top;
-    })();
+    const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
     const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
     const displayedPieIndex = activePieIndex ?? selectedPieIndex;
     const largestPieIndex = pieSeries.reduce(

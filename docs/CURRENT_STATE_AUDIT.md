@@ -2564,3 +2564,377 @@ build` e `npm run performance:check` aprovados (~423,5 KiB). Verificado
 ao vivo no navegador: widget novo usa coluna preenchida como padrão de
 métrica, e "Limpar filtros" resolve a base para o estado sem filtro em
 um clique com múltiplos filtros ativos.
+
+## 55. Continuação da extração do Dashboard: primeiro lote de painéis autocontidos
+
+Retomada do plano registrado na seção 51 (item 5, "reavaliar o que
+sobra"). Um agente de exploração mapeou o restante de `Dashboard`
+(`routes/index.tsx`, ~1157 até o fim) em 18 candidatos a extração,
+ordenados por risco crescente — o mapeamento completo não foi
+transcrito aqui porque não é uma decisão de arquitetura duradoura, é
+um plano de trabalho consumido nesta e nas próximas etapas. Resumo dos
+achados de maior risco, que orientam a ordem das próximas etapas:
+exportação (`useDashboardExport`) depende de `contentRef` criado em
+`Dashboard`, o núcleo de undo/redo é hub de ~9 pontos de chamada de
+`recordHistory()`, e as ações de widget (`traceException` etc.) cruzam
+busca/filtro/foco/histórico ao mesmo tempo — nenhum dos três é
+recomendado antes dos candidatos mais simples estarem fora do caminho.
+
+Esta etapa extrai os quatro candidatos de menor risco, todos
+totalmente autocontidos (só recebem props/callbacks, sem 1 remissão a
+estado externo de `Dashboard` além do que já é passado):
+
+- **`shortcuts-dialog.tsx`** (`ShortcutsDialog`): diálogo estático de
+  atalhos de teclado, lista `SHORTCUTS` movida para dentro do arquivo.
+- **`source-notes-panel.tsx`** (`SourceNotesPanel`): painel de
+  observações/comentários da planilha, recebe só `sourceNotes`.
+- **`version-diff-banner.tsx`** (`VersionDiffBanner`): banner de
+  comparação com a versão anterior, recebe só `diff` (o `useMemo` que
+  calcula `detailedVersionDiff` continua em `Dashboard`, pois também
+  alimenta `SourceNotesPanel`/props do modo apresentação).
+- **`term-hint-banner.tsx`** (`useTermHint`): hook que devolve
+  `termHintBanner` já pronto para renderizar; move o estado
+  (`showTermHint`), o efeito que decide mostrar a dica (baseado em
+  `sheet.widgets` conter algum tipo de widget agrupado) e
+  `dismissTermHint` (grava `TERM_HINTS_KEY` no `localStorage`) para
+  fora de `Dashboard`.
+
+`index.tsx` caiu de 3.328 para 3.199 linhas nesta etapa. Dois imports
+ficaram órfãos depois do corte (`Info` de `lucide-react`,
+`TERM_HINTS_KEY` de `@/lib/storage`) e foram removidos — o projeto
+desliga `@typescript-eslint/no-unused-vars`, então isso não vira erro
+de lint, só limpeza de legibilidade feita manualmente conferindo
+contagem de ocorrências de cada identificador.
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, mesma
+contagem — reorganização estrutural pura, nenhum comportamento
+mudou), `npx tsc --noEmit` sem erros, Prettier limpo (depois de
+ajustar uma quebra de linha em `term-hint-banner.tsx` para bater com o
+formatador), `npm run build` e `npm run performance:check` aprovados
+(maior chunk genérico ~428,6 KiB, dentro do limite de 450 KiB — mesma
+fragilidade de "fachada de chunk compartilhado" já registrada nas
+seções 36/42/51, sem surpresa). Mesma limitação de verificação visual
+das etapas anteriores: os quatro componentes não foram exercitados ao
+vivo no navegador nesta etapa (baixo risco por serem puramente
+apresentacionais/prop-driven, sem lógica nova).
+
+Próximas etapas seguem o mapeamento acima, em ordem de risco
+crescente: painéis "quase autocontidos" (regras ausentes, formatação,
+sinais de qualidade, chips de filtro), depois os blocos com mais
+props (painel de colunas com drag-and-drop, sidebars, paleta de
+comandos), deixando exportação, undo/redo e ações de widget por
+último, como já recomendado.
+
+## 56. Segundo lote da extração do Dashboard: regras ausentes, formatação, sinais de qualidade, chips de filtro
+
+Continuação direta da seção 55, mesma branch (PR ainda não mesclado —
+empilhado para evitar o conflito de merge conhecido neste arquivo
+append-only). Extrai os quatro candidatos "quase autocontidos"
+seguintes do mapeamento, todos recebendo só props/callbacks já
+calculados em `Dashboard`, sem estado próprio de UI compartilhado:
+
+- **`missing-rules-panel.tsx`** (`MissingRulesPanel`): painel "Regras
+  de dados ausentes", recebe `columns`/`setColumns`.
+- **`format-panel.tsx`** (`FormatPanel`): painel de formatação
+  condicional, wrapper de `FormatRulesEditor` (já extraído na seção
+  36) por coluna numérica; recebe `nums`/`columns`/`setColumns`. O
+  import de `FormatRulesEditor` em `index.tsx` ficou órfão depois
+  desta extração e foi removido.
+- **`quality-signals-panel.tsx`** (`QualitySignalsPanel`): painel
+  "Qualidade dos dados"; recebe `visibleSignals`/`onDismiss`. O
+  contador no botão do toolbar (badge com `visibleSignals.length`)
+  continua em `Dashboard`, já que `visibleSignals` também alimenta
+  esse badge fora do painel — não é um estado que "vaza", é um valor
+  já calculado consumido em dois lugares.
+- **`filter-chips-bar.tsx`** (`FilterChipsBar`): barra de chips de
+  filtros ativos com o botão "Limpar N filtros" (seção 54); recebe
+  `filters`/`columns`/`setFilters`. Confirmado por leitura: os dois
+  tipos de `<input>` já tinham `autoFocus` incondicional antes da
+  extração (não é condicional por índice), então mover o JSX não muda
+  esse comportamento.
+
+`index.tsx` caiu de 3.199 para 3.020 linhas nesta etapa. Nenhum
+comportamento mudou — os quatro componentes são puramente
+apresentacionais/prop-driven sobre estado que continua em `Dashboard`
+(`missingPanel`, `formatPanel`, `qualityPanel`, `dismissedSignals`,
+`sheet.filters`).
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo (duas quebras
+de linha ajustadas para bater com o formatador, em
+`filter-chips-bar.tsx` e no JSX de `FilterChipsBar` em `index.tsx`),
+`npm run build` e `npm run performance:check` aprovados (maior chunk
+genérico ~434,2 KiB, dentro do limite de 450 KiB — margem restante de
+~15,8 KiB antes de precisar reabrir a decisão de orçamento ou investir
+em `rollup-plugin-visualizer`). Mesma limitação de verificação visual
+das etapas anteriores: os quatro painéis não foram exercitados ao vivo
+no navegador nesta etapa.
+
+Restam do mapeamento da seção 55, por risco crescente: painel de
+colunas com drag-and-drop, sidebar de navegação, sidebar de insights,
+paleta de comandos, hook de revisão em segundo plano, e por último
+exportação, undo/redo e ações de widget (os três mais entrelaçados
+entre si).
+
+## 57. Terceiro lote da extração do Dashboard: painel de colunas com drag-and-drop
+
+Continuação direta da seção 56, mesma branch. Extrai o candidato de
+risco médio seguinte do mapeamento: **`column-panel.tsx`**
+(`ColumnPanel`) — painel "Colunas e significado", com reordenação por
+arrastar (`draggable`/`onDragStart`/`onDrop`, texto = índice de
+origem), toggle de visibilidade, edição de papel/unidade semântica
+(`setSemanticOverride`/`resetSemanticOverride`) e o
+`FormulaColumnEditor` (já extraído na seção 36) embutido no rodapé.
+
+O ponto de atenção do mapeamento era o `e.dataTransfer.setData` duplo
+usado para arrastar uma coluna tanto para reordenar dentro da lista
+quanto para um slot de campo de gráfico fora do painel
+(`columnDragType(c.kind)`, ver `widgets.ts`) — preservado
+integralmente, sem alterar nenhuma chamada de `dataTransfer`.
+
+`ColumnPanel` recebe `columns`/`setColumns`/`semanticProfilesByKey`/
+`semanticOverrides`/`setSemanticOverride`/`resetSemanticOverride`, sem
+estado próprio. `index.tsx` caiu de 3.020 para 2.855 linhas. Seis
+imports ficaram órfãos e foram removidos: `Calculator`, `ChevronDown`,
+`ChevronUp`, `GripVertical` (ícones), `columnDragType` (`widgets.ts`),
+`kinds`, `semanticRoleLabels`, `semanticUnitOptions`
+(`spreadsheet-intelligence.ts`) e o import direto de
+`FormulaColumnEditor` (agora só usado dentro de `column-panel.tsx`).
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo (uma
+assinatura de função quebrada em múltiplas linhas para bater com o
+formatador), `npm run build` e `npm run performance:check` aprovados
+— **maior chunk genérico em ~438,0 KiB, margem de só ~12 KiB antes do
+limite de 450 KiB**. Mesma limitação de verificação visual das etapas
+anteriores: o drag-and-drop de colunas não foi exercitado ao vivo
+nesta etapa (risco considerado baixo — nenhuma linha de lógica de
+`dataTransfer` foi reescrita, só movida).
+
+**Margem de orçamento ficou crítica de novo**, mesmo padrão já
+registrado nas seções 42/51/56: mover código sem mudar comportamento
+ainda assim desloca qual módulo vira a "fachada" do chunk
+compartilhado. Os próximos candidatos do mapeamento da seção 55
+(sidebars, paleta de comandos, ~75-190 linhas cada) têm risco real de
+estourar o limite de 450 KiB nesta margem. Decisão registrada para o
+usuário antes de continuar: aumentar o limite de novo, investir em
+`rollup-plugin-visualizer` para entender a causa raiz, ou pausar a
+extração estrutural nesta branch.
+
+## 58. Investigação real do grafo de dependências do chunk compartilhado
+
+O usuário escolheu investigar a causa raiz em vez de só subir o limite
+de novo (opção já recomendada, mas nunca executada, desde a seção 51).
+
+**Ferramenta usada**: `rollup-plugin-visualizer` foi instalado
+temporariamente (`npm install --save-dev`), usado uma vez para gerar
+o relatório, depois **desinstalado** — a saída HTML/JSON padrão do
+plugin mistura o build do cliente com o build SSR do Nitro (a mesma
+invocação de `vite build` produz os dois; o plugin sobrescreve o
+relatório entre um e outro porque não distingue destino de saída,
+então o relatório final refletia sempre o build SSR, não o client
+bundle medido por `performance:check`). Em vez de adicionar uma
+dependência para contornar essa limitação, `vite.config.ts` ganhou um
+plugin mínimo escrito à mão (`clientChunkReportPlugin`, ativado só com
+`ANALYZE=1`, sem custo em builds normais): usa o hook `generateBundle`
+do Rollup, filtra por `options.dir.includes("static")` (a saída do
+cliente fica em `.vercel/output/static/assets`; a saída SSR em
+`.vercel/output/functions/__server.func`) e escreve
+`client-chunk-report.json` (gitignored) com cada chunk do cliente e o
+tamanho renderizado de cada módulo dentro dele.
+
+**Achado real**: o chunk hoje nomeado `column-panel-*.js` (438,0 KiB)
+**não é dominado pelo arquivo que lhe dá nome** — `column-panel.tsx`
+contribui só 7,1 KiB dos 436,2 KiB do chunk. A composição real, por
+módulo, maior primeiro:
+
+- `widget-card.tsx`: 130,6 KiB (o maior componente do projeto — corpo
+  de `WidgetCard`/`EmptyWidget` com um bloco de renderização por tipo
+  de widget: barra, pizza, linha, mapa, tabela, cronograma etc.)
+- `import.ts`: 64,5 KiB
+- `tailwind-merge` (node_modules): 54,6 KiB
+- `review.tsx`: 40,1 KiB
+- `@tanstack/virtual-core` (node_modules): 35,8 KiB
+- `widget-support.tsx`: 34,6 KiB
+- mais 157 outros módulos, a maioria arquivos de primeira parte de
+  `src/lib/` e `src/components/oliam/`, nenhum isolado acima de 25 KiB
+
+**Conclusão**: a "fachada do chunk" nunca foi o problema real — é só o
+nome cosmético que o Rolldown atribui a um chunk que de qualquer forma
+concentra quase todo o código de primeira parte compartilhado entre as
+rotas `/` e `/painel/$id`, porque quase todo esse código *é*
+genuinamente compartilhado (importado de ambas as rotas, direta ou
+transitivamente, através de `Dashboard`/`WidgetCard`). Reorganizar
+arquivos mexe em qual módulo "ganha" o nome do chunk (por isso a
+oscilação do nome a cada PR desta série), mas não move nenhum byte
+para fora do chunk nem para dentro — o grafo de dependências lógico é
+o mesmo antes e depois de cada extração. Isso confirma, com dado real
+em vez de hipótese, a decisão já registrada na seção 51 e a lição da
+tentativa revertida de isolar `widget-card`/`widget-support` (mesma
+seção): tentar isolar por regra de `id.includes(...)` não reduz o
+total, só realoca os mesmos bytes para outro chunk nomeado
+diferente — e um `manualChunks` que tentasse isolar `widget-card.tsx`
+sozinho reproduziria exatamente o problema já visto (777 KiB) porque
+ele mesmo puxa a maior parte do resto do grafo.
+
+**Consequência prática para o orçamento**: a extração estrutural em
+andamento nesta branch (mover código entre `index.tsx` e
+`components/oliam/`) é neutra para o tamanho deste chunk — o código
+não desaparece nem cresce, só troca de arquivo dentro do mesmo grafo
+compartilhado. A oscilação do maior chunk genérico entre PRs (423,5 →
+428,6 → 434,2 → 438,0 KiB) não é causada pela extração em si; é
+crescimento real de funcionalidade acumulado ao longo de várias
+sessões (iniciativa de widgets explicativos, widget "Insights
+automáticos", "Limpar filtros" etc.), que a extração apenas expõe ao
+deslocar a fachada. **Continuar a extração estrutural não é o que
+ameaça estourar o orçamento** — é o crescimento de `widget-card.tsx`
+(o módulo individual mais pesado do projeto) e do resto do código
+genuinamente compartilhado que precisaria de uma redução real (ex.:
+`import()` dinâmico por tipo de widget, carregando só o corpo de
+renderização do tipo realmente usado no painel) para diminuir de
+verdade — trabalho de escopo próprio, não uma reorganização de
+arquivos.
+
+**Ferramenta mantida para o futuro**: `clientChunkReportPlugin` fica
+em `vite.config.ts`, sem custo em build normal (só ativa com
+`ANALYZE=1 npm run build`), para a próxima vez que o orçamento
+apertar. Nenhuma dependência nova foi mantida no projeto.
+
+Verificado com `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados sem mudança de tamanho
+(a mudança em `vite.config.ts` só adiciona um plugin condicional a uma
+env var ausente em builds normais — confirmado comparando o build
+antes/depois da mudança, mesmo tamanho de chunk em ambos). `npx vitest
+run` não foi afetado (476 passou, 11 pulados, sem relação com
+`vite.config.ts`).
+
+## 59. Quarto lote da extração do Dashboard: sidebars e paleta de comandos
+
+Continuação direta da seção 58, mesma branch. Com o achado da
+investigação confirmado (extração não move bytes para dentro/fora do
+chunk compartilhado), o usuário optou por continuar com os três
+candidatos de risco médio seguintes do mapeamento da seção 55:
+
+- **`dashboard-nav-sidebar.tsx`** (`DashboardNavSidebar`): sidebar
+  esquerda de navegação entre painéis (lista ordenada por
+  `updatedAt`, botão "Novo painel", atalho para "Regras de dados
+  ausentes"). Recebe `dashboards`/`activeId`/`openDash`/`backHome`/
+  `newDash`/`rowCount`/`onOpenMissingPanel`; o estado `sidebar`
+  (aberto/fechado) continua em `Dashboard`, já que também controla o
+  botão de alternar no cabeçalho.
+- **`insight-sidebar.tsx`** (`InsightSidebar`): sidebar direita com
+  visão geral, dashboard sugerido, KPIs, ranking clicável (clique-
+  para-filtrar) e filtro de intervalo de data. Recebe uma lista longa
+  de props já calculadas no pipeline de `Dashboard` (`data`,
+  `autoDashboard`, `nums`, `versionDelta`, `sidebarRanking`,
+  `sidebarRankingMax`, `cat`, `primary`, `dateCol`, `filters`,
+  `setFilters`), sem estado próprio.
+- **`command-palette.tsx`** (`CommandPalette`): `CommandDialog` (⌘K)
+  com ~20 ações. Recebe cada callback já pronto (undo/redo,
+  exportações, abrir painéis, tema, navegação) — puro wiring, sem
+  lógica nova; os mesmos callbacks continuam sendo passados também
+  para os botões da barra de ferramentas, então a extração não
+  duplicou nenhuma função, só a referência já existente.
+
+`index.tsx` caiu de 2.855 para 2.523 linhas. Vários imports ficaram
+órfãos e foram removidos: ícones (`ChevronLeft`, `Pin`, `Activity`,
+`Moon`, `Sun`, `LayoutGrid`, e os seis componentes `Command*` de
+`@/components/ui/command`) e funções (`hue`, `conditionalStyle`,
+`conditionalColor`, `fmt` de `@/lib/format`).
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo de primeira
+(sem ajuste manual de quebra de linha desta vez), `npm run build` e
+`npm run performance:check` aprovados — **mas com margem agora crítica
+de verdade: ~447,2 KiB de 450 KiB, só ~2,8 KiB de folga**. O tamanho
+subiu mais do que o esperado pela investigação da seção 58 (que previa
+neutralidade): a explicação provável é overhead de módulo por arquivo
+novo (cada arquivo extra tem seu próprio wrapper ESM no bundle), não
+uma contradição do achado — o *conteúdo* do chunk continua sendo o
+mesmo grafo compartilhado, mas cada extração adiciona uma fração de
+bytes de boilerplate de módulo que se acumula. Mesma limitação de
+verificação visual das etapas anteriores: as três extrações não foram
+exercitadas ao vivo no navegador nesta etapa.
+
+**Margem esgotada**: os candidatos restantes do mapeamento da seção 55
+(hook de revisão em segundo plano, ~55 linhas; exportação, ~260
+linhas; undo/redo, ~65 linhas; ações de widget, ~130 linhas) não têm
+mais espaço nesta margem sem decisão explícita do usuário — mesmo o
+hook menor (~55 linhas) é arriscado com só 2,8 KiB de folga. Pausado
+aqui para decisão: subir o limite de novo, ou parar a extração
+estrutural nesta branch e publicar o que já foi feito.
+
+## 60. Bug real do gráfico de pizza quebrado visualmente com colunas de alta cardinalidade
+
+O usuário reportou com uma captura de tela: um widget de pizza
+agrupado por "ID Venda" (identificador quase único por linha)
+renderizava um emaranhado de traços finos saindo do centro em vez de
+um círculo — nada a ver com uma pizza. Pedido explícito de incluir a
+correção neste PR antes do merge (mesma branch de extração do
+Dashboard, ainda não mesclada).
+
+**Causa raiz confirmada por leitura de código, depois reproduzida ao
+vivo**: `pieSeries` em `widget-card.tsx` já tinha uma lógica de
+colapso "Top 5 + Outros" para não estourar o `<Pie>` do Recharts com
+muitas categorias — mas ela era **pulada inteiramente** quando
+`dataMode === "raw"` (modo "linha a linha"): `if (dataMode === "raw")
+return series;`. Como um widget de pizza novo com operação diferente
+de contagem **já nasce em modo raw por padrão**
+(`w.dataMode ?? (op === "count" ? "aggregate" : "raw")`), qualquer
+pizza criada com uma coluna de agrupamento de alta cardinalidade (ID
+único, código, etc.) cai direto nesse caminho sem proteção. Em modo
+raw, `chartSeries` gera **uma fatia por linha da planilha** (não por
+categoria), e um cap pré-existente de 120 (`limitChartSeriesForRendering`)
+amostrava até 120 pontos distribuídos — mas mesmo 120 fatias
+individuais, com ângulos de preenchimento fixos (`paddingAngle`
+calculado por `pieRoundnessFor`), quebram visualmente o desenho do
+Recharts. O texto "Prévia otimizada: 120 de 300 pontos..." visível na
+captura do usuário é exatamente esse cap em ação, mascarando o
+problema real em vez de preveni-lo.
+
+**Correção**: a lógica de colapso "Top 5 + Outros" (já existente e
+correta para o modo agregado) passou a rodar **sempre**, extraída
+para uma função pura nova, `collapsePieSeries` (`data-pipeline.ts`,
+ao lado de `pieRoundnessFor`/`pieComparisonFor`), e aplicada sobre
+`completeSeries` — a lista completa e não amostrada — em vez do
+`series` já cortado em 120. Isso é estritamente melhor que colapsar
+depois da amostragem: o "Top 5" real (as 5 maiores linhas por valor)
+é calculado sobre todos os dados, não sobre uma amostra distribuída
+que poderia nem conter as maiores linhas. Como consequência, o cap
+especial de 120 exclusivo do modo raw do pizza (`renderableSeries`)
+deixou de ser necessário e foi removido — o pizza nunca mais amostra,
+sempre colapsa para no máximo 6 fatias de verdade, então o banner
+"Prévia otimizada" (compartilhado com barra/linha/área) também deixa
+de aparecer para pizza, o que é correto: não há mais nada "otimizado
+por amostragem" para anunciar.
+
+Teste de regressão novo em `data-pipeline.test.ts`
+(`describe("collapsePieSeries")`): série com 6 categorias ou menos
+passa intacta; série com mais de 6 vira top 5 + "Outros" com `count`
+correto; caso que reproduz o relatado (120 entradas "linha a linha"
+com nomes quase únicos, imitando um `sourceRow` por linha) confirma
+que o resultado nunca passa de 6 itens e sempre termina em "Outros";
+caso em que o resto soma zero confirma que "Outros" não aparece à toa.
+
+**Verificado ao vivo no navegador**, reproduzindo o cenário exato do
+usuário: dados colados com coluna "ID Venda" (120 valores quase
+únicos) e "Quantidade" numérica, widget de pizza criado manualmente
+com X: ID Venda, Y: Quantidade — nasceu em modo "linha a linha" como
+esperado. Antes da correção isso geraria as mesmas ~120 fatias
+quebradas da captura do usuário; depois da correção, a legenda do
+widget mostra exatamente 6 itens (5 maiores linhas individuais +
+"Outros" com "115 categorias agrupadas · 92,7%"), confirmando que o
+colapso está ativo também em modo raw. A ferramenta de screenshot
+deste sandbox continua bloqueada (RAF não dispara, limitação já
+registrada nas seções 26/41), então a confirmação visual foi feita
+pela árvore de acessibilidade da página (lista da legenda, contagens
+e rótulos), não por captura de tela — mas é uma prova direta do DOM
+renderizado, não inferência de código.
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, era 476 — 4
+testes novos), `npx tsc --noEmit` sem erros, Prettier limpo (uma
+aspa dupla dentro de uma string de teste trocada por aspa simples
+pra bater com o formatador), `npm run build` e `npm run
+performance:check` aprovados (~447,1 KiB, dentro do limite de 450
+KiB, sem mudança relevante de tamanho — a correção remove código, não
+adiciona).

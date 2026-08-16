@@ -2,13 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Activity,
   AlertTriangle,
-  Calculator,
   Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronUp,
   Columns3,
   ClipboardPaste,
   Download,
@@ -17,25 +12,19 @@ import {
   Filter,
   FolderSync,
   GitMerge,
-  GripVertical,
   HelpCircle,
   History,
-  Info,
   LayoutDashboard,
-  LayoutGrid,
   Maximize2,
   Menu,
-  Moon,
   Palette,
   PanelRight,
-  Pin,
   Plus,
   Redo2,
   Search,
   Settings2,
   Sheet as SheetIcon,
   ShieldAlert,
-  Sun,
   Undo2,
   Upload,
   X,
@@ -44,14 +33,6 @@ import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table-widget";
 import { OperationalWidgetBody } from "@/components/operational-widget-body";
 import { FolderMonitorWidget } from "@/components/folder-monitor-widget";
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -80,24 +61,16 @@ import type {
   Widget,
   WidgetType,
 } from "@/lib/types";
-import { kinds, numericKinds, widgetTypeLabels } from "@/lib/types";
+import { numericKinds, widgetTypeLabels } from "@/lib/types";
 import {
   createWidget,
   buildDefaultWidgets,
-  columnDragType,
   duplicateWidget,
   groupableKinds,
   pickBestGroupColumn,
   schedulePeriodColumns,
 } from "@/lib/widgets";
-import {
-  conditionalColor,
-  conditionalStyle,
-  fmt,
-  hue,
-  infer,
-  withCalculatedColumns,
-} from "@/lib/format";
+import { infer, withCalculatedColumns } from "@/lib/format";
 import {
   applyMissingRules,
   detectQualitySignals,
@@ -114,7 +87,6 @@ import {
   removeFolderMonitor,
   saveDashboards,
   saveFolderMonitor,
-  TERM_HINTS_KEY,
   isPrivateMode,
   setPrivateMode,
   type SaveResult,
@@ -135,8 +107,6 @@ import {
 import { compareVersions, type VersionDiff } from "@/lib/import-workbench";
 import {
   analyzeSpreadsheet,
-  semanticRoleLabels,
-  semanticUnitOptions,
   type ExceptionDecision,
   type ExceptionDecisions,
   type SemanticOverrides,
@@ -195,7 +165,6 @@ import { AnimatedNumber } from "@/components/oliam/animated-number";
 import { Onboarding } from "@/components/oliam/onboarding";
 import { useJoinSheetDialog } from "@/components/oliam/join-sheet-dialog";
 import { usePresentationMode } from "@/components/oliam/presentation-mode";
-import { FormulaColumnEditor } from "@/components/oliam/formula-column-editor";
 import { BookmarkPanel } from "@/components/oliam/bookmark-panel";
 import { GeminiChatPanel } from "@/components/oliam/gemini-chat-panel";
 import { Home } from "@/components/oliam/home";
@@ -203,8 +172,19 @@ import { Empty } from "@/components/oliam/empty";
 import { Review } from "@/components/oliam/review";
 import { WidgetPickerIcon, widgetTypeDescriptions } from "@/components/oliam/widget-support";
 import { WidgetCard } from "@/components/oliam/widget-card";
-import { FormatRulesEditor } from "@/components/oliam/format-rules-editor";
 import { ImportDiagnosticsDialog } from "@/components/oliam/import-diagnostics-dialog";
+import { ShortcutsDialog } from "@/components/oliam/shortcuts-dialog";
+import { SourceNotesPanel } from "@/components/oliam/source-notes-panel";
+import { VersionDiffBanner } from "@/components/oliam/version-diff-banner";
+import { useTermHint } from "@/components/oliam/term-hint-banner";
+import { QualitySignalsPanel } from "@/components/oliam/quality-signals-panel";
+import { MissingRulesPanel } from "@/components/oliam/missing-rules-panel";
+import { FormatPanel } from "@/components/oliam/format-panel";
+import { FilterChipsBar } from "@/components/oliam/filter-chips-bar";
+import { ColumnPanel } from "@/components/oliam/column-panel";
+import { DashboardNavSidebar } from "@/components/oliam/dashboard-nav-sidebar";
+import { InsightSidebar } from "@/components/oliam/insight-sidebar";
+import { CommandPalette } from "@/components/oliam/command-palette";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
 // código uma tabela com aparência de dado empresarial real e ainda exercita
@@ -1214,19 +1194,8 @@ function Dashboard(p: {
   const [importDiagnostics, setImportDiagnostics] = useState(false);
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
   const [insightOpen, setInsightOpen] = useState(true);
-  const [showTermHint, setShowTermHint] = useState(false);
+  const { termHintBanner } = useTermHint(sheet.widgets);
   const backupInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    const usesGrouping = (sheet.widgets ?? []).some((w) =>
-      ["bar", "pie", "line", "ranking", "map"].includes(w.type),
-    );
-    if (usesGrouping && !localStorage.getItem(TERM_HINTS_KEY)) setShowTermHint(true);
-  }, [sheet.widgets]);
-  const dismissTermHint = () => {
-    localStorage.setItem(TERM_HINTS_KEY, "1");
-    setShowTermHint(false);
-  };
   const contentRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
@@ -1944,33 +1913,7 @@ function Dashboard(p: {
     applyBookmark,
   );
 
-  const sourceNotesPanel = sheet.sourceNotes?.length ? (
-    <details className="mx-4 mb-4 rounded-2xl border border-primary/20 bg-card shadow-sm md:mx-6">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
-        <span className="inline-flex min-w-0 items-center gap-2">
-          <FileText className="size-4 shrink-0 text-primary" />
-          <span className="truncate">Observações da planilha</span>
-        </span>
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-          {sheet.sourceNotes.length}
-        </span>
-      </summary>
-      <ul className="grid max-h-72 gap-2 overflow-auto border-t border-border p-3 sm:grid-cols-2">
-        {sheet.sourceNotes.map((note, noteIndex) => (
-          <li
-            key={`${note.address}-${noteIndex}`}
-            className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
-          >
-            <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
-              {note.address} · {note.kind === "comment" ? "Comentário" : "Observação"}
-              {note.author ? ` · ${note.author}` : ""}
-            </span>
-            <span className="whitespace-pre-line">{note.text}</span>
-          </li>
-        ))}
-      </ul>
-    </details>
-  ) : null;
+  const sourceNotesPanel = <SourceNotesPanel sourceNotes={sheet.sourceNotes} />;
 
   const gridContent =
     widgets.length === 0 ? (
@@ -2030,87 +1973,19 @@ function Dashboard(p: {
       </div>
     );
 
-  const closeSidebarOnMobile = () => {
-    if (typeof window !== "undefined" && window.matchMedia("(max-width: 700px)").matches) {
-      setSidebar(false);
-    }
-  };
-
   return (
     <div className="flex h-screen overflow-hidden">
-      {sidebar && (
-        <div
-          className="oliam-sidebar-backdrop"
-          aria-hidden="true"
-          onClick={() => setSidebar(false)}
-        />
-      )}
-      <aside className={cn("oliam-sidebar", !sidebar && "w-0 -translate-x-full border-0")}>
-        <div className="flex h-16 items-center gap-3 border-b border-border px-4">
-          <Mark />
-          <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
-        </div>
-        <div className="flex-1 overflow-auto p-3">
-          <button
-            className="oliam-nav-item text-muted-foreground"
-            onClick={() => {
-              p.backHome();
-              closeSidebarOnMobile();
-            }}
-          >
-            <ChevronLeft className="size-4" />
-            Todos os painéis
-          </button>
-          <p className="px-2 pb-1.5 pt-4 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-            Painéis
-          </p>
-          {[...p.dashboards]
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .map((x) => (
-              <button
-                key={x.id}
-                className={cn("oliam-nav-item", x.id === d.id && "active")}
-                onClick={() => {
-                  p.openDash(x.id);
-                  closeSidebarOnMobile();
-                }}
-              >
-                <span
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ background: x.id === d.id ? "currentColor" : hue(x.id) }}
-                />
-                <span className="truncate">{x.name}</span>
-                {x.pinned && (
-                  <Pin
-                    className={cn(
-                      "ml-auto size-3 shrink-0",
-                      x.id === d.id ? "fill-current" : "fill-primary text-primary",
-                    )}
-                  />
-                )}
-              </button>
-            ))}
-          <button
-            className="oliam-nav-item text-muted-foreground"
-            onClick={() => {
-              p.newDash();
-              closeSidebarOnMobile();
-            }}
-          >
-            <Plus className="size-4" />
-            Novo painel
-          </button>
-        </div>
-        <div className="border-t border-border p-3">
-          <button className="oliam-nav-item" onClick={() => setMissingPanel(true)}>
-            <Settings2 className="size-4" />
-            Regras de dados ausentes
-          </button>
-          <p className="mt-2 px-2 font-mono text-[10px] text-muted-foreground">
-            {sheet.rows.length} linhas · local
-          </p>
-        </div>
-      </aside>
+      <DashboardNavSidebar
+        open={sidebar}
+        onOpenChange={setSidebar}
+        dashboards={p.dashboards}
+        activeId={d.id}
+        openDash={p.openDash}
+        backHome={p.backHome}
+        newDash={p.newDash}
+        rowCount={sheet.rows.length}
+        onOpenMissingPanel={() => setMissingPanel(true)}
+      />
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="oliam-dashboard-topbar">
           <input
@@ -2472,307 +2347,24 @@ function Dashboard(p: {
             <HelpCircle />
           </Button>
         </div>
-        {showTermHint && (
-          <div className="flex items-start gap-3 border-b border-border bg-tint px-5 py-3">
-            <Info className="mt-0.5 size-4 shrink-0 text-primary" />
-            <p className="flex-1 text-xs text-foreground">
-              <strong>Agrupamento</strong> organiza os dados por uma coluna, como categoria ou data.{" "}
-              <strong>Agregação</strong> combina os valores dentro de cada grupo: soma, média,
-              contagem, mínimo ou máximo.
-            </p>
-            <button
-              className="shrink-0 text-xs font-medium text-primary hover:underline"
-              onClick={dismissTermHint}
-            >
-              Entendi
-            </button>
-            <button className="shrink-0" aria-label="Dispensar dica" onClick={dismissTermHint}>
-              <X className="size-3.5" />
-            </button>
-          </div>
-        )}
-        {sheet.filters.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b px-5 py-2">
-            {sheet.filters.length > 1 && (
-              <button
-                type="button"
-                className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-destructive hover:underline"
-                onClick={() => setFilters([])}
-              >
-                Limpar {sheet.filters.length} filtros
-              </button>
-            )}
-            {sheet.filters.map((f, i) => {
-              const col = sheet.columns.find((c) => c.key === f.key);
-              const isRange = col && (numericKinds.includes(col.kind) || col.kind === "date");
-              return (
-                <div
-                  className="flex items-center rounded-full border border-border bg-accent text-xs"
-                  key={i}
-                >
-                  <span className="px-2 text-muted-foreground">{col?.label}</span>
-                  {isRange ? (
-                    <>
-                      <input
-                        autoFocus
-                        type={col.kind === "date" ? "text" : "number"}
-                        className="w-20 bg-transparent py-1 outline-none"
-                        placeholder={col.kind === "date" ? "dd/mm/aaaa" : "mín"}
-                        value={f.min ?? ""}
-                        onChange={(e) =>
-                          setFilters(
-                            sheet.filters.map((x, j) =>
-                              j === i ? { ...x, min: e.target.value } : x,
-                            ),
-                          )
-                        }
-                      />
-                      <span className="text-muted-foreground">–</span>
-                      <input
-                        type={col.kind === "date" ? "text" : "number"}
-                        className="w-20 bg-transparent py-1 outline-none"
-                        placeholder={col.kind === "date" ? "dd/mm/aaaa" : "máx"}
-                        value={f.max ?? ""}
-                        onChange={(e) =>
-                          setFilters(
-                            sheet.filters.map((x, j) =>
-                              j === i ? { ...x, max: e.target.value } : x,
-                            ),
-                          )
-                        }
-                      />
-                    </>
-                  ) : (
-                    <input
-                      autoFocus
-                      className="w-24 bg-transparent py-1 outline-none"
-                      placeholder="valor…"
-                      value={f.value}
-                      onChange={(e) =>
-                        setFilters(
-                          sheet.filters.map((x, j) =>
-                            j === i ? { ...x, value: e.target.value } : x,
-                          ),
-                        )
-                      }
-                    />
-                  )}
-                  <button
-                    className="rounded-r-full p-1.5 pr-2.5 text-muted-foreground transition-colors hover:text-destructive"
-                    aria-label="Remover filtro"
-                    onClick={() => setFilters(sheet.filters.filter((_, j) => j !== i))}
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {qualityPanel && (
-          <div className="absolute inset-x-4 top-28 z-40 w-auto max-w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-96">
-            <div className="flex items-center justify-between border-b p-3">
-              <strong className="text-sm">Qualidade dos dados</strong>
-              <Button variant="ghost" size="icon" onClick={() => setQualityPanel(false)}>
-                <X />
-              </Button>
-            </div>
-            {visibleSignals.length === 0 ? (
-              <p className="p-4 text-[12px] text-muted-foreground">
-                Nenhum problema encontrado nos dados atuais.
-              </p>
-            ) : (
-              <div className="max-h-96 overflow-auto p-2">
-                {visibleSignals.map((s) => (
-                  <div
-                    key={`${s.kind}-${s.columnKey}`}
-                    className="flex items-start gap-2 border-b p-2 text-[12px] last:border-b-0"
-                  >
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                    <p className="flex-1 leading-relaxed">{s.message}</p>
-                    <button
-                      className="shrink-0 p-0.5"
-                      aria-label="Dispensar aviso"
-                      onClick={() =>
-                        setDismissedSignals((prev) => new Set(prev).add(`${s.kind}-${s.columnKey}`))
-                      }
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {panel && (
-          <div className="absolute inset-x-4 top-28 z-40 w-auto overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-[42rem]">
-            <div className="flex items-center justify-between border-b p-3">
-              <div>
-                <strong className="text-sm">Colunas e significado</strong>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Confirme o papel e a unidade usados nas análises.
-                </p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setPanel(false)}>
-                <X />
-              </Button>
-            </div>
-            <div className="max-h-[32rem] overflow-auto p-2">
-              {sheet.columns.map((c, i) => {
-                const profile = semanticProfilesByKey.get(c.key);
-                const overridden = Boolean(sheet.semanticOverrides?.[c.key]);
-                return (
-                  <div
-                    key={c.key}
-                    draggable
-                    onDragStart={(e) => {
-                      // Reordenar dentro desta lista (texto = índice de origem).
-                      e.dataTransfer.setData("text/plain", String(i));
-                      // Arrastar para um slot de campo de gráfico fora da lista
-                      // (tipo MIME sintético que já embute o Kind da coluna,
-                      // ver columnDragType em src/lib/widgets.ts).
-                      e.dataTransfer.setData(columnDragType(c.kind), c.key);
-                      e.dataTransfer.effectAllowed = "all";
-                    }}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const from = Number(e.dataTransfer.getData("text/plain"));
-                      if (Number.isNaN(from) || from === i) return;
-                      const next = [...sheet.columns];
-                      const moved = next.splice(from, 1)[0];
-                      if (!moved) return;
-                      next.splice(i, 0, moved);
-                      setColumns(next);
-                    }}
-                    className="border-b border-border/70 p-2 text-sm last:border-b-0 hover:bg-accent/50"
-                  >
-                    <div className="flex items-center gap-2">
-                      <label className="flex min-w-0 flex-1 items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={c.visible}
-                          onChange={() =>
-                            setColumns(
-                              sheet.columns.map((x, j) =>
-                                j === i ? { ...x, visible: !x.visible } : x,
-                              ),
-                            )
-                          }
-                        />
-                        <GripVertical
-                          className="size-4 shrink-0 cursor-grab text-muted-foreground"
-                          aria-hidden="true"
-                        />
-                        <span className="truncate font-medium">
-                          {c.label}
-                          {c.formula && (
-                            <Calculator
-                              className="ml-1 inline size-3 text-secondary-accent"
-                              aria-label="Coluna calculada"
-                            />
-                          )}
-                        </span>
-                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                          {kinds[c.kind]}
-                        </span>
-                      </label>
-                      <div className="flex shrink-0 flex-col">
-                        <button
-                          className="disabled:opacity-30"
-                          aria-label={`Mover ${c.label} para cima`}
-                          disabled={i === 0}
-                          onClick={() => {
-                            if (i === 0) return;
-                            const next = [...sheet.columns];
-                            const a = next[i - 1],
-                              b = next[i];
-                            if (!a || !b) return;
-                            next[i - 1] = b;
-                            next[i] = a;
-                            setColumns(next);
-                          }}
-                        >
-                          <ChevronUp className="size-3" />
-                        </button>
-                        <button
-                          className="disabled:opacity-30"
-                          aria-label={`Mover ${c.label} para baixo`}
-                          disabled={i === sheet.columns.length - 1}
-                          onClick={() => {
-                            if (i === sheet.columns.length - 1) return;
-                            const next = [...sheet.columns];
-                            const a = next[i],
-                              b = next[i + 1];
-                            if (!a || !b) return;
-                            next[i] = b;
-                            next[i + 1] = a;
-                            setColumns(next);
-                          }}
-                        >
-                          <ChevronDown className="size-3" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-2 grid gap-2 pl-10 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-center">
-                      <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        Papel
-                        <select
-                          className="oliam-select h-7 min-w-0 flex-1"
-                          value={profile?.role ?? "unknown"}
-                          onChange={(event) =>
-                            setSemanticOverride(c.key, { role: event.target.value as SemanticRole })
-                          }
-                        >
-                          {Object.entries(semanticRoleLabels).map(([role, label]) => (
-                            <option key={role} value={role}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        Unidade
-                        <select
-                          className="oliam-select h-7 min-w-0 flex-1"
-                          value={profile?.unit ?? ""}
-                          onChange={(event) =>
-                            setSemanticOverride(c.key, { unit: event.target.value || null })
-                          }
-                        >
-                          <option value="">Sem unidade</option>
-                          {semanticUnitOptions.map((unit) => (
-                            <option key={unit} value={unit}>
-                              {unit}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground">
-                        <span>{profile?.confidence ?? 0}%</span>
-                        {overridden ? (
-                          <button
-                            type="button"
-                            className="font-medium text-primary hover:underline"
-                            onClick={() => resetSemanticOverride(c.key)}
-                          >
-                            Usar automático
-                          </button>
-                        ) : (
-                          <span>Automático</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="border-t p-3">
-              <FormulaColumnEditor columns={sheet.columns} onAddColumn={setColumns} />
-            </div>
-          </div>
-        )}
+        {termHintBanner}
+        <FilterChipsBar filters={sheet.filters} columns={sheet.columns} setFilters={setFilters} />
+        <QualitySignalsPanel
+          open={qualityPanel}
+          onOpenChange={setQualityPanel}
+          visibleSignals={visibleSignals}
+          onDismiss={(key) => setDismissedSignals((prev) => new Set(prev).add(key))}
+        />
+        <ColumnPanel
+          open={panel}
+          onOpenChange={setPanel}
+          columns={sheet.columns}
+          setColumns={setColumns}
+          semanticProfilesByKey={semanticProfilesByKey}
+          semanticOverrides={sheet.semanticOverrides}
+          setSemanticOverride={setSemanticOverride}
+          resetSemanticOverride={resetSemanticOverride}
+        />
         {exportError && (
           <div
             role="status"
@@ -2782,94 +2374,19 @@ function Dashboard(p: {
             {exportError}
           </div>
         )}
-        {missingPanel && (
-          <div className="absolute inset-x-4 top-28 z-40 w-auto max-w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-96">
-            <div className="flex items-center justify-between border-b p-3">
-              <strong className="text-sm">Regras de dados ausentes</strong>
-              <Button variant="ghost" size="icon" onClick={() => setMissingPanel(false)}>
-                <X />
-              </Button>
-            </div>
-            <div className="max-h-96 overflow-auto p-2">
-              {sheet.columns
-                .filter((c) => !c.formula)
-                .map((c) => {
-                  const isNumeric = numericKinds.includes(c.kind);
-                  return (
-                    <div
-                      key={c.key}
-                      className="flex items-center justify-between gap-3 p-2 text-sm"
-                    >
-                      <span className="truncate">{c.label}</span>
-                      <select
-                        className="oliam-select w-44 shrink-0"
-                        value={c.missingRule ?? "ignore"}
-                        onChange={(e) => {
-                          const value = e.target.value as NonNullable<Column["missingRule"]>;
-                          setColumns(
-                            sheet.columns.map((x) =>
-                              x.key === c.key ? { ...x, missingRule: value } : x,
-                            ),
-                          );
-                        }}
-                      >
-                        {isNumeric ? (
-                          <>
-                            <option value="ignore">Ignorar nos totais</option>
-                            <option value="zero">Tratar como zero</option>
-                            <option value="interpolate">Interpolação linear</option>
-                            <option value="hide-row">Ocultar linha</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="ignore">Exibir "Não informado"</option>
-                            <option value="hide-row">Ocultar linha</option>
-                          </>
-                        )}
-                      </select>
-                    </div>
-                  );
-                })}
-              <p className="p-2 text-xs text-muted-foreground">
-                Valores estimados por interpolação aparecem com um contorno fino na tabela.
-              </p>
-            </div>
-          </div>
-        )}
-        {formatPanel && (
-          <div className="absolute inset-x-4 top-28 z-40 w-auto max-w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-96">
-            <div className="flex items-center justify-between border-b p-3">
-              <strong className="text-sm">Formatação condicional</strong>
-              <Button variant="ghost" size="icon" onClick={() => setFormatPanel(false)}>
-                <X />
-              </Button>
-            </div>
-            <div className="max-h-96 overflow-auto p-2">
-              {nums.length === 0 && (
-                <p className="p-2 text-xs text-muted-foreground">
-                  Nenhuma coluna numérica disponível para formatar.
-                </p>
-              )}
-              {nums.map((c) => (
-                <FormatRulesEditor
-                  key={c.key}
-                  column={c}
-                  onChange={(rules) =>
-                    setColumns(
-                      sheet.columns.map((x) =>
-                        x.key === c.key ? { ...x, conditionalFormat: rules } : x,
-                      ),
-                    )
-                  }
-                />
-              ))}
-              <p className="p-2 text-xs text-muted-foreground">
-                Regras de limite colorem o valor quando ele cruza um número. Regras de escala pintam
-                o fundo em degradê entre um mínimo e um máximo, estilo heatmap.
-              </p>
-            </div>
-          </div>
-        )}
+        <MissingRulesPanel
+          open={missingPanel}
+          onOpenChange={setMissingPanel}
+          columns={sheet.columns}
+          setColumns={setColumns}
+        />
+        <FormatPanel
+          open={formatPanel}
+          onOpenChange={setFormatPanel}
+          nums={nums}
+          columns={sheet.columns}
+          setColumns={setColumns}
+        />
         <div className="flex min-h-0 flex-1">
           <div ref={contentRef} className="min-w-0 flex-1 overflow-auto bg-canvas p-4 md:p-6">
             <div className="oliam-export-watermark" aria-hidden="true" />
@@ -2893,62 +2410,7 @@ function Dashboard(p: {
                 </p>
               </div>
             </div>
-            {detailedVersionDiff && (
-              <div className="mb-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <GitMerge className="size-4 text-primary" /> Comparação com a versão anterior
-                </div>
-                {detailedVersionDiff.reason && (
-                  <p
-                    className={cn(
-                      "mt-3 rounded-xl border px-3 py-2 text-xs",
-                      detailedVersionDiff.status === "incompatible"
-                        ? "border-red-500/25 bg-red-500/5 text-red-700 dark:text-red-300"
-                        : "border-amber-500/25 bg-amber-500/5 text-amber-700 dark:text-amber-300",
-                    )}
-                  >
-                    {detailedVersionDiff.reason}
-                  </p>
-                )}
-                {detailedVersionDiff.status !== "incompatible" && (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    <span className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
-                      +{detailedVersionDiff.added} linhas adicionadas
-                    </span>
-                    <span className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
-                      −{detailedVersionDiff.removed} linhas removidas
-                    </span>
-                    <span className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                      {detailedVersionDiff.changed} linhas alteradas
-                    </span>
-                  </div>
-                )}
-                {(detailedVersionDiff.addedColumns.length > 0 ||
-                  detailedVersionDiff.removedColumns.length > 0 ||
-                  detailedVersionDiff.typeChanges.length > 0) && (
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
-                    {detailedVersionDiff.addedColumns.map((column) => (
-                      <span key={`add-${column}`} className="rounded-full border px-2.5 py-1">
-                        Nova coluna: {column}
-                      </span>
-                    ))}
-                    {detailedVersionDiff.removedColumns.map((column) => (
-                      <span key={`remove-${column}`} className="rounded-full border px-2.5 py-1">
-                        Coluna não reconhecida na nova versão: {column}
-                      </span>
-                    ))}
-                    {detailedVersionDiff.typeChanges.map((change) => (
-                      <span
-                        key={`type-${change.column}`}
-                        className="rounded-full border px-2.5 py-1"
-                      >
-                        {change.column}: {change.before} → {change.after}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <VersionDiffBanner diff={detailedVersionDiff} />
             {sourceNotesPanel}
             {gridContent}
             <footer className="oliam-export-footer" aria-hidden="true">
@@ -2969,194 +2431,21 @@ function Dashboard(p: {
               </div>
             </footer>
           </div>
-          {insightOpen && (
-            <aside className="oliam-insight-sidebar hidden shrink-0 overflow-auto lg:block">
-              <div className="border-b border-border p-4">
-                <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Visão geral
-                </p>
-                <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-                  {data.length} de {sheet.rows.length} linhas na visão atual
-                </p>
-              </div>
-              {sheet.autoDashboard && (
-                <div className="border-b border-border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                      Dashboard sugerido
-                    </p>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-                      {sheet.autoDashboard.confidence}% confiança
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    Criado automaticamente a partir dos tipos, preenchimento e qualidade das
-                    colunas.
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {sheet.autoDashboard.recommendations.slice(0, 5).map((item) => (
-                      <div key={item.id} className="rounded-xl border border-border bg-card p-2.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-medium leading-snug">{item.title}</p>
-                          <span className="shrink-0 font-mono text-[10px] text-primary">
-                            {item.confidence}%
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                          {item.reasons[0]}
-                        </p>
-                        {item.warnings[0] && (
-                          <p className="mt-1 text-[11px] leading-relaxed text-amber-600">
-                            {item.warnings[0]}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {nums.length > 0 && (
-                <div className="border-b border-border p-4">
-                  <p className="mb-3 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                    KPIs
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {nums.slice(0, 4).map((c) => {
-                      const total = data.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
-                      const delta = versionDelta?.get(c.key) ?? null;
-                      const style = conditionalStyle(total, c.kind, c.conditionalFormat);
-                      return (
-                        <div
-                          key={c.key}
-                          className="rounded-xl border border-border bg-card p-2.5 shadow-sm"
-                          style={style ?? undefined}
-                        >
-                          <p className="truncate text-[11px] text-muted-foreground">{c.label}</p>
-                          <p
-                            className="font-mono text-base font-semibold"
-                            style={{ color: style?.color }}
-                          >
-                            {fmt(total, c.kind)}
-                          </p>
-                          {delta !== null && (
-                            <p
-                              className={cn(
-                                "font-mono text-[10px]",
-                                delta >= 0 ? "text-secondary-accent" : "text-destructive",
-                              )}
-                            >
-                              {delta >= 0 ? "+" : ""}
-                              {new Intl.NumberFormat("pt-BR", {
-                                style: "percent",
-                                maximumFractionDigits: 1,
-                              }).format(delta)}{" "}
-                              vs. anterior
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {sidebarRanking.length > 0 && cat && primary && (
-                <div className="border-b border-border p-4">
-                  <p className="mb-3 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Ranking por {cat.label}
-                  </p>
-                  <div className="space-y-0.5">
-                    {sidebarRanking.map((r) => {
-                      const active = sheet.filters.some(
-                        (f) => f.key === cat.key && f.value === r.name,
-                      );
-                      return (
-                        <button
-                          key={r.name}
-                          className={cn(
-                            "oliam-ranking-row block w-full text-left transition-opacity hover:opacity-90",
-                            active && "opacity-100",
-                          )}
-                          onClick={() => {
-                            if (active) {
-                              setFilters(sheet.filters.filter((f) => f.key !== cat.key));
-                            } else {
-                              setFilters([
-                                ...sheet.filters.filter((f) => f.key !== cat.key),
-                                { key: cat.key, value: r.name, min: "", max: "" },
-                              ]);
-                            }
-                          }}
-                        >
-                          <div className="mb-1 flex items-center justify-between gap-2">
-                            <span className="truncate text-xs">{r.name || "Não informado"}</span>
-                            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                              {fmt(r.total, primary.kind)}
-                            </span>
-                          </div>
-                          <div className="oliam-ranking-track">
-                            <div
-                              className="oliam-ranking-fill"
-                              style={{
-                                width: `${Math.max(4, (Math.abs(r.total) / sidebarRankingMax) * 100)}%`,
-                                background:
-                                  conditionalColor(
-                                    r.total,
-                                    primary.kind,
-                                    primary.conditionalFormat,
-                                  ) ?? (active ? "var(--primary)" : "var(--secondary-accent)"),
-                              }}
-                            />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {dateCol && (
-                <div className="p-4">
-                  <p className="mb-3 text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Filtrar por {dateCol.label}
-                  </p>
-                  {(() => {
-                    const existing = sheet.filters.find((f) => f.key === dateCol.key);
-                    return (
-                      <div className="flex flex-col gap-2">
-                        <input
-                          className="oliam-input h-9"
-                          type="text"
-                          placeholder="De, dd/mm/aaaa"
-                          value={existing?.min ?? ""}
-                          onChange={(e) => {
-                            const min = e.target.value;
-                            const rest = sheet.filters.filter((f) => f.key !== dateCol.key);
-                            setFilters([
-                              ...rest,
-                              { key: dateCol.key, value: "", min, max: existing?.max ?? "" },
-                            ]);
-                          }}
-                        />
-                        <input
-                          className="oliam-input h-9"
-                          type="text"
-                          placeholder="Até, dd/mm/aaaa"
-                          value={existing?.max ?? ""}
-                          onChange={(e) => {
-                            const max = e.target.value;
-                            const rest = sheet.filters.filter((f) => f.key !== dateCol.key);
-                            setFilters([
-                              ...rest,
-                              { key: dateCol.key, value: "", min: existing?.min ?? "", max },
-                            ]);
-                          }}
-                        />
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </aside>
-          )}
+          <InsightSidebar
+            open={insightOpen}
+            data={data}
+            rowCount={sheet.rows.length}
+            autoDashboard={sheet.autoDashboard}
+            nums={nums}
+            versionDelta={versionDelta}
+            sidebarRanking={sidebarRanking}
+            sidebarRankingMax={sidebarRankingMax}
+            cat={cat}
+            primary={primary}
+            dateCol={dateCol}
+            filters={sheet.filters}
+            setFilters={setFilters}
+          />
         </div>
         {d.sheets.length > 1 && (
           <div
@@ -3193,143 +2482,40 @@ function Dashboard(p: {
           </div>
         </div>
       )}
-      <CommandDialog open={command} onOpenChange={setCommand}>
-        <CommandInput placeholder="Filtrar, trocar painel ou exportar…" />
-        <CommandList>
-          <CommandEmpty>Nenhum comando encontrado.</CommandEmpty>
-          <CommandGroup heading="Ações">
-            <CommandItem onSelect={undo} disabled={!canUndo}>
-              <Undo2 />
-              Desfazer
-            </CommandItem>
-            <CommandItem onSelect={redo} disabled={!canRedo}>
-              <Redo2 />
-              Refazer
-            </CommandItem>
-            <CommandItem onSelect={() => pasteCopiedWidget()} disabled={!widgetClipboard}>
-              <ClipboardPaste />
-              Colar widget copiado
-            </CommandItem>
-            <CommandItem onSelect={p.reimport}>
-              <Upload />
-              Importar nova versão
-            </CommandItem>
-            <CommandItem
-              onSelect={
-                p.folderMonitor?.status === "error" || !p.folderMonitor
-                  ? p.connectFolder
-                  : p.disconnectFolder
-              }
-            >
-              <FolderSync />
-              {p.folderMonitor?.status === "error"
-                ? "Reconectar pasta monitorada"
-                : p.folderMonitor
-                  ? "Desconectar pasta monitorada"
-                  : "Monitorar pasta local"}
-            </CommandItem>
-            <CommandItem onSelect={exportXlsx}>
-              <Download />
-              Exportar XLSX
-            </CommandItem>
-            <CommandItem onSelect={exportCorrectedWorkbook}>
-              <SheetIcon />
-              Gerar cópia corrigida
-            </CommandItem>
-            <CommandItem onSelect={exportAuditCsv}>
-              <History />
-              Exportar auditoria CSV
-            </CommandItem>
-            <CommandItem onSelect={exportComparisonCsv}>
-              <GitMerge />
-              Exportar comparação CSV
-            </CommandItem>
-            <CommandItem onSelect={() => void exportReviewPdf()}>
-              <FileText />
-              Exportar relatório de revisão PDF
-            </CommandItem>
-            <CommandItem onSelect={() => void exportPng()}>
-              <FileImage />
-              Exportar PNG
-            </CommandItem>
-            <CommandItem onSelect={() => void exportPdf()}>
-              <FileText />
-              Exportar PDF do painel
-            </CommandItem>
-            <CommandItem onSelect={() => void exportEncryptedBackup()}>
-              <ShieldAlert />
-              Criar backup criptografado
-            </CommandItem>
-            <CommandItem onSelect={() => backupInput.current?.click()}>
-              <Upload />
-              Restaurar backup protegido
-            </CommandItem>
-            <CommandItem onSelect={() => setFormatPanel(true)}>
-              <Palette />
-              Formatação condicional
-            </CommandItem>
-            <CommandItem onSelect={() => setShortcuts(true)}>
-              <HelpCircle />
-              Atalhos de teclado
-            </CommandItem>
-            <CommandItem onSelect={() => setImportDiagnostics(true)}>
-              <Activity />
-              Diagnóstico de importação
-            </CommandItem>
-            <CommandItem onSelect={() => setPanel(true)}>
-              <Columns3 />
-              Configurar colunas
-            </CommandItem>
-            <CommandItem onSelect={startPresentation}>
-              <Maximize2 />
-              Modo apresentação
-            </CommandItem>
-            <CommandItem onSelect={openJoin}>
-              <GitMerge />
-              Combinar planilha
-            </CommandItem>
-            <CommandItem onSelect={p.toggleTheme}>
-              {p.theme === "dark" ? <Sun /> : <Moon />}Alternar modo escuro
-            </CommandItem>
-            <CommandItem onSelect={p.backHome}>
-              <LayoutGrid />
-              Ver todos os painéis
-            </CommandItem>
-          </CommandGroup>
-        </CommandList>
-      </CommandDialog>
+      <CommandPalette
+        open={command}
+        onOpenChange={setCommand}
+        undo={undo}
+        redo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        pasteCopiedWidget={pasteCopiedWidget}
+        hasWidgetClipboard={Boolean(widgetClipboard)}
+        reimport={p.reimport}
+        folderMonitor={p.folderMonitor}
+        connectFolder={p.connectFolder}
+        disconnectFolder={p.disconnectFolder}
+        exportXlsx={exportXlsx}
+        exportCorrectedWorkbook={exportCorrectedWorkbook}
+        exportAuditCsv={exportAuditCsv}
+        exportComparisonCsv={exportComparisonCsv}
+        exportReviewPdf={exportReviewPdf}
+        exportPng={exportPng}
+        exportPdf={exportPdf}
+        exportEncryptedBackup={exportEncryptedBackup}
+        onRestoreBackup={() => backupInput.current?.click()}
+        onOpenFormatPanel={() => setFormatPanel(true)}
+        onOpenShortcuts={() => setShortcuts(true)}
+        onOpenImportDiagnostics={() => setImportDiagnostics(true)}
+        onOpenColumnsPanel={() => setPanel(true)}
+        startPresentation={startPresentation}
+        openJoin={openJoin}
+        theme={p.theme}
+        toggleTheme={p.toggleTheme}
+        backHome={p.backHome}
+      />
       {joinDialog}
-      <Dialog open={shortcuts} onOpenChange={setShortcuts}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Atalhos de teclado</DialogTitle>
-            <DialogDescription>Ações rápidas disponíveis dentro de um painel.</DialogDescription>
-          </DialogHeader>
-          <ul className="divide-y">
-            {[
-              { keys: "⌘K / Ctrl+K", label: "Abrir a paleta de comandos" },
-              { keys: "? ou ⌘/ / Ctrl+/", label: "Abrir esta referência de atalhos" },
-              { keys: "Clique numa barra ou fatia", label: "Filtrar a base pelo grupo clicado" },
-              { keys: "Arrastar ou ↑ / ↓", label: "Reordenar colunas no painel de colunas" },
-              {
-                keys: "Arrastar o cabeçalho ou ← / →",
-                label: "Reordenar widgets no painel",
-              },
-              { keys: "⌘Z / Ctrl+Z", label: "Desfazer a última alteração no painel" },
-              { keys: "⇧⌘Z / Ctrl+Shift+Z", label: "Refazer a alteração desfeita" },
-              { keys: "Esc", label: "Sair do modo apresentação" },
-              { keys: "Enter", label: "Confirmar edição de nome do painel ou de coluna" },
-            ].map((s) => (
-              <li key={s.keys} className="flex items-center justify-between gap-4 py-2 text-sm">
-                <span className="text-muted-foreground">{s.label}</span>
-                <kbd className="rounded-md border border-border bg-muted px-2 py-1 font-mono text-[11px]">
-                  {s.keys}
-                </kbd>
-              </li>
-            ))}
-          </ul>
-        </DialogContent>
-      </Dialog>
+      <ShortcutsDialog open={shortcuts} onOpenChange={setShortcuts} />
       <ImportDiagnosticsDialog open={importDiagnostics} onOpenChange={setImportDiagnostics} />
       <GeminiChatPanel dashboard={d} sheet={sheet} liveRows={data} liveView={assistantContext} />
     </div>

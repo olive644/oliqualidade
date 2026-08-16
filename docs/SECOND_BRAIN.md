@@ -95,10 +95,11 @@ flowchart TD
 | Painel de leitura guiada de categoria em destaque (comparação vs. maior outra categoria) | `pieComparisonFor` (`data-pipeline.ts`), `SeriesComparisonPanel` (`components/oliam/widget-support.tsx`) — genérico sobre `{name, total}[]`, usado hoje por pizza e barra | `data-pipeline.test.ts` (a função) + verificação manual do widget |
 | Resumo de tendência (início→fim, mínimo, máximo, média) para séries temporais | `trendSummaryFor` (`data-pipeline.ts`), `TrendSummaryPanel` (`components/oliam/widget-support.tsx`) — usado por linha e área agrupada por data | `data-pipeline.test.ts` (a função) + verificação manual do widget |
 | Cobertura do Top N no ranking (participação, categorias fora do ranking) | `rankingCoverageFor` (`data-pipeline.ts`), faixa inline no widget `ranking` (`components/oliam/widget-card.tsx`) | `data-pipeline.test.ts` (a função) |
+| Quantas fatias o gráfico de pizza mostra (colapso Top 5 + Outros) | `collapsePieSeries` (`data-pipeline.ts`), chamado por `pieSeries` em `widget-card.tsx` — roda sempre, inclusive em modo "linha a linha" | `data-pipeline.test.ts` (`describe("collapsePieSeries")`) |
 | Quanto foi filtrado na tabela detalhada | prop `totalRows` de `WidgetCard`, passado como `rulesApplied.length` em `routes/index.tsx` | `npx tsc --noEmit` confirma o único call site atualizado |
 | Widget "Insights automáticos" (`insights`), narra achados em texto | `widget-card.tsx` (bloco `w.type === "insights"`), compõe `pieComparisonFor`/`rankingCoverageFor`/`detectQualitySignals` já testadas | `npx tsc --noEmit` (checklist completo de registro de `WidgetType` na seção 47 do audit) |
 | Importação/revisão (UI)                     | `components/oliam/{home,empty,import-workbench,review}.tsx`          | `routes/index.tsx` orquestra via props        |
-| Combinar planilha, apresentação, coluna calculada, marcadores (UI do Dashboard) | `components/oliam/{join-sheet-dialog,presentation-mode,formula-column-editor,bookmark-panel}.tsx` | extraídos de `Dashboard`; `tsc` pega referências órfãs se algo ficar pra trás |
+| Combinar planilha, apresentação, coluna calculada, marcadores, atalhos, notas de origem, diff de versão, dica de termos, regras ausentes, formatação, sinais de qualidade, chips de filtro, colunas (drag-and-drop), sidebars, paleta de comandos (UI do Dashboard) | `components/oliam/{join-sheet-dialog,presentation-mode,formula-column-editor,bookmark-panel,shortcuts-dialog,source-notes-panel,version-diff-banner,term-hint-banner,missing-rules-panel,format-panel,quality-signals-panel,filter-chips-bar,column-panel,dashboard-nav-sidebar,insight-sidebar,command-palette}.tsx` | extraídos de `Dashboard`; `tsc` pega referências órfãs se algo ficar pra trás |
 | Cálculos e séries                           | `data-pipeline.ts`                                                    | `data-pipeline.test.ts`                      |
 | Cronograma                                  | `schedule-normalizer.ts`, `operational-widgets.ts`                    | testes dos dois módulos                      |
 | Revisão, auditoria e versões                | `data-review.ts`, `import-workbench.ts`, `review-export.ts`           | testes de revisão/exportação                 |
@@ -191,6 +192,7 @@ npm run performance:check   # orçamento dos artefatos gerados
 npm run verify              # testes + build + orçamento de desempenho
 npm run graph:build         # graphify-out/graph.json + relatório + HTML
 npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servidor rodando (roda na CI, job security-smoke)
+ANALYZE=1 npm run build     # gera client-chunk-report.json (gitignored) com módulo->chunk->tamanho real do bundle do cliente, sem SSR misturado; ver seção 58 do CURRENT_STATE_AUDIT.md
 ```
 
 ## Diagnóstico rápido
@@ -244,6 +246,8 @@ npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servido
 | `setPointerCapture` no drag-to-scroll de gráficos só pode ser chamado depois de confirmar arrasto real (>3px), nunca no `pointerdown` | capturar incondicionalmente redireciona o alvo de todo clique/ponteiro seguinte para o container de rolagem, quebrando cliques parados em qualquer gráfico com muitas categorias | `handleChartScrollPointerDown` (`widget-card.tsx`) só chama `setPointerCapture` dentro do `onMove`, quando o deslocamento cruza o limiar de arrasto |
 | Isolar `widget-card.tsx`/`widget-support.tsx` num `manualChunks` próprio, tentado e revertido | criou um chunk de 777 KiB (estourou os 420 KiB) — os dois arquivos puxam consigo tanta coisa de primeira-parte (data-pipeline, format, widgets, data-table-widget, operational-widget-body etc.) que isolá-los sozinhos concentra tudo isso num único chunk em vez de distribuir | orçamento voltou a passar (~414,7 KiB) revertendo para só recharts/radix isolados; qualquer tentativa futura de isolar precisa de análise real do grafo de dependências (ex. `rollup-plugin-visualizer`), não uma regra de `id.includes(...)` por tentativa e erro |
 | Extração do diálogo de junção (`useJoinSheetDialog`) é puramente estrutural, mas ainda assim reduziu a margem de bundle de ~415,3 para ~418,6 KiB | mesma fragilidade de "fachada de chunk compartilhado" das duas linhas acima — mover código entre arquivos de primeira-parte muda o resultado do chunking mesmo sem nova lógica | limite do orçamento subido de 420 para 450 KiB (decisão do usuário) — crescimento reconhecido como legítimo; se voltar a apertar, `rollup-plugin-visualizer` é o caminho antes de subir o número de novo |
+| Fachada de chunk nunca foi a causa real da margem de orçamento apertando | medição real com plugin próprio (`ANALYZE=1`, ver seção 58 do audit) mostrou que o chunk é quase todo `widget-card.tsx` e outro código de primeira parte genuinamente compartilhado entre rotas — reorganizar arquivos desloca o nome do chunk, não move bytes | extração estrutural do Dashboard é neutra para esse tamanho; só reduzir de verdade (ex. `import()` dinâmico por tipo de widget) mudaria o número |
+| Colapso "Top 5 + Outros" do gráfico de pizza precisa rodar sempre, inclusive em modo "linha a linha" | pizza nasce em modo raw por padrão para operações que não são contagem; sem o colapso, uma coluna de alta cardinalidade (ID único por linha) manda uma fatia por linha pro Recharts, que quebra visualmente com muitas fatias finas | `collapsePieSeries` (`data-pipeline.ts`) roda incondicionalmente sobre a série completa não amostrada; cap especial de 120 exclusivo do raw do pizza foi removido por não ser mais necessário |
 
 ## Checklist antes de publicar
 
@@ -261,18 +265,23 @@ npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servido
 - A aplicação é deliberadamente local-first e usa IndexedDB no navegador.
 - Leitura pesada, análise de revisão e exportações pesadas são separadas do
   caminho interativo sempre que possível.
-- `src/routes/index.tsx` caiu de 10.282 para 3.715 linhas (64%) numa
-  refatoração puramente estrutural: `Home`, `Empty`, `ImportWorkbench`,
-  `Review`, `WidgetCard`/`EmptyWidget`, as peças de suporte de widget
-  (`FieldDropSlot`, `WidgetHead`, tooltips/eixos de gráfico, `MapWidgetBody`
-  etc.) e `FormatRulesEditor` foram movidos para arquivos próprios em
+- `src/routes/index.tsx` caiu de 10.282 para 2.523 linhas (75%) numa
+  refatoração puramente estrutural, em etapas sucessivas: `Home`, `Empty`,
+  `ImportWorkbench`, `Review`, `WidgetCard`/`EmptyWidget`, as peças de
+  suporte de widget (`FieldDropSlot`, `WidgetHead`, tooltips/eixos de
+  gráfico, `MapWidgetBody` etc.), `FormatRulesEditor`, o diálogo de combinar
+  planilha, o modo apresentação, o editor de coluna calculada, o painel de
+  marcadores, o diálogo de atalhos, o painel de notas de origem, o banner de
+  diff de versão e a dica de termos foram movidos para arquivos próprios em
   `src/components/oliam/`, sem mudar comportamento. O que resta em
-  `index.tsx` é `OliAm` (orquestração de rota/estágio) e `Dashboard` (o
-  maior estado local restante, ~2.500 linhas) — ver seção 36 do
-  `CURRENT_STATE_AUDIT.md` para o mapa completo e a regressão de bundle
-  descoberta e corrigida no processo. Extrair `Dashboard` exigiria primeiro
-  consolidar suas dezenas de `useState` (ex.: um reducer), então é um corte
-  maior e mais arriscado, deixado para uma etapa dedicada futura.
+  `index.tsx` é `OliAm` (orquestração de rota/estágio) e o núcleo de
+  `Dashboard` (busca/filtro, exportação, revisão de fundo, undo/redo, o
+  pipeline de dados e a orquestração da grade de widgets) — ver seções 36,
+  51, 52, 55 e 56 do `CURRENT_STATE_AUDIT.md` para o histórico completo, o
+  mapeamento de candidatos restantes por risco e a regressão de bundle
+  descoberta e corrigida no processo. Sem reducer único planejado: os
+  estados que restam não formam uma máquina de estados coesa, são recursos
+  independentes (extração continua incremental, por candidato).
 - O mapa estrutural gerado em `graphify-out/` é um artefato derivado. Este
   documento explica intenção; o grafo mostra dependências extraídas do código.
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por
