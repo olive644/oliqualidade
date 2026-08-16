@@ -3229,7 +3229,17 @@ verificação visual/interativa.
 Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
 contagem), `npx tsc --noEmit` sem erros de primeira, Prettier limpo de
 primeira, `npm run build` e `npm run performance:check` aprovados
-(~362,8 KiB, margem confortável).
+(~362,8 KiB, margem confortável). **Verificado ao vivo na preview do
+Vercel do PR** (achada via `gh pr view <n> --json comments` procurando
+o link `vercel.app` no comentário do bot): "Planilha XLSX" carregou o
+chunk `xlsx.js` sob demanda (confirmado em `read_network_requests`) e
+disparou o download; "Auditoria CSV" mostrou o toast correto ("Ainda
+não há ajustes registrados para exportar."); sem erros de console além
+de um bloqueio de CSP do próprio widget de feedback do Vercel, não
+relacionado ao app. Backup criptografado e restauração não foram
+testados por automação — dependem de `window.prompt`, que bloqueia o
+navegador automatizado; risco considerado baixo por não ter nenhuma
+lógica interna alterada.
 
 Restam undo/redo (~65 linhas, o "cérebro" chamado por ~9 pontos
 diferentes) e ações de widget (~130 linhas, `traceException` cruza
