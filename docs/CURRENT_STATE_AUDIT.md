@@ -2675,3 +2675,48 @@ colunas com drag-and-drop, sidebar de navegação, sidebar de insights,
 paleta de comandos, hook de revisão em segundo plano, e por último
 exportação, undo/redo e ações de widget (os três mais entrelaçados
 entre si).
+
+## 57. Terceiro lote da extração do Dashboard: painel de colunas com drag-and-drop
+
+Continuação direta da seção 56, mesma branch. Extrai o candidato de
+risco médio seguinte do mapeamento: **`column-panel.tsx`**
+(`ColumnPanel`) — painel "Colunas e significado", com reordenação por
+arrastar (`draggable`/`onDragStart`/`onDrop`, texto = índice de
+origem), toggle de visibilidade, edição de papel/unidade semântica
+(`setSemanticOverride`/`resetSemanticOverride`) e o
+`FormulaColumnEditor` (já extraído na seção 36) embutido no rodapé.
+
+O ponto de atenção do mapeamento era o `e.dataTransfer.setData` duplo
+usado para arrastar uma coluna tanto para reordenar dentro da lista
+quanto para um slot de campo de gráfico fora do painel
+(`columnDragType(c.kind)`, ver `widgets.ts`) — preservado
+integralmente, sem alterar nenhuma chamada de `dataTransfer`.
+
+`ColumnPanel` recebe `columns`/`setColumns`/`semanticProfilesByKey`/
+`semanticOverrides`/`setSemanticOverride`/`resetSemanticOverride`, sem
+estado próprio. `index.tsx` caiu de 3.020 para 2.855 linhas. Seis
+imports ficaram órfãos e foram removidos: `Calculator`, `ChevronDown`,
+`ChevronUp`, `GripVertical` (ícones), `columnDragType` (`widgets.ts`),
+`kinds`, `semanticRoleLabels`, `semanticUnitOptions`
+(`spreadsheet-intelligence.ts`) e o import direto de
+`FormulaColumnEditor` (agora só usado dentro de `column-panel.tsx`).
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo (uma
+assinatura de função quebrada em múltiplas linhas para bater com o
+formatador), `npm run build` e `npm run performance:check` aprovados
+— **maior chunk genérico em ~438,0 KiB, margem de só ~12 KiB antes do
+limite de 450 KiB**. Mesma limitação de verificação visual das etapas
+anteriores: o drag-and-drop de colunas não foi exercitado ao vivo
+nesta etapa (risco considerado baixo — nenhuma linha de lógica de
+`dataTransfer` foi reescrita, só movida).
+
+**Margem de orçamento ficou crítica de novo**, mesmo padrão já
+registrado nas seções 42/51/56: mover código sem mudar comportamento
+ainda assim desloca qual módulo vira a "fachada" do chunk
+compartilhado. Os próximos candidatos do mapeamento da seção 55
+(sidebars, paleta de comandos, ~75-190 linhas cada) têm risco real de
+estourar o limite de 450 KiB nesta margem. Decisão registrada para o
+usuário antes de continuar: aumentar o limite de novo, investir em
+`rollup-plugin-visualizer` para entender a causa raiz, ou pausar a
+extração estrutural nesta branch.
