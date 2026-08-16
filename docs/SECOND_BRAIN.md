@@ -120,6 +120,7 @@ flowchart TD
 | Exportação PNG/PDF e tabelas                | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação                 |
 | Desempenho                                  | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets         | `npm run verify`                             |
 | Métricas de importação (leitor, tempo, bytes, fallback) | `import-metrics.ts`, `storage.ts` (`loadImportMetrics`/`saveImportMetrics`), painel em `components/oliam/import-diagnostics-dialog.tsx` | `import-metrics.test.ts`, `workbook-reader.test.ts` |
+| Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) |
 
 ## Regras de produto que não podem regredir
 
@@ -203,6 +204,7 @@ npm run performance:check   # orçamento dos artefatos gerados
 npm run verify              # testes + build + orçamento de desempenho
 npm run graph:build         # graphify-out/graph.json + relatório + HTML
 npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servidor rodando (roda na CI, job security-smoke)
+npm run test:e2e            # E2E real via Playwright (roda na CI, job e2e); localmente sobe o dev server sozinho, ou use OLI_E2E_BASE_URL para apontar a um servidor já pronto
 ANALYZE=1 npm run build     # gera client-chunk-report.json (gitignored) com módulo->chunk->tamanho real do bundle do cliente, sem SSR misturado; ver seção 58 do CURRENT_STATE_AUDIT.md
 ```
 
@@ -274,6 +276,9 @@ corrompem a árvore do DOM). Achar a URL:
 | Validação de dados é genuinamente por aba (ao contrário de nomes definidos/links externos) | cada `<dataValidation>` mora no próprio `xl/worksheets/sheetN.xml`, sem indireção de relacionamento | entrou direto em `AdvancedSheetMetadata`, mesmo mecanismo simples de `hyperlinks`; `formula1`/`formula2` mostrados como texto bruto, sem tentar interpretar a restrição |
 | Detectar presença de macro VBA não é o mesmo que ela virar "suportada" na métrica de fidelidade | `UNSUPPORTED_FIDELITY_FEATURES` mede reconciliação célula-a-célula entre leitores, não exposição de inventário na revisão — mesma lógica já aplicada a "Recálculo integral de fórmulas" (fórmulas são diagnosticadas, mas recálculo completo continua fora de escopo) | "Macros VBA" permanece na lista (com qualificação "detectadas, mas nunca executadas"); hyperlinks/nomes definidos/links externos/validações saíram da lista porque viraram inventário rastreável de verdade (seções 68-70 do audit) |
 | Imagens do Excel exigem dois níveis de `.rels` encadeados (aba→drawing, drawing→media), e o único XML desta sessão com prefixo de namespace real (`xdr:`) | `xl/drawings/drawingN.xml` combina os namespaces `xdr:` (posição na grade) e `a:` (desenho vetorial), diferente de todo o resto do parsing que vive dentro do XML sem prefixo da própria aba | `parseImages` reaproveita `relationships()` duas vezes em sequência, sem dependência nova; só `xdr:pic` é inventariado — formas/gráficos nativos ficam de fora, sem precedente de parsing |
+| `webServer` nativo do Playwright trava contra este dev server; usar `OLI_E2E_BASE_URL` + o mesmo laço de `curl` do job `security-smoke` | probe HTTP do Playwright colide com uma corrida real do `nitro`/Vite (mesmo fenômeno documentado de "espere ~10-15s após `preview_start`"), a conexão fica pendurada dezenas de segundos e nunca converge dentro do timeout, mesmo o servidor ficando pronto logo depois | `playwright.config.ts` desativa o `webServer` nativo quando `OLI_E2E_BASE_URL` está definida |
+| Clique no botão "Ver demonstração" antes da hidratação SSR terminar é silenciosamente perdido — só o segundo clique funciona | confirmado com script de depuração isolado (clique duplo + captura de console): HTML já visível, `onClick` do React ainda não conectado, sem erro em lugar nenhum | testes E2E precisam de `page.waitForLoadState("networkidle")` antes de interagir; possível bug real de UX em produção (conexões lentas), sinalizado como tarefa separada — decisão de arquitetura/UX, não corrigido nesta sessão |
+| `npm install` local (npm 11) gera um `package-lock.json` que quebra `npm ci` na CI (npm 10, bundlado no Node 22) | ambos resolvem diferente uma peer dependency opcional (`lru-cache` de `nitro`/`unstorage`); só apareceu rodando de verdade no GitHub Actions, nunca localmente | mudança de dependências sempre via `npx npm@10 install` (a versão real da CI), confirmado com `rm -rf node_modules && npm ci` limpo antes de considerar pronto |
 
 ## Checklist antes de publicar
 

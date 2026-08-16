@@ -18,6 +18,7 @@
     "test:corpus:generate": "node scripts/generate-workbook-corpus.mjs",
     "corpus:sanitize": "node scripts/sanitize-workbook-corpus.mjs",
     "test:security-smoke": "node scripts/security-smoke.mjs",
+    "test:e2e": "playwright test",
     "graph:build": "node scripts/build-code-graph.mjs",
     "performance:check": "node scripts/check-performance-budget.mjs",
     "rust:test": "cargo test --locked --manifest-path rust/oli-ooxml-core/Cargo.toml",
@@ -88,6 +89,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@playwright/test": "^1.62.1",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
