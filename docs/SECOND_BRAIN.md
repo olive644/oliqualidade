@@ -1,3 +1,15 @@
+---
+tags:
+  - second-brain
+  - oliqualidade
+  - arquitetura
+  - painel-central
+aliases:
+  - Second Brain
+  - Mapa Mental
+  - Oli.Qualidade
+---
+
 # Oli.Qualidade — Second Brain
 
 Este documento é a fonte de orientação do projeto: explica o que existe, por
@@ -5,7 +17,33 @@ que existe, onde alterar e como provar que uma mudança não quebrou a leitura.
 O código e os testes continuam sendo a fonte de verdade técnica.
 
 A auditoria detalhada da base, lacunas, matriz de leitores e plano Rust está em
-[`CURRENT_STATE_AUDIT.md`](CURRENT_STATE_AUDIT.md).
+[[CURRENT_STATE_AUDIT|CURRENT_STATE_AUDIT.md]]. Este vault (`docs/`) é aberto
+diretamente no Obsidian — ver [[#Como usar este vault no Obsidian]] antes de
+editar, para manter os links e o Canvas funcionando.
+
+## Como usar este vault no Obsidian
+
+- **Vault = `docs/`**. `docs/.obsidian/` guarda a configuração local (grafo,
+  canvas, backlinks e propriedades ligados) e é gitignored — não é
+  compartilhado entre máquinas, só o conteúdo em Markdown/Canvas importa.
+- **Wikilinks `[[...]]`** são preferidos a links Markdown relativos dentro
+  deste vault: sobrevivem a renomear arquivo (Obsidian atualiza sozinho) e
+  aparecem no painel de backlinks. Links para uma seção específica usam
+  `[[CURRENT_STATE_AUDIT#74. Bug real de produto...]]` (título completo do
+  `##`, sensível a como o heading está escrito no arquivo alvo).
+- **Canvas como mapa mental navegável**: [[oliqualidade-mapa-mental.canvas]]
+  é a versão interativa (zoom, arrastar, abrir nota com duplo clique) do
+  mapa estático em [[#Mapa mental]] abaixo. `docs/*.canvas` é gitignored de
+  propósito — é um artefato de navegação local, não fonte de verdade;
+  reconstrua a partir deste documento se for perdido, não o contrário.
+- **Tags** (`#pendente`, `#armadilha`, `#decisão`) aparecem no painel de tags
+  do Obsidian e servem para filtrar rapidamente por tipo de conteúdo sem
+  precisar abrir cada tabela.
+- **Grafo de notas** (`graphify-out/graph.json`, gerado por
+  `npm run graph:build`) é um artefato *derivado do código*, diferente do
+  grafo do Obsidian (que é *derivado dos links entre notas Markdown*). Não
+  confundir os dois: o grafo do Obsidian nunca vai mostrar dependências de
+  módulo TypeScript, só a estrutura da documentação.
 
 ## Mapa mental
 
@@ -18,12 +56,18 @@ mindmap
       Planilha universal ODS
       Google Sheets
       Pasta monitorada
+      Limites (100MB / 100 abas / 2M células)
     Leitura
       Worker de workbook
       Fidelidade OOXML
       Fórmulas e metadados
       Comentários e observações
       Regiões e cabeçalhos
+      Hyperlinks
+      Nomes definidos e links externos
+      Validações de dados
+      Macros VBA (detectadas, não executadas)
+      Imagens embutidas
     Inteligência
       Tipos e semântica
       Qualidade
@@ -37,6 +81,8 @@ mindmap
       Cronogramas
       Tabelas e matrizes
       Widgets operacionais
+      Widget de imagem embutida
+      Insights automáticos
     Confiança
       Auditoria
       Comparação de versões
@@ -48,12 +94,17 @@ mindmap
       Virtualização
       Prévia visual segura
       Gravação coalescida
+      Orçamento de bundle
     Validação
       Testes unitários
       Corpus real
       Build e lint
-      Orçamento de bundle
+      Testes E2E (Playwright)
+      Orçamento de desempenho
 ```
+
+Versão navegável (zoom, arrastar, abrir arquivo com duplo clique):
+[[oliqualidade-mapa-mental.canvas]].
 
 ## Fluxo principal
 
@@ -82,10 +133,28 @@ flowchart TD
 6. `storage.ts` persiste localmente. Nenhuma planilha é enviada para IA sem a
    ação e os controles previstos no fluxo de análise inteligente.
 
+## Glossário rápido
+
+Para quem chega numa sessão nova e precisa de contexto rápido sem reler o
+audit inteiro.
+
+| Termo | Significado neste projeto |
+| --- | --- |
+| OOXML | Formato XML zipado por trás de `.xlsx`/`.xlsm` (Office Open XML). O leitor próprio (`ooxml-reader.ts`) parseia o XML bruto como segunda fonte, independente do SheetJS. |
+| Fidelidade | Métrica célula-a-célula que compara o valor lido por dois motores (SheetJS vs. leitor OOXML próprio, ou TS vs. Rust). `UNSUPPORTED_FIDELITY_FEATURES` (`fidelity-meter.ts`) lista o que é deliberadamente fora dessa comparação. |
+| Inventário rastreável | Um recurso do Excel (hyperlinks, nomes definidos, validações, imagens...) que deixou de ser só "lido mas ignorado" e passou a aparecer como painel `<details>` navegável em `review.tsx`. |
+| `!oliAdvanced` | Convenção de nome de propriedade interna do SheetJS onde o projeto guarda metadados próprios extraídos do ZIP (não é uma API pública do SheetJS). |
+| Reading Engine v2 | Camada de leitura com registro de leitor/tempo/divergência por importação, que aceita hoje SheetJS+OOXML e um adaptador Rust/WASM opcional (ver seção "Estado conhecido"). |
+| Shadow mode | Rodar o leitor Rust/WASM em paralelo ao leitor TS sem afetar o resultado mostrado ao usuário, só para acumular evidência de divergência antes de promover. |
+| `dataMode` (original/agregado) | Todo widget de gráfico guarda se está mostrando linha a linha (`raw`) ou uma operação de agregação (`sum`/`avg`/...) — nunca decide isso implicitamente. |
+| `parseNumericValue` | Função central em `format.ts` para converter `Value` de célula em número tolerando vírgula decimal brasileira; substitui `Number(v)` direto em todo o código que lê valor de célula (ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]]). |
+| Fachada de chunk | Quando o bundler (Rollup/Vite) escolhe um arquivo de primeira-parte como "nome" de um chunk compartilhado; mover código entre arquivos pode trocar a fachada e mudar o tamanho relatado sem mudar bytes reais. |
+| `security-smoke` | Job de CI que testa cabeçalhos de segurança e CORS contra um servidor já de pé, usando um laço de `curl` — o mesmo padrão reaproveitado pelo job `e2e` via `OLI_E2E_BASE_URL`. |
+
 ## Onde mexer
 
 | Necessidade                                 | Fonte principal                                                       | Prova mínima                                 |
-| ------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------- |
+| ------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------- |
 | Novo formato ou fidelidade de Excel         | `workbook-reader.ts`, `ooxml-reader.ts`, `ooxml-archive.ts`, `import.ts` | fixture + teste de corpus                    |
 | Inventário Rust de planilha universal (ODS) | `rust/oli-ooxml-core/src/ods.rs`                                      | `rust/oli-ooxml-core/tests/ods_inventory.rs` |
 | Cabeçalhos, blocos e regiões                | `import.ts`, `structural-model.ts`                                    | `import.test.ts`                             |
@@ -98,12 +167,12 @@ flowchart TD
 | Quantas fatias o gráfico de pizza mostra (colapso Top 5 + Outros) | `collapsePieSeries` (`data-pipeline.ts`), chamado por `pieSeries` em `widget-card.tsx` — roda sempre, inclusive em modo "linha a linha" | `data-pipeline.test.ts` (`describe("collapsePieSeries")`) |
 | Clique-para-filtrar em qualquer widget de gráfico | `handleGroupClick`/`toggleClickFilter` (`widget-card.tsx`) — todo widget com dimensão de agrupamento (barra, pizza, linha, área, ranking, mapa) chama direto no clique, sem botão intermediário; guarda especial só para "Outros" na pizza (agrupador sintético, não filtra) | verificação manual do widget + `data-pipeline.test.ts` (`toggleClickFilter`) |
 | Widget de mapa (Leaflet) ou widgets operacionais (presença/validação/carta de controle/planejado×realizado) | `map-widget-body.tsx`, `operational-widget-body.tsx` — carregados via `React.lazy()`+`Suspense` em `widget-card.tsx`, fora do chunk comum | `npm run build` + `ANALYZE=1 npm run build` confirma o chunk separado |
-| Inventário de hyperlinks do Excel por aba (endereço, destino, tooltip) | `parseHyperlinks`/`inspectWorkbookFeatures` (`workbook-metadata.ts`) extrai; `ImportDiagnostics.hyperlinks` (`import-intelligence.ts`) expõe; painel `<details>` em `review.tsx` lista | `import-intelligence.test.ts` (`!oliAdvanced` sintético) + `workbook-metadata.test.ts` (parsing) |
-| Inventário de nomes definidos (por escopo) e referências a arquivos externos | `parseDefinedNames`/`parseExternalLinks`/`inspectWorkbookFeatures` (`workbook-metadata.ts`); `ImportDiagnostics.definedNames`/`externalLinks` (`import-intelligence.ts`); dois painéis `<details>` em `review.tsx` | `import-intelligence.test.ts` + `workbook-metadata.test.ts` (escopo global vs. local, nomes `_xlnm.` ignorados) |
-| Validações de dados do Excel por intervalo (lista, numérico, data etc.) | `parseDataValidations` (`workbook-metadata.ts`, lê `<dataValidation>` do próprio XML da aba); `ImportDiagnostics.dataValidations` (`import-intelligence.ts`); painel `<details>` em `review.tsx` | `import-intelligence.test.ts` + `workbook-metadata.test.ts` |
-| Detecção de macros VBA (presença apenas, nunca executadas) | `hasVbaMacros` (`workbook-metadata.ts`, `Boolean(zip["xl/vbaProject.bin"])`); `ImportDiagnostics.hasVbaMacros`; aviso em `warnings`, sem painel próprio (é um booleano, não uma coleção) | `import-intelligence.test.ts` + `workbook-metadata.test.ts` |
+| Inventário de hyperlinks do Excel por aba (endereço, destino, tooltip) | `parseHyperlinks`/`inspectWorkbookFeatures` (`workbook-metadata.ts`) extrai; `ImportDiagnostics.hyperlinks` (`import-intelligence.ts`) expõe; painel `<details>` em `review.tsx` lista | `import-intelligence.test.ts` (`!oliAdvanced` sintético) + `workbook-metadata.test.ts` (parsing) — ver [[CURRENT_STATE_AUDIT#68. Inventário de hyperlinks exposto na revisão (item de menor esforço da reauditoria da seção 50)]] |
+| Inventário de nomes definidos (por escopo) e referências a arquivos externos | `parseDefinedNames`/`parseExternalLinks`/`inspectWorkbookFeatures` (`workbook-metadata.ts`); `ImportDiagnostics.definedNames`/`externalLinks` (`import-intelligence.ts`); dois painéis `<details>` em `review.tsx` | `import-intelligence.test.ts` + `workbook-metadata.test.ts` (escopo global vs. local, nomes `_xlnm.` ignorados) — ver [[CURRENT_STATE_AUDIT#69. Inventário de nomes definidos e links externos (próximo item por esforço da lista pendente)]] |
+| Validações de dados do Excel por intervalo (lista, numérico, data etc.) | `parseDataValidations` (`workbook-metadata.ts`, lê `<dataValidation>` do próprio XML da aba); `ImportDiagnostics.dataValidations` (`import-intelligence.ts`); painel `<details>` em `review.tsx` | `import-intelligence.test.ts` + `workbook-metadata.test.ts` — ver [[CURRENT_STATE_AUDIT#70. Validações de dados do Excel (Data Validation), terceiro item da lista pendente]] |
+| Detecção de macros VBA (presença apenas, nunca executadas) | `hasVbaMacros` (`workbook-metadata.ts`, `Boolean(zip["xl/vbaProject.bin"])`); `ImportDiagnostics.hasVbaMacros`; aviso em `warnings`, sem painel próprio (é um booleano, não uma coleção) | `import-intelligence.test.ts` + `workbook-metadata.test.ts` — ver [[CURRENT_STATE_AUDIT#71. Detecção de macros VBA, e correção de uma lista desatualizada pelas próprias seções 68-70]] |
 | O que a métrica de fidelidade célula-a-célula deliberadamente não mede | `UNSUPPORTED_FIDELITY_FEATURES` (`fidelity-meter.ts`) — manter em sincronia com o que já virou inventário rastreável na revisão (hyperlinks/nomes definidos/links externos/validações não estão mais nesta lista; tabelas/pivôs nunca estiveram) | `workbook-fidelity.test.ts` (`unsupportedFeatures`) |
-| Inventário de imagens embutidas (só `xdr:pic`, não formas/gráficos) | `parseImages` (`workbook-metadata.ts`, resolve aba→drawing→media em dois níveis de `.rels` encadeados); `ImportDiagnostics.images`; painel `<details>` em `review.tsx` | `import-intelligence.test.ts` + `workbook-metadata.test.ts` (cadeia completa de 3 relacionamentos) |
+| Inventário de imagens embutidas (só `xdr:pic`, não formas/gráficos) | `parseImages` (`workbook-metadata.ts`, resolve aba→drawing→media em dois níveis de `.rels` encadeados); `ImportDiagnostics.images`; painel `<details>` em `review.tsx` | `import-intelligence.test.ts` + `workbook-metadata.test.ts` (cadeia completa de 3 relacionamentos) — ver [[CURRENT_STATE_AUDIT#72. Inventário de imagens embutidas (fecha a lista de itens de esforço maior pedidos pelo usuário nesta sessão)]] |
 | Exportação (XLSX, cópia corrigida, CSVs, PDF de revisão, PNG/PDF do painel, backup criptografado e restauração) | `use-dashboard-export.ts` — hook, recebe `contentRef` de fora; `restoreEncryptedBackup` grava direto via `onRestore` (`p.update`), sem passar pelo undo/redo, de propósito | verificação manual do fluxo de exportação |
 | Núcleo de undo/redo (pilha, `recordHistory`) | `use-undo-redo-history.ts` — hook, ~9 mutadores em `Dashboard` continuam chamando `recordHistory()` antes de mudar dados | verificação manual (editar, desfazer, refazer) |
 | Ações de widget (adicionar, copiar/colar, atualizar, remover, mover, reordenar) e `traceException` | `use-widget-actions.ts` — hook, recebe `setSearch`/`setSort`/`setFilters`/`setFocusedCell` como parâmetros porque `traceException` cruza todos eles; `canAdd` fica em `Dashboard` (só lê o pipeline, não muta nada) | verificação manual do fluxo de widgets |
@@ -115,14 +184,14 @@ flowchart TD
 | Cronograma                                  | `schedule-normalizer.ts`, `operational-widgets.ts`                    | testes dos dois módulos                      |
 | Revisão, auditoria e versões                | `data-review.ts`, `import-workbench.ts`, `review-export.ts`           | testes de revisão/exportação                 |
 | Armazenamento e privacidade                 | `storage.ts`, `encrypted-backup.ts`                                   | storage/privacy + backup                     |
-| IA                                          | `gemini-security.ts`, `gemini-server.ts`, `assistant-context.ts`      | segurança + contexto                         |
+| IA                                          | `gemini-security.ts`, `gemini-server.ts`, `assistant-context.ts`      | segurança + contexto                          |
 | Erro do servidor (500, recuperação de stack) | `error-capture.ts` (`AsyncLocalStorage` por requisição), `server.ts`  | `error-capture.test.ts`                      |
 | Exportação PNG/PDF e tabelas                | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação                 |
 | Desempenho                                  | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets         | `npm run verify`                             |
 | Métricas de importação (leitor, tempo, bytes, fallback) | `import-metrics.ts`, `storage.ts` (`loadImportMetrics`/`saveImportMetrics`), painel em `components/oliam/import-diagnostics-dialog.tsx` | `import-metrics.test.ts`, `workbook-reader.test.ts` |
-| Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) |
+| Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) — ver [[CURRENT_STATE_AUDIT#73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo]] |
 | Interpretar um Value como número tolerando vírgula decimal brasileira, sem nunca virar NaN | `parseNumericValue` (`format.ts`) — usado em `fmt`, `evalFormula`, `resolveConditionalFormat`, e em todo `data-pipeline.ts`/`operational-widgets.ts`/`widget-card.tsx`/`format-rules-editor.tsx` que antes fazia `Number(valorDeCelula)` direto | `format.test.ts`, `data-pipeline.test.ts`, `operational-widgets.test.ts` |
-| Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) |
+| Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
 
 ## Regras de produto que não podem regredir
 
@@ -149,7 +218,7 @@ flowchart TD
 ## Modelo de desempenho
 
 | Risco                                             | Proteção                                               |
-| ------------------------------------------------- | ------------------------------------------------------ |
+| ------------------------------------------------- | -------------------------------------------------------- |
 | Parse grande bloqueando a interface               | leitura e revisão em Web Workers                       |
 | Uma biblioteca interpreta errado um XLSX          | motor compara SheetJS com leitor OOXML independente    |
 | O leitor principal perde uma aba OOXML inteira    | reconciliação restaura a aba e audita cada célula      |
@@ -164,15 +233,18 @@ flowchart TD
 ### Medição de 2026-08-13
 
 | Artefato/caminho          | Antes               | Depois                    | Resultado                               |
-| ------------------------- | ------------------- | ------------------------- | --------------------------------------- |
+| ------------------------- | ------------------- | -------------------------- | ---------------------------------------- |
 | Excel no módulo da rota   | importação estática | chunk tardio de 481,1 KiB | só baixa ao colar, conectar ou exportar |
-| Leaflet sob demanda       | 1.275,1 KiB         | 785,0 KiB                 | continua fora do caminho sem mapa       |
-| Worker de workbook        | 429,7 KiB           | 429,7 KiB                 | custo isolado da interface              |
-| Maior chunk comum da tela | 295,0 KiB           | 295,0 KiB                 | sem regressão                           |
+| Leaflet sob demanda       | 1.275,1 KiB         | 785,0 KiB                  | continua fora do caminho sem mapa       |
+| Worker de workbook        | 429,7 KiB           | 429,7 KiB                  | custo isolado da interface              |
+| Maior chunk comum da tela | 295,0 KiB           | 295,0 KiB                  | sem regressão                           |
 
 Os tamanhos são minificados e medidos em `.vercel/output/static/assets`. O
 orçamento verifica os artefatos depois de cada build, com limites distintos
-para chunks comuns, workers e módulos grandes carregados sob demanda.
+para chunks comuns, workers e módulos grandes carregados sob demanda. Depois
+da extração do diálogo de junção o limite comum subiu de 420 para 450 KiB
+(decisão do usuário, ver tabela de decisões); a última medição conhecida
+(sessão do PR #121) ficou em ~375,7 KiB — margem confortável.
 
 Limites funcionais atuais: arquivo de até 100 MB, até 100 abas e até 2 milhões
 de células por workbook. Arquivos ZIP/OOXML também passam por limites de
@@ -194,6 +266,41 @@ fórmulas não suportadas dependem do valor armazenado no arquivo.
 No cronograma FRS-QA-BR-405 usado como fixture, a prova inclui 18 tabelas úteis,
 validade integral, fidelidade mínima de 90% e 21 notas preservadas (20 comentários
 de célula + 1 bloco textual de observações).
+
+Cobertura de corpus por formato (gate do Reading Engine v2, ver
+[[#Estado conhecido]]): XLSX/XLSM têm fixtures reais mas o gate pede cinco
+fontes reais sanitizadas e únicas por formato antes de promover o leitor
+Rust/WASM fora de shadow mode; XLTX/XLTM ainda não têm nenhum corpus real.
+#pendente
+
+## Backlog priorizado
+
+Lista viva; cada item tem a evidência que já existe e o que falta para
+desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
+
+1. ~~Corrida de hidratação SSR do TanStack Start~~ **Corrigido** — os 5
+   botões e a checkbox de tema da tela `Empty` agora saem com `disabled=""`
+   nativo já no HTML do servidor (`hydrated` em `OliAm`, prop `hydrated` em
+   `Empty`), então nenhum clique pré-hidratação chega a ser processado pelo
+   navegador. Confirmado com `curl` no HTML bruto do servidor (disabled
+   presente) e via `javascript_tool` pós-hidratação (disabled some, fluxo
+   "Ver demonstração" → revisão continua funcionando). Ver
+   [[CURRENT_STATE_AUDIT#75. Corrigida a corrida de hidratação SSR sinalizada nas seções 73/74: botões da tela Empty desabilitados nativamente até o React conectar]].
+2. **Formas/gráficos nativos, agrupamentos/outlines e segmentações do Excel**
+   — ninguém pediu explicitamente ainda; seria investigação de formato nova,
+   sem precedente de parsing no projeto (diferente de imagens, que
+   reaproveitou o padrão de `.rels` encadeados).
+3. **Corpus real sanitizado** `#pendente` — XLSX/XLSM precisam de mais
+   arquivos; XLTX/XLTM não têm nenhum. Bloqueado em arquivos reais do
+   usuário; parar e perguntar antes de tentar sintetizar substitutos.
+4. **Painel real do usuário com widgets configurados com a coluna "Foto"
+   vazia** `#pendente` — bloqueado desde sessões anteriores; precisa que o
+   usuário abra o painel local (IndexedDB dele) e diga quais widgets
+   ajustar.
+5. **Núcleo restante de `Dashboard`** (~1.500-2.000 linhas, pipeline de
+   dados + grade de widgets) — deliberadamente fora do escopo da série de
+   extração já fechada (ver [[#Estado conhecido]]); precisaria de
+   mapeamento novo do zero, provavelmente um reducer central.
 
 ## Comandos operacionais
 
@@ -218,10 +325,19 @@ corrompem a árvore do DOM). Achar a URL:
 `gh pr view <n> --json comments -q '.comments[] | select(.body | contains("vercel.app")) | .body'`
 (procurar `previewUrl` no comentário do bot da Vercel).
 
+**Verificação ao vivo com arquivo real do usuário**: quando o teste precisa
+de um arquivo real (não uma fixture pequena), o caminho mais direto é subir o
+dev server local, copiar o arquivo para `public/_temp-<nome>.xlsx` (Vite
+serve `public/` estaticamente) e injetar via `DataTransfer` no
+`<input type=file>` pelo console do navegador — evita o limite de tamanho de
+injeção base64 inline (~200 KB). Sempre apagar o arquivo temporário depois;
+nunca commitar dado do usuário. Detalhe completo em
+[[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]].
+
 ## Diagnóstico rápido
 
 | Sintoma                     | Verifique primeiro                                                    |
-| --------------------------- | --------------------------------------------------------------------- |
+| ---------------------------- | ------------------------------------------------------------------------ |
 | Importação parece parada    | progresso do worker, tamanho, extensão e limites ZIP                  |
 | Colunas erradas             | região, cabeçalho detectado e `SourceGrid` na revisão                 |
 | Números divergem do Excel   | modo original/agregado, operação, filtros e unidade semântica         |
@@ -229,19 +345,58 @@ corrompem a árvore do DOM). Achar a URL:
 | Gráfico trava               | quantidade renderizada, largura calculada e texto acessível duplicado |
 | Alteração não persiste      | IndexedDB, modo privado, limite e retorno de `SaveResult`             |
 | Exportação falha            | carregamento tardio do módulo e limite de pixels/páginas              |
+| Número aparece como "NaN" na tabela ou some de um total | valor de célula com vírgula decimal brasileira passando por `Number()` puro em vez de `parseNumericValue` (ver [[#Glossário rápido]]) |
+| Botão da tela Empty parece travado antes de hidratar | corrigido (seção 75 do audit) — nativamente `disabled` até `hydrated` virar `true`; se voltar a acontecer, checar se algum controle novo na tela ficou de fora da lista de `disabled={!p.hydrated}` |
+| `DropdownMenu` não abre/aciona em teste automatizado | gatilho precisa de clique real (`computer` do Browser pane com `ref`), não `.click()` sintético |
+
+## Armadilhas de ambiente conhecidas
+
+Não redescobrir — cada uma já custou tempo real numa sessão anterior.
+
+- `npm run dev` sobe na porta 3000 (`.claude/launch.json`, config
+  `oliqualidade-dev`). Esperar ~10-15s após `preview_start` antes do
+  primeiro `navigate`, senão cai em `NitroViteError`/503.
+- O `webServer` nativo do Playwright trava contra este dev server (mesma
+  corrida do Nitro). Usar `OLI_E2E_BASE_URL=http://127.0.0.1:3000` apontando
+  para um servidor já confirmado pronto via o mesmo laço de `curl` do job
+  `security-smoke`.
+- Bash e o Browser pane (`preview_start`) rodam em namespaces de rede
+  isolados.
+- `cargo build`/`cargo test` nativos MSVC não linkam neste sandbox Windows.
+  Usar `rustup run stable-x86_64-pc-windows-gnullvm cargo clippy --target
+  x86_64-pc-windows-gnullvm --all-targets -- -D warnings` para checagem
+  local, e `gh workflow run wasm-build.yml --ref <branch>` para rodar
+  `cargo test` de verdade na CI.
+- `wasm-pack` está quebrado neste sandbox — sempre usar o workflow manual
+  acima para reconstruir o pacote WASM.
+- Verificação de Prettier local esconde erros reais neste checkout Windows:
+  normalizar CRLF→LF numa cópia temporária antes de rodar
+  `prettier --check`. `docs/SECOND_BRAIN.md` e `docs/CURRENT_STATE_AUDIT.md`
+  têm falhas de Prettier pré-existentes — não corrigir como parte de outra
+  tarefa, é ruído fora de escopo.
+- Nunca rodar `git add -A` genérico sem revisar `git status` antes.
+  `docs/*.canvas` já está no `.gitignore` (propositalmente — ver
+  [[#Como usar este vault no Obsidian]]).
+- `npm install` local (npm 11) gera lockfile incompatível com a CI (npm 10,
+  bundlado no Node 22). Qualquer mudança de dependências deve rodar
+  `npx npm@10 install`, e sempre confirmar com
+  `rm -rf node_modules && npm ci` limpo antes de considerar pronto.
+- Empilhar branches não mescladas causa conflito de merge em
+  `docs/CURRENT_STATE_AUDIT.md` (arquivo append-only). Preferir mesclar uma
+  PR antes de criar a próxima branch quando ambas forem tocar nos docs.
 
 ## Decisões registradas
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
-| ------------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Processar workbook fora da thread principal                  | planilhas grandes congelavam a UI                               | worker é parte obrigatória do caminho de importação                                           |
-| Preservar original e agregado                                | soma automática distorcia planilhas já consolidadas             | widgets guardam `dataMode` e operação                                                         |
-| Exceções/validação apenas manuais                            | criavam ruído e pouca explicação no painel inicial              | continuam disponíveis no catálogo                                                             |
-| Calculadora como controle progressivo                        | operações expostas ocupavam espaço e confundiam                 | cálculo abre sob demanda                                                                      |
+| Preservar original e agregado                                | soma automática distorcia planilhas já consolidadas             | widgets guardam `dataMode` e operação                                                           |
+| Exceções/validação apenas manuais                            | criavam ruído e pouca explicação no painel inicial              | continuam disponíveis no catálogo                                                               |
+| Calculadora como controle progressivo                        | operações expostas ocupavam espaço e confundiam                 | cálculo abre sob demanda                                                                        |
 | Notas fora da matriz de dados                                | observações soltas não são registros nem métricas               | painel preserva texto, autor e célula sem contaminar cálculos                                 |
-| Métricas semânticas no cronograma                            | códigos planejados pareciam resultados executados               | cobertura e conformidade usam estados distintos e limites por linha                           |
-| Prévia visual segura                                         | SVG/DOM não escala para milhares de pontos                      | tabela mantém acesso integral                                                                 |
-| Persistência latest-wins                                     | snapshots completos intermediários são desperdício              | primeira e última versão são gravadas, intermediárias podem ser coalescidas                   |
+| Métricas semânticas no cronograma                            | códigos planejados pareciam resultados executados               | cobertura e conformidade usam estados distintos e limites por linha                             |
+| Prévia visual segura                                         | SVG/DOM não escala para milhares de pontos                      | tabela mantém acesso integral                                                                   |
+| Persistência latest-wins                                     | snapshots completos intermediários são desperdício              | primeira e última versão são gravadas, intermediárias podem ser coalescidas                     |
 | "Não suportado" não altera a pontuação                       | recurso nunca comparado não é validado nem incorreto            | `fidelity-meter.ts` expõe `unsupportedFeatures` e `warnings` à parte do score                 |
 | Repetição literal do cabeçalho vira linha ignorada, não dado | relatórios paginados repetem o cabeçalho sem separador de bloco | `sheetToRows` filtra e reporta em `audit.repeatedHeaderRowsIgnored`, exige 2+ colunas batendo |
 | Rollback do candidato Rust é só variável de ambiente, mas exige rebuild | `VITE_WASM_READER_MODE` é lido via `import.meta.env`, substituído em tempo de build pelo Vite | rollback não pede código/PR, mas pede novo deploy; documentado em `WASM_PROMOTION_CRITERIA.md` e provado em `workbook-reader.test.ts` |
@@ -279,7 +434,8 @@ corrompem a árvore do DOM). Achar a URL:
 | Detectar presença de macro VBA não é o mesmo que ela virar "suportada" na métrica de fidelidade | `UNSUPPORTED_FIDELITY_FEATURES` mede reconciliação célula-a-célula entre leitores, não exposição de inventário na revisão — mesma lógica já aplicada a "Recálculo integral de fórmulas" (fórmulas são diagnosticadas, mas recálculo completo continua fora de escopo) | "Macros VBA" permanece na lista (com qualificação "detectadas, mas nunca executadas"); hyperlinks/nomes definidos/links externos/validações saíram da lista porque viraram inventário rastreável de verdade (seções 68-70 do audit) |
 | Imagens do Excel exigem dois níveis de `.rels` encadeados (aba→drawing, drawing→media), e o único XML desta sessão com prefixo de namespace real (`xdr:`) | `xl/drawings/drawingN.xml` combina os namespaces `xdr:` (posição na grade) e `a:` (desenho vetorial), diferente de todo o resto do parsing que vive dentro do XML sem prefixo da própria aba | `parseImages` reaproveita `relationships()` duas vezes em sequência, sem dependência nova; só `xdr:pic` é inventariado — formas/gráficos nativos ficam de fora, sem precedente de parsing |
 | `webServer` nativo do Playwright trava contra este dev server; usar `OLI_E2E_BASE_URL` + o mesmo laço de `curl` do job `security-smoke` | probe HTTP do Playwright colide com uma corrida real do `nitro`/Vite (mesmo fenômeno documentado de "espere ~10-15s após `preview_start`"), a conexão fica pendurada dezenas de segundos e nunca converge dentro do timeout, mesmo o servidor ficando pronto logo depois | `playwright.config.ts` desativa o `webServer` nativo quando `OLI_E2E_BASE_URL` está definida |
-| Clique no botão "Ver demonstração" antes da hidratação SSR terminar é silenciosamente perdido — só o segundo clique funciona | confirmado com script de depuração isolado (clique duplo + captura de console): HTML já visível, `onClick` do React ainda não conectado, sem erro em lugar nenhum | testes E2E precisam de `page.waitForLoadState("networkidle")` antes de interagir; possível bug real de UX em produção (conexões lentas), sinalizado como tarefa separada — decisão de arquitetura/UX, não corrigido nesta sessão |
+| Clique no botão "Ver demonstração" antes da hidratação SSR terminar é silenciosamente perdido — só o segundo clique funciona | confirmado com script de depuração isolado (clique duplo + captura de console): HTML já visível, `onClick` do React ainda não conectado, sem erro em lugar nenhum | testes E2E precisam de `page.waitForLoadState("networkidle")` antes de interagir; risco real de UX em produção (conexões lentas) concentrado na tela `Empty` |
+| Corrigir a corrida de hidratação com `disabled={!hydrated}` (atributo HTML nativo), não com uma guarda `if (!hydrated) return` dentro do `onClick` | uma guarda no início do handler teria a mesma janela de corrida do bug original — o `onClick` só existe depois que o React hidrata de qualquer forma; o `disabled` nativo, ao contrário, já sai marcado no HTML gerado pelo servidor, então o navegador ignora o clique sem precisar de nenhum JavaScript ter rodado | `hydrated` (estado em `OliAm`, `false` até um `useEffect` de deps vazias rodar) vira prop `hydrated` de `Empty`; aplicado a upload, modo privado, os dois toggles de expandir, "Pasta monitorada", "Ver demonstração", o botão de voltar e a checkbox de tema (`ThemeToggle` ganhou `disabled?: boolean` opcional) — confirmado com `curl` no HTML bruto do servidor (`disabled=""` presente) antes de qualquer hidratação |
 | `npm install` local (npm 11) gera um `package-lock.json` que quebra `npm ci` na CI (npm 10, bundlado no Node 22) | ambos resolvem diferente uma peer dependency opcional (`lru-cache` de `nitro`/`unstorage`); só apareceu rodando de verdade no GitHub Actions, nunca localmente | mudança de dependências sempre via `npx npm@10 install` (a versão real da CI), confirmado com `rm -rf node_modules && npm ci` limpo antes de considerar pronto |
 | `Number(valorDeCelula)` sobre texto em vírgula decimal brasileira ("0,69") não gera erro visível na maioria dos casos — o valor é silenciosamente descartado da agregação | os `.filter(Number.isFinite)` já existentes em 6 arquivos removiam o NaN sem aviso; só a tabela detalhada (`fmt()`) de fato mostrava "NaN" literal | qualquer `Number(v)` sobre um valor de célula (não sobre input de formulário) é suspeito neste projeto — usar `parseNumericValue` (`format.ts`) |
 | Clique em item de `DropdownMenu` (Radix) via `.click()` sintético não abre/aciona o menu de forma confiável | o gatilho (`DropdownMenuTrigger`) precisa de um clique "de verdade" — usar `computer` do Browser pane com `ref` real; o item do menu já aceitou uma sequência `pointerdown`/`pointerup`/`click` sintética disparada via `dispatchEvent` | verificação ao vivo de qualquer fluxo que passe por um `DropdownMenu`/seletor de widget deve usar `computer`, não só `javascript_tool` |
@@ -293,7 +449,9 @@ corrompem a árvore do DOM). Achar a URL:
 5. Executar `npm run verify` e o lint nos arquivos alterados.
 6. Regenerar `npm run graph:build` quando a arquitetura mudar.
 7. Registrar neste documento uma nova regra ou decisão que um futuro
-   mantenedor precisará conhecer.
+   mantenedor precisará conhecer — incluir wikilink para a seção nova do
+   `CURRENT_STATE_AUDIT.md`, e atualizar o [[#Backlog priorizado]] se o item
+   resolvido estava lá.
 
 ## Estado conhecido
 
@@ -334,4 +492,17 @@ corrompem a árvore do DOM). Achar a URL:
 - O crate Rust também inventaria ODS (planilha universal ISO/IEC 26300) de
   forma isolada em `rust/oli-ooxml-core/src/ods.rs`. Ainda não está ligado ao
   worker de leitura; segue a mesma progressão incremental usada para o XLSX
-  antes de qualquer shadow mode. Ver `CURRENT_STATE_AUDIT.md`, seção 21.
+  antes de qualquer shadow mode. Ver [[CURRENT_STATE_AUDIT#21. Inventário ODS complementar — fase 11]].
+
+## Notas relacionadas
+
+- [[CURRENT_STATE_AUDIT|CURRENT_STATE_AUDIT.md]] — auditoria completa,
+  numerada sequencialmente, append-only.
+- [[WASM_PROMOTION_CRITERIA]] — critério formal para promover o leitor
+  Rust/WASM de shadow mode a leitor ativo.
+- [[WASM_CORPUS_SANITIZATION]] — como sanitizar um arquivo real do usuário
+  antes de virar fixture de corpus (remoção de dado privado preservando
+  estrutura).
+- [[oliqualidade-mapa-mental.canvas]] — versão interativa do
+  [[#Mapa mental]] e do [[#Fluxo principal]] acima, com os quatro documentos
+  do vault conectados como notas-arquivo.
