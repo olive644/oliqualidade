@@ -98,6 +98,7 @@ flowchart TD
 | Quantas fatias o gráfico de pizza mostra (colapso Top 5 + Outros) | `collapsePieSeries` (`data-pipeline.ts`), chamado por `pieSeries` em `widget-card.tsx` — roda sempre, inclusive em modo "linha a linha" | `data-pipeline.test.ts` (`describe("collapsePieSeries")`) |
 | Clique-para-filtrar em qualquer widget de gráfico | `handleGroupClick`/`toggleClickFilter` (`widget-card.tsx`) — todo widget com dimensão de agrupamento (barra, pizza, linha, área, ranking, mapa) chama direto no clique, sem botão intermediário; guarda especial só para "Outros" na pizza (agrupador sintético, não filtra) | verificação manual do widget + `data-pipeline.test.ts` (`toggleClickFilter`) |
 | Widget de mapa (Leaflet) ou widgets operacionais (presença/validação/carta de controle/planejado×realizado) | `map-widget-body.tsx`, `operational-widget-body.tsx` — carregados via `React.lazy()`+`Suspense` em `widget-card.tsx`, fora do chunk comum | `npm run build` + `ANALYZE=1 npm run build` confirma o chunk separado |
+| Exportação (XLSX, cópia corrigida, CSVs, PDF de revisão, PNG/PDF do painel, backup criptografado e restauração) | `use-dashboard-export.ts` — hook, recebe `contentRef` de fora; `restoreEncryptedBackup` grava direto via `onRestore` (`p.update`), sem passar pelo undo/redo, de propósito | verificação manual do fluxo de exportação |
 | Quanto foi filtrado na tabela detalhada | prop `totalRows` de `WidgetCard`, passado como `rulesApplied.length` em `routes/index.tsx` | `npx tsc --noEmit` confirma o único call site atualizado |
 | Widget "Insights automáticos" (`insights`), narra achados em texto | `widget-card.tsx` (bloco `w.type === "insights"`), compõe `pieComparisonFor`/`rankingCoverageFor`/`detectQualitySignals` já testadas | `npx tsc --noEmit` (checklist completo de registro de `WidgetType` na seção 47 do audit) |
 | Importação/revisão (UI)                     | `components/oliam/{home,empty,import-workbench,review}.tsx`          | `routes/index.tsx` orquestra via props        |
@@ -196,6 +197,14 @@ npm run graph:build         # graphify-out/graph.json + relatório + HTML
 npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servidor rodando (roda na CI, job security-smoke)
 ANALYZE=1 npm run build     # gera client-chunk-report.json (gitignored) com módulo->chunk->tamanho real do bundle do cliente, sem SSR misturado; ver seção 58 do CURRENT_STATE_AUDIT.md
 ```
+
+**Verificação ao vivo de PR**: a preview de deployment de cada PR no
+Vercel (proteção de SSO desativada nas configurações do projeto — ver
+seção 65 do audit) é bem mais estável que `npm run dev` local para
+verificação visual/interativa (sem os ciclos de reconexão de HMR que
+corrompem a árvore do DOM). Achar a URL:
+`gh pr view <n> --json comments -q '.comments[] | select(.body | contains("vercel.app")) | .body'`
+(procurar `previewUrl` no comentário do bot da Vercel).
 
 ## Diagnóstico rápido
 
