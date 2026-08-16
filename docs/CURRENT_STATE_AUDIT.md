@@ -2128,3 +2128,40 @@ Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
 contagem), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
 build` e `npm run performance:check` aprovados (~414,7 KiB, sem
 mudança de tamanho — é uma linha de JSX a menos, uma prop a mais).
+
+## 49. Sexta e sétima etapas: avaliação (distribuição) e mapa (local líder)
+
+Fecha os dois widgets que ficavam "parciais" na tabela da seção 43 do
+levantamento original.
+
+**Avaliação (`rating`)**: a média sozinha esconde o quão espalhadas as
+notas estão — 3,0 pode ser tudo em torno de 3, ou metade em 1 e metade
+em 5. Nova linha de contexto, só com aritmética local (sem função de
+pipeline nova): `Mínimo`/`Máximo` das notas e `% abaixo da média`.
+
+**Mapa (`map`)**: painel estático (não depende de hover nos
+marcadores) mostrando o local líder, reaproveitando
+`pieComparisonFor`/`SeriesComparisonPanel` — mesma composição já usada
+por barra e insights. **Decisão deliberada de não estender hover para
+o mapa**: `MapWidgetBody` roda o Leaflet dentro de `useEffect`
+imperativo (criação de mapa, camadas, marcadores); cruzar isso com
+estado de hover declarativo exigiria plumbing adicional através da
+fronteira imperativa/declarativa, exatamente a categoria de mudança
+que gerou o bug real da seção 48 (re-render disparado por hover
+recalculando estruturas com identidade nova). Um painel estático que
+sempre mostra o líder dá a mesma leitura guiada sem esse risco.
+
+**Atenção — orçamento de bundle ficou mais apertado**: maior chunk
+genérico em ~415,3 KiB contra o limite de 420 KiB, ~4,7 KiB de folga.
+Tentativa de isolar `widget-card.tsx`/`widget-support.tsx` num chunk
+próprio já foi tentada e revertida (seção anterior, registrada também
+em `docs/SECOND_BRAIN.md`) por piorar em vez de ajudar. Sem uma análise
+real do grafo de dependências (ex. `rollup-plugin-visualizer`), a
+próxima adição de peso relevante a `widget-card.tsx` corre risco real
+de estourar o limite — vale essa análise antes de continuar
+adicionando conteúdo a este arquivo especificamente.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados (~415,3 KiB). Mesma
+limitação de verificação visual pendente.

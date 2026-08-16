@@ -3138,6 +3138,12 @@ export function WidgetCard({
     const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
     const grouped =
       groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
+    const sortedByTotal = [...grouped].sort((a, b) => b.total - a.total);
+    // Painel estático (não depende de hover no mapa): o Leaflet roda num
+    // efeito imperativo à parte, então ligar isso ao hover dos marcadores
+    // exigiria cruzar a fronteira imperativa/declarativa sem necessidade —
+    // sempre mostrar o local líder já dá o mesmo tipo de leitura guiada.
+    const leadingLocation = sortedByTotal.length ? pieComparisonFor(sortedByTotal, 0) : null;
     return (
       <article
         className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -3219,11 +3225,22 @@ export function WidgetCard({
             este widget.
           </p>
         ) : (
-          <MapWidgetBody
-            grouped={grouped}
-            valueColumn={valueCol}
-            onSelect={(name) => handleGroupClick(groupCol.key, name)}
-          />
+          <>
+            <MapWidgetBody
+              grouped={grouped}
+              valueColumn={valueCol}
+              onSelect={(name) => handleGroupClick(groupCol.key, name)}
+            />
+            {leadingLocation && (
+              <SeriesComparisonPanel
+                selected={leadingLocation.selected}
+                comparison={leadingLocation}
+                kind={valueCol.kind}
+                filterLabel="Filtrar por este local"
+                onFilter={() => handleGroupClick(groupCol.key, leadingLocation.selected.name)}
+              />
+            )}
+          </>
         )}
       </article>
     );
@@ -3251,6 +3268,13 @@ export function WidgetCard({
     const filled = Math.round(avg);
     const ratingStyle = conditionalStyle(avg, col.kind, col.conditionalFormat);
     const ratingColor = conditionalColor(avg, col.kind, col.conditionalFormat) ?? "var(--primary)";
+    // Uma média sozinha esconde o quão espalhadas as avaliações estão: 3,0
+    // pode ser tudo em torno de 3 ou metade em 1 e metade em 5. min/max e a
+    // fração abaixo da média dão essa leitura sem precisar de outro widget.
+    const ratingMin = values.length ? Math.min(...values) : null;
+    const ratingMax = values.length ? Math.max(...values) : null;
+    const belowAverage = values.filter((v) => v < avg).length;
+    const belowAverageShare = values.length ? belowAverage / values.length : null;
     return (
       <article
         className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -3332,6 +3356,13 @@ export function WidgetCard({
               ? `${values.length.toLocaleString("pt-BR")} avaliações consideradas`
               : "Nenhum valor numérico disponível."}
           </p>
+          {values.length > 1 && ratingMin !== null && ratingMax !== null && (
+            <p className="text-[10px] text-muted-foreground">
+              Variação de {ratingMin.toLocaleString("pt-BR")} a {ratingMax.toLocaleString("pt-BR")}
+              {belowAverageShare !== null &&
+                ` · ${belowAverageShare.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 0 })} das avaliações abaixo da média`}
+            </p>
+          )}
         </div>
       </article>
     );
