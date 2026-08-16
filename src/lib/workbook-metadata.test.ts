@@ -79,7 +79,9 @@ describe("metadados avançados de XLSX", () => {
       },
     ]);
     expect(metadata?.hasVbaMacros).toBe(true);
-    expect(metadata?.images).toEqual([{ name: "Logo", anchor: "B3", format: "PNG" }]);
+    expect(metadata?.images).toEqual([
+      { name: "Logo", anchor: "B3", format: "PNG", dataUrl: "data:image/png;base64,iVBORw==" },
+    ]);
   });
 
   it("detecta ausência de macros VBA quando xl/vbaProject.bin não está no pacote", () => {
@@ -93,6 +95,33 @@ describe("metadados avançados de XLSX", () => {
       "xl/worksheets/sheet1.xml": xml('<worksheet xmlns:r="r"/>'),
     });
     expect(inspectWorkbookFeatures(zip).get("Dados")?.hasVbaMacros).toBe(false);
+  });
+
+  it("inventaria uma imagem EMF (metarquivo do Windows) sem gerar dataUrl, por não ser renderizável no navegador", () => {
+    const zip = zipSync({
+      "xl/workbook.xml": xml(
+        '<workbook xmlns:r="r"><sheets><sheet name="Dados" r:id="rId1"/></sheets></workbook>',
+      ),
+      "xl/_rels/workbook.xml.rels": xml(
+        '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+      ),
+      "xl/worksheets/sheet1.xml": xml(
+        '<worksheet xmlns:r="r"><drawing r:id="rIdDrawing"/></worksheet>',
+      ),
+      "xl/worksheets/_rels/sheet1.xml.rels": xml(
+        '<Relationships><Relationship Id="rIdDrawing" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>',
+      ),
+      "xl/drawings/drawing1.xml": xml(
+        '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="1" name="Diagrama"/><xdr:cNvPicPr/></xdr:nvPicPr><xdr:blipFill><a:blip xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" r:embed="rIdImage1"/></xdr:blipFill><xdr:spPr/></xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>',
+      ),
+      "xl/drawings/_rels/drawing1.xml.rels": xml(
+        '<Relationships><Relationship Id="rIdImage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.emf"/></Relationships>',
+      ),
+      "xl/media/image1.emf": new Uint8Array([1, 0, 0, 0]),
+    });
+    expect(inspectWorkbookFeatures(zip).get("Dados")?.images).toEqual([
+      { name: "Diagrama", anchor: "A1", format: "EMF" },
+    ]);
   });
 
   it("expõe nomes definidos por escopo e referências a arquivos externos, ignorando nomes internos do Excel", () => {

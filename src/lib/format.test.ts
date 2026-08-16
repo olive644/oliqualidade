@@ -7,6 +7,7 @@ import {
   fmt,
   infer,
   inferColumns,
+  parseNumericValue,
   sortChronologically,
 } from "@/lib/format";
 import type { ConditionalFormatRule, Row } from "@/lib/types";
@@ -145,6 +146,60 @@ describe("fmt", () => {
   it("formata número com no máximo 2 casas decimais", () => {
     const expected = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(1000.567);
     expect(fmt(1000.567, "number")).toBe(expected);
+  });
+
+  it("formata número armazenado como texto em notação brasileira (vírgula decimal), sem virar NaN", () => {
+    // Bug real reportado com uma planilha de laboratório: valores como
+    // "0,69" chegavam como texto (não número nativo) na linha importada, e
+    // `Number("0,69")` (JS não entende vírgula decimal) retornava NaN, que
+    // aparecia literalmente na tela em vez do valor.
+    const expected = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(0.69);
+    expect(fmt("0,69", "number")).toBe(expected);
+    expect(fmt("0,69", "number")).not.toContain("NaN");
+  });
+
+  it("preserva o texto original quando uma coluna numérica tem um valor não interpretável como número", () => {
+    // "N/A" ou similar digitado numa coluna numérica: mostrar o texto é
+    // honesto sobre o dado original; "NaN" pareceria corrupção.
+    expect(fmt("N/A", "number")).toBe("N/A");
+  });
+});
+
+describe("parseNumericValue", () => {
+  it("aceita números nativos", () => {
+    expect(parseNumericValue(42)).toBe(42);
+    expect(parseNumericValue(0.69)).toBe(0.69);
+  });
+
+  it("interpreta vírgula decimal brasileira", () => {
+    expect(parseNumericValue("0,69")).toBe(0.69);
+    expect(parseNumericValue("1234,56")).toBe(1234.56);
+  });
+
+  it("interpreta ponto de milhar + vírgula decimal juntos", () => {
+    expect(parseNumericValue("1.234,56")).toBe(1234.56);
+  });
+
+  it("aceita números já em notação americana (ponto decimal simples)", () => {
+    expect(parseNumericValue("1234.56")).toBe(1234.56);
+  });
+
+  it("remove prefixo de moeda", () => {
+    expect(parseNumericValue("R$ 1.234,56")).toBe(1234.56);
+    expect(parseNumericValue("US$ 99.9")).toBe(99.9);
+  });
+
+  it("retorna null (nunca NaN) para texto não numérico", () => {
+    expect(parseNumericValue("N/A")).toBeNull();
+    expect(parseNumericValue("")).toBeNull();
+    expect(parseNumericValue(undefined)).toBeNull();
+    expect(parseNumericValue(null)).toBeNull();
+    expect(parseNumericValue(true)).toBeNull();
+  });
+
+  it("retorna null para números não finitos", () => {
+    expect(parseNumericValue(Number.NaN)).toBeNull();
+    expect(parseNumericValue(Number.POSITIVE_INFINITY)).toBeNull();
   });
 });
 

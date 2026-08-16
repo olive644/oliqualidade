@@ -15,6 +15,7 @@ import {
   Files,
   GitMerge,
   GripVertical,
+  Image as ImageIcon,
   LayoutGrid,
   ListOrdered,
   MapPin,
@@ -263,6 +264,7 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
   "matrix-heatmap": "Mostra concentração entre duas dimensões pela intensidade da cor.",
   "version-compare": "Resume inclusões, remoções e alterações desde a última importação.",
   table: "Exibe os registros detalhados da base.",
+  image: "Mostra uma imagem embutida na planilha original (foto, logo, diagrama).",
 };
 
 export function WidgetPickerIcon({ type }: { type: WidgetType }) {
@@ -286,6 +288,7 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "version-compare") return <GitMerge className={className} />;
   if (type === "pivot-table" || type === "matrix-heatmap")
     return <Columns3 className={className} />;
+  if (type === "image") return <ImageIcon className={className} />;
   return <LayoutGrid className={className} />;
 }
 

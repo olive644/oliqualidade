@@ -81,16 +81,42 @@ export function inferColumns(rows: Row[], keys: string[]): Column[] {
   return keys.map((key) => inferOne(key, rows));
 }
 
+/**
+ * Interpreta um Value como número, aceitando números já nativos e texto em
+ * notação brasileira (vírgula decimal, ponto de milhar, prefixo R$/US$).
+ * Nunca retorna NaN — falha explicitamente com `null` quando o texto não é
+ * numérico, para que quem chama decida o que fazer (mostrar o texto
+ * original, excluir da agregação etc.) em vez de propagar "NaN" adiante.
+ */
+export function parseNumericValue(v: Value | undefined): number | null {
+  if (v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v !== "string") return null;
+  const direct = Number(v);
+  if (v.trim() !== "" && Number.isFinite(direct)) return direct;
+  const s = v.trim().replace(/\s/g, "").replace(/^R\$/i, "").replace(/^US\$/i, "");
+  if (!s) return null;
+  const cleaned = s.replace(/\.(?=\d{3}(?:[.,]|$))/g, "").replace(",", ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function fmt(v: Value, k: Kind) {
   if (v === null || v === "") return null;
-  if (k === "currency")
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v));
-  if (k === "percentage")
-    return new Intl.NumberFormat("pt-BR", { style: "percent", minimumFractionDigits: 1 }).format(
-      Number(v),
-    );
-  if (k === "number")
-    return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(Number(v));
+  if (numericKinds.includes(k)) {
+    const n = parseNumericValue(v);
+    // Coluna classificada como numérica, mas este valor específico não é
+    // interpretável como número (ex: "N/A" digitado numa célula numérica):
+    // mostrar o texto original em vez de "NaN", que pareceria dado corrompido.
+    if (n === null) return String(v);
+    if (k === "currency")
+      return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
+    if (k === "percentage")
+      return new Intl.NumberFormat("pt-BR", { style: "percent", minimumFractionDigits: 1 }).format(
+        n,
+      );
+    return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(n);
+  }
   return String(v);
 }
 
@@ -171,10 +197,10 @@ export function evalFormula(formula: string, row: Row, availableKeys: string[]):
     const refs = formulaColumnRefs(formula, availableKeys);
     let expr = formula;
     for (const key of refs) {
-      const val = Number(row[key]);
+      const val = parseNumericValue(row[key]);
       expr = expr.replace(
         new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"),
-        Number.isFinite(val) ? `(${val})` : "(0)",
+        val !== null ? `(${val})` : "(0)",
       );
     }
     if (!/^[\s0-9+\-*/().]+$/.test(expr)) return null;
@@ -221,8 +247,8 @@ function resolveConditionalFormat(
 ): ResolvedConditionalFormat | null {
   if (!rules?.length || !numericKinds.includes(kind)) return null;
   if (value === null || value === "") return null;
-  const num = Number(value);
-  if (!Number.isFinite(num)) return null;
+  const num = parseNumericValue(value);
+  if (num === null) return null;
 
   // Limites específicos têm prioridade mesmo se uma escala geral tiver sido
   // criada antes deles no editor.

@@ -154,14 +154,21 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "rating"
   )
     return 1;
-  if (type === "bar" || type === "ranking" || type === "map" || type === "insights") return 2;
+  if (
+    type === "bar" ||
+    type === "ranking" ||
+    type === "map" ||
+    type === "insights" ||
+    type === "image"
+  )
+    return 2;
   return 3; // line, area, table
 }
 
 export function defaultSize(type: WidgetType): WidgetSize {
   if (type === "metric" || type === "metric-trend" || type === "folder-files" || type === "rating")
     return "sm";
-  if (type === "map") return "lg";
+  if (type === "map" || type === "image") return "lg";
   return "md";
 }
 

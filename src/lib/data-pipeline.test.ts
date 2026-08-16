@@ -10,6 +10,7 @@ import {
   groupAndAggregate,
   leftJoin,
   limitChartSeriesForRendering,
+  matchesRange,
   NOT_INFORMED,
   pieComparisonFor,
   pieRoundnessFor,
@@ -41,6 +42,22 @@ describe("chartSeries", () => {
     expect(chartSeries(rows, "categoria", "valor", "sum", "aggregate")).toEqual([
       { name: "A", total: 30 },
       { name: "B", total: 5 },
+    ]);
+  });
+
+  it("inclui valores em notação brasileira (vírgula decimal), em vez de descartá-los silenciosamente", () => {
+    // Bug real reportado com uma planilha de laboratório: colunas numéricas
+    // com valores como "0,69" (texto, vírgula decimal) eram excluídas da
+    // série porque Number("0,69") é NaN — o gráfico simplesmente não
+    // mostrava esses pontos, sem nenhum aviso.
+    const rowsWithText: Row[] = [
+      { categoria: "A", valor: "0,69" },
+      { categoria: "A", valor: "1.234,5" },
+      { categoria: "B", valor: "N/A" },
+    ];
+    expect(chartSeries(rowsWithText, "categoria", "valor", "sum", "raw")).toEqual([
+      { name: "A", total: 0.69, sourceRow: 1 },
+      { name: "A", total: 1234.5, sourceRow: 2 },
     ]);
   });
 });
@@ -183,6 +200,12 @@ describe("applyMissingRules", () => {
     const { rows: result } = applyMissingRules(rows, [textCol("nome", "zero")]);
     expect(result[0]?.["nome"]).toBeNull();
   });
+
+  it("interpola entre valores em notação brasileira (vírgula decimal) sem virar NaN", () => {
+    const rows: Row[] = [{ v: "0,10" }, { v: null }, { v: "0,30" }];
+    const { rows: result } = applyMissingRules(rows, [numberCol("v", "interpolate")]);
+    expect(result[1]?.["v"]).toBeCloseTo(0.2, 10);
+  });
 });
 
 describe("detectQualitySignals", () => {
@@ -267,6 +290,15 @@ describe("groupAndAggregate", () => {
     ];
     const result = groupAndAggregate(rows, "categoria", "valor", "sum");
     expect(result).toEqual([{ name: "Empresa A", total: 10 }]);
+  });
+
+  it("soma valores em notação brasileira (vírgula decimal) armazenados como texto", () => {
+    const rows: Row[] = [
+      { categoria: "Turbidez", valor: "0,69" },
+      { categoria: "Turbidez", valor: "0,46" },
+    ];
+    const result = groupAndAggregate(rows, "categoria", "valor", "sum");
+    expect(result[0]?.total).toBeCloseTo(1.15, 10);
   });
 
   it("na operação 'count', conta linhas do grupo mesmo sem valor numérico preenchido", () => {
@@ -612,5 +644,25 @@ describe("rankingCoverageFor", () => {
       topShare: null,
     });
     expect(rankingCoverageFor([], [])).toMatchObject({ topShare: null, remainingCount: 0 });
+  });
+});
+
+describe("matchesRange", () => {
+  it("aceita valor numérico dentro do intervalo informado", () => {
+    expect(matchesRange(15, "10", "20", false)).toBe(true);
+    expect(matchesRange(5, "10", "20", false)).toBe(false);
+  });
+
+  it("interpreta min/max e o valor em notação brasileira (vírgula decimal)", () => {
+    expect(matchesRange("0,5", "0,1", "0,9", false)).toBe(true);
+    expect(matchesRange("1,5", "0,1", "0,9", false)).toBe(false);
+  });
+
+  it("sem min/max, aceita qualquer valor", () => {
+    expect(matchesRange("qualquer coisa", undefined, undefined, false)).toBe(true);
+  });
+
+  it("rejeita valor não numérico quando há filtro numérico ativo", () => {
+    expect(matchesRange("N/A", "10", "20", false)).toBe(false);
   });
 });
