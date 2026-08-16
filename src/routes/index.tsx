@@ -120,10 +120,7 @@ import {
   buildImportMetricEntry,
   recordImportMetric,
 } from "@/lib/import-metrics";
-import { analyzeReviewInBackground } from "@/lib/review-analysis-client";
-import type { ReviewAnalysisProgress, ReviewAnalysisResult } from "@/lib/review-analysis";
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
-import { geocodeMissing } from "@/lib/geocode";
 import { buildLiveDashboardContext } from "@/lib/assistant-context";
 import { exportDashboardPdf, exportDashboardPng } from "@/lib/dashboard-export";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
@@ -176,6 +173,7 @@ import { ShortcutsDialog } from "@/components/oliam/shortcuts-dialog";
 import { SourceNotesPanel } from "@/components/oliam/source-notes-panel";
 import { VersionDiffBanner } from "@/components/oliam/version-diff-banner";
 import { useTermHint } from "@/components/oliam/term-hint-banner";
+import { useBackgroundReviewAnalysis } from "@/components/oliam/use-background-review-analysis";
 import { QualitySignalsPanel } from "@/components/oliam/quality-signals-panel";
 import { MissingRulesPanel } from "@/components/oliam/missing-rules-panel";
 import { FormatPanel } from "@/components/oliam/format-panel";
@@ -1172,9 +1170,6 @@ function Dashboard(p: {
   const [missingPanel, setMissingPanel] = useState(false);
   const [exporting, setExporting] = useState<"png" | "pdf" | "review" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [backgroundReview, setBackgroundReview] = useState<ReviewAnalysisResult | null>(null);
-  const [analysisProgress, setAnalysisProgress] = useState<ReviewAnalysisProgress | null>(null);
-  const analysisAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     if (!exportError) return;
     const id = setTimeout(() => setExportError(null), 5000);
@@ -1198,33 +1193,12 @@ function Dashboard(p: {
   const contentRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    analysisAbort.current?.abort();
-    const controller = new AbortController();
-    analysisAbort.current = controller;
-    setBackgroundReview(null);
-    setAnalysisProgress({ percent: 0, phase: "preparing" });
-    void analyzeReviewInBackground(
-      {
-        rows: sheet.rows,
-        columns: sheet.columns,
-        ...(sheet.semanticOverrides ? { semanticOverrides: sheet.semanticOverrides } : {}),
-        ...(sheet.previousSnapshot ? { previousRows: sheet.previousSnapshot.rows } : {}),
-      },
-      setAnalysisProgress,
-      controller.signal,
-    )
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setBackgroundReview(result);
-        setAnalysisProgress(null);
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setAnalysisProgress(null);
-      });
-    return () => controller.abort();
-  }, [sheet.rows, sheet.columns, sheet.semanticOverrides, sheet.previousSnapshot]);
+  const { backgroundReview, analysisProgress, cancelAnalysis } = useBackgroundReviewAnalysis(
+    sheet.rows,
+    sheet.columns,
+    sheet.semanticOverrides,
+    sheet.previousSnapshot?.rows,
+  );
   const effectiveIntelligence = useMemo(
     () =>
       backgroundReview?.intelligence ??
@@ -2043,10 +2017,7 @@ function Dashboard(p: {
                   type="button"
                   className="rounded-full p-0.5 hover:bg-accent"
                   aria-label="Cancelar análise em segundo plano"
-                  onClick={() => {
-                    analysisAbort.current?.abort();
-                    setAnalysisProgress(null);
-                  }}
+                  onClick={cancelAnalysis}
                 >
                   <X className="size-3" />
                 </button>
