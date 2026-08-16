@@ -3346,3 +3346,17 @@ Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
 contagem), `npx tsc --noEmit` sem erros de primeira, Prettier (duas
 quebras de linha ajustadas para bater com o formatador), `npm run
 build` e `npm run performance:check` aprovados (~365,2 KiB).
+**Verificado ao vivo na preview do Vercel**: `addWidget` (menu
+"Widget" → "Indicador de avaliação", 5→6 widgets), `copyCurrentWidget`
+(toast "Widget copiado"), `pasteCopiedWidget` (novo widget "Vendas"
+duplicado), `removeWidget` (de volta a 5) e `moveWidget` (ordem trocou
+corretamente) — todos confirmados funcionando, sem erro de console
+relacionado ao app.
+
+**Fim da série de extração do Dashboard iniciada nesta sessão** (seções
+55, 56, 57, 58, 59, 63, 64, 65, 66 e 67): oito lotes de PRs, todos
+mesclados, `index.tsx` caindo de 3.328 (início desta sessão) para 2.195
+linhas — e de 10.282 desde o início do plano geral na seção 36. Próximo
+corte estrutural, se houver, precisa investigar o núcleo restante de
+`Dashboard` (pipeline de dados + grade de widgets) do zero, não
+mapeado nesta série.
