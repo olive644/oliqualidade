@@ -24,6 +24,8 @@ export type AdvancedSheetMetadata = {
   definedNames: WorkbookDefinedName[];
   externalLinks: WorkbookExternalLink[];
   dataValidations: DataValidationDiagnostic[];
+  /** `xl/vbaProject.bin` presente no pacote. As macros nunca são executadas nem decompiladas. */
+  hasVbaMacros: boolean;
 };
 
 export type WorkbookCellComment = {
@@ -281,6 +283,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
   );
   const definedNames = parseDefinedNames(workbookXml, sheetNames);
   const externalLinks = parseExternalLinks(workbookXml, workbookRels, text);
+  const hasVbaMacros = Boolean(zip["xl/vbaProject.bin"]);
 
   for (const sheet of workbookXml.matchAll(/<sheet\b[^>]*\/?\s*>/gi)) {
     const name = attr(sheet[0], "name");
@@ -326,6 +329,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
       definedNames: definedNames.filter((d) => d.scope === null || d.scope === sheetName),
       externalLinks,
       dataValidations,
+      hasVbaMacros,
     });
   }
   return result;

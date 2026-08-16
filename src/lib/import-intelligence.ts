@@ -110,6 +110,8 @@ export type ImportDiagnostics = {
   externalLinks: WorkbookExternalLink[];
   /** Regras de validação de dados do Excel (lista, intervalo numérico, data etc.) por intervalo. */
   dataValidations: DataValidationDiagnostic[];
+  /** `xl/vbaProject.bin` presente no pacote. Detectado, nunca executado nem decompilado. */
+  hasVbaMacros: boolean;
   calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
@@ -470,6 +472,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     definedNames: advanced?.definedNames ?? [],
     externalLinks: advanced?.externalLinks ?? [],
     dataValidations: advanced?.dataValidations ?? [],
+    hasVbaMacros: advanced?.hasVbaMacros ?? false,
     calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
@@ -733,6 +736,10 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
   if (meta.dataValidations.length)
     warnings.push(
       `${meta.dataValidations.length} regra(s) de validação de dados do Excel detectada(s)`,
+    );
+  if (meta.hasVbaMacros)
+    warnings.push(
+      "a planilha contém macros VBA; elas são preservadas no arquivo original, mas não são executadas nem decompiladas",
     );
   if (meta.formulaExamples.length)
     transformations.push(

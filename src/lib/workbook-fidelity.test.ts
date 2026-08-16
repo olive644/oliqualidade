@@ -112,7 +112,9 @@ describe("fidelidade entre leitores independentes", () => {
     for (const divergence of report.divergences) expect(divergence.severity).toBe("error");
     // "Não suportado" é um estado explícito, não uma redução silenciosa da nota.
     expect(report.unsupportedFeatures.length).toBeGreaterThan(0);
-    expect(report.unsupportedFeatures).toContain("Macros VBA");
+    expect(report.unsupportedFeatures.some((feature) => feature.startsWith("Macros VBA"))).toBe(
+      true,
+    );
   });
 
   it("concatena os trechos de shared string rich text (múltiplos <r>)", () => {
