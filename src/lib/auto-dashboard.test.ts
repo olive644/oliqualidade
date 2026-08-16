@@ -63,6 +63,8 @@ const diagnostics = (columns: ColumnDiagnostic[]): ImportDiagnostics => ({
   dataValidations: [],
   hasVbaMacros: false,
   images: [],
+  shapes: [],
+  charts: [],
   calculatedColumns: [],
   autofilterRange: null,
   formulaExamples: [],

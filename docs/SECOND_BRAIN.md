@@ -192,6 +192,8 @@ audit inteiro.
 | Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) — ver [[CURRENT_STATE_AUDIT#73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo]] |
 | Interpretar um Value como número tolerando vírgula decimal brasileira, sem nunca virar NaN | `parseNumericValue` (`format.ts`) — usado em `fmt`, `evalFormula`, `resolveConditionalFormat`, e em todo `data-pipeline.ts`/`operational-widgets.ts`/`widget-card.tsx`/`format-rules-editor.tsx` que antes fazia `Number(valorDeCelula)` direto | `format.test.ts`, `data-pipeline.test.ts`, `operational-widgets.test.ts` |
 | Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
+| Inventário de formas nativas do Excel com texto (caixas de texto, retângulos com legenda) | `parseShapes`/`shapeText` (`workbook-metadata.ts`, só formas com `xdr:txBody` não vazio; conectores/decorativas sem texto ficam de fora); `ImportDiagnostics.shapes`; painel `<details>` em `review.tsx` | `workbook-metadata.test.ts` — ver [[CURRENT_STATE_AUDIT#76. Inventário de formas nativas com texto e gráficos nativos do Excel (item 2 do backlog, com achado novo de lacuna arquitetural)]] |
+| Inventário de gráficos nativos do Excel (tipo + título, não recalculados nem renderizados) | `parseCharts`/`chartType`/`chartTitle` (`workbook-metadata.ts`, resolve `xdr:graphicFrame` → `c:chart r:id` → `xl/charts/chartN.xml`, mesma cadeia de `.rels` já usada por imagens); `ImportDiagnostics.charts`; painel `<details>` em `review.tsx` | `workbook-metadata.test.ts` (tipo desconhecido, título vinculado a célula vira `null`) — ver seção 76 do audit |
 
 ## Regras de produto que não podem regredir
 
@@ -286,10 +288,19 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    presente) e via `javascript_tool` pós-hidratação (disabled some, fluxo
    "Ver demonstração" → revisão continua funcionando). Ver
    [[CURRENT_STATE_AUDIT#75. Corrigida a corrida de hidratação SSR sinalizada nas seções 73/74: botões da tela Empty desabilitados nativamente até o React conectar]].
-2. **Formas/gráficos nativos, agrupamentos/outlines e segmentações do Excel**
-   — ninguém pediu explicitamente ainda; seria investigação de formato nova,
-   sem precedente de parsing no projeto (diferente de imagens, que
-   reaproveitou o padrão de `.rels` encadeados).
+2. ~~Formas/gráficos nativos do Excel~~ **Parcialmente entregue** — formas
+   com texto e gráficos nativos agora são inventariados (painéis `<details>`
+   em `review.tsx`), verificado com o arquivo real. Achado novo, não
+   corrigido por decisão do usuário: `!oliAdvanced` não sobrevive quando uma
+   aba é dividida em regiões/seções independentes (`import.ts`), e abas sem
+   nenhuma linha de dado tabular são descartadas inteiras por
+   `sheetsWithData` mesmo tendo só gráficos. Agrupamentos/outlines e
+   segmentações continuam sem parsing — sem evidência real no arquivo
+   inspecionado. Ver [[CURRENT_STATE_AUDIT#76. Inventário de formas nativas com texto e gráficos nativos do Excel (item 2 do backlog, com achado novo de lacuna arquitetural)]].
+2b. **Nova pendência**: propagar `!oliAdvanced` através da divisão de
+   regiões/seções, e/ou permitir abas sem linha de dado virarem opção de
+   importação quando tiverem gráficos/formas `#pendente` — mudança
+   arquitetural, escopo próprio, não implícita em nenhum item existente.
 3. **Corpus real sanitizado** `#pendente` — XLSX/XLSM precisam de mais
    arquivos; XLTX/XLTM não têm nenhum. Bloqueado em arquivos reais do
    usuário; parar e perguntar antes de tentar sintetizar substitutos.
@@ -439,6 +450,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 | `npm install` local (npm 11) gera um `package-lock.json` que quebra `npm ci` na CI (npm 10, bundlado no Node 22) | ambos resolvem diferente uma peer dependency opcional (`lru-cache` de `nitro`/`unstorage`); só apareceu rodando de verdade no GitHub Actions, nunca localmente | mudança de dependências sempre via `npx npm@10 install` (a versão real da CI), confirmado com `rm -rf node_modules && npm ci` limpo antes de considerar pronto |
 | `Number(valorDeCelula)` sobre texto em vírgula decimal brasileira ("0,69") não gera erro visível na maioria dos casos — o valor é silenciosamente descartado da agregação | os `.filter(Number.isFinite)` já existentes em 6 arquivos removiam o NaN sem aviso; só a tabela detalhada (`fmt()`) de fato mostrava "NaN" literal | qualquer `Number(v)` sobre um valor de célula (não sobre input de formulário) é suspeito neste projeto — usar `parseNumericValue` (`format.ts`) |
 | Clique em item de `DropdownMenu` (Radix) via `.click()` sintético não abre/aciona o menu de forma confiável | o gatilho (`DropdownMenuTrigger`) precisa de um clique "de verdade" — usar `computer` do Browser pane com `ref` real; o item do menu já aceitou uma sequência `pointerdown`/`pointerup`/`click` sintética disparada via `dispatchEvent` | verificação ao vivo de qualquer fluxo que passe por um `DropdownMenu`/seletor de widget deve usar `computer`, não só `javascript_tool` |
+| Só formas do Excel com texto entram no inventário; conectores e decorativas ficam de fora | `xdr:cxnSp` e `xdr:sp` sem `xdr:txBody` não carregam informação própria pro usuário revisar — mesmo critério já usado pra nomes internos do Excel (`_xlnm.*`) não virarem ruído no inventário de nomes definidos | `shapeText` (`workbook-metadata.ts`) retorna string vazia quando não há `<a:t>`; `parseShapes` descarta a forma nesse caso |
+| `!oliAdvanced` não sobrevive à divisão de uma aba em regiões/seções independentes | `independentRegionWorksheet`/`independentSectionWorksheet` (`import.ts`) constroem um `XLSX.WorkSheet` novo do zero, copiando só células e `!merges` — nunca metadados customizados | afeta os 8 recursos inventariados via `!oliAdvanced` (hyperlinks, nomes definidos, links externos, validações, macros, imagens, formas, gráficos), não só os 2 mais novos; confirmado com arquivo real (aba "Anexo III" dividida perde sua forma); corrigir é mudança arquitetural própria, não feita ainda |
+| Aba sem nenhuma linha de dado tabular é descartada inteira por `sheetsWithData`, mesmo tendo só gráficos nativos | o filtro de abas vazias existia pra esconder abas de template sem conteúdo — nunca precisou considerar "conteúdo visual sem tabela" até existir inventário de gráficos | confirmado com arquivo real: aba com 14 gráficos nativos e zero linhas nunca aparece nem como opção de importação; corrigir exigiria decisão de produto sobre o que uma aba "só gráfico" deveria virar no app |
 
 ## Checklist antes de publicar
 

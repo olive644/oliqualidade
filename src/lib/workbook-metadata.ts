@@ -26,8 +26,12 @@ export type AdvancedSheetMetadata = {
   dataValidations: DataValidationDiagnostic[];
   /** `xl/vbaProject.bin` presente no pacote. As macros nunca são executadas nem decompiladas. */
   hasVbaMacros: boolean;
-  /** Imagens embutidas (fotos/logos coladas na planilha). Formas/gráficos nativos não são inventariados. */
+  /** Imagens embutidas (fotos/logos coladas na planilha). */
   images: WorkbookImageDiagnostic[];
+  /** Formas nativas do Excel (retângulos, caixas de texto etc.) com texto. Conectores sem texto não entram. */
+  shapes: WorkbookShapeDiagnostic[];
+  /** Gráficos nativos do Excel (não os que o app gera a partir dos dados importados). */
+  charts: WorkbookChartDiagnostic[];
 };
 
 export type WorkbookCellComment = {
@@ -78,6 +82,38 @@ export type WorkbookImageDiagnostic = {
    * Ausente não significa erro — a imagem continua inventariada acima.
    */
   dataUrl?: string;
+};
+
+export type WorkbookShapeDiagnostic = {
+  name: string;
+  /** Célula de ancoragem (canto superior esquerdo), ou `null` se não for possível determinar. */
+  anchor: string | null;
+  /** Texto de todos os parágrafos da forma, unidos por quebra de linha. Vazio quando a forma não tem texto. */
+  text: string;
+};
+
+const CHART_TYPE_TAGS = [
+  "bar",
+  "line",
+  "pie",
+  "pie3D",
+  "doughnut",
+  "area",
+  "scatter",
+  "radar",
+  "bubble",
+  "stock",
+  "surface",
+  "ofPie",
+] as const;
+
+export type WorkbookChartDiagnostic = {
+  /** Tipo OOXML bruto (bar, line, pie, scatter etc.), ou "desconhecido" se nenhuma tag reconhecida for encontrada. */
+  type: string;
+  /** Título do gráfico, quando presente e não vinculado a uma referência de célula. */
+  title: string | null;
+  /** Célula de ancoragem (canto superior esquerdo), ou `null` se não for possível determinar. */
+  anchor: string | null;
 };
 
 export type WorksheetWithAdvancedMetadata = XLSX.WorkSheet & {
@@ -300,6 +336,15 @@ function bytesToDataUrl(bytes: Uint8Array, mime: string): string | undefined {
   return `data:${mime};base64,${btoa(binary)}`;
 }
 
+function anchorOf(anchorBody: string): string | null {
+  const fromBody = anchorBody.match(/<xdr:from>([\s\S]*?)<\/xdr:from>/i)?.[1] ?? "";
+  const col = fromBody.match(/<xdr:col>(\d+)<\/xdr:col>/i)?.[1];
+  const row = fromBody.match(/<xdr:row>(\d+)<\/xdr:row>/i)?.[1];
+  return col !== undefined && row !== undefined
+    ? XLSX.utils.encode_cell({ r: Number(row), c: Number(col) })
+    : null;
+}
+
 function parseImages(
   worksheetXml: string,
   sheetRels: ReturnType<typeof relationships>,
@@ -331,16 +376,100 @@ function parseImages(
     const mime = extension && IMAGE_MIME_BY_EXTENSION[extension];
     const mediaBytes = relationship ? bytesOf(relationship.target) : undefined;
     const dataUrl = mediaBytes && mime ? bytesToDataUrl(mediaBytes, mime) : undefined;
-    const fromBody = body.match(/<xdr:from>([\s\S]*?)<\/xdr:from>/i)?.[1] ?? "";
-    const col = fromBody.match(/<xdr:col>(\d+)<\/xdr:col>/i)?.[1];
-    const row = fromBody.match(/<xdr:row>(\d+)<\/xdr:row>/i)?.[1];
-    const anchor =
-      col !== undefined && row !== undefined
-        ? XLSX.utils.encode_cell({ r: Number(row), c: Number(col) })
-        : null;
-    images.push({ name, anchor, format, ...(dataUrl ? { dataUrl } : {}) });
+    images.push({ name, anchor: anchorOf(body), format, ...(dataUrl ? { dataUrl } : {}) });
   }
   return images;
+}
+
+function shapeText(spBody: string): string {
+  const txBody = spBody.match(/<xdr:txBody\b[^>]*>([\s\S]*?)<\/xdr:txBody>/i)?.[1] ?? "";
+  return [...txBody.matchAll(/<a:p\b[^>]*>([\s\S]*?)<\/a:p>/gi)]
+    .map((paragraph) =>
+      [...paragraph[1]!.matchAll(/<a:t>([\s\S]*?)<\/a:t>/gi)]
+        .map((run) => decodeXml(run[1]!))
+        .join(""),
+    )
+    .join("\n")
+    .trim();
+}
+
+// Só formas com texto entram no inventário — conectores e formas puramente
+// decorativas (`xdr:cxnSp`, retângulos sem `xdr:txBody`) não carregam
+// informação própria para o usuário revisar.
+function parseShapes(
+  worksheetXml: string,
+  sheetRels: ReturnType<typeof relationships>,
+  text: (part: string) => string,
+): WorkbookShapeDiagnostic[] {
+  const drawingRelId = attr(worksheetXml.match(/<drawing\b[^>]*\/?\s*>/i)?.[0] ?? "", "r:id");
+  const drawingRelationship = drawingRelId ? sheetRels.get(drawingRelId) : undefined;
+  if (!drawingRelationship) return [];
+  const drawingXml = text(drawingRelationship.target);
+
+  const shapes: WorkbookShapeDiagnostic[] = [];
+  for (const match of drawingXml.matchAll(
+    /<xdr:(?:twoCellAnchor|oneCellAnchor)\b[^>]*>([\s\S]*?)<\/xdr:(?:twoCellAnchor|oneCellAnchor)>/gi,
+  )) {
+    const body = match[1]!;
+    const spBody = body.match(/<xdr:sp\b[^>]*>([\s\S]*?)<\/xdr:sp>/i)?.[1];
+    if (!spBody) continue;
+    const shapeTextValue = shapeText(spBody);
+    if (!shapeTextValue) continue;
+    const name = decodeXml(attr(spBody, "name") ?? "Forma");
+    shapes.push({ name, anchor: anchorOf(body), text: shapeTextValue });
+  }
+  return shapes;
+}
+
+function chartType(chartXml: string): string {
+  const plotArea = chartXml.match(/<c:plotArea\b[^>]*>([\s\S]*?)<\/c:plotArea>/i)?.[1] ?? chartXml;
+  for (const tag of CHART_TYPE_TAGS) {
+    if (new RegExp(`<c:${tag}Chart\\b`, "i").test(plotArea)) return tag;
+  }
+  return "desconhecido";
+}
+
+function chartTitle(chartXml: string): string | null {
+  // `<c:autoTitleDeleted val="1"/>` ou título vinculado a uma referência de
+  // célula (`<c:tx><c:strRef>`) não têm texto literal fixo para mostrar.
+  const titleBody = chartXml.match(/<c:title\b[^>]*>([\s\S]*?)<\/c:title>/i)?.[1];
+  if (!titleBody || /<c:strRef>/i.test(titleBody)) return null;
+  const runs = [...titleBody.matchAll(/<a:t>([\s\S]*?)<\/a:t>/gi)].map((run) => decodeXml(run[1]!));
+  const joined = runs.join("").trim();
+  return joined || null;
+}
+
+function parseCharts(
+  worksheetXml: string,
+  sheetRels: ReturnType<typeof relationships>,
+  text: (part: string) => string,
+): WorkbookChartDiagnostic[] {
+  const drawingRelId = attr(worksheetXml.match(/<drawing\b[^>]*\/?\s*>/i)?.[0] ?? "", "r:id");
+  const drawingRelationship = drawingRelId ? sheetRels.get(drawingRelId) : undefined;
+  if (!drawingRelationship) return [];
+  const drawingXml = text(drawingRelationship.target);
+  const parts = drawingRelationship.target.split("/");
+  const file = parts.pop();
+  const dir = parts.join("/");
+  if (!file) return [];
+  const drawingRels = relationships(text(`${dir}/_rels/${file}.rels`), dir);
+
+  const charts: WorkbookChartDiagnostic[] = [];
+  for (const match of drawingXml.matchAll(
+    /<xdr:(?:twoCellAnchor|oneCellAnchor)\b[^>]*>([\s\S]*?)<\/xdr:(?:twoCellAnchor|oneCellAnchor)>/gi,
+  )) {
+    const body = match[1]!;
+    const frameBody = body.match(/<xdr:graphicFrame\b[^>]*>([\s\S]*?)<\/xdr:graphicFrame>/i)?.[1];
+    if (!frameBody) continue;
+    const chartRef = frameBody.match(/<c:chart\b[^>]*\/?\s*>/i)?.[0];
+    const relationshipId = chartRef ? attr(chartRef, "r:id") : null;
+    const relationship = relationshipId ? drawingRels.get(relationshipId) : undefined;
+    if (!relationship) continue;
+    const chartXml = text(relationship.target);
+    if (!chartXml) continue;
+    charts.push({ type: chartType(chartXml), title: chartTitle(chartXml), anchor: anchorOf(body) });
+  }
+  return charts;
 }
 
 function parseTable(xml: string): StructuredTableDiagnostic {
@@ -405,6 +534,8 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
     const hyperlinks = parseHyperlinks(worksheetXml, sheetRels);
     const dataValidations = parseDataValidations(worksheetXml);
     const images = parseImages(worksheetXml, sheetRels, text, bytesOf);
+    const shapes = parseShapes(worksheetXml, sheetRels, text);
+    const charts = parseCharts(worksheetXml, sheetRels, text);
     const commentsRelationship = [...sheetRels.values()].find((relationship) =>
       relationship.type.toLowerCase().endsWith("/comments"),
     );
@@ -434,6 +565,8 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
       dataValidations,
       hasVbaMacros,
       images,
+      shapes,
+      charts,
     });
   }
   return result;
