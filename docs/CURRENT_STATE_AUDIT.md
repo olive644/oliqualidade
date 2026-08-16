@@ -2938,3 +2938,52 @@ pra bater com o formatador), `npm run build` e `npm run
 performance:check` aprovados (~447,1 KiB, dentro do limite de 450
 KiB, sem mudança relevante de tamanho — a correção remove código, não
 adiciona).
+
+## 61. Segunda causa do bug da pizza: fatias finas demais para serem vistas, mesmo já colapsadas
+
+Depois do PR da seção 60 mesclado, o usuário testou de novo e reportou
+que a pizza "continua extremamente bugada". A captura de tela desta
+vez não mostrava mais o emaranhado de espinhos (a correção anterior
+está funcionando — confirmado pela árvore de acessibilidade: só 6
+categorias visíveis, "Posição 5 de 6"), mas um anel quase de uma cor
+só, com a legenda mostrando 4-5 categorias de cores diferentes que não
+apareciam distinguíveis no desenho.
+
+**Causa raiz**: quando o "Top 5" tem participação muito pequena do
+total (ex.: 0,6% cada, num painel com uma cauda longa grande somada em
+"Outros"), o ângulo de cada fatia já fica abaixo de ~2°, e o
+`paddingAngle` (definido por `pieRoundnessFor` para reduzir a 1° nesse
+caso) consome a maior parte do que sobra — o arco visível de cada
+fatia do "Top 5" fica com menos de 1,5° de largura, virtualmente
+imperceptível num círculo de ~150px de raio (poucos pixels de arco).
+A legenda continua correta (cada item recebe uma cor distinta de
+`pieLegendItems`), mas o desenho não consegue mostrar essa cor porque
+a fatia é fina demais — não é a mesma causa do bug anterior (que
+mandava dezenas/centenas de fatias sem colapsar), é uma segunda
+limitação que só aparece depois que o colapso já está funcionando e a
+cauda longa é grande o suficiente para dominar o total.
+
+**Correção**: `<Pie>` do Recharts tem uma prop dedicada exatamente
+para esse cenário, `minAngle`, que nunca tinha sido configurada.
+Adicionado `minAngle={4}` ao `<Pie>` em `widget-card.tsx` — garante
+que toda fatia, por menor que seja sua participação real, sempre
+recebe pelo menos 4° de arco visível, sem alterar a lógica de colapso
+da seção 60 nem os valores/porcentagens exibidos no tooltip/legenda
+(que continuam refletindo a proporção real, não o ângulo ajustado —
+`minAngle` só afeta o desenho, não os números).
+
+Verificado ao vivo no navegador reabrindo o mesmo painel de teste da
+seção 60 (persistido em IndexedDB entre as duas etapas): a árvore de
+acessibilidade confirma 6 elementos de fatia renderizados no SVG do
+gráfico (consistente com as 6 categorias do colapso) e a legenda/
+comparação continuam corretas. A verificação pixel a pixel do ângulo
+mínimo continua bloqueada pela mesma limitação de sandbox das seções
+26/41/60 (RAF não dispara, screenshot indisponível) — `minAngle` é uma
+prop padrão e documentada do Recharts, comportamento não foi
+reimplementado à mão.
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
+contagem — mudança de uma prop visual, sem lógica nova para testar),
+`npx tsc --noEmit` sem erros, Prettier limpo, `npm run build` e `npm
+run performance:check` aprovados (~447,2 KiB, sem mudança relevante
+de tamanho).

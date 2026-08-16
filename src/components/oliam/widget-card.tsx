@@ -2443,6 +2443,7 @@ export function WidgetCard({
                       outerRadius="76%"
                       paddingAngle={piePaddingAngle}
                       cornerRadius={pieCornerRadius}
+                      minAngle={4}
                       stroke="var(--card)"
                       strokeWidth={3}
                       onClick={(_, index) => setSelectedPieIndex(index)}
