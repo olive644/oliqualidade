@@ -2446,7 +2446,19 @@ export function WidgetCard({
                       minAngle={4}
                       stroke="var(--card)"
                       strokeWidth={3}
-                      onClick={(_, index) => setSelectedPieIndex(index)}
+                      onClick={(_, index) => {
+                        // Mesmo padrão de clique-para-filtrar já usado em
+                        // barra/linha/área/ranking/mapa: clicar filtra na
+                        // hora, sem precisar de um botão extra. "Outros" é um
+                        // agrupador sintético (não existe como valor real na
+                        // planilha), então só seleciona para exibir a
+                        // comparação, sem tentar filtrar por ele.
+                        setSelectedPieIndex(index);
+                        const entry = pieSeries[index];
+                        if (entry && entry.name !== "Outros") {
+                          handleGroupClick(groupCol.key, entry.name);
+                        }
+                      }}
                       onMouseEnter={(_, i) => setActivePieIndex(i)}
                       onMouseLeave={() => setActivePieIndex(null)}
                       cursor="pointer"
@@ -2527,6 +2539,10 @@ export function WidgetCard({
                 onHoverIndex={setActivePieIndex}
                 onSelectIndex={(i) => {
                   setSelectedPieIndex(i);
+                  const entry = pieSeries[i];
+                  if (entry && entry.name !== "Outros") {
+                    handleGroupClick(groupCol.key, entry.name);
+                  }
                 }}
               />
             </div>
