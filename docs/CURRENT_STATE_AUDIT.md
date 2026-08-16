@@ -3641,3 +3641,95 @@ Vercel. Formas/gráficos nativos, agrupamentos/outlines e segmentações
 continuam fora — nenhum foi pedido explicitamente, e cada um exigiria
 investigação de formato própria, sem reaproveitar diretamente o que já
 foi construído aqui.
+
+## 73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo
+
+Usuário confirmou explicitamente (via pergunta direta) que queria
+configurar Playwright — item que a seção 65 já tinha identificado como
+"pode se tornar mais viável [com a descoberta da preview do Vercel], mas
+ainda não foi tentado, e é uma decisão de ferramenta/CI que talvez
+mereça confirmação do usuário antes de começar".
+
+**Instalação**: `@playwright/test` como devDependency;
+`npx playwright install --with-deps chromium` baixou o Chrome for
+Testing (~192 MiB) sem problema de rede neste ambiente. Sem impacto no
+bundle de produção (dependência de desenvolvimento só usada pelo runner
+de teste).
+
+**Descoberta real durante a primeira tentativa**: o mecanismo nativo
+`webServer` do Playwright (que sobe o `npm run dev` e faz polling HTTP
+até responder) trava indefinidamente contra este dev server — não por
+lentidão comum, mas porque a primeira requisição feita bem no instante
+em que a porta abre colide com uma janela real onde o ambiente `nitro`
+do Vite ainda não terminou de inicializar (`NitroViteError: Vite
+environment "nitro" is unavailable`, status 503) e a conexão HTTP fica
+pendurada por dezenas de segundos antes de sequer retornar erro — tempo
+suficiente para estourar os 180s de timeout configurado, mesmo o
+servidor ficando genuinamente pronto e respondendo bem logo depois
+(confirmado manualmente: uma única requisição `curl` disparada 20s após
+o start funciona sem problema). Isso é o mesmo fenômeno documentado nas
+armadilhas de ambiente já conhecidas ("espere ~10-15s depois de
+`preview_start` antes do primeiro `navigate`"), só que atingindo o probe
+automático do Playwright em vez de uma navegação manual.
+
+**Solução**: em vez de reinventar a detecção de prontidão, o
+`playwright.config.ts` ganhou suporte a uma variável `OLI_E2E_BASE_URL`
+que, quando definida, desativa o `webServer` nativo do Playwright e usa
+a URL já fornecida como pronta — permitindo reaproveitar
+**exatamente** o mesmo mecanismo já comprovado e documentado no job
+`security-smoke` do CI (`application.yml`): sobe o dev server em
+background, espera com um laço de `curl --max-time 60` até 10
+tentativas, só então roda os testes. Sem essa variável (uso local sem
+CI), o `webServer` nativo continua disponível para conveniência, com um
+timeout generoso (180s) — funciona bem quando não há corrida com a
+inicialização a frio do bundler.
+
+**Bug real de produto encontrado e não corrigido nesta PR**: com o
+`webServer` contornado, o primeiro teste (clicar em "Ver demonstração"
+→ confirmar a revisão → chegar ao painel) ainda falhava de forma
+consistente (3/3 execuções) até adicionar
+`page.waitForLoadState("networkidle")` logo após `page.goto("/")`. Sem
+essa espera, o primeiro clique no botão "Ver demonstração"
+(`components/oliam/empty.tsx`) não tem nenhum efeito — nem erro no
+console, nem mudança de tela — e só o **segundo** clique funciona.
+Confirmado com um script de depuração isolado (clique duplo + captura de
+console/erros de página): é uma corrida real de hidratação SSR do
+TanStack Start, não flakiness do Playwright — o HTML já está visível na
+tela quando o clique acontece, mas o `onClick` do React ainda não foi
+conectado. **Sinalizado como tarefa separada** (fora do escopo desta
+configuração de ferramenta, é uma decisão de arquitetura/UX que precisa
+de confirmação do usuário) — pode afetar usuários reais em conexões
+lentas, não só o teste automatizado.
+
+**Primeiro teste** (`e2e/demo-dashboard.spec.ts`): fluxo "dados de
+demonstração" completo (carregamento → clique em "Ver demonstração" →
+tela de revisão → "Gerar relatório" → painel com widgets visível).
+Escolhido por não depender de upload de arquivo real (sem diálogo
+nativo do SO, que o Playwright evita via `setInputFiles`, mas manter o
+primeiro teste o mais simples possível fazia mais sentido). Rodado 4x
+seguidas sem falha após a correção da corrida de hidratação.
+
+**CI**: novo job `e2e` em `application.yml`, mesmo padrão estrutural do
+`security-smoke` (sobe servidor, espera com curl, roda o teste, sobe
+relatório HTML do Playwright como artefato só em caso de falha). Roda
+em todo PR (mesmo gate que os outros dois jobs), decisão deliberada de
+manter simples com "configurar" significando "rodar continuamente", não
+"disponível mas nunca executado" — se o custo de CI/tempo virar problema
+real, é uma decisão futura de mover para `workflow_dispatch` manual.
+
+Adicionado `.gitignore` para `playwright-report/` e `blob-report/`
+(`test-results/` já estava ignorado, coincidência feliz com o nome
+padrão do Playwright para artefatos de execução).
+
+Verificado localmente: `npx tsc --noEmit` limpo tanto no projeto
+principal quanto isolado para `playwright.config.ts`/`e2e/*.ts` (fora do
+`tsconfig.json` principal, que só inclui `src/**`), `npx eslint .` sem
+erros novos (só o ruído de CRLF pré-existente), Prettier limpo, YAML do
+workflow validado com `js-yaml`, `npx vitest run` confirma que
+`vitest.config.ts` (`include: ["src/**/*.test.ts"]`) não pega os
+arquivos `.spec.ts` do Playwright, `npm run build` e `npm run
+performance:check` sem nenhuma mudança de tamanho (dependência de
+desenvolvimento). O job de CI em si só pode ser verificado de fato
+rodando no GitHub Actions — a mesma sequência de comandos foi executada
+manualmente aqui antes de propor a PR, mas o runner `ubuntu-latest` real
+é a prova final.
