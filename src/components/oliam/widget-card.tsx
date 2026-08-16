@@ -144,6 +144,7 @@ export function WidgetCard({
   index,
   count,
   data,
+  totalRows,
   columns,
   numericCols,
   groupableCols,
@@ -178,6 +179,8 @@ export function WidgetCard({
   index: number;
   count: number;
   data: Row[];
+  /** Linhas antes de busca/filtros de widget, para a tabela dizer quanto foi filtrado. */
+  totalRows: number;
   columns: Column[];
   numericCols: Column[];
   groupableCols: Column[];
@@ -3171,6 +3174,13 @@ export function WidgetCard({
       data-detailed-table
     >
       <WidgetHead title={`Base detalhada · ${data.length} linhas`} {...dragProps} />
+      {totalRows !== data.length && (
+        <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
+          Mostrando {data.length.toLocaleString("pt-BR")} de {totalRows.toLocaleString("pt-BR")}{" "}
+          linhas · {(totalRows - data.length).toLocaleString("pt-BR")} ocultas por busca ou filtros
+          ativos.
+        </p>
+      )}
       <DataTable
         rows={data}
         columns={columns}

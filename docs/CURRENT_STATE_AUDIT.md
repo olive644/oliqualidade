@@ -1976,3 +1976,40 @@ alterados da iniciativa (não só os desta etapa), `npm run build` e
 `npm run performance:check` aprovados (maior chunk genérico em
 ~410,4 KiB). Mesma limitação de verificação visual pendente das etapas
 anteriores.
+
+## 46. Quarta etapa: quanto foi filtrado na tabela detalhada
+
+Continuação das seções 43-45. A tabela detalhada (`w.type === "table"`,
+fallback final de `WidgetCard`) sempre mostrou `data` (linhas já
+filtradas por busca/filtros de widget) sem dizer se isso era tudo que
+existia na planilha ou uma fração. Diferente das etapas anteriores,
+esta exigiu um prop novo (`totalRows`) em vez de só reorganizar dado
+já calculado dentro do componente — `WidgetCard` só recebia `data`
+(pós-filtro), nunca o total anterior aos filtros.
+
+`totalRows` é passado do único ponto de instanciação de `WidgetCard`
+(`routes/index.tsx`) como `rulesApplied.length` — as linhas depois de
+regras de dado ausente (`applyMissingRules`, que pode ocultar linha
+deliberadamente) mas antes de busca e filtros de widget. Essa é a base
+correta de comparação: "quanto a busca/filtro escondeu", não "quanto a
+regra de dado ausente escondeu" (essa já é uma decisão do usuário
+sobre a coluna, não um filtro temporário).
+
+Faixa "Mostrando X de Y linhas · Z ocultas por busca ou filtros
+ativos", mesmo estilo `bg-secondary-accent/8` das etapas anteriores, só
+aparece quando `totalRows !== data.length` (senão seria ruído dizendo
+o óbvio).
+
+**Erro real de Prettier pego antes do push desta vez** (não na CI): o
+texto do parágrafo quebrou numa linha diferente da esperada pelo
+Prettier. Confirmado e corrigido com a mesma verificação de CRLF→LF
+registrada na memória de sessão da etapa 45, antes de commitar — dessa
+vez sem precisar da CI para descobrir.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem — mudança de prop/JSX, sem lógica nova testável isoladamente),
+`npx tsc --noEmit` sem erros (confirma que o único ponto de
+instanciação de `WidgetCard` foi atualizado corretamente), Prettier
+limpo, `npm run build` e `npm run performance:check` aprovados (maior
+chunk genérico em ~410,8 KiB). Mesma limitação de verificação visual
+pendente.

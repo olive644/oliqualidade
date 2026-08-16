@@ -2111,6 +2111,7 @@ function Dashboard(p: {
             index={i}
             count={widgets.length}
             data={data}
+            totalRows={rulesApplied.length}
             columns={sheet.columns}
             numericCols={nums}
             groupableCols={groupableCols}
