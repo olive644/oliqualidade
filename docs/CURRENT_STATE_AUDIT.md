@@ -3135,3 +3135,44 @@ restantes do mapeamento da seção 55/59 (hook de revisão em segundo
 plano ~55 linhas, exportação ~260, undo/redo ~65, ações de widget
 ~130) voltam a caber com folga confortável, sem precisar tocar o
 limite do orçamento.
+
+## 64. Quinto lote da extração do Dashboard: hook de revisão em segundo plano
+
+Com a margem de orçamento recuperada na seção 63 (~92 KiB de folga),
+retomado o mapeamento da seção 55: candidato "hook de revisão em
+segundo plano" (risco médio, ~55 linhas), o próximo depois dos
+painéis/sidebars/paleta de comandos já extraídos.
+
+**`useBackgroundReviewAnalysis`** (`use-background-review-analysis.ts`,
+novo arquivo `.ts` sem JSX, diferente dos outros hooks extraídos que
+retornam elemento pronto): recebe `rows`/`columns`/`semanticOverrides`/
+`previousRows` e devolve `{ backgroundReview, analysisProgress,
+cancelAnalysis }`. Move os dois `useState`, o `useRef<AbortController>`
+e o `useEffect` que dispara `analyzeReviewInBackground` a cada mudança
+de dados/colunas, cancelando a análise anterior sempre que uma nova
+começa — mesmo comportamento, só reorganizado. `Dashboard` continua
+consumindo `backgroundReview`/`analysisProgress` normalmente (usados
+por `effectiveIntelligence`, `detailedVersionDiff` e o badge de
+progresso no cabeçalho) e trocou a lógica inline de cancelar
+(`analysisAbort.current?.abort(); setAnalysisProgress(null);`) pela
+função `cancelAnalysis` já pronta.
+
+`index.tsx` caiu de 2.523 para 2.493 linhas. Três imports ficaram
+órfãos e foram removidos: `analyzeReviewInBackground`,
+`ReviewAnalysisProgress`/`ReviewAnalysisResult` (agora só usados
+dentro do hook) e `geocodeMissing` — este último não tinha relação com
+esta etapa, era resíduo esquecido da extração de `MapWidgetBody` na
+seção 63 (import nunca removido de `index.tsx` porque
+`@typescript-eslint/no-unused-vars` está desligado no projeto).
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados (~358,2 KiB, folga
+ampla confirmada). Extração puramente mecânica (mesmo `useEffect`,
+mesmas dependências, mesma lógica de cancelamento) — não exigiu
+verificação visual ao vivo, mesmo padrão de risco baixo já aceito
+para `useTermHint`/`usePresentationMode` nesta série.
+
+Restam do mapeamento da seção 55/59: exportação (~260 linhas),
+undo/redo (~65 linhas), ações de widget (~130 linhas) — os três mais
+entrelaçados entre si, recomendados nessa ordem.
