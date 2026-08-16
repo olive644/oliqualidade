@@ -1,6 +1,6 @@
 import type { ChartAggregationOp, Column, FilterRule, Row } from "@/lib/types";
 import { numericKinds } from "@/lib/types";
-import { parseDateValue } from "@/lib/format";
+import { parseDateValue, parseNumericValue } from "@/lib/format";
 
 /** Rótulo usado quando o valor de agrupamento está ausente. Usado também
  * para detectar esse caso na renderização dos gráficos (eixo, legenda,
@@ -74,7 +74,7 @@ export function applyMissingRules(
     } else if (rule === "interpolate") {
       const idxs = result
         .map((r, i) => ({ i, v: r[col.key] }))
-        .filter((x) => x.v !== null && x.v !== "" && Number.isFinite(Number(x.v)));
+        .filter((x) => x.v !== null && x.v !== "" && parseNumericValue(x.v) !== null);
       for (let i = 0; i < result.length; i++) {
         const row = result[i];
         if (!row) continue;
@@ -84,7 +84,9 @@ export function applyMissingRules(
         const after = idxs.find((x) => x.i > i);
         if (before && after) {
           const ratio = (i - before.i) / (after.i - before.i);
-          const value = Number(before.v) + (Number(after.v) - Number(before.v)) * ratio;
+          const value =
+            (parseNumericValue(before.v) ?? 0) +
+            ((parseNumericValue(after.v) ?? 0) - (parseNumericValue(before.v) ?? 0)) * ratio;
           row[col.key] = value;
           interpolated.add(`${i}-${col.key}`);
         } else if (before) {
@@ -132,7 +134,9 @@ export function detectQualitySignals(rows: Row[], columns: Column[]): QualitySig
 
   for (const col of columns) {
     if (numericKinds.includes(col.kind)) {
-      const values = rows.map((r) => Number(r[col.key])).filter((v) => Number.isFinite(v));
+      const values = rows
+        .map((r) => parseNumericValue(r[col.key]))
+        .filter((v): v is number => v !== null);
       if (values.length < 4) continue;
       const mean = values.reduce((s, v) => s + v, 0) / values.length;
       const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
@@ -234,9 +238,8 @@ export function groupAndAggregate(
     if (!bucket) continue;
     bucket.rowCount++;
     const raw = r[valueKey];
-    const hasValue = raw !== null && raw !== undefined && raw !== "";
-    const v = hasValue ? Number(raw) : NaN;
-    if (hasValue && Number.isFinite(v)) bucket.values.push(v);
+    const v = parseNumericValue(raw);
+    if (v !== null) bucket.values.push(v);
   }
   const result: { name: string; total: number }[] = [];
   for (const [name, bucket] of buckets) {
@@ -266,9 +269,8 @@ export function chartSeries(
   return rows.flatMap((row, index) => {
     const name = String(row[groupKey] ?? NOT_INFORMED);
     if (op === "count") return [{ name, total: 1, sourceRow: index + 1 }];
-    const raw = row[valueKey];
-    const value = raw === null || raw === undefined || raw === "" ? Number.NaN : Number(raw);
-    return Number.isFinite(value) ? [{ name, total: value, sourceRow: index + 1 }] : [];
+    const value = parseNumericValue(row[valueKey]);
+    return value !== null ? [{ name, total: value, sourceRow: index + 1 }] : [];
   });
 }
 
@@ -328,8 +330,7 @@ export function relevantAggregationOps(
     const bucket = buckets.get(name) ?? { values: 0, rowCount: 0 };
     bucket.rowCount++;
     const raw = r[valueKey];
-    const hasValue = raw !== null && raw !== undefined && raw !== "";
-    if (hasValue && Number.isFinite(Number(raw))) bucket.values++;
+    if (parseNumericValue(raw) !== null) bucket.values++;
     buckets.set(name, bucket);
   }
   const list = [...buckets.values()];
@@ -419,10 +420,12 @@ export function matchesRange(
   isDate: boolean,
 ): boolean {
   if (!min && !max) return true;
-  const num = isDate ? parseDateValue(value as string | number | null) : Number(value);
-  const minNum = isDate ? (min ? parseDateValue(min) : null) : min ? Number(min) : null;
-  const maxNum = isDate ? (max ? parseDateValue(max) : null) : max ? Number(max) : null;
-  if (num === null || Number.isNaN(num)) return false;
+  const num = isDate
+    ? parseDateValue(value as string | number | null)
+    : parseNumericValue(value as string | number | null);
+  const minNum = isDate ? (min ? parseDateValue(min) : null) : min ? parseNumericValue(min) : null;
+  const maxNum = isDate ? (max ? parseDateValue(max) : null) : max ? parseNumericValue(max) : null;
+  if (num === null) return false;
   if (minNum !== null && num < minNum) return false;
   if (maxNum !== null && num > maxNum) return false;
   return true;

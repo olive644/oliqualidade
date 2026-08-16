@@ -75,6 +75,7 @@ import {
   matchesRange,
 } from "@/lib/data-pipeline";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
+import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
@@ -213,6 +214,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       sourceGrid?: SourceGrid;
       audit?: ImportAudit;
       sourceNotes?: SourceNote[];
+      sourceImages?: WorkbookImageDiagnostic[];
     }[]
   >([]);
   const [reviewSheetIndex, setReviewSheetIndex] = useState(0);
@@ -419,6 +421,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.sourceGrid ? { sourceGrid: s.sourceGrid } : {}),
         ...(s.audit ? { audit: s.audit } : {}),
         ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
+        ...(s.diagnostics?.images.length ? { sourceImages: s.diagnostics.images } : {}),
       })),
     );
     setReviewSheetIndex(0);
@@ -482,6 +485,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         intelligence,
         widgets: buildRecommendedWidgets(autoDashboard, columns, s.rows),
         ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
+        ...(s.diagnostics?.images.length ? { sourceImages: s.diagnostics.images } : {}),
       };
     });
 
@@ -865,6 +869,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         intelligence,
         widgets: buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
         ...(s.sourceNotes?.length ? { sourceNotes: s.sourceNotes } : {}),
+        ...(s.sourceImages?.length ? { sourceImages: s.sourceImages } : {}),
       };
     });
     if (reviewTarget === "new") {
@@ -1529,6 +1534,7 @@ function Dashboard(p: {
     "matrix-heatmap": groupableCols.length >= 2,
     "version-compare": Boolean(sheet.previousSnapshot),
     table: true,
+    image: (sheet.sourceImages?.length ?? 0) > 0,
   };
 
   const {
@@ -1617,6 +1623,7 @@ function Dashboard(p: {
             columns={sheet.columns}
             numericCols={nums}
             groupableCols={groupableCols}
+            sourceImages={sheet.sourceImages ?? []}
             interpolated={interpolated}
             sort={sort}
             setSort={setSort}

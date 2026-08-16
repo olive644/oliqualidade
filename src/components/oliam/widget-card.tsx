@@ -34,6 +34,7 @@ import {
   Files,
   GitMerge,
   History,
+  Image as ImageIcon,
   Info,
   ListOrdered,
   MapPin,
@@ -85,6 +86,7 @@ import {
   fmt,
   palette,
   parseDateValue,
+  parseNumericValue,
   sortChronologically,
 } from "@/lib/format";
 import {
@@ -117,6 +119,7 @@ import {
 } from "@/lib/spreadsheet-intelligence";
 import { parseEditedValue, suggestCorrection, type AuditEntry } from "@/lib/data-review";
 import type { FolderMonitorView } from "@/lib/folder-monitor";
+import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { AnimatedNumber } from "./animated-number";
 import {
   FieldDropSlot,
@@ -160,6 +163,7 @@ export function WidgetCard({
   columns,
   numericCols,
   groupableCols,
+  sourceImages,
   interpolated,
   sort,
   setSort,
@@ -196,6 +200,7 @@ export function WidgetCard({
   columns: Column[];
   numericCols: Column[];
   groupableCols: Column[];
+  sourceImages: WorkbookImageDiagnostic[];
   interpolated: Set<string>;
   sort: { key: string; dir: "asc" | "desc" } | null;
   setSort: (s: { key: string; dir: "asc" | "desc" } | null) => void;
@@ -463,6 +468,51 @@ export function WidgetCard({
         />
         {sizeControls}
         <FolderMonitorWidget monitor={folderMonitor} />
+      </article>
+    );
+  }
+
+  if (w.type === "image") {
+    const image = sourceImages[w.imageIndex ?? 0];
+    if (!image) {
+      return (
+        <EmptyWidget
+          {...dragProps}
+          title="Imagem embutida"
+          span={w.span}
+          size={w.size}
+          type={w.type}
+          animationDelay={animationDelay}
+          message="Nenhuma imagem embutida disponível nesta aba."
+        />
+      );
+    }
+    return (
+      <article
+        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <WidgetHead
+          title={w.title || image.name}
+          icon={<ImageIcon className="size-3.5 shrink-0 text-muted-foreground" />}
+          {...dragProps}
+        />
+        {sizeControls}
+        {image.dataUrl ? (
+          <div className="flex justify-center bg-muted/10 p-3">
+            <img
+              src={image.dataUrl}
+              alt={image.name}
+              className="max-h-96 max-w-full rounded-lg object-contain"
+            />
+          </div>
+        ) : (
+          <p className="p-4 text-xs text-muted-foreground">
+            Formato {image.format} não pode ser exibido no navegador
+            {image.anchor ? ` (ancorada em ${image.anchor} na planilha original)` : ""}. Abra o
+            arquivo original para ver esta imagem.
+          </p>
+        )}
       </article>
     );
   }
@@ -1217,7 +1267,7 @@ export function WidgetCard({
       ? requestedMetricOp
       : (metricOps[0] ?? "avg");
     const total = aggregate(
-      data.map((r) => Number(r[col.key])).filter((v) => Number.isFinite(v)),
+      data.map((r) => parseNumericValue(r[col.key])).filter((v): v is number => v !== null),
       metricOp,
     );
     const style = conditionalStyle(total, col.kind, col.conditionalFormat);
@@ -1587,8 +1637,8 @@ export function WidgetCard({
               const values = scheduleRows.flatMap((row) => {
                 const value = row[column.key];
                 if (scheduleOp === "count") return isBlankScheduleValue(value) ? [] : [1];
-                const numeric = Number(value);
-                return Number.isFinite(numeric) ? [numeric] : [];
+                const numeric = parseNumericValue(value);
+                return numeric !== null ? [numeric] : [];
               });
               return [column.key, values.length ? aggregate(values, scheduleOp) : null];
             }),
@@ -3311,7 +3361,9 @@ export function WidgetCard({
         />
       );
     }
-    const values = data.map((r) => Number(r[col.key])).filter((v) => Number.isFinite(v));
+    const values = data
+      .map((r) => parseNumericValue(r[col.key]))
+      .filter((v): v is number => v !== null);
     const avg = values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
     const filled = Math.round(avg);
     const ratingStyle = conditionalStyle(avg, col.kind, col.conditionalFormat);

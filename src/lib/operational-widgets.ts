@@ -1,4 +1,5 @@
 import type { Column, Row, WidgetType } from "@/lib/types";
+import { parseNumericValue } from "@/lib/format";
 
 const EMPTY_VALUE = /^(?:-|–|—|n\/?a|não informado)$/i;
 
@@ -98,9 +99,9 @@ function validationState(row: Row, result?: Column, accepted?: Column, rejected?
   const text = normalizeOperationalHeader(String(result ? (row[result.key] ?? "") : ""));
   if (/nao conforme|reprov|rejeit|falha|fora/.test(text)) return "rejected" as const;
   if (/aprov|aceit|conforme|ok/.test(text)) return "approved" as const;
-  const acceptedValue = accepted ? Number(row[accepted.key]) : Number.NaN;
-  const rejectedValue = rejected ? Number(row[rejected.key]) : Number.NaN;
-  if (Number.isFinite(acceptedValue) || Number.isFinite(rejectedValue)) {
+  const acceptedValue = accepted ? parseNumericValue(row[accepted.key]) : null;
+  const rejectedValue = rejected ? parseNumericValue(row[rejected.key]) : null;
+  if (acceptedValue !== null || rejectedValue !== null) {
     if ((rejectedValue || 0) > (acceptedValue || 0)) return "rejected" as const;
     if ((acceptedValue || 0) > 0) return "approved" as const;
   }
@@ -181,8 +182,8 @@ export function buildControlSeries(columns: Column[], rows: Row[]): ControlSerie
   const labelColumn = columnByPattern(columns, /\bdata\b|\bhora\b|\bamostra\b|\bidentificacao\b/);
   const raw = rows
     .flatMap((row, index) => {
-      const value = Number(row[metric.key]);
-      if (!Number.isFinite(value)) return [];
+      const value = parseNumericValue(row[metric.key]);
+      if (value === null) return [];
       return [
         {
           label:
@@ -239,8 +240,8 @@ export function buildPlanVsActualSeries(columns: Column[], rows: Row[]): PlanAct
     if (!actualColumn) return [];
     const sum = (column: Column) =>
       rows.reduce((total, row) => {
-        const value = Number(row[column.key]);
-        return Number.isFinite(value) ? total + value : total;
+        const value = parseNumericValue(row[column.key]);
+        return value !== null ? total + value : total;
       }, 0);
     const plannedValue = sum(plannedColumn);
     const actualValue = sum(actualColumn);

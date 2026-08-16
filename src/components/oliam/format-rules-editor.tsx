@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { parseNumericValue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Column, ConditionalFormatRule } from "@/lib/types";
 
@@ -30,13 +31,13 @@ export function FormatRulesEditor({
   const rules = column.conditionalFormat ?? [];
   const canAddRule =
     adding === "threshold"
-      ? value.trim() !== "" && Number.isFinite(Number(value))
+      ? value.trim() !== "" && parseNumericValue(value) !== null
       : adding === "scale"
         ? min.trim() !== "" &&
           max.trim() !== "" &&
-          Number.isFinite(Number(min)) &&
-          Number.isFinite(Number(max)) &&
-          Number(max) > Number(min)
+          parseNumericValue(min) !== null &&
+          parseNumericValue(max) !== null &&
+          (parseNumericValue(max) ?? 0) > (parseNumericValue(min) ?? 0)
         : false;
 
   const cancel = () => {
@@ -47,17 +48,16 @@ export function FormatRulesEditor({
   };
   const addRule = () => {
     if (adding === "threshold") {
-      const num = Number(value);
-      if (!value.trim() || !Number.isFinite(num)) return;
+      const num = parseNumericValue(value);
+      if (!value.trim() || num === null) return;
       onChange([
         ...rules,
         { id: crypto.randomUUID(), type: "threshold", operator, value: num, color, background },
       ]);
     } else if (adding === "scale") {
-      const mn = Number(min),
-        mx = Number(max);
-      if (!min.trim() || !max.trim() || !Number.isFinite(mn) || !Number.isFinite(mx) || mx <= mn)
-        return;
+      const mn = parseNumericValue(min),
+        mx = parseNumericValue(max);
+      if (!min.trim() || !max.trim() || mn === null || mx === null || mx <= mn) return;
       onChange([
         ...rules,
         { id: crypto.randomUUID(), type: "scale", min: mn, max: mx, minColor, maxColor },

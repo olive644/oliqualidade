@@ -71,7 +71,8 @@ export type WidgetType =
   | "pivot-table"
   | "matrix-heatmap"
   | "version-compare"
-  | "table";
+  | "table"
+  | "image";
 // largura em colunas de uma grade de 3 colunas
 export type WidgetSpan = 1 | 2 | 3;
 export type WidgetSize = "sm" | "md" | "lg";
@@ -96,6 +97,7 @@ export type Widget = {
   blockKey?: string; // schedule-heatmap automático: coluna que identifica o bloco de origem
   blockValue?: string; // schedule-heatmap automático: bloco exclusivo exibido neste widget
   columnKey?: string; // pivot/matrix: dimensão exibida nas colunas
+  imageIndex?: number; // image: índice em sheet.sourceImages
 };
 
 export const widgetTypeLabels: Record<WidgetType, string> = {
@@ -120,6 +122,7 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   "matrix-heatmap": "Matriz de cruzamento",
   "version-compare": "Comparador de versões",
   table: "Tabela",
+  image: "Imagem embutida",
 };
 
 export type Bookmark = {
@@ -148,6 +151,8 @@ export type SheetData = {
   bookmarks?: Bookmark[];
   /** Observações soltas e comentários de célula preservados da planilha original. */
   sourceNotes?: import("@/lib/import-intelligence").SourceNote[];
+  /** Imagens embutidas na planilha original (fotos, logos, diagramas). */
+  sourceImages?: import("@/lib/workbook-metadata").WorkbookImageDiagnostic[];
 };
 
 export type Dashboard = {

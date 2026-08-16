@@ -5,6 +5,8 @@ import {
   columnDragType,
   columnDropAccepted,
   createWidget,
+  defaultSize,
+  defaultSpan,
   duplicateWidget,
   draggedColumnKind,
   groupableKinds,
@@ -506,5 +508,14 @@ describe("createWidget, mapa prefere uma coluna geográfica de verdade", () => {
       const w = createWidget("map", columns, undefined, rows);
       expect(w.groupKey).toBe(key);
     }
+  });
+});
+
+describe("widget de imagem embutida", () => {
+  it("cria com span/size padrão amplos, sem exigir nenhuma coluna", () => {
+    const w = createWidget("image", [], undefined, []);
+    expect(w.type).toBe("image");
+    expect(defaultSpan("image")).toBe(2);
+    expect(defaultSize("image")).toBe("lg");
   });
 });

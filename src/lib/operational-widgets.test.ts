@@ -103,6 +103,21 @@ describe("widgets operacionais", () => {
     expect(series.upper).toBeGreaterThan(series.mean);
   });
 
+  it("calcula limites estatísticos com valores em notação brasileira (vírgula decimal)", () => {
+    // Bug real reportado com uma planilha de laboratório (carta de
+    // controle de turbidez/pH): valores como "0,69" chegavam como texto e
+    // eram descartados da série (Number("0,69") é NaN), fazendo a carta de
+    // controle ficar vazia mesmo com dados presentes.
+    const columns = [column("Amostra"), column("Turbidez", "number")];
+    const rows = ["0,10", "0,20", "0,30"].map((value, index) => ({
+      Amostra: index + 1,
+      Turbidez: value,
+    }));
+    const series = buildControlSeries(columns, rows);
+    expect(series.points).toHaveLength(3);
+    expect(series.mean).toBeCloseTo(0.2, 10);
+  });
+
   it("pareia programado e realizado pelo período", () => {
     const columns = [
       column("Programado — 01/07/2026", "number"),

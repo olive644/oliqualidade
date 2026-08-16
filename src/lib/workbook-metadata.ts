@@ -72,6 +72,12 @@ export type WorkbookImageDiagnostic = {
   anchor: string | null;
   /** Formato inferido pela extensão do arquivo de mídia: PNG, JPEG, GIF etc. */
   format: string;
+  /**
+   * `data:` URL pronta para `<img src>`, quando o formato é renderizável por
+   * navegador (não EMF/WMF) e o arquivo não excede o limite de tamanho.
+   * Ausente não significa erro — a imagem continua inventariada acima.
+   */
+  dataUrl?: string;
 };
 
 export type WorksheetWithAdvancedMetadata = XLSX.WorkSheet & {
@@ -264,10 +270,41 @@ const IMAGE_FORMATS_BY_EXTENSION: Record<string, string> = {
   tiff: "TIFF",
 };
 
+// Só os formatos que um <img> de navegador consegue exibir diretamente.
+// EMF/WMF (metarquivo do Windows) são detectados e nomeados, mas nunca
+// viram dataUrl — não há como renderizá-los sem uma biblioteca nova.
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  bmp: "image/bmp",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+};
+
+// Protege o IndexedDB de imagens gigantes coladas na planilha (fotos em
+// resolução de câmera etc.): acima disso, a imagem continua inventariada
+// (nome/posição/formato) mas sem prévia visual embutida no painel.
+const MAX_IMAGE_DATA_URL_BYTES = 4 * 1024 * 1024;
+
+function bytesToDataUrl(bytes: Uint8Array, mime: string): string | undefined {
+  if (bytes.length > MAX_IMAGE_DATA_URL_BYTES) return undefined;
+  let binary = "";
+  // Em blocos para não estourar o limite de argumentos de
+  // String.fromCharCode com imagens maiores.
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
 function parseImages(
   worksheetXml: string,
   sheetRels: ReturnType<typeof relationships>,
   text: (part: string) => string,
+  bytesOf: (part: string) => Uint8Array | undefined,
 ): WorkbookImageDiagnostic[] {
   const drawingRelId = attr(worksheetXml.match(/<drawing\b[^>]*\/?\s*>/i)?.[0] ?? "", "r:id");
   const drawingRelationship = drawingRelId ? sheetRels.get(drawingRelId) : undefined;
@@ -291,6 +328,9 @@ function parseImages(
     const relationship = embedId ? drawingRels.get(embedId) : undefined;
     const extension = relationship?.target.split(".").pop()?.toLowerCase();
     const format = (extension && IMAGE_FORMATS_BY_EXTENSION[extension]) || "desconhecido";
+    const mime = extension && IMAGE_MIME_BY_EXTENSION[extension];
+    const mediaBytes = relationship ? bytesOf(relationship.target) : undefined;
+    const dataUrl = mediaBytes && mime ? bytesToDataUrl(mediaBytes, mime) : undefined;
     const fromBody = body.match(/<xdr:from>([\s\S]*?)<\/xdr:from>/i)?.[1] ?? "";
     const col = fromBody.match(/<xdr:col>(\d+)<\/xdr:col>/i)?.[1];
     const row = fromBody.match(/<xdr:row>(\d+)<\/xdr:row>/i)?.[1];
@@ -298,7 +338,7 @@ function parseImages(
       col !== undefined && row !== undefined
         ? XLSX.utils.encode_cell({ r: Number(row), c: Number(col) })
         : null;
-    images.push({ name, anchor, format });
+    images.push({ name, anchor, format, ...(dataUrl ? { dataUrl } : {}) });
   }
   return images;
 }
@@ -336,6 +376,7 @@ function parsePivot(xml: string): PivotTableDiagnostic {
 export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlArchive) {
   const zip = isOoxmlArchive(data) ? data : unzipOoxmlArchive(data);
   const text = (part: string) => (zip[part] ? strFromU8(zip[part]!) : "");
+  const bytesOf = (part: string) => zip[part];
   const workbookXml = text("xl/workbook.xml");
   const workbookRels = relationships(text("xl/_rels/workbook.xml.rels"), "xl");
   const result = new Map<string, AdvancedSheetMetadata>();
@@ -363,7 +404,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
     );
     const hyperlinks = parseHyperlinks(worksheetXml, sheetRels);
     const dataValidations = parseDataValidations(worksheetXml);
-    const images = parseImages(worksheetXml, sheetRels, text);
+    const images = parseImages(worksheetXml, sheetRels, text, bytesOf);
     const commentsRelationship = [...sheetRels.values()].find((relationship) =>
       relationship.type.toLowerCase().endsWith("/comments"),
     );

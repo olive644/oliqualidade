@@ -3641,7 +3641,6 @@ Vercel. Formas/gráficos nativos, agrupamentos/outlines e segmentações
 continuam fora — nenhum foi pedido explicitamente, e cada um exigiria
 investigação de formato própria, sem reaproveitar diretamente o que já
 foi construído aqui.
-
 ## 73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo
 
 Usuário confirmou explicitamente (via pergunta direta) que queria
@@ -3754,3 +3753,131 @@ de npm que o `node-version` do workflow realmente bundla) em vez do
 `npm install` padrão do ambiente local, e sempre confirmar com um `rm
 -rf node_modules && npm ci` limpo antes de considerar a mudança
 pronta — sem isso, o problema só aparece na CI real, nunca localmente.
+
+## 74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas
+
+Usuário trouxe um arquivo real (planilha de cronograma de análises
+microbiológicas e água) com dois problemas visíveis: a aba
+"Monitoramento - F-Q Mensal" mostrava "NaN" em várias células da tabela
+detalhada, e uma imagem embutida ("Definição das Zonas de Contato", uma
+matriz de risco + diagrama) não aparecia em lugar nenhum do painel,
+mesmo já inventariada pela seção 72.
+
+### Causa raiz do NaN: Number("0,69") é NaN em JavaScript
+
+A planilha tem medições como "0,69", "0,46" — texto com vírgula decimal
+brasileira (confirmado inspecionando o XML bruto: são valores
+legítimos, não erro de digitação). `Number()` nativo do JS não entende
+vírgula decimal. Uma varredura por `Number(` operando sobre valores de
+célula (não sobre input de formulário) encontrou o mesmo padrão
+espalhado por 6 arquivos: o motor central de agregação
+(`data-pipeline.ts` — `groupAndAggregate`, `chartSeries`,
+`applyMissingRules` na interpolação, `detectQualitySignals`,
+`matchesRange`), o editor de fórmula/formatação condicional
+(`format.ts` — `fmt`, `evalFormula`, `resolveConditionalFormat`), os
+widgets de KPI/avaliação (`widget-card.tsx`), os widgets operacionais/
+carta de controle (`operational-widgets.ts`) e o editor de regras de
+formatação condicional (`format-rules-editor.tsx`).
+
+Antes da correção, a maioria desses pontos não mostrava "NaN" — eles
+descartavam o valor silenciosamente (`Number.isFinite(NaN)` é falso, e
+os `.filter()` já existentes removiam o valor da agregação sem aviso).
+Isso é pior que o "NaN" visível: gráficos de barra/linha/pizza, cartas
+de controle e KPIs para essa planilha estavam somando/calculando médias
+sem parte real dos dados, sem nenhum sinal de que algo estava faltando.
+Só a tabela detalhada (`DataTable`, via `fmt()`) de fato formatava e
+exibia o "NaN" literal — foi o único ponto visível ao usuário, mas o
+mesmo bug atingia o resto do painel de forma invisível.
+
+Correção: `parseNumericValue` (novo, em `format.ts`, ao lado de
+`parseDateValue` — mesmo padrão de "parser tolerante de Value" já
+estabelecido) aceita números nativos e texto em notação brasileira
+(vírgula decimal, ponto de milhar, prefixo R$/US$) ou americana (ponto
+decimal simples), e nunca retorna NaN — falha explicitamente com null
+para quem chama decidir o que fazer. Aplicado nos 6 arquivos,
+substituindo todo `Number(valorDeCelula)` direto. Em `fmt()`
+especificamente, quando o valor não é interpretável como número (ex.:
+"N/A" numa coluna numérica), o texto original é mostrado em vez de
+"NaN" — mostra o dado real, nunca inventa nem esconde.
+
+17 testes de regressão novos cobrindo os 6 pontos corrigidos
+(`format.test.ts`, `data-pipeline.test.ts`, `operational-widgets.test.ts`),
+incluindo um teste dedicado para `matchesRange` (função que nunca tinha
+tido cobertura própria). Verificado ao vivo: subi o arquivo real do
+usuário no dev server local (injetado via `fetch` de um arquivo
+temporário em `public/`, contornando a ausência de upload nativo do
+navegador neste sandbox — mais simples e sem limite de tamanho que a
+técnica anterior de injetar File/DataTransfer com base64 inline) e
+confirmei: a tabela "Base detalhada" da aba "Monitoramento - F-Q
+Mensal" agora mostra os valores corretamente onde antes aparecia "NaN";
+o ranking por bloco mostra somas reais em vez de descartar os valores.
+
+### Widget novo: imagem embutida (fecha o pedido do usuário sobre o PNG)
+
+Investigação da aba "Requisitos de Monitoramento" (a que o usuário
+achava "mal lida"): tem só 30 linhas ao todo, e a única tabela real é
+uma matriz de risco pequena (4 linhas), que o app já importava
+corretamente (confirmado: os KPIs batem com os dados originais). O
+resto da aba é conteúdo visual — um diagrama grande embutido como
+imagem. A detecção de imagens (seção 72) já identificava essa imagem no
+inventário da revisão, mas nada no app permitia ver a imagem — só o
+metadado (nome/posição/formato). Confirmado com o usuário via pergunta
+direta que a prioridade era construir esse widget agora, não só
+documentar a limitação.
+
+Extração dos bytes: `WorkbookImageDiagnostic` ganhou um campo
+`dataUrl?: string` opcional. `parseImages` (`workbook-metadata.ts`)
+agora recebe também um accessor `bytesOf(part)` (bytes brutos do zip,
+precisa ser separado do `text()` existente, que usa `strFromU8` e
+corromperia bytes binários de imagem via interpretação UTF-8) e gera a
+data URL via `btoa` em blocos de 8192 bytes (evita estourar o limite de
+argumentos de `String.fromCharCode` em imagens maiores — mesmo padrão
+de `btoa(String.fromCharCode(...bytes))` já usado em
+`encrypted-backup.ts`/`chat-session.ts`, só em blocos). Dois limites
+deliberados: só formatos que `<img>` de navegador renderiza diretamente
+(PNG/JPEG/GIF/BMP/TIFF) ganham `dataUrl` — EMF/WMF continuam só
+inventariados; e um teto de 4 MB por imagem protege o IndexedDB de
+fotos em resolução de câmera coladas na planilha.
+
+Widget novo `"image"` (`types.ts`, `widgetTypeLabels`,
+`widgetTypeDescriptions`, `WidgetPickerIcon`): span 2, tamanho `lg` por
+padrão (`widgets.ts`). Renderização em `widget-card.tsx`: `<img>` com a
+`dataUrl`, ou uma mensagem explicando que o formato não é renderizável
+quando ausente. Deliberadamente não entra na recomendação automática
+(`auto-dashboard.ts` nunca referencia o tipo) — mesma decisão já tomada
+para "Insights automáticos"/painéis de exceção/validação (seção 47/54):
+mudar o que é recomendado por padrão é decisão de produto de alcance
+amplo, fora do escopo implícito de "adicionar um widget". Só aparece no
+seletor "Adicionar widget" quando `sheet.sourceImages` não está vazio.
+
+Threading: como imagens são por aba (cada `<drawing>` do Excel pertence
+a uma aba só, ao contrário de nomes definidos/links externos/macros que
+são do workbook inteiro — mesma distinção já registrada na seção 70),
+`sourceImages` entrou em `SheetData` (`types.ts`) espelhando exatamente
+o padrão já usado por `sourceNotes`: extraído de `diagnostics.images`
+em `prepare()`/`buildImportedSheets()` (fluxo de pasta monitorada) e
+copiado para o `SheetData` final em `confirmReview()`.
+
+Verificado ao vivo com o arquivo real do usuário: adicionar o widget
+"Imagem embutida" na aba "Requisitos de Monitoramento" via o seletor
+"Widget" da barra de ferramentas (nota: o gatilho do menu é um Radix
+DropdownMenuTrigger — cliques sintéticos via `element.click()` não
+disparam a abertura, precisou do `computer` do Browser pane com um
+`ref` real para simular um clique confiável; o item do menu em si já
+aceitou uma sequência pointerdown/pointerup/click sintética
+normalmente) renderizou a imagem real, decodificada pelo navegador com
+sucesso (dimensões reais, não um `<img>` quebrado).
+
+Verificado com `npx vitest run` (506 passou, 11 pulados — dois testes
+novos: EMF sem `dataUrl`, `createWidget("image", ...)`), `npx tsc
+--noEmit` sem erros, Prettier limpo (dois ajustes manuais de quebra de
+linha para bater com o formatador), `npm run build` e `npm run
+performance:check` aprovados (maior chunk genérico subiu de 374,4 para
+375,7 KiB — ainda dentro da margem de ~450 KiB).
+
+Fora do escopo, sinalizado como tarefa separada (não é um bug de
+leitura, é uma descoberta de UX que precisa de decisão de arquitetura):
+uma corrida real de hidratação SSR do TanStack Start foi encontrada
+durante a configuração do Playwright (seção 73 acima) — um clique
+disparado antes da hidratação terminar é silenciosamente perdido. Não
+investigado a fundo aqui; ver o chip de tarefa criado naquela sessão.
