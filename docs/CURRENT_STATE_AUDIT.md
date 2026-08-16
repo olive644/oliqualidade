@@ -2335,3 +2335,57 @@ pequena. Se a margem voltar a ficar apertada depois dessas etapas, a
 análise real com `rollup-plugin-visualizer` continua sendo o caminho
 recomendado antes de subir o limite de novo — subir o número
 repetidamente sem entender a causa vira só adiar o problema.
+
+## 52. Etapas 2-4 da extração do Dashboard: apresentação, fórmula, bookmark
+
+Fecha o plano de extração registrado na seção 51, com a margem de
+orçamento já resolvida. `routes/index.tsx` caiu de 3.739 para 3.328
+linhas (~11%) somando as quatro etapas.
+
+**Modo apresentação** (`src/components/oliam/presentation-mode.tsx`,
+`usePresentationMode`): diferente do diálogo de junção, não é
+totalmente autocontido — o overlay em tela cheia continua renderizando
+`gridContent`/`sourceNotesPanel` (a mesma grade de widgets), que só
+existem em `Dashboard`. O hook extrai os 4 estados, os dois
+`useEffect` (tecla Esc, avanço automático) e só a barra superior como
+JSX (`presentationBar`); o wrapper externo e a injeção do conteúdo
+continuam em `Dashboard`. `applyBookmark` continua definido em
+`Dashboard` e é passado como parâmetro — ele mexe em `search`/`sort`,
+estado que também pertence à tela principal, não é exclusivo da
+apresentação.
+
+**Editor de coluna calculada** (`formula-column-editor.tsx`,
+`FormulaColumnEditor`): totalmente autocontido — recebe `columns` e
+`onAddColumn`, decide sozinho quando mostrar o botão ou o formulário.
+
+**Painel de marcadores** (`bookmark-panel.tsx`, `BookmarkPanel`):
+também autocontido, recebe `bookmarks`/`onApply`/`onRemove`/`onSave`.
+**Detalhe de comportamento preservado**: o painel tinha um `useEffect`
+em `Dashboard` que fechava (`setBookmarkPanel(false)`) ao trocar de
+aba/painel — como o estado de aberto/fechado agora é interno ao
+componente, isso não é mais controlável de fora. Resolvido com
+`key={`${d.id}-${activeSheetIndex}`}` no `<BookmarkPanel>`: o React
+remonta o componente (resetando todo estado interno, não só
+aberto/fechado) sempre que a aba ou o painel mudam — mesmo efeito
+prático, sem precisar expor um controle externo que quebraria o
+autocontenimento do componente.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros (pegou uma referência órfã a
+`setBookmarkPanel` que sobrou de um `useEffect` de reset, corrigida
+removendo a linha e usando a `key` acima em vez disso), Prettier
+limpo, `npm run build` e `npm run performance:check` aprovados
+(~423,2 KiB — teria estourado o limite antigo de 420 KiB, confirmando
+que a decisão de subir para 450 KiB na etapa anterior foi necessária,
+não prematura). Mesma limitação de verificação visual pendente — os
+três fluxos (apresentação, coluna calculada, marcadores) não foram
+exercitados de verdade nesta sessão.
+
+**O que ficou em `Dashboard`** (item 5 do plano da seção 51): busca/
+filtro, exportação, revisão de fundo, células focadas, sinais de
+qualidade, e toda a cadeia de `useMemo` do pipeline de dados + a
+orquestração da grade de widgets. Confirma a expectativa já registrada
+na seção 51: mesmo depois de extrair os quatro blocos mais
+autocontidos, o núcleo de `Dashboard` continua grande — esta etapa
+organiza e reduz risco para mudanças futuras, não deixa o arquivo
+"pequeno".

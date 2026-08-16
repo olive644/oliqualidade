@@ -4,8 +4,6 @@ import { toast } from "sonner";
 import {
   Activity,
   AlertTriangle,
-  Bookmark as BookmarkIcon,
-  BookmarkPlus,
   Calculator,
   Check,
   ChevronDown,
@@ -27,13 +25,10 @@ import {
   LayoutGrid,
   Maximize2,
   Menu,
-  Minimize2,
   Moon,
   Palette,
-  Pause,
   PanelRight,
   Pin,
-  Play,
   Plus,
   Redo2,
   Search,
@@ -41,7 +36,6 @@ import {
   Sheet as SheetIcon,
   ShieldAlert,
   Sun,
-  Trash2,
   Undo2,
   Upload,
   X,
@@ -102,7 +96,6 @@ import {
   fmt,
   hue,
   infer,
-  validateFormula,
   withCalculatedColumns,
 } from "@/lib/format";
 import {
@@ -201,6 +194,9 @@ import { useTheme, ThemeToggle } from "@/components/oliam/theme-toggle";
 import { AnimatedNumber } from "@/components/oliam/animated-number";
 import { Onboarding } from "@/components/oliam/onboarding";
 import { useJoinSheetDialog } from "@/components/oliam/join-sheet-dialog";
+import { usePresentationMode } from "@/components/oliam/presentation-mode";
+import { FormulaColumnEditor } from "@/components/oliam/formula-column-editor";
+import { BookmarkPanel } from "@/components/oliam/bookmark-panel";
 import { GeminiChatPanel } from "@/components/oliam/gemini-chat-panel";
 import { Home } from "@/components/oliam/home";
 import { Empty } from "@/components/oliam/empty";
@@ -1213,20 +1209,10 @@ function Dashboard(p: {
     columnKey?: string;
     address?: string;
   } | null>(null);
-  const [addingFormula, setAddingFormula] = useState(false);
-  const [formulaLabel, setFormulaLabel] = useState("");
-  const [formulaText, setFormulaText] = useState("");
-  const [formulaError, setFormulaError] = useState<string | null>(null);
   const [formatPanel, setFormatPanel] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [importDiagnostics, setImportDiagnostics] = useState(false);
-  const [bookmarkPanel, setBookmarkPanel] = useState(false);
-  const [bookmarkName, setBookmarkName] = useState("");
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
-  const [presentation, setPresentation] = useState(false);
-  const [autoPlay, setAutoPlay] = useState(false);
-  const [presentIndex, setPresentIndex] = useState(0);
-  const [intervalSeconds, setIntervalSeconds] = useState(10);
   const [insightOpen, setInsightOpen] = useState(true);
   const [showTermHint, setShowTermHint] = useState(false);
   const backupInput = useRef<HTMLInputElement>(null);
@@ -1297,7 +1283,6 @@ function Dashboard(p: {
   useEffect(() => {
     setSearch("");
     setSort(null);
-    setBookmarkPanel(false);
     setWidgetClipboard(null);
   }, [d.id, activeSheetIndex]);
   useEffect(() => {
@@ -1941,12 +1926,9 @@ function Dashboard(p: {
   // da própria aba para poder voltar a ele com um clique (ou alternar entre
   // eles automaticamente no modo apresentação).
   const bookmarks = sheet.bookmarks ?? [];
-  const saveBookmark = () => {
-    const trimmed = bookmarkName.trim();
-    if (!trimmed) return;
-    const bookmark = createBookmark(trimmed, sheet.filters, search, sort);
+  const saveBookmark = (name: string) => {
+    const bookmark = createBookmark(name, sheet.filters, search, sort);
     updateSheet({ bookmarks: [...bookmarks, bookmark] });
-    setBookmarkName("");
   };
   const removeBookmark = (id: string) =>
     updateSheet({ bookmarks: bookmarks.filter((b) => b.id !== id) });
@@ -1956,37 +1938,11 @@ function Dashboard(p: {
     setSearch(view.search);
     setSort(view.sort);
   };
-  const startPresentation = () => {
-    setPresentIndex(0);
-    const first = bookmarks[0];
-    if (first) applyBookmark(first);
-    setPresentation(true);
-  };
-
-  // Modo apresentação: reaproveita a mesma grade de widgets em tela cheia,
-  // sem sidebar nem barras de ferramentas, com opção de alternar sozinho
-  // entre os marcadores salvos a cada N segundos.
-  useEffect(() => {
-    if (!presentation) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPresentation(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [presentation]);
-  useEffect(() => {
-    if (!presentation || !autoPlay || bookmarks.length === 0) return;
-    const id = setInterval(() => {
-      setPresentIndex((i) => {
-        const next = (i + 1) % bookmarks.length;
-        const bm = bookmarks[next];
-        if (bm) applyBookmark(bm);
-        return next;
-      });
-    }, intervalSeconds * 1000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presentation, autoPlay, intervalSeconds, bookmarks.length]);
+  const { presentation, startPresentation, presentationBar } = usePresentationMode(
+    d.name,
+    bookmarks,
+    applyBookmark,
+  );
 
   const sourceNotesPanel = sheet.sourceNotes?.length ? (
     <details className="mx-4 mb-4 rounded-2xl border border-primary/20 bg-card shadow-sm md:mx-6">
@@ -2496,68 +2452,13 @@ function Dashboard(p: {
             <GitMerge />
             <span className="hidden sm:inline">Combinar planilha</span>
           </Button>
-          <div className="relative">
-            <Button variant="outline" onClick={() => setBookmarkPanel((v) => !v)}>
-              <BookmarkIcon />
-              <span className="hidden sm:inline">Marcadores</span>
-            </Button>
-            {bookmarkPanel && (
-              <div className="absolute right-0 top-full z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card shadow-panel">
-                <div className="flex items-center justify-between border-b p-3">
-                  <strong className="text-sm">Marcadores</strong>
-                  <Button variant="ghost" size="icon" onClick={() => setBookmarkPanel(false)}>
-                    <X />
-                  </Button>
-                </div>
-                <div className="max-h-72 overflow-auto p-2">
-                  {bookmarks.length === 0 && (
-                    <p className="p-2 text-xs text-muted-foreground">
-                      Nenhum marcador salvo ainda. Ajuste os filtros e salve o estado atual abaixo.
-                    </p>
-                  )}
-                  {bookmarks.map((b) => (
-                    <div key={b.id} className="flex items-center gap-1 p-1">
-                      <button
-                        className="flex-1 truncate px-2 py-2 text-left text-sm hover:bg-accent"
-                        onClick={() => {
-                          applyBookmark(b);
-                          setBookmarkPanel(false);
-                        }}
-                      >
-                        {b.name}
-                      </button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 shrink-0"
-                        aria-label={`Excluir marcador ${b.name}`}
-                        onClick={() => removeBookmark(b.id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 border-t p-3">
-                  <input
-                    className="oliam-input h-9 flex-1"
-                    placeholder="Nome do marcador…"
-                    value={bookmarkName}
-                    onChange={(e) => setBookmarkName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && saveBookmark()}
-                  />
-                  <Button
-                    size="icon"
-                    aria-label="Salvar estado atual como marcador"
-                    disabled={!bookmarkName.trim()}
-                    onClick={saveBookmark}
-                  >
-                    <BookmarkPlus />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
+          <BookmarkPanel
+            key={`${d.id}-${activeSheetIndex}`}
+            bookmarks={bookmarks}
+            onApply={applyBookmark}
+            onRemove={removeBookmark}
+            onSave={saveBookmark}
+          />
           <Button variant="outline" onClick={startPresentation}>
             <Maximize2 />
             <span className="hidden sm:inline">Apresentação</span>
@@ -2859,72 +2760,7 @@ function Dashboard(p: {
               })}
             </div>
             <div className="border-t p-3">
-              {addingFormula ? (
-                <div className="space-y-2">
-                  <input
-                    className="oliam-input w-full"
-                    placeholder="Nome da coluna, ex: Lucro"
-                    value={formulaLabel}
-                    onChange={(e) => setFormulaLabel(e.target.value)}
-                  />
-                  <input
-                    className="oliam-input w-full font-mono text-xs"
-                    placeholder="Fórmula, ex: receita - custo"
-                    value={formulaText}
-                    onChange={(e) => setFormulaText(e.target.value)}
-                  />
-                  {formulaError && <p className="text-xs text-destructive">{formulaError}</p>}
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setAddingFormula(false);
-                        setFormulaError(null);
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        const availableKeys = sheet.columns.map((c) => c.key);
-                        const error = validateFormula(formulaText, availableKeys);
-                        if (error) {
-                          setFormulaError(error);
-                          return;
-                        }
-                        const label = formulaLabel.trim() || "Coluna calculada";
-                        const key = `calc_${label
-                          .toLowerCase()
-                          .replaceAll(/[^a-z0-9]+/g, "_")}_${Date.now().toString(36)}`;
-                        setColumns([
-                          ...sheet.columns,
-                          {
-                            key,
-                            label,
-                            kind: "number",
-                            visible: true,
-                            description: `Calculada a partir de: ${formulaText}`,
-                            formula: formulaText,
-                          },
-                        ]);
-                        setAddingFormula(false);
-                        setFormulaLabel("");
-                        setFormulaText("");
-                        setFormulaError(null);
-                      }}
-                    >
-                      Criar coluna
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <Button variant="outline" className="w-full" onClick={() => setAddingFormula(true)}>
-                  <Calculator className="size-4" />
-                  Nova coluna calculada
-                </Button>
-              )}
+              <FormulaColumnEditor columns={sheet.columns} onAddColumn={setColumns} />
             </div>
           </div>
         )}
@@ -3341,56 +3177,7 @@ function Dashboard(p: {
       </section>
       {presentation && (
         <div className="fixed inset-0 z-50 flex flex-col bg-canvas">
-          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Mark />
-              <span className="font-display text-sm font-medium text-foreground">{d.name}</span>
-              {bookmarks.length > 0 && (
-                <span className="font-mono">
-                  · marcador {presentIndex + 1}/{bookmarks.length}
-                  {bookmarks[presentIndex] ? `: ${bookmarks[presentIndex].name}` : ""}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              {bookmarks.length > 1 && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={
-                      autoPlay ? "Pausar alternância automática" : "Alternar automaticamente"
-                    }
-                    onClick={() => setAutoPlay((v) => !v)}
-                  >
-                    {autoPlay ? <Pause /> : <Play />}
-                  </Button>
-                  <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    a cada
-                    <input
-                      type="number"
-                      min={3}
-                      className="oliam-input h-8 w-14 text-center"
-                      value={intervalSeconds}
-                      onChange={(e) => setIntervalSeconds(Math.max(3, Number(e.target.value) || 3))}
-                    />
-                    s
-                  </label>
-                </>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setAutoPlay(false);
-                  setPresentation(false);
-                }}
-              >
-                <Minimize2 />
-                Sair (Esc)
-              </Button>
-            </div>
-          </div>
+          {presentationBar}
           <div className="flex-1 overflow-auto p-4 md:p-6">
             {sourceNotesPanel}
             {gridContent}
