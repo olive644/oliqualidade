@@ -3567,3 +3567,77 @@ ajustadas manualmente para bater com o formatador, checado via
 normalização CRLF→LF), `npm run build` e `npm run performance:check`
 aprovados (maior chunk genérico subiu de 371,9 para 372,2 KiB — ainda
 dentro da margem de ~450 KiB).
+
+## 72. Inventário de imagens embutidas (fecha a lista de itens de esforço maior pedidos pelo usuário nesta sessão)
+
+Último item da rodada "imagens/desenhos, macros VBA" oferecida ao
+usuário (seções 68-71 já cobriram macros e os itens de esforço médio).
+Diferente de todos os anteriores, imagens são a primeira feature desta
+sessão que exige indireção em **dois** níveis de relacionamento
+encadeados, e o primeiro parsing que precisa lidar com um prefixo de
+namespace real (`xdr:`) — os elementos de desenho do Excel (drawingML
+spreadsheet drawing) vivem num arquivo à parte
+(`xl/drawings/drawingN.xml`) cuja raiz sempre usa o prefixo `xdr:`
+porque o arquivo combina dois namespaces (`xdr:` para posicionamento na
+grade, `a:` para o desenho vetorial genérico do Office). Todo o resto do
+parsing no arquivo (`hyperlinks`, `tableParts`, `pivotTableDefinition`
+etc.) nunca precisou de prefixo porque vive dentro do próprio XML da
+aba, que usa namespace default sem prefixo.
+
+Cadeia de indireção: `<drawing r:id="X"/>` no XML da própria aba resolve
+via `sheetRels` (já existente, mesmo mapa usado por tabelas/pivôs/
+hyperlinks) para `xl/drawings/drawingN.xml`; dentro desse arquivo, cada
+`<xdr:twoCellAnchor>`/`<xdr:oneCellAnchor>` com um `<xdr:pic>` filho tem
+um `<a:blip r:embed="Y">` cujo `Y` só resolve para o arquivo de mídia
+real (`xl/media/imageN.png`) através do `.rels` **do próprio arquivo de
+desenho** (`xl/drawings/_rels/drawingN.xml.rels`) — uma terceira parte,
+independente do `.rels` da aba. `parseImages` (`workbook-metadata.ts`)
+resolve as duas indireções reaproveitando `relationships()` (já genérica
+o bastante para qualquer par XML+base), sem nenhuma dependência nova.
+
+Escopo deliberadamente contido: só imagens embutidas (`xdr:pic`), como
+o nome da pendência original já sinalizava ("imagens/desenhos" tratado
+como duas features possíveis, escolhendo a de maior valor/menor
+ambiguidade). Formas (`xdr:sp`), caixas de texto e gráficos nativos
+embutidos (`xdr:graphicFrame`) usam elementos irmãos dentro do mesmo
+anchor e ficam de fora — não têm precedente de parsing e não foram
+pedidos explicitamente; se algum dia forem necessários, é investigação
+nova a partir do mesmo `drawingN.xml` já sendo lido aqui. A posição de
+ancoragem (`anchor`) é aproximada: só o canto superior esquerdo
+(`<xdr:from>`), convertido de col/row 0-based para endereço A1 via
+`XLSX.utils.encode_cell` (mesma função já usada em `cellAddresses`); o
+formato é inferido pela extensão do arquivo de mídia (`PNG`, `JPEG`
+etc.), sem inspecionar os bytes.
+
+Como é uma coleção por aba (uma aba pode ter várias imagens, cada
+`<drawing>` do Excel é por aba, nunca compartilhado entre abas — ao
+contrário de nomes definidos/links externos/macros), `images` entrou
+direto em `AdvancedSheetMetadata`, sem o problema de threading das
+seções 69/71. Painel `<details>` "Imagens embutidas" em `review.tsx`,
+mesmo padrão dos demais, mostrando âncora, formato e nome.
+
+Cobertura em duas camadas: `workbook-metadata.test.ts` ganhou uma
+`<drawing>` completa (worksheet → drawing → media, três relacionamentos
+encadeados) na fixture compartilhada, com um PNG de 4 bytes fictício
+como mídia — suficiente pra testar a cadeia de resolução sem precisar de
+uma imagem real; `import-intelligence.test.ts` ganhou um teste
+espelhando os já existentes, confirmando a propagação via `!oliAdvanced`
+sintético e o aviso correspondente.
+
+Verificado com `npx vitest run` (487 passou, 11 pulados — um teste
+novo), `npx tsc --noEmit` sem erros (mock de `ImportDiagnostics` em
+`auto-dashboard.test.ts` e quatro blocos de `!oliAdvanced` sintético em
+`import-intelligence.test.ts` precisaram do campo `images: []` novo),
+Prettier limpo de primeira (checado via normalização CRLF→LF), `npm run
+build` e `npm run performance:check` aprovados (maior chunk genérico
+subiu de 372,2 para 374,4 KiB — ainda dentro da margem de ~450 KiB).
+
+**Isso fecha a rodada de itens de esforço maior da reauditoria de
+fidelidade** (seção 50): hyperlinks (68), nomes definidos/links
+externos (69), validações de dados (70), macros VBA (71) e imagens
+embutidas (72), todos expostos como inventário rastreável na revisão,
+cada um com PR próprio mesclado e verificado ao vivo na preview do
+Vercel. Formas/gráficos nativos, agrupamentos/outlines e segmentações
+continuam fora — nenhum foi pedido explicitamente, e cada um exigiria
+investigação de formato própria, sem reaproveitar diretamente o que já
+foi construído aqui.

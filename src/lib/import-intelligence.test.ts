@@ -52,6 +52,7 @@ describe("import intelligence", () => {
       externalLinks: [],
       dataValidations: [],
       hasVbaMacros: false,
+      images: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.hyperlinks).toEqual([
@@ -75,6 +76,7 @@ describe("import intelligence", () => {
       externalLinks: [{ target: "https://exemplo.com/planilha-externa.xlsx" }],
       dataValidations: [],
       hasVbaMacros: false,
+      images: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.definedNames).toEqual([
@@ -111,6 +113,7 @@ describe("import intelligence", () => {
         },
       ],
       hasVbaMacros: false,
+      images: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.dataValidations).toEqual([
@@ -143,10 +146,33 @@ describe("import intelligence", () => {
       externalLinks: [],
       dataValidations: [],
       hasVbaMacros: true,
+      images: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.hasVbaMacros).toBe(true);
     expect(diagnostics.warnings.some((warning) => warning.includes("macros VBA"))).toBe(true);
+  });
+
+  it("expõe imagens embutidas anexadas pelo leitor OOXML", () => {
+    const ws = sheet([
+      ["Item", "Valor"],
+      ["Poço", 5],
+    ]);
+    (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [],
+      definedNames: [],
+      externalLinks: [],
+      dataValidations: [],
+      hasVbaMacros: false,
+      images: [{ name: "Logo", anchor: "A1", format: "PNG" }],
+    };
+    const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
+    expect(diagnostics.images).toEqual([{ name: "Logo", anchor: "A1", format: "PNG" }]);
+    expect(diagnostics.warnings).toContain("1 imagem(ns) embutida(s) detectada(s)");
   });
 
   it("aumenta a confiança quando uma estrutura defeituosa é recuperada com evidências", () => {

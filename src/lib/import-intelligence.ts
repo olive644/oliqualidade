@@ -12,6 +12,7 @@ import type {
   WorkbookCellHyperlink,
   WorkbookDefinedName,
   WorkbookExternalLink,
+  WorkbookImageDiagnostic,
   WorksheetWithAdvancedMetadata,
 } from "@/lib/workbook-metadata";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
@@ -112,6 +113,8 @@ export type ImportDiagnostics = {
   dataValidations: DataValidationDiagnostic[];
   /** `xl/vbaProject.bin` presente no pacote. Detectado, nunca executado nem decompilado. */
   hasVbaMacros: boolean;
+  /** Imagens embutidas (fotos/logos). Formas/gráficos nativos não são inventariados. */
+  images: WorkbookImageDiagnostic[];
   calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
@@ -473,6 +476,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     externalLinks: advanced?.externalLinks ?? [],
     dataValidations: advanced?.dataValidations ?? [],
     hasVbaMacros: advanced?.hasVbaMacros ?? false,
+    images: advanced?.images ?? [],
     calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
@@ -741,6 +745,8 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     warnings.push(
       "a planilha contém macros VBA; elas são preservadas no arquivo original, mas não são executadas nem decompiladas",
     );
+  if (meta.images.length)
+    warnings.push(`${meta.images.length} imagem(ns) embutida(s) detectada(s)`);
   if (meta.formulaExamples.length)
     transformations.push(
       `exemplos de fórmulas preservados: ${meta.formulaExamples.slice(0, 3).join(" | ")}`,
