@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  BarChart3,
   Check,
   Columns3,
   ExternalLink,
@@ -12,6 +13,7 @@ import {
   Info,
   Link as LinkIcon,
   ListChecks,
+  PenTool,
   ShieldAlert,
   Sparkles,
   Tag,
@@ -679,6 +681,63 @@ export function Review(p: {
                     {image.anchor ?? "posição não determinada"} · {image.format}
                   </span>
                   <span className="break-all">{image.name}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {active?.diagnostics?.shapes.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <PenTool className="size-4 text-primary" />
+                Formas do Excel com texto
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.shapes.length}
+              </span>
+            </summary>
+            <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+              {active.diagnostics.shapes.map((shape, index) => (
+                <li
+                  key={`${shape.name}-${index}`}
+                  className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+                >
+                  <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
+                    {shape.anchor ?? "posição não determinada"} · {shape.name}
+                  </span>
+                  <span className="whitespace-pre-line break-words">{shape.text}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {active?.diagnostics?.charts.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <BarChart3 className="size-4 text-primary" />
+                Gráficos nativos do Excel
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.charts.length}
+              </span>
+            </summary>
+            <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              Construídos no arquivo original a partir de referências de célula. Não são
+              recalculados nem reproduzidos no painel — os dados de origem continuam disponíveis nos
+              widgets que você criar aqui.
+            </p>
+            <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+              {active.diagnostics.charts.map((chart, index) => (
+                <li
+                  key={`${chart.anchor}-${index}`}
+                  className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+                >
+                  <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
+                    {chart.anchor ?? "posição não determinada"} · {chart.type}
+                  </span>
+                  <span className="break-words">{chart.title ?? "sem título"}</span>
                 </li>
               ))}
             </ul>

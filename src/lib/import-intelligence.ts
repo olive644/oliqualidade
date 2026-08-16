@@ -10,9 +10,11 @@ import type {
   PivotTableDiagnostic,
   StructuredTableDiagnostic,
   WorkbookCellHyperlink,
+  WorkbookChartDiagnostic,
   WorkbookDefinedName,
   WorkbookExternalLink,
   WorkbookImageDiagnostic,
+  WorkbookShapeDiagnostic,
   WorksheetWithAdvancedMetadata,
 } from "@/lib/workbook-metadata";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
@@ -113,8 +115,12 @@ export type ImportDiagnostics = {
   dataValidations: DataValidationDiagnostic[];
   /** `xl/vbaProject.bin` presente no pacote. Detectado, nunca executado nem decompilado. */
   hasVbaMacros: boolean;
-  /** Imagens embutidas (fotos/logos). Formas/gráficos nativos não são inventariados. */
+  /** Imagens embutidas (fotos/logos). */
   images: WorkbookImageDiagnostic[];
+  /** Formas nativas do Excel com texto (retângulos, caixas de texto etc.). Conectores sem texto não entram. */
+  shapes: WorkbookShapeDiagnostic[];
+  /** Gráficos nativos do Excel (construídos no próprio arquivo, não os que o app gera a partir dos dados). */
+  charts: WorkbookChartDiagnostic[];
   calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
@@ -477,6 +483,8 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     dataValidations: advanced?.dataValidations ?? [],
     hasVbaMacros: advanced?.hasVbaMacros ?? false,
     images: advanced?.images ?? [],
+    shapes: advanced?.shapes ?? [],
+    charts: advanced?.charts ?? [],
     calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
@@ -747,6 +755,10 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     );
   if (meta.images.length)
     warnings.push(`${meta.images.length} imagem(ns) embutida(s) detectada(s)`);
+  if (meta.shapes.length)
+    warnings.push(`${meta.shapes.length} forma(s) nativa(s) do Excel com texto detectada(s)`);
+  if (meta.charts.length)
+    warnings.push(`${meta.charts.length} gráfico(s) nativo(s) do Excel detectado(s)`);
   if (meta.formulaExamples.length)
     transformations.push(
       `exemplos de fórmulas preservados: ${meta.formulaExamples.slice(0, 3).join(" | ")}`,

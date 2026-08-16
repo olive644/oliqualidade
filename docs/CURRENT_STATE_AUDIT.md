@@ -3942,3 +3942,109 @@ tsc --noEmit` sem erros, `npm run build` e `npm run performance:check`
 aprovados (maior chunk genérico foi de 375,7 para 375,8 KiB —
 variação desprezível), e `npm run test:e2e` (1 passou, mesmo teste da
 seção 73).
+
+## 76. Inventário de formas nativas com texto e gráficos nativos do Excel (item 2 do backlog, com achado novo de lacuna arquitetural)
+
+Item 2 do backlog priorizado (`SECOND_BRAIN.md`). Ao contrário do que o
+texto do backlog sugeria ("ninguém pediu explicitamente ainda"), o
+usuário escolheu este item explicitamente quando perguntado. Sem
+acesso à pasta `upload/` neste checkout (ausente, é local por
+convenção), o usuário trouxe de novo o arquivo real já usado nas
+seções 68-74 (`FRS-QA-BR-405...(5).xlsx`), copiado para `upload/`
+localmente (não commitado).
+
+### O que o arquivo real revelou
+
+Inspeção direta do ZIP (não suposição pela especificação OOXML)
+mostrou: 14 gráficos nativos do Excel numa aba inteira dedicada a
+tendências microbiológicas ("Tendência 2", `xl/drawings/drawing3.xml`
+— 14 `xdr:graphicFrame` + `xl/charts/chart1.xml`...`chart14.xml`, cada
+um com título real como "Ar ambiente - Bolores e Leveduras"); 24
+formas nativas (`xdr:sp`) espalhadas em 3 abas — 6 numa legenda de
+cronograma ("Programado"/"Realizado"/"Atrasado" na aba principal), 17
+formando o texto de uma legenda de zonas de contato (a mesma aba
+"Requisitos de Monitoramento" da seção 74, que já tinha uma imagem
+raster inventariada — a legenda em texto ao lado da imagem nunca tinha
+sido vista) e 1 com citações regulatórias completas ("Conforme
+Portaria n° 2914..."). Nenhum agrupamento/outline (`outlineLevel`) nem
+segmentação (`xl/slicers`) apareceu neste arquivo — por isso o escopo
+desta seção ficou deliberadamente restrito a formas e gráficos; os
+outros dois continuam sem parsing, sem evidência real para justificar.
+
+### Implementação
+
+Mesmo padrão já estabelecido por hyperlinks/nomes definidos/validações/
+macros/imagens (seções 68-72): `parseShapes`/`parseCharts`
+(`workbook-metadata.ts`) leem `xl/drawings/drawingN.xml` por aba,
+reaproveitando a mesma cadeia de relacionamentos (`.rels` de aba →
+drawing → `.rels` de drawing → `xl/charts/chartN.xml` para gráficos,
+mesma estrutura de dois níveis já usada por imagens). `anchorOf`, antes
+duplicado dentro de `parseImages`, virou uma função pequena
+compartilhada pelas três funções (imagem/forma/gráfico), sem mudar
+nenhum comportamento existente.
+
+Decisões de escopo:
+- **Só formas com texto entram no inventário** (`shapeText` extrai e
+  junta os `<a:t>` de cada `<a:p>`, um parágrafo por linha). Conectores
+  (`xdr:cxnSp`, 11 no arquivo real) e formas puramente decorativas sem
+  `xdr:txBody` não carregam informação própria para o usuário revisar
+  — mesmo critério de "não virar ruído" já usado para nomes internos
+  do Excel (seção 68/decisões registradas).
+- **Tipo do gráfico** (`chartType`) procura a primeira tag reconhecida
+  dentro de `<c:plotArea>` (`c:barChart`, `c:lineChart`, `c:pieChart`
+  etc.); tipos não listados (gráficos 3D customizados, por exemplo)
+  viram `"desconhecido"` em vez de falhar.
+- **Título vinculado a uma referência de célula** (`<c:title><c:tx>
+  <c:strRef>`, em vez de texto literal `<c:rich>`) vira `null` — não
+  há um texto fixo pra mostrar sem resolver a referência, e resolver
+  a referência é fora de escopo (o inventário não lê valores de
+  célula do gráfico, só metadados de estrutura).
+- Painéis novos em `review.tsx` seguem o padrão `<details>` exato dos
+  demais; o painel de gráficos tem uma frase extra deixando claro que
+  eles **não são recalculados nem reproduzidos no painel** — são
+  metadados do arquivo original, os dados de origem continuam
+  disponíveis nos widgets que o usuário criar.
+
+### Lacuna arquitetural encontrada (não corrigida nesta sessão, por decisão do usuário)
+
+`!oliAdvanced` (de onde vêm os 8 recursos inventariados até aqui,
+incluindo os 2 novos) é anexado ao objeto `XLSX.WorkSheet` original em
+`attachWorkbookFeatures`. Quando uma aba é dividida em regiões/seções
+independentes (`independentRegionWorksheet`/`independentSectionWorksheet`
+em `import.ts`, usadas por `sheetsWithData` quando `detectIndependentSections`
+ou `tableRegions` encontram mais de uma tabela empilhada), o worksheet
+resultante é construído do zero — só copia células e `!merges`, nunca
+`!oliAdvanced`. Confirmado com o arquivo real: a aba "Anexo III -
+Critérios de aceit." (dividida em 4 sub-tabelas) perde sua única forma;
+pior, "Tendência 2" (14 gráficos, zero linhas de dado tabular) nunca
+aparece nem como opção de importação — `sheetsWithData` descarta
+qualquer aba sem nenhuma linha, então os 14 gráficos ficam
+completamente invisíveis, não só sem o painel novo. Abas não divididas
+("FRS QA BR 405 Brasil", "Requisitos de Monitoramento") preservam
+formas/gráficos corretamente.
+
+Perguntado diretamente: usuário escolheu entregar só o que já funciona
+(a maioria dos casos reais — abas não divididas) e documentar a lacuna
+em vez de ampliar o escopo deste PR para propagar `!oliAdvanced`
+através da divisão de regiões/seções, ou para permitir abas sem
+nenhuma linha de dado virarem opção de importação quando tiverem
+gráficos/formas. Ambos ficam como trabalho futuro, não implícitos em
+nenhum item existente do backlog — precisam de uma entrada própria.
+
+### Achado à parte, sinalizado como tarefa separada
+
+O mesmo arquivo real expôs um teste de corpus pré-existente
+(`real-upload-validation.test.ts`, "recupera todas as abas com
+validade e fidelidade integrais") falhando: a aba "FRS QA BR 405
+Brasil" mostra fidelidade 82% (limite do teste é 90%), com 9
+divergências não resolvidas entre os leitores. Não investigado —
+ortogonal ao trabalho de formas/gráficos; pode ser que o arquivo desta
+sessão seja uma versão ligeiramente diferente da usada quando o teste
+foi escrito (o teste aceita duas variantes de nome de arquivo,
+sugerindo dois downloads diferentes do mesmo usuário).
+
+Verificado com `npx vitest run` (todos passando, incluindo os testes
+novos de `workbook-metadata.test.ts`), `npx tsc --noEmit` sem erros,
+`npm run build` e `npm run performance:check`, e verificação ao vivo
+contra o arquivo real (`upload/`, não commitado) confirmando os dados
+acima.
