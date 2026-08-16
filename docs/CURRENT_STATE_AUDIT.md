@@ -3046,3 +3046,92 @@ para testar; mesma lacuna já registrada para outros componentes de
 widget nesta sessão), `npx tsc --noEmit` sem erros, Prettier limpo,
 `npm run build` e `npm run performance:check` aprovados (~447,3 KiB,
 sem mudança relevante de tamanho).
+
+## 63. Carregamento sob demanda dos widgets de nicho: margem real de orçamento, não emprestada
+
+Retomando a recomendação registrada ao final da seção 61: em vez de
+continuar a extração estrutural do Dashboard subindo o limite do
+orçamento de novo (empurrando o problema, como já tinha acontecido
+antes), o usuário autorizou investir em reduzir o tamanho real do
+chunk compartilhado primeiro.
+
+**Descartado**: extrair os blocos `if (w.type === "schedule-heatmap")`
+(~580 linhas) e `if (w.type === "exception-panel")` (~380 linhas) de
+dentro de `WidgetCard` para lazy-load, por serem os maiores candidatos
+óbvios. Decisão consciente de não fazer isso nesta etapa: nenhum dos
+dois é um componente autocontido hoje — cada um depende de dezenas de
+variáveis computadas no topo de `WidgetCard` (`dragProps`,
+`sizeControls`, `FilterChip`, `handleGroupClick` etc.), sem nenhum
+teste automatizado de UI cobrindo o resultado visual, e sem forma
+confiável de verificar visualmente neste sandbox (RAF/screenshot
+bloqueados). Extrair ~580 linhas de lógica de cronograma manualmente,
+sem rede de segurança, é risco real de quebrar um widget de produção
+silenciosamente — desproporcional ao ganho, quando existia um caminho
+mais seguro disponível.
+
+**Feito em vez disso**: dois componentes que já eram arquivos
+separados (não precisaram de nenhuma extração de lógica, só mudança de
+como são importados) viraram `React.lazy()` com `<Suspense>`:
+
+- **`MapWidgetBody`**: já vivia em `widget-support.tsx`, movido para
+  seu próprio arquivo (`map-widget-body.tsx`, cópia mecânica, mesmo
+  código) e importado com `lazy(() => import("./map-widget-body"))`.
+  O `import "leaflet/dist/leaflet.css"` (14,8 KiB), que antes estava
+  no topo de `widget-card.tsx` carregando sempre, foi junto para
+  dentro do módulo lazy — só carrega quando um widget de mapa é
+  exibido de verdade.
+- **`OperationalWidgetBody`** (presença/validação/carta de
+  controle/planejado×realizado): já era um arquivo próprio
+  (`operational-widget-body.tsx`, export nomeado), só trocou de
+  `import { OperationalWidgetBody } from "..."` estático para
+  `lazy(() => import("...").then((m) => ({ default: m.OperationalWidgetBody })))`.
+  Um import órfão do mesmo componente em `routes/index.tsx` (sobrado
+  de uma extração anterior, não usado ali) foi removido — sem isso,
+  `index.tsx` continuaria puxando o módulo para o grafo mesmo sem
+  renderizar nada.
+
+Ambos ganharam um `<Suspense fallback={...}>` com um placeholder curto
+("Carregando mapa…"/"Carregando…") do tamanho aproximado do widget
+final, evitando salto de layout perceptível durante o carregamento.
+
+**Resultado medido**: maior chunk genérico caiu de ~447,3 para ~357,7
+KiB — quase 90 KiB de margem real recuperada (não emprestada do
+limite do orçamento). Confirmado com `clientChunkReportPlugin`
+(`ANALYZE=1`, seção 58): Leaflet virou chunk próprio de 145,3 KiB
+carregado só sob demanda (antes, ficava embutido no chunk comum
+mesmo sem nenhum painel usar mapa), e um novo chunk de 47,8 KiB
+carrega os widgets operacionais. `widget-support.tsx` caiu de 34,6
+para 27,8 KiB dentro do chunk comum (o peso de `MapWidgetBody` que
+saiu de lá).
+
+**Verificação ao vivo**: `MapWidgetBody` confirmado funcionando de
+ponta a ponta no navegador — widget de mapa adicionado manualmente
+(coluna "ID Venda" como local, sem correspondência geográfica real,
+comportamento esperado), rede confirmou os módulos
+`map-widget-body.tsx`, `leaflet.css` e `leaflet.js` sendo buscados sob
+demanda só no momento da adição do widget, controles do Leaflet
+(zoom, atribuição OpenStreetMap/CARTO) e status "Localizando 120…"
+renderizados corretamente, sem erro no console.
+`OperationalWidgetBody` **não pôde ser confirmado por clique ao
+vivo** nesta sessão: o dev server sofreu desconexões/reconexões de
+HMR repetidas durante a tentativa (log do console mostra vários
+ciclos "server connection lost. Polling for restart..."), deixando a
+árvore de acessibilidade e as coordenadas do DOM inconsistentes entre
+leitura e clique — `elementFromPoint` nas coordenadas do próprio item
+não retornava o item, evidência de corrupção induzida por HMR, não de
+um bug de produto. Risco considerado baixo o suficiente para prosseguir
+sem essa confirmação: nenhuma linha de `operational-widget-body.tsx`
+foi tocada, só a forma de importação, um padrão padrão e comum do
+React (`lazy` + `.then()` para exports nomeados), já usado sem
+problema para `MapWidgetBody` no mesmo commit.
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
+contagem — mudança de carregamento, sem lógica nova), `npx tsc
+--noEmit` sem erros, Prettier limpo, `npm run build` e `npm run
+performance:check` aprovados com a margem recuperada descrita acima.
+
+**Próximo passo**: com ~92 KiB de margem real, os candidatos
+restantes do mapeamento da seção 55/59 (hook de revisão em segundo
+plano ~55 linhas, exportação ~260, undo/redo ~65, ações de widget
+~130) voltam a caber com folga confortável, sem precisar tocar o
+limite do orçamento.
