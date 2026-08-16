@@ -2321,7 +2321,15 @@ export function WidgetCard({
                         onMouseEnter={(_, i) => setActiveBarIndex(i)}
                         onMouseLeave={() => setActiveBarIndex(null)}
                         cursor="pointer"
-                        animationDuration={500}
+                        // O hover chama setActiveBarIndex, que re-renderiza o
+                        // widget e recalcula barSeries com identidade nova a
+                        // cada passagem do mouse. Sem isso, o Recharts trata
+                        // a nova referência como "dado mudou", reinicia a
+                        // animação de entrada da barra e recalcula o eixo Y
+                        // no processo — piscando os números do eixo a cada
+                        // hover. Mesmo ajuste já usado no sparkline (linha
+                        // ~1388) para o mesmo tipo de problema.
+                        isAnimationActive={false}
                       >
                         {barSeries.map((entry, entryIndex) => (
                           <Cell
