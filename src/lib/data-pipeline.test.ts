@@ -12,6 +12,7 @@ import {
   NOT_INFORMED,
   pieComparisonFor,
   pieRoundnessFor,
+  rankingCoverageFor,
   relevantAggregationOps,
   semanticAggregationOps,
   sortAllBarCategories,
@@ -527,5 +528,27 @@ describe("trendSummaryFor", () => {
   it("retorna null com menos de dois pontos", () => {
     expect(trendSummaryFor([])).toBeNull();
     expect(trendSummaryFor([{ name: "Jan", total: 10 }])).toBeNull();
+  });
+});
+
+describe("rankingCoverageFor", () => {
+  it("calcula participação e categorias fora do Top N", () => {
+    const all = [{ total: 50 }, { total: 30 }, { total: 10 }, { total: 5 }, { total: 5 }];
+    const shown = all.slice(0, 2);
+    expect(rankingCoverageFor(shown, all)).toEqual({
+      topTotal: 80,
+      overallTotal: 100,
+      topShare: 0.8,
+      categoryCount: 5,
+      shownCount: 2,
+      remainingCount: 3,
+    });
+  });
+
+  it("não calcula participação quando o total geral não é positivo", () => {
+    expect(rankingCoverageFor([{ total: 5 }], [{ total: 5 }, { total: -5 }])).toMatchObject({
+      topShare: null,
+    });
+    expect(rankingCoverageFor([], [])).toMatchObject({ topShare: null, remainingCount: 0 });
   });
 });

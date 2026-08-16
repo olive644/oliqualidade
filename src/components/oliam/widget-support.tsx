@@ -780,7 +780,9 @@ export function SeriesComparisonPanel({
       <div>
         <p
           className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
-          title={comparison?.reference ? `Diferença para ${comparison.reference.name}` : "Comparação"}
+          title={
+            comparison?.reference ? `Diferença para ${comparison.reference.name}` : "Comparação"
+          }
         >
           {comparison?.reference ? `Diferença para ${comparison.reference.name}` : "Comparação"}
         </p>

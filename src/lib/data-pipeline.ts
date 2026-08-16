@@ -593,3 +593,35 @@ export function pieRoundnessFor(series: { total: number }[]): {
     ? { cornerRadius: 0, paddingAngle: 1 }
     : { cornerRadius: 6, paddingAngle: 3 };
 }
+
+export type RankingCoverage = {
+  topTotal: number;
+  overallTotal: number;
+  topShare: number | null;
+  categoryCount: number;
+  shownCount: number;
+  remainingCount: number;
+};
+
+/**
+ * Um "Top N" some com o resto: sem isso, nada diz se as 5 categorias
+ * mostradas são quase tudo ou uma fração pequena das dezenas que existem.
+ * `topShare` fica `null` (em vez de 0 ou enganosamente positivo) quando o
+ * total geral é zero ou negativo — participação percentual não tem leitura
+ * confiável nesses casos.
+ */
+export function rankingCoverageFor(
+  shown: { total: number }[],
+  all: { total: number }[],
+): RankingCoverage {
+  const topTotal = shown.reduce((sum, item) => sum + item.total, 0);
+  const overallTotal = all.reduce((sum, item) => sum + item.total, 0);
+  return {
+    topTotal,
+    overallTotal,
+    topShare: overallTotal > 0 ? topTotal / overallTotal : null,
+    categoryCount: all.length,
+    shownCount: shown.length,
+    remainingCount: Math.max(0, all.length - shown.length),
+  };
+}

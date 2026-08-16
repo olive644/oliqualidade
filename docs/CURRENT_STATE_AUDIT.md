@@ -1934,3 +1934,45 @@ genérico subiu de ~407,6 para ~409,7 KiB, ainda dentro do limite de
 devem continuar monitorando isso a cada PR). Mesma limitação de
 verificação visual da seção 43 (dev server instável nesta sessão) —
 fica pendente confirmação visual do usuário.
+
+## 45. Terceira etapa: cobertura do Top N no ranking
+
+Continuação das seções 43-44. Um "Top N" mostra as maiores categorias
+mas nunca dizia se elas eram quase tudo ou uma fração pequena das
+dezenas que podem existir na base. Nova função pura
+`rankingCoverageFor` (`data-pipeline.ts`, testada) recebe os itens
+mostrados e a lista completa e devolve participação do Top N no total,
+contagem de categorias e quantas ficaram fora do ranking.
+
+Faixa de aviso no topo do widget (mesmo estilo já usado pela "Prévia
+otimizada" do gráfico de barras, `bg-secondary-accent/8`): "Top 5
+concentra 68,4% do total · 12 categorias no total, 7 fora deste
+ranking." Só aparece quando existem categorias fora do Top N mostrado
+(`coverage.remainingCount > 0`) — se o Top N já cobre tudo, a faixa
+seria ruído.
+
+`topShare` fica `null` (em vez de um número enganoso) quando o total
+geral não é positivo — participação percentual não tem leitura
+confiável com soma zero ou negativa (ex.: métrica com valores positivos
+e negativos que se cancelam).
+
+**Erro real pego só pela CI, não localmente**: dois erros reais de
+Prettier (um `title` de JSX que devia quebrar em várias linhas na
+`SeriesComparisonPanel` da etapa 43, um array de teste formatado errado
+em `data-pipeline.test.ts` desta etapa) passaram batido por
+`npx eslint <arquivo>` localmente — o volume de ruído CRLF pré-existente
+(milhares de ocorrências de `Delete \`␍\`` neste checkout Windows) afoga
+qualquer erro real de conteúdo no mesmo output, e só apareceram quando a
+CI do GitHub (Linux, sem CRLF) rodou de fato. Corrigido depois de
+confirmar com uma verificação que normaliza CRLF→LF numa cópia
+temporária antes de rodar `prettier --check` (registrado como memória
+de sessão para não repetir o erro). Nenhuma lógica foi afetada — os
+dois eram só formatação.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, era 469 — 2
+testes novos de `rankingCoverageFor`), `npx tsc --noEmit` sem erros,
+verificação de Prettier com CRLF normalizado limpa em todos os arquivos
+alterados da iniciativa (não só os desta etapa), `npm run build` e
+`npm run performance:check` aprovados (maior chunk genérico em
+~410,4 KiB). Mesma limitação de verificação visual pendente das etapas
+anteriores.

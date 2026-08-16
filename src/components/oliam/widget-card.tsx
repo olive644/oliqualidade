@@ -96,6 +96,7 @@ import {
   limitChartSeriesForRendering,
   NOT_INFORMED,
   pieComparisonFor,
+  rankingCoverageFor,
   trendSummaryFor,
   pieRoundnessFor,
   relevantAggregationOps,
@@ -2785,6 +2786,7 @@ export function WidgetCard({
       groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
     const ranked = [...grouped].sort((a, b) => b.total - a.total).slice(0, topN);
     const max = ranked.reduce((m, g) => Math.max(m, Math.abs(g.total)), 0) || 1;
+    const coverage = rankingCoverageFor(ranked, grouped);
     return (
       <article
         className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -2874,6 +2876,15 @@ export function WidgetCard({
             mode={dataMode}
             operation={`${aggregationLabels[op]} por ${groupCol.label}`}
           />
+        )}
+        {groupCol && valueCol && ranked.length > 0 && coverage.remainingCount > 0 && (
+          <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
+            {coverage.topShare !== null
+              ? `Top ${ranked.length} concentra ${coverage.topShare.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })} do total`
+              : `Top ${ranked.length} mostrado`}{" "}
+            · {coverage.categoryCount.toLocaleString("pt-BR")} categorias no total,{" "}
+            {coverage.remainingCount.toLocaleString("pt-BR")} fora deste ranking.
+          </p>
         )}
         {!groupCol || !valueCol || ranked.length === 0 ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
