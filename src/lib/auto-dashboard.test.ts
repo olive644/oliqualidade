@@ -60,6 +60,7 @@ const diagnostics = (columns: ColumnDiagnostic[]): ImportDiagnostics => ({
   hyperlinks: [],
   definedNames: [],
   externalLinks: [],
+  dataValidations: [],
   calculatedColumns: [],
   autofilterRange: null,
   formulaExamples: [],

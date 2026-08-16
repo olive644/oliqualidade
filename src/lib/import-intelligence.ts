@@ -6,6 +6,7 @@ import { buildAdaptedQualityAudit, type AdaptedQualityAudit } from "@/lib/qualit
 import { classifyRows, type StructuralClassification } from "@/lib/structural-model";
 import { buildTemporalCellModel, type TemporalCellModel } from "@/lib/temporal-model";
 import type {
+  DataValidationDiagnostic,
   PivotTableDiagnostic,
   StructuredTableDiagnostic,
   WorkbookCellHyperlink,
@@ -107,6 +108,8 @@ export type ImportDiagnostics = {
   definedNames: WorkbookDefinedName[];
   /** Referências a outros arquivos externos (workbook.xml `externalReferences`). */
   externalLinks: WorkbookExternalLink[];
+  /** Regras de validação de dados do Excel (lista, intervalo numérico, data etc.) por intervalo. */
+  dataValidations: DataValidationDiagnostic[];
   calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
@@ -466,6 +469,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     hyperlinks: advanced?.hyperlinks ?? [],
     definedNames: advanced?.definedNames ?? [],
     externalLinks: advanced?.externalLinks ?? [],
+    dataValidations: advanced?.dataValidations ?? [],
     calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
@@ -725,6 +729,10 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
   if (meta.externalLinks.length)
     warnings.push(
       `${meta.externalLinks.length} referência(s) a arquivo(s) externo(s) detectada(s)`,
+    );
+  if (meta.dataValidations.length)
+    warnings.push(
+      `${meta.dataValidations.length} regra(s) de validação de dados do Excel detectada(s)`,
     );
   if (meta.formulaExamples.length)
     transformations.push(

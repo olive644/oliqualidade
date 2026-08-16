@@ -3465,3 +3465,46 @@ duas quebras de linha ajustadas manualmente para bater com o formatador
 em `workbook-metadata.ts` (checado via normalização CRLF→LF), `npm run
 build` e `npm run performance:check` aprovados (maior chunk genérico subiu
 de 366,5 para 369,8 KiB — ainda dentro da margem de ~450 KiB).
+
+## 70. Validações de dados do Excel (Data Validation), terceiro item da lista pendente
+
+Diferente de nomes definidos/links externos (seção 69), validação de
+dados é genuinamente por aba — cada `<dataValidation>` mora dentro do
+próprio `xl/worksheets/sheetN.xml`, então não houve o mesmo problema de
+threading até `routes/index.tsx`: `dataValidations` entrou direto em
+`AdvancedSheetMetadata` como mais um array por aba, seguindo exatamente o
+mesmo mecanismo de `hyperlinks` (mesmo arquivo, sem indireção de
+relacionamento — o `sqref`/`type`/`formula1`/`formula2` já estão
+inline no elemento).
+
+`parseDataValidations` (`workbook-metadata.ts`) lê `sqref` (intervalo),
+`type` (`list`, `whole`, `decimal`, `date`, `time`, `textLength`,
+`custom`), `allowBlank`, e opcionalmente `formula1`/`formula2` (a
+restrição em si — para `list` normalmente uma string literal entre aspas
+como `"Baixo,Médio,Alto"`, ou uma referência de intervalo/nome definido)
+e os textos de prompt/erro configuráveis pelo autor da planilha
+(`promptTitle`, `prompt`, `errorTitle`, `error`). Nenhuma tentativa de
+interpretar o conteúdo de `formula1`/`formula2` além de decodificar
+entidades XML — mostrado como texto bruto, mesmo espírito de
+"preservar, não recalcular" já aplicado a Pivot Tables.
+
+Painel `<details>` "Validações de dados do Excel" em `review.tsx`, mesmo
+padrão visual dos demais, mostrando intervalo, tipo, `formula1` e
+`prompt` quando presentes (título/mensagem de erro ficam de fora do
+resumo por brevidade — o dado completo já está na estrutura tipada, caso
+vire necessário expandir a UI depois).
+
+Cobertura em duas camadas: `workbook-metadata.test.ts` ganhou um
+`<dataValidation type="list">` completo (com `formula1`, `promptTitle` e
+`prompt` acentuados, para confirmar também `decodeXml`/UTF-8) na aba
+`Vendas` já existente na fixture compartilhada; `import-intelligence.test.ts`
+ganhou um teste espelhando os já existentes para hyperlinks/nomes
+definidos, confirmando a propagação via `!oliAdvanced` sintético e o
+aviso correspondente.
+
+Verificado com `npx vitest run` (484 passou, 11 pulados — um teste
+novo), `npx tsc --noEmit` sem erros (mock de `ImportDiagnostics` em
+`auto-dashboard.test.ts` precisou do campo `dataValidations: []` novo),
+Prettier limpo (checado via normalização CRLF→LF), `npm run build` e
+`npm run performance:check` aprovados (maior chunk genérico subiu de
+369,8 para 371,9 KiB — ainda dentro da margem de ~450 KiB).

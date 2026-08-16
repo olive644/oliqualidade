@@ -50,6 +50,7 @@ describe("import intelligence", () => {
       hyperlinks: [{ address: "A2", target: "https://exemplo.com/poco", tooltip: "Ver relatório" }],
       definedNames: [],
       externalLinks: [],
+      dataValidations: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.hyperlinks).toEqual([
@@ -71,6 +72,7 @@ describe("import intelligence", () => {
       hyperlinks: [],
       definedNames: [{ name: "PrecoPoco", refersTo: "Dados!$B$2", scope: null }],
       externalLinks: [{ target: "https://exemplo.com/planilha-externa.xlsx" }],
+      dataValidations: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.definedNames).toEqual([
@@ -81,6 +83,46 @@ describe("import intelligence", () => {
     ]);
     expect(diagnostics.warnings).toContain("1 nome(s) definido(s) detectado(s)");
     expect(diagnostics.warnings).toContain("1 referência(s) a arquivo(s) externo(s) detectada(s)");
+  });
+
+  it("expõe validações de dados do Excel anexadas pelo leitor OOXML", () => {
+    const ws = sheet([
+      ["Item", "Valor"],
+      ["Poço", 5],
+    ]);
+    (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [],
+      definedNames: [],
+      externalLinks: [],
+      dataValidations: [
+        {
+          range: "B2:B10",
+          type: "list",
+          allowBlank: true,
+          formula1: '"Baixo,Médio,Alto"',
+          promptTitle: "Selecione o nível",
+          prompt: "Escolha uma das opções da lista",
+        },
+      ],
+    };
+    const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
+    expect(diagnostics.dataValidations).toEqual([
+      {
+        range: "B2:B10",
+        type: "list",
+        allowBlank: true,
+        formula1: '"Baixo,Médio,Alto"',
+        promptTitle: "Selecione o nível",
+        prompt: "Escolha uma das opções da lista",
+      },
+    ]);
+    expect(diagnostics.warnings).toContain(
+      "1 regra(s) de validação de dados do Excel detectada(s)",
+    );
   });
 
   it("aumenta a confiança quando uma estrutura defeituosa é recuperada com evidências", () => {

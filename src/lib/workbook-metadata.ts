@@ -23,6 +23,7 @@ export type AdvancedSheetMetadata = {
   hyperlinks: WorkbookCellHyperlink[];
   definedNames: WorkbookDefinedName[];
   externalLinks: WorkbookExternalLink[];
+  dataValidations: DataValidationDiagnostic[];
 };
 
 export type WorkbookCellComment = {
@@ -46,6 +47,19 @@ export type WorkbookDefinedName = {
 
 export type WorkbookExternalLink = {
   target: string;
+};
+
+export type DataValidationDiagnostic = {
+  range: string;
+  /** Tipo OOXML bruto: list, whole, decimal, date, time, textLength, custom etc. */
+  type: string;
+  allowBlank: boolean;
+  formula1?: string;
+  formula2?: string;
+  promptTitle?: string;
+  prompt?: string;
+  errorTitle?: string;
+  error?: string;
 };
 
 export type WorksheetWithAdvancedMetadata = XLSX.WorkSheet & {
@@ -194,6 +208,38 @@ function parseExternalLinks(
   return links;
 }
 
+function parseDataValidations(worksheetXml: string): DataValidationDiagnostic[] {
+  const validations: DataValidationDiagnostic[] = [];
+  for (const match of worksheetXml.matchAll(
+    /<dataValidation\b([^>]*)\/>|<dataValidation\b([^>]*)>([\s\S]*?)<\/dataValidation>/gi,
+  )) {
+    const attributes = match[1] ?? match[2] ?? "";
+    const body = match[3] ?? "";
+    const range = attr(attributes, "sqref");
+    if (!range) continue;
+    const type = attr(attributes, "type") ?? "none";
+    const allowBlank = attr(attributes, "allowBlank") === "1";
+    const formula1 = body.match(/<formula1>([\s\S]*?)<\/formula1>/i)?.[1];
+    const formula2 = body.match(/<formula2>([\s\S]*?)<\/formula2>/i)?.[1];
+    const promptTitle = attr(attributes, "promptTitle");
+    const prompt = attr(attributes, "prompt");
+    const errorTitle = attr(attributes, "errorTitle");
+    const error = attr(attributes, "error");
+    validations.push({
+      range,
+      type,
+      allowBlank,
+      ...(formula1 ? { formula1: decodeXml(formula1) } : {}),
+      ...(formula2 ? { formula2: decodeXml(formula2) } : {}),
+      ...(promptTitle ? { promptTitle: decodeXml(promptTitle) } : {}),
+      ...(prompt ? { prompt: decodeXml(prompt) } : {}),
+      ...(errorTitle ? { errorTitle: decodeXml(errorTitle) } : {}),
+      ...(error ? { error: decodeXml(error) } : {}),
+    });
+  }
+  return validations;
+}
+
 function parseTable(xml: string): StructuredTableDiagnostic {
   const root = xml.match(/<table\b[^>]*>/i)?.[0] ?? "";
   const columns: string[] = [];
@@ -252,6 +298,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
       "ref",
     );
     const hyperlinks = parseHyperlinks(worksheetXml, sheetRels);
+    const dataValidations = parseDataValidations(worksheetXml);
     const commentsRelationship = [...sheetRels.values()].find((relationship) =>
       relationship.type.toLowerCase().endsWith("/comments"),
     );
@@ -278,6 +325,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
       hyperlinks,
       definedNames: definedNames.filter((d) => d.scope === null || d.scope === sheetName),
       externalLinks,
+      dataValidations,
     });
   }
   return result;
