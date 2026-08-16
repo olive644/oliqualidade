@@ -2,10 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Activity,
   AlertTriangle,
   Check,
-  ChevronLeft,
   Columns3,
   ClipboardPaste,
   Download,
@@ -17,20 +15,16 @@ import {
   HelpCircle,
   History,
   LayoutDashboard,
-  LayoutGrid,
   Maximize2,
   Menu,
-  Moon,
   Palette,
   PanelRight,
-  Pin,
   Plus,
   Redo2,
   Search,
   Settings2,
   Sheet as SheetIcon,
   ShieldAlert,
-  Sun,
   Undo2,
   Upload,
   X,
@@ -39,14 +33,6 @@ import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table-widget";
 import { OperationalWidgetBody } from "@/components/operational-widget-body";
 import { FolderMonitorWidget } from "@/components/folder-monitor-widget";
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -84,14 +70,7 @@ import {
   pickBestGroupColumn,
   schedulePeriodColumns,
 } from "@/lib/widgets";
-import {
-  conditionalColor,
-  conditionalStyle,
-  fmt,
-  hue,
-  infer,
-  withCalculatedColumns,
-} from "@/lib/format";
+import { infer, withCalculatedColumns } from "@/lib/format";
 import {
   applyMissingRules,
   detectQualitySignals,
@@ -203,6 +182,9 @@ import { MissingRulesPanel } from "@/components/oliam/missing-rules-panel";
 import { FormatPanel } from "@/components/oliam/format-panel";
 import { FilterChipsBar } from "@/components/oliam/filter-chips-bar";
 import { ColumnPanel } from "@/components/oliam/column-panel";
+import { DashboardNavSidebar } from "@/components/oliam/dashboard-nav-sidebar";
+import { InsightSidebar } from "@/components/oliam/insight-sidebar";
+import { CommandPalette } from "@/components/oliam/command-palette";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
 // código uma tabela com aparência de dado empresarial real e ainda exercita
@@ -1991,87 +1973,19 @@ function Dashboard(p: {
       </div>
     );
 
-  const closeSidebarOnMobile = () => {
-    if (typeof window !== "undefined" && window.matchMedia("(max-width: 700px)").matches) {
-      setSidebar(false);
-    }
-  };
-
   return (
     <div className="flex h-screen overflow-hidden">
-      {sidebar && (
-        <div
-          className="oliam-sidebar-backdrop"
-          aria-hidden="true"
-          onClick={() => setSidebar(false)}
-        />
-      )}
-      <aside className={cn("oliam-sidebar", !sidebar && "w-0 -translate-x-full border-0")}>
-        <div className="flex h-16 items-center gap-3 border-b border-border px-4">
-          <Mark />
-          <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
-        </div>
-        <div className="flex-1 overflow-auto p-3">
-          <button
-            className="oliam-nav-item text-muted-foreground"
-            onClick={() => {
-              p.backHome();
-              closeSidebarOnMobile();
-            }}
-          >
-            <ChevronLeft className="size-4" />
-            Todos os painéis
-          </button>
-          <p className="px-2 pb-1.5 pt-4 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-            Painéis
-          </p>
-          {[...p.dashboards]
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .map((x) => (
-              <button
-                key={x.id}
-                className={cn("oliam-nav-item", x.id === d.id && "active")}
-                onClick={() => {
-                  p.openDash(x.id);
-                  closeSidebarOnMobile();
-                }}
-              >
-                <span
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ background: x.id === d.id ? "currentColor" : hue(x.id) }}
-                />
-                <span className="truncate">{x.name}</span>
-                {x.pinned && (
-                  <Pin
-                    className={cn(
-                      "ml-auto size-3 shrink-0",
-                      x.id === d.id ? "fill-current" : "fill-primary text-primary",
-                    )}
-                  />
-                )}
-              </button>
-            ))}
-          <button
-            className="oliam-nav-item text-muted-foreground"
-            onClick={() => {
-              p.newDash();
-              closeSidebarOnMobile();
-            }}
-          >
-            <Plus className="size-4" />
-            Novo painel
-          </button>
-        </div>
-        <div className="border-t border-border p-3">
-          <button className="oliam-nav-item" onClick={() => setMissingPanel(true)}>
-            <Settings2 className="size-4" />
-            Regras de dados ausentes
-          </button>
-          <p className="mt-2 px-2 font-mono text-[10px] text-muted-foreground">
-            {sheet.rows.length} linhas · local
-          </p>
-        </div>
-      </aside>
+      <DashboardNavSidebar
+        open={sidebar}
+        onOpenChange={setSidebar}
+        dashboards={p.dashboards}
+        activeId={d.id}
+        openDash={p.openDash}
+        backHome={p.backHome}
+        newDash={p.newDash}
+        rowCount={sheet.rows.length}
+        onOpenMissingPanel={() => setMissingPanel(true)}
+      />
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="oliam-dashboard-topbar">
           <input
@@ -2517,194 +2431,21 @@ function Dashboard(p: {
               </div>
             </footer>
           </div>
-          {insightOpen && (
-            <aside className="oliam-insight-sidebar hidden shrink-0 overflow-auto lg:block">
-              <div className="border-b border-border p-4">
-                <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Visão geral
-                </p>
-                <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-                  {data.length} de {sheet.rows.length} linhas na visão atual
-                </p>
-              </div>
-              {sheet.autoDashboard && (
-                <div className="border-b border-border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                      Dashboard sugerido
-                    </p>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-                      {sheet.autoDashboard.confidence}% confiança
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    Criado automaticamente a partir dos tipos, preenchimento e qualidade das
-                    colunas.
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {sheet.autoDashboard.recommendations.slice(0, 5).map((item) => (
-                      <div key={item.id} className="rounded-xl border border-border bg-card p-2.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-medium leading-snug">{item.title}</p>
-                          <span className="shrink-0 font-mono text-[10px] text-primary">
-                            {item.confidence}%
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                          {item.reasons[0]}
-                        </p>
-                        {item.warnings[0] && (
-                          <p className="mt-1 text-[11px] leading-relaxed text-amber-600">
-                            {item.warnings[0]}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {nums.length > 0 && (
-                <div className="border-b border-border p-4">
-                  <p className="mb-3 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                    KPIs
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {nums.slice(0, 4).map((c) => {
-                      const total = data.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
-                      const delta = versionDelta?.get(c.key) ?? null;
-                      const style = conditionalStyle(total, c.kind, c.conditionalFormat);
-                      return (
-                        <div
-                          key={c.key}
-                          className="rounded-xl border border-border bg-card p-2.5 shadow-sm"
-                          style={style ?? undefined}
-                        >
-                          <p className="truncate text-[11px] text-muted-foreground">{c.label}</p>
-                          <p
-                            className="font-mono text-base font-semibold"
-                            style={{ color: style?.color }}
-                          >
-                            {fmt(total, c.kind)}
-                          </p>
-                          {delta !== null && (
-                            <p
-                              className={cn(
-                                "font-mono text-[10px]",
-                                delta >= 0 ? "text-secondary-accent" : "text-destructive",
-                              )}
-                            >
-                              {delta >= 0 ? "+" : ""}
-                              {new Intl.NumberFormat("pt-BR", {
-                                style: "percent",
-                                maximumFractionDigits: 1,
-                              }).format(delta)}{" "}
-                              vs. anterior
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {sidebarRanking.length > 0 && cat && primary && (
-                <div className="border-b border-border p-4">
-                  <p className="mb-3 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Ranking por {cat.label}
-                  </p>
-                  <div className="space-y-0.5">
-                    {sidebarRanking.map((r) => {
-                      const active = sheet.filters.some(
-                        (f) => f.key === cat.key && f.value === r.name,
-                      );
-                      return (
-                        <button
-                          key={r.name}
-                          className={cn(
-                            "oliam-ranking-row block w-full text-left transition-opacity hover:opacity-90",
-                            active && "opacity-100",
-                          )}
-                          onClick={() => {
-                            if (active) {
-                              setFilters(sheet.filters.filter((f) => f.key !== cat.key));
-                            } else {
-                              setFilters([
-                                ...sheet.filters.filter((f) => f.key !== cat.key),
-                                { key: cat.key, value: r.name, min: "", max: "" },
-                              ]);
-                            }
-                          }}
-                        >
-                          <div className="mb-1 flex items-center justify-between gap-2">
-                            <span className="truncate text-xs">{r.name || "Não informado"}</span>
-                            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                              {fmt(r.total, primary.kind)}
-                            </span>
-                          </div>
-                          <div className="oliam-ranking-track">
-                            <div
-                              className="oliam-ranking-fill"
-                              style={{
-                                width: `${Math.max(4, (Math.abs(r.total) / sidebarRankingMax) * 100)}%`,
-                                background:
-                                  conditionalColor(
-                                    r.total,
-                                    primary.kind,
-                                    primary.conditionalFormat,
-                                  ) ?? (active ? "var(--primary)" : "var(--secondary-accent)"),
-                              }}
-                            />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {dateCol && (
-                <div className="p-4">
-                  <p className="mb-3 text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Filtrar por {dateCol.label}
-                  </p>
-                  {(() => {
-                    const existing = sheet.filters.find((f) => f.key === dateCol.key);
-                    return (
-                      <div className="flex flex-col gap-2">
-                        <input
-                          className="oliam-input h-9"
-                          type="text"
-                          placeholder="De, dd/mm/aaaa"
-                          value={existing?.min ?? ""}
-                          onChange={(e) => {
-                            const min = e.target.value;
-                            const rest = sheet.filters.filter((f) => f.key !== dateCol.key);
-                            setFilters([
-                              ...rest,
-                              { key: dateCol.key, value: "", min, max: existing?.max ?? "" },
-                            ]);
-                          }}
-                        />
-                        <input
-                          className="oliam-input h-9"
-                          type="text"
-                          placeholder="Até, dd/mm/aaaa"
-                          value={existing?.max ?? ""}
-                          onChange={(e) => {
-                            const max = e.target.value;
-                            const rest = sheet.filters.filter((f) => f.key !== dateCol.key);
-                            setFilters([
-                              ...rest,
-                              { key: dateCol.key, value: "", min: existing?.min ?? "", max },
-                            ]);
-                          }}
-                        />
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </aside>
-          )}
+          <InsightSidebar
+            open={insightOpen}
+            data={data}
+            rowCount={sheet.rows.length}
+            autoDashboard={sheet.autoDashboard}
+            nums={nums}
+            versionDelta={versionDelta}
+            sidebarRanking={sidebarRanking}
+            sidebarRankingMax={sidebarRankingMax}
+            cat={cat}
+            primary={primary}
+            dateCol={dateCol}
+            filters={sheet.filters}
+            setFilters={setFilters}
+          />
         </div>
         {d.sheets.length > 1 && (
           <div
@@ -2741,111 +2482,38 @@ function Dashboard(p: {
           </div>
         </div>
       )}
-      <CommandDialog open={command} onOpenChange={setCommand}>
-        <CommandInput placeholder="Filtrar, trocar painel ou exportar…" />
-        <CommandList>
-          <CommandEmpty>Nenhum comando encontrado.</CommandEmpty>
-          <CommandGroup heading="Ações">
-            <CommandItem onSelect={undo} disabled={!canUndo}>
-              <Undo2 />
-              Desfazer
-            </CommandItem>
-            <CommandItem onSelect={redo} disabled={!canRedo}>
-              <Redo2 />
-              Refazer
-            </CommandItem>
-            <CommandItem onSelect={() => pasteCopiedWidget()} disabled={!widgetClipboard}>
-              <ClipboardPaste />
-              Colar widget copiado
-            </CommandItem>
-            <CommandItem onSelect={p.reimport}>
-              <Upload />
-              Importar nova versão
-            </CommandItem>
-            <CommandItem
-              onSelect={
-                p.folderMonitor?.status === "error" || !p.folderMonitor
-                  ? p.connectFolder
-                  : p.disconnectFolder
-              }
-            >
-              <FolderSync />
-              {p.folderMonitor?.status === "error"
-                ? "Reconectar pasta monitorada"
-                : p.folderMonitor
-                  ? "Desconectar pasta monitorada"
-                  : "Monitorar pasta local"}
-            </CommandItem>
-            <CommandItem onSelect={exportXlsx}>
-              <Download />
-              Exportar XLSX
-            </CommandItem>
-            <CommandItem onSelect={exportCorrectedWorkbook}>
-              <SheetIcon />
-              Gerar cópia corrigida
-            </CommandItem>
-            <CommandItem onSelect={exportAuditCsv}>
-              <History />
-              Exportar auditoria CSV
-            </CommandItem>
-            <CommandItem onSelect={exportComparisonCsv}>
-              <GitMerge />
-              Exportar comparação CSV
-            </CommandItem>
-            <CommandItem onSelect={() => void exportReviewPdf()}>
-              <FileText />
-              Exportar relatório de revisão PDF
-            </CommandItem>
-            <CommandItem onSelect={() => void exportPng()}>
-              <FileImage />
-              Exportar PNG
-            </CommandItem>
-            <CommandItem onSelect={() => void exportPdf()}>
-              <FileText />
-              Exportar PDF do painel
-            </CommandItem>
-            <CommandItem onSelect={() => void exportEncryptedBackup()}>
-              <ShieldAlert />
-              Criar backup criptografado
-            </CommandItem>
-            <CommandItem onSelect={() => backupInput.current?.click()}>
-              <Upload />
-              Restaurar backup protegido
-            </CommandItem>
-            <CommandItem onSelect={() => setFormatPanel(true)}>
-              <Palette />
-              Formatação condicional
-            </CommandItem>
-            <CommandItem onSelect={() => setShortcuts(true)}>
-              <HelpCircle />
-              Atalhos de teclado
-            </CommandItem>
-            <CommandItem onSelect={() => setImportDiagnostics(true)}>
-              <Activity />
-              Diagnóstico de importação
-            </CommandItem>
-            <CommandItem onSelect={() => setPanel(true)}>
-              <Columns3 />
-              Configurar colunas
-            </CommandItem>
-            <CommandItem onSelect={startPresentation}>
-              <Maximize2 />
-              Modo apresentação
-            </CommandItem>
-            <CommandItem onSelect={openJoin}>
-              <GitMerge />
-              Combinar planilha
-            </CommandItem>
-            <CommandItem onSelect={p.toggleTheme}>
-              {p.theme === "dark" ? <Sun /> : <Moon />}Alternar modo escuro
-            </CommandItem>
-            <CommandItem onSelect={p.backHome}>
-              <LayoutGrid />
-              Ver todos os painéis
-            </CommandItem>
-          </CommandGroup>
-        </CommandList>
-      </CommandDialog>
+      <CommandPalette
+        open={command}
+        onOpenChange={setCommand}
+        undo={undo}
+        redo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        pasteCopiedWidget={pasteCopiedWidget}
+        hasWidgetClipboard={Boolean(widgetClipboard)}
+        reimport={p.reimport}
+        folderMonitor={p.folderMonitor}
+        connectFolder={p.connectFolder}
+        disconnectFolder={p.disconnectFolder}
+        exportXlsx={exportXlsx}
+        exportCorrectedWorkbook={exportCorrectedWorkbook}
+        exportAuditCsv={exportAuditCsv}
+        exportComparisonCsv={exportComparisonCsv}
+        exportReviewPdf={exportReviewPdf}
+        exportPng={exportPng}
+        exportPdf={exportPdf}
+        exportEncryptedBackup={exportEncryptedBackup}
+        onRestoreBackup={() => backupInput.current?.click()}
+        onOpenFormatPanel={() => setFormatPanel(true)}
+        onOpenShortcuts={() => setShortcuts(true)}
+        onOpenImportDiagnostics={() => setImportDiagnostics(true)}
+        onOpenColumnsPanel={() => setPanel(true)}
+        startPresentation={startPresentation}
+        openJoin={openJoin}
+        theme={p.theme}
+        toggleTheme={p.toggleTheme}
+        backHome={p.backHome}
+      />
       {joinDialog}
       <ShortcutsDialog open={shortcuts} onOpenChange={setShortcuts} />
       <ImportDiagnosticsDialog open={importDiagnostics} onOpenChange={setImportDiagnostics} />

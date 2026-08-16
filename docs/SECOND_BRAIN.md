@@ -98,7 +98,7 @@ flowchart TD
 | Quanto foi filtrado na tabela detalhada | prop `totalRows` de `WidgetCard`, passado como `rulesApplied.length` em `routes/index.tsx` | `npx tsc --noEmit` confirma o único call site atualizado |
 | Widget "Insights automáticos" (`insights`), narra achados em texto | `widget-card.tsx` (bloco `w.type === "insights"`), compõe `pieComparisonFor`/`rankingCoverageFor`/`detectQualitySignals` já testadas | `npx tsc --noEmit` (checklist completo de registro de `WidgetType` na seção 47 do audit) |
 | Importação/revisão (UI)                     | `components/oliam/{home,empty,import-workbench,review}.tsx`          | `routes/index.tsx` orquestra via props        |
-| Combinar planilha, apresentação, coluna calculada, marcadores, atalhos, notas de origem, diff de versão, dica de termos, regras ausentes, formatação, sinais de qualidade, chips de filtro, colunas (drag-and-drop) (UI do Dashboard) | `components/oliam/{join-sheet-dialog,presentation-mode,formula-column-editor,bookmark-panel,shortcuts-dialog,source-notes-panel,version-diff-banner,term-hint-banner,missing-rules-panel,format-panel,quality-signals-panel,filter-chips-bar,column-panel}.tsx` | extraídos de `Dashboard`; `tsc` pega referências órfãs se algo ficar pra trás |
+| Combinar planilha, apresentação, coluna calculada, marcadores, atalhos, notas de origem, diff de versão, dica de termos, regras ausentes, formatação, sinais de qualidade, chips de filtro, colunas (drag-and-drop), sidebars, paleta de comandos (UI do Dashboard) | `components/oliam/{join-sheet-dialog,presentation-mode,formula-column-editor,bookmark-panel,shortcuts-dialog,source-notes-panel,version-diff-banner,term-hint-banner,missing-rules-panel,format-panel,quality-signals-panel,filter-chips-bar,column-panel,dashboard-nav-sidebar,insight-sidebar,command-palette}.tsx` | extraídos de `Dashboard`; `tsc` pega referências órfãs se algo ficar pra trás |
 | Cálculos e séries                           | `data-pipeline.ts`                                                    | `data-pipeline.test.ts`                      |
 | Cronograma                                  | `schedule-normalizer.ts`, `operational-widgets.ts`                    | testes dos dois módulos                      |
 | Revisão, auditoria e versões                | `data-review.ts`, `import-workbench.ts`, `review-export.ts`           | testes de revisão/exportação                 |
@@ -262,7 +262,7 @@ ANALYZE=1 npm run build     # gera client-chunk-report.json (gitignored) com mó
 - A aplicação é deliberadamente local-first e usa IndexedDB no navegador.
 - Leitura pesada, análise de revisão e exportações pesadas são separadas do
   caminho interativo sempre que possível.
-- `src/routes/index.tsx` caiu de 10.282 para 2.855 linhas (72%) numa
+- `src/routes/index.tsx` caiu de 10.282 para 2.523 linhas (75%) numa
   refatoração puramente estrutural, em etapas sucessivas: `Home`, `Empty`,
   `ImportWorkbench`, `Review`, `WidgetCard`/`EmptyWidget`, as peças de
   suporte de widget (`FieldDropSlot`, `WidgetHead`, tooltips/eixos de

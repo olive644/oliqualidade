@@ -2807,3 +2807,59 @@ env var ausente em builds normais — confirmado comparando o build
 antes/depois da mudança, mesmo tamanho de chunk em ambos). `npx vitest
 run` não foi afetado (476 passou, 11 pulados, sem relação com
 `vite.config.ts`).
+
+## 59. Quarto lote da extração do Dashboard: sidebars e paleta de comandos
+
+Continuação direta da seção 58, mesma branch. Com o achado da
+investigação confirmado (extração não move bytes para dentro/fora do
+chunk compartilhado), o usuário optou por continuar com os três
+candidatos de risco médio seguintes do mapeamento da seção 55:
+
+- **`dashboard-nav-sidebar.tsx`** (`DashboardNavSidebar`): sidebar
+  esquerda de navegação entre painéis (lista ordenada por
+  `updatedAt`, botão "Novo painel", atalho para "Regras de dados
+  ausentes"). Recebe `dashboards`/`activeId`/`openDash`/`backHome`/
+  `newDash`/`rowCount`/`onOpenMissingPanel`; o estado `sidebar`
+  (aberto/fechado) continua em `Dashboard`, já que também controla o
+  botão de alternar no cabeçalho.
+- **`insight-sidebar.tsx`** (`InsightSidebar`): sidebar direita com
+  visão geral, dashboard sugerido, KPIs, ranking clicável (clique-
+  para-filtrar) e filtro de intervalo de data. Recebe uma lista longa
+  de props já calculadas no pipeline de `Dashboard` (`data`,
+  `autoDashboard`, `nums`, `versionDelta`, `sidebarRanking`,
+  `sidebarRankingMax`, `cat`, `primary`, `dateCol`, `filters`,
+  `setFilters`), sem estado próprio.
+- **`command-palette.tsx`** (`CommandPalette`): `CommandDialog` (⌘K)
+  com ~20 ações. Recebe cada callback já pronto (undo/redo,
+  exportações, abrir painéis, tema, navegação) — puro wiring, sem
+  lógica nova; os mesmos callbacks continuam sendo passados também
+  para os botões da barra de ferramentas, então a extração não
+  duplicou nenhuma função, só a referência já existente.
+
+`index.tsx` caiu de 2.855 para 2.523 linhas. Vários imports ficaram
+órfãos e foram removidos: ícones (`ChevronLeft`, `Pin`, `Activity`,
+`Moon`, `Sun`, `LayoutGrid`, e os seis componentes `Command*` de
+`@/components/ui/command`) e funções (`hue`, `conditionalStyle`,
+`conditionalColor`, `fmt` de `@/lib/format`).
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo de primeira
+(sem ajuste manual de quebra de linha desta vez), `npm run build` e
+`npm run performance:check` aprovados — **mas com margem agora crítica
+de verdade: ~447,2 KiB de 450 KiB, só ~2,8 KiB de folga**. O tamanho
+subiu mais do que o esperado pela investigação da seção 58 (que previa
+neutralidade): a explicação provável é overhead de módulo por arquivo
+novo (cada arquivo extra tem seu próprio wrapper ESM no bundle), não
+uma contradição do achado — o *conteúdo* do chunk continua sendo o
+mesmo grafo compartilhado, mas cada extração adiciona uma fração de
+bytes de boilerplate de módulo que se acumula. Mesma limitação de
+verificação visual das etapas anteriores: as três extrações não foram
+exercitadas ao vivo no navegador nesta etapa.
+
+**Margem esgotada**: os candidatos restantes do mapeamento da seção 55
+(hook de revisão em segundo plano, ~55 linhas; exportação, ~260
+linhas; undo/redo, ~65 linhas; ações de widget, ~130 linhas) não têm
+mais espaço nesta margem sem decisão explícita do usuário — mesmo o
+hook menor (~55 linhas) é arriscado com só 2,8 KiB de folga. Pausado
+aqui para decisão: subir o limite de novo, ou parar a extração
+estrutural nesta branch e publicar o que já foi feito.
