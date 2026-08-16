@@ -3396,3 +3396,72 @@ Verificado com `npx vitest run` (481 passou, 11 pulados — um teste novo),
 limpo (checado via normalização CRLF→LF, ver seção de armadilhas), `npm run
 build` e `npm run performance:check` aprovados (maior chunk genérico subiu de
 365,2 para 366,5 KiB — dentro da margem de ~450 KiB).
+
+## 69. Inventário de nomes definidos e links externos (próximo item por esforço da lista pendente)
+
+Seguindo a mesma trilha da seção 68 (hyperlinks), o próximo item era
+"nomes definidos e links externos", com um atalho real: o **SheetJS já
+analisa nomes definidos nativamente** em `wb.Workbook.Names` ao ler
+qualquer XLSX — não seria necessário nenhum parsing novo para eles. Mas
+essa API não é usada por `attachWorkbookFeatures` (que opera diretamente
+sobre os bytes do ZIP via `inspectWorkbookFeatures`, sem acesso ao `wb` já
+lido), e mais importante: `wb.Workbook.Names` não filtra por aba — cada
+nome tem um índice `Sheet` opcional (`localSheetId` do XML) que precisa
+ser resolvido contra a ordem real das abas para decidir se o nome é
+global (Name Manager mostra em todo lugar) ou local a uma aba específica
+(só aparece nessa aba). Optei por fazer o parsing próprio de
+`<definedName>` em `xl/workbook.xml` (`parseDefinedNames`), reaproveitando
+o `decodeXml`/`attr` já existentes, para manter a filtragem por aba
+consistente com o resto do arquivo (que já lê o XML bruto de qualquer
+forma) em vez de misturar duas fontes de verdade (SheetJS + XML bruto)
+para o mesmo dado.
+
+**Referências a arquivos externos** (`xl/externalLinks`) não têm
+equivalente nativo no SheetJS — parsing genuinamente novo, mas seguindo
+o padrão já estabelecido em `relationships()`/hyperlinks: o
+`<externalReference r:id="...">` em `workbook.xml` resolve via
+`workbookRels` para a parte `xl/externalLinks/externalLinkN.xml`; o
+destino real (URL ou caminho de arquivo) não está nessa parte, mas no seu
+próprio `.rels` (`xl/externalLinks/_rels/externalLinkN.xml.rels`),
+mesma indireção de dois níveis já usada para hyperlinks externos.
+
+**Decisão de escopo**: `AdvancedSheetMetadata` já é uma estrutura por aba
+(`Map<sheetName, ...>`), mas nomes definidos e links externos são dados
+de workbook inteiro. Threadar um novo objeto "nível workbook" até
+`review.tsx` exigiria mexer no worker de leitura
+(`workbook-reader.worker`), no cliente
+(`workbook-reader-client.ts`) e no estado de `routes/index.tsx` — risco e
+esforço bem maiores que o "esforço médio" estimado. Em vez disso,
+mantive os dois dentro de `AdvancedSheetMetadata` (já propagada por todo
+o pipeline existente via `!oliAdvanced` → `sheetMeta()` → spread em
+`ImportDiagnostics`), calculando-os **uma vez** por workbook em
+`inspectWorkbookFeatures` e depois filtrando por aba: `externalLinks` é
+idêntico em todas as abas (não têm dono natural); `definedNames` é
+filtrado para `scope === null` (global) ou `scope === nomeDaAba`,
+espelhando como o Name Manager do Excel já filtra por aba — nomes locais
+de uma aba não aparecem nas outras. Nomes internos do Excel
+(`_xlnm.` — área de impressão, banco de filtro etc.) são descartados por
+não serem definições do usuário.
+
+Dois painéis `<details>` novos em `review.tsx` ("Nomes definidos" e
+"Referências a arquivos externos"), mesmo padrão visual de
+"Hyperlinks preservados" (seção 68).
+
+Cobertura de teste em duas camadas, como já é convenção no arquivo:
+`workbook-metadata.test.ts` ganhou um workbook sintético de duas abas com
+um nome global, um nome local a uma aba e um nome interno do Excel
+(`_xlnm._FilterDatabase`, que deve ser ignorado), mais uma referência
+externa — confirma o parsing e a filtragem por escopo diretamente.
+`import-intelligence.test.ts` ganhou um teste espelhando o já existente
+para hyperlinks, confirmando que `diagnoseImportedSheet` propaga os dois
+campos e os avisos correspondentes a partir de um `!oliAdvanced`
+sintético.
+
+Verificado com `npx vitest run` (483 passou, 11 pulados — dois testes
+novos), `npx tsc --noEmit` sem erros (mocks de `ImportDiagnostics` em
+`auto-dashboard.test.ts` e `import-intelligence.test.ts` precisaram dos
+campos `definedNames: []`/`externalLinks: []` novos), Prettier limpo após
+duas quebras de linha ajustadas manualmente para bater com o formatador
+em `workbook-metadata.ts` (checado via normalização CRLF→LF), `npm run
+build` e `npm run performance:check` aprovados (maior chunk genérico subiu
+de 366,5 para 369,8 KiB — ainda dentro da margem de ~450 KiB).

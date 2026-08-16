@@ -9,11 +9,15 @@ const xml = (value: string) => strToU8(value);
 function advancedWorkbookPackage() {
   return zipSync({
     "xl/workbook.xml": xml(
-      '<workbook xmlns:r="r"><sheets><sheet name="Vendas" r:id="rId1"/></sheets></workbook>',
+      '<workbook xmlns:r="r"><sheets><sheet name="Vendas" r:id="rId1"/><sheet name="Resumo" r:id="rId2"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Vendas!$A$1:$C$5</definedName><definedName name="PrecoBase">Vendas!$D$1</definedName><definedName name="MetaLocal" localSheetId="0">Vendas!$E$1</definedName></definedNames><externalReferences><externalReference r:id="rIdExternal"/></externalReferences></workbook>',
     ),
     "xl/_rels/workbook.xml.rels": xml(
-      '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+      '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rIdExternal" Type="externalLink" Target="externalLinks/externalLink1.xml"/></Relationships>',
     ),
+    "xl/externalLinks/_rels/externalLink1.xml.rels": xml(
+      '<Relationships><Relationship Id="rId1" Type="externalLinkPath" Target="https://exemplo.com/planilha-externa.xlsx" TargetMode="External"/></Relationships>',
+    ),
+    "xl/worksheets/sheet2.xml": xml('<worksheet xmlns:r="r"/>'),
     "xl/worksheets/sheet1.xml": xml(
       '<worksheet xmlns:r="r"><autoFilter ref="A1:C5"/><hyperlinks><hyperlink ref="A2" r:id="rIdLink" tooltip="Abrir &amp; revisar"/><hyperlink ref="B2" location="Resumo!A1"/></hyperlinks><tableParts><tablePart r:id="rIdTable"/></tableParts><pivotTableDefinition r:id="rIdPivot"/></worksheet>',
     ),
@@ -55,6 +59,20 @@ describe("metadados avançados de XLSX", () => {
         tooltip: "Abrir & revisar",
       },
       { address: "B2", target: "#Resumo!A1" },
+    ]);
+  });
+
+  it("expõe nomes definidos por escopo e referências a arquivos externos, ignorando nomes internos do Excel", () => {
+    const metadata = inspectWorkbookFeatures(advancedWorkbookPackage());
+    expect(metadata.get("Vendas")?.definedNames).toEqual([
+      { name: "PrecoBase", refersTo: "Vendas!$D$1", scope: null },
+      { name: "MetaLocal", refersTo: "Vendas!$E$1", scope: "Vendas" },
+    ]);
+    expect(metadata.get("Resumo")?.definedNames).toEqual([
+      { name: "PrecoBase", refersTo: "Vendas!$D$1", scope: null },
+    ]);
+    expect(metadata.get("Vendas")?.externalLinks).toEqual([
+      { target: "https://exemplo.com/planilha-externa.xlsx" },
     ]);
   });
 

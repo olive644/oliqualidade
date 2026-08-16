@@ -21,6 +21,8 @@ export type AdvancedSheetMetadata = {
   autoFilterRange: string | null;
   comments: WorkbookCellComment[];
   hyperlinks: WorkbookCellHyperlink[];
+  definedNames: WorkbookDefinedName[];
+  externalLinks: WorkbookExternalLink[];
 };
 
 export type WorkbookCellComment = {
@@ -33,6 +35,17 @@ export type WorkbookCellHyperlink = {
   address: string;
   target: string;
   tooltip?: string;
+};
+
+export type WorkbookDefinedName = {
+  name: string;
+  refersTo: string;
+  /** Aba a que o nome pertence, ou `null` quando o escopo é o workbook inteiro. */
+  scope: string | null;
+};
+
+export type WorkbookExternalLink = {
+  target: string;
 };
 
 export type WorksheetWithAdvancedMetadata = XLSX.WorkSheet & {
@@ -142,6 +155,45 @@ function parseHyperlinks(
   return hyperlinks;
 }
 
+function parseDefinedNames(workbookXml: string, sheetNames: string[]): WorkbookDefinedName[] {
+  const names: WorkbookDefinedName[] = [];
+  for (const match of workbookXml.matchAll(/<definedName\b([^>]*)>([\s\S]*?)<\/definedName>/gi)) {
+    const attributes = match[1]!;
+    const name = decodeXml(attr(attributes, "name") ?? "");
+    // Nomes internos do Excel (área de impressão, banco de filtro etc.) não são
+    // definições do usuário; ficam de fora do inventário para não virar ruído.
+    if (!name || name.startsWith("_xlnm.")) continue;
+    const refersTo = decodeXml(match[2]!.trim());
+    if (!refersTo) continue;
+    const localSheetId = attr(attributes, "localSheetId");
+    const scope = localSheetId !== null ? (sheetNames[Number(localSheetId)] ?? null) : null;
+    names.push({ name, refersTo, scope });
+  }
+  return names;
+}
+
+function parseExternalLinks(
+  workbookXml: string,
+  workbookRels: ReturnType<typeof relationships>,
+  text: (part: string) => string,
+): WorkbookExternalLink[] {
+  const links: WorkbookExternalLink[] = [];
+  for (const match of workbookXml.matchAll(/<externalReference\b[^>]*\/?\s*>/gi)) {
+    const relationshipId = attr(match[0], "r:id");
+    const relationship = relationshipId ? workbookRels.get(relationshipId) : undefined;
+    if (!relationship) continue;
+    const parts = relationship.target.split("/");
+    const file = parts.pop();
+    const dir = parts.join("/");
+    if (!file) continue;
+    const linkRels = relationships(text(`${dir}/_rels/${file}.rels`), dir);
+    const linkTarget = [...linkRels.values()][0];
+    if (linkTarget)
+      links.push({ target: linkTarget.external ? linkTarget.rawTarget : linkTarget.target });
+  }
+  return links;
+}
+
 function parseTable(xml: string): StructuredTableDiagnostic {
   const root = xml.match(/<table\b[^>]*>/i)?.[0] ?? "";
   const columns: string[] = [];
@@ -178,6 +230,11 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
   const workbookXml = text("xl/workbook.xml");
   const workbookRels = relationships(text("xl/_rels/workbook.xml.rels"), "xl");
   const result = new Map<string, AdvancedSheetMetadata>();
+  const sheetNames = [...workbookXml.matchAll(/<sheet\b[^>]*\/?\s*>/gi)].map((match) =>
+    decodeXml(attr(match[0], "name") ?? ""),
+  );
+  const definedNames = parseDefinedNames(workbookXml, sheetNames);
+  const externalLinks = parseExternalLinks(workbookXml, workbookRels, text);
 
   for (const sheet of workbookXml.matchAll(/<sheet\b[^>]*\/?\s*>/gi)) {
     const name = attr(sheet[0], "name");
@@ -212,12 +269,15 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
       const relationship = sheetRels.get(pivotPart[1]!);
       if (relationship) pivotTables.push(parsePivot(text(relationship.target)));
     }
-    result.set(decodeXml(name), {
+    const sheetName = decodeXml(name);
+    result.set(sheetName, {
       structuredTables,
       pivotTables,
       autoFilterRange,
       comments,
       hyperlinks,
+      definedNames: definedNames.filter((d) => d.scope === null || d.scope === sheetName),
+      externalLinks,
     });
   }
   return result;

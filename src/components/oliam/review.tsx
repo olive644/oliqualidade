@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Check,
   Columns3,
+  ExternalLink,
   FileText,
   GitMerge,
   GripVertical,
@@ -11,6 +12,7 @@ import {
   Link as LinkIcon,
   ShieldAlert,
   Sparkles,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -568,6 +570,56 @@ export function Review(p: {
                     {link.tooltip ? ` · ${link.tooltip}` : ""}
                   </span>
                   <span className="break-all">{link.target}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {active?.diagnostics?.definedNames.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <Tag className="size-4 text-primary" />
+                Nomes definidos
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.definedNames.length}
+              </span>
+            </summary>
+            <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+              {active.diagnostics.definedNames.map((definedName, index) => (
+                <li
+                  key={`${definedName.name}-${index}`}
+                  className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+                >
+                  <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
+                    {definedName.name}
+                    {definedName.scope ? "" : " · workbook inteiro"}
+                  </span>
+                  <span className="break-all">{definedName.refersTo}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {active?.diagnostics?.externalLinks.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <ExternalLink className="size-4 text-primary" />
+                Referências a arquivos externos
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.externalLinks.length}
+              </span>
+            </summary>
+            <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+              {active.diagnostics.externalLinks.map((link, index) => (
+                <li
+                  key={`${link.target}-${index}`}
+                  className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed break-all"
+                >
+                  {link.target}
                 </li>
               ))}
             </ul>
