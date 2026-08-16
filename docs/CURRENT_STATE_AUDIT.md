@@ -3176,3 +3176,71 @@ para `useTermHint`/`usePresentationMode` nesta série.
 Restam do mapeamento da seção 55/59: exportação (~260 linhas),
 undo/redo (~65 linhas), ações de widget (~130 linhas) — os três mais
 entrelaçados entre si, recomendados nessa ordem.
+
+## 65. Sexto lote da extração do Dashboard: exportação, e um jeito melhor de verificar ao vivo
+
+Continuando o mapeamento da seção 55/59, o candidato de maior risco
+depois do núcleo de undo/redo: **exportação** (~260 linhas, marcado
+como "não totalmente autocontido" porque `dashboardExportOptions()`
+precisa do `contentRef` criado em `Dashboard` — o mesmo nó DOM que a
+página renderiza).
+
+**`useDashboardExport`** (`use-dashboard-export.ts`): recebe
+`dashboard`, `sheetName`, `data`, `sourceRowCount`, `columns`,
+`widgets`, `contentRef` (passado de fora, não criado dentro do hook) e
+`onRestore` (equivalente a `p.update`), devolve `exporting`/
+`exportError` e as 9 funções de exportação
+(`exportXlsx`/`exportAuditCsv`/`exportComparisonCsv`/
+`exportCorrectedWorkbook`/`exportReviewPdf`/`exportEncryptedBackup`/
+`restoreEncryptedBackup`/`exportPng`/`exportPdf`). O JSX do dropdown de
+exportação, o banner de erro e o `<input type="file">` escondido
+continuam em `Dashboard` — já recebiam essas funções como props para
+repassar ao `CommandPalette` (seção 59), então a mudança é só de onde
+as funções vêm, não de como são consumidas.
+
+**Ponto de atenção preservado sem alteração**: `restoreEncryptedBackup`
+continua chamando `p.update(copy)` diretamente (via `onRestore`),
+**sem** passar pelo histórico de undo/redo — comportamento pré-
+existente documentado como intencional, não uma inconsistência a
+corrigir aqui.
+
+`index.tsx` caiu de 2.493 para 2.317 linhas. Nove imports ficaram
+órfãos e foram removidos: `decryptDashboardBackup`/
+`encryptDashboardBackup`/`safeRowsForSpreadsheet`
+(`encrypted-backup.ts`), `auditExportRows`/`comparisonExportRows`/
+`reviewReportSections`/`rowsToCsv` (`review-export.ts`),
+`exportDashboardPdf`/`exportDashboardPng` (`dashboard-export.ts`).
+
+**Verificação ao vivo — descoberta importante desta etapa**: a preview
+individual de cada PR no Vercel exigia login SSO da equipe, então só
+dava pra testar a `main` já mesclada, não o PR em si. Por pedido do
+usuário, a proteção de deployment de preview foi desativada nas
+configurações do projeto Vercel (`Settings → Deployment Protection`).
+A partir de agora, cada PR ganha uma URL de preview pública
+(`oliqualidade-git-<branch>-<hash>-meuludi.vercel.app`, encontrável
+via `gh pr view <n> --json comments` procurando o comentário do bot da
+Vercel, ou direto na aba "Checks" do PR) — **muito mais estável que o
+dev server local** (sem os ciclos de reconexão de HMR que corrompiam a
+árvore do DOM entre leitura e clique, registrados na seção 63). Path
+recomendado daqui pra frente: abrir a preview do PR com
+`preview_start({ url })`, sem precisar do dev server local pra
+verificação visual/interativa.
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros de primeira, Prettier limpo de
+primeira, `npm run build` e `npm run performance:check` aprovados
+(~362,8 KiB, margem confortável). **Verificado ao vivo na preview do
+Vercel do PR** (achada via `gh pr view <n> --json comments` procurando
+o link `vercel.app` no comentário do bot): "Planilha XLSX" carregou o
+chunk `xlsx.js` sob demanda (confirmado em `read_network_requests`) e
+disparou o download; "Auditoria CSV" mostrou o toast correto ("Ainda
+não há ajustes registrados para exportar."); sem erros de console além
+de um bloqueio de CSP do próprio widget de feedback do Vercel, não
+relacionado ao app. Backup criptografado e restauração não foram
+testados por automação — dependem de `window.prompt`, que bloqueia o
+navegador automatizado; risco considerado baixo por não ter nenhuma
+lógica interna alterada.
+
+Restam undo/redo (~65 linhas, o "cérebro" chamado por ~9 pontos
+diferentes) e ações de widget (~130 linhas, `traceException` cruza
+busca/filtro/foco/histórico) — os dois últimos e mais entrelaçados.
