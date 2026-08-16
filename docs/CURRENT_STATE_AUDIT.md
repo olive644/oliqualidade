@@ -2720,3 +2720,90 @@ estourar o limite de 450 KiB nesta margem. Decisão registrada para o
 usuário antes de continuar: aumentar o limite de novo, investir em
 `rollup-plugin-visualizer` para entender a causa raiz, ou pausar a
 extração estrutural nesta branch.
+
+## 58. Investigação real do grafo de dependências do chunk compartilhado
+
+O usuário escolheu investigar a causa raiz em vez de só subir o limite
+de novo (opção já recomendada, mas nunca executada, desde a seção 51).
+
+**Ferramenta usada**: `rollup-plugin-visualizer` foi instalado
+temporariamente (`npm install --save-dev`), usado uma vez para gerar
+o relatório, depois **desinstalado** — a saída HTML/JSON padrão do
+plugin mistura o build do cliente com o build SSR do Nitro (a mesma
+invocação de `vite build` produz os dois; o plugin sobrescreve o
+relatório entre um e outro porque não distingue destino de saída,
+então o relatório final refletia sempre o build SSR, não o client
+bundle medido por `performance:check`). Em vez de adicionar uma
+dependência para contornar essa limitação, `vite.config.ts` ganhou um
+plugin mínimo escrito à mão (`clientChunkReportPlugin`, ativado só com
+`ANALYZE=1`, sem custo em builds normais): usa o hook `generateBundle`
+do Rollup, filtra por `options.dir.includes("static")` (a saída do
+cliente fica em `.vercel/output/static/assets`; a saída SSR em
+`.vercel/output/functions/__server.func`) e escreve
+`client-chunk-report.json` (gitignored) com cada chunk do cliente e o
+tamanho renderizado de cada módulo dentro dele.
+
+**Achado real**: o chunk hoje nomeado `column-panel-*.js` (438,0 KiB)
+**não é dominado pelo arquivo que lhe dá nome** — `column-panel.tsx`
+contribui só 7,1 KiB dos 436,2 KiB do chunk. A composição real, por
+módulo, maior primeiro:
+
+- `widget-card.tsx`: 130,6 KiB (o maior componente do projeto — corpo
+  de `WidgetCard`/`EmptyWidget` com um bloco de renderização por tipo
+  de widget: barra, pizza, linha, mapa, tabela, cronograma etc.)
+- `import.ts`: 64,5 KiB
+- `tailwind-merge` (node_modules): 54,6 KiB
+- `review.tsx`: 40,1 KiB
+- `@tanstack/virtual-core` (node_modules): 35,8 KiB
+- `widget-support.tsx`: 34,6 KiB
+- mais 157 outros módulos, a maioria arquivos de primeira parte de
+  `src/lib/` e `src/components/oliam/`, nenhum isolado acima de 25 KiB
+
+**Conclusão**: a "fachada do chunk" nunca foi o problema real — é só o
+nome cosmético que o Rolldown atribui a um chunk que de qualquer forma
+concentra quase todo o código de primeira parte compartilhado entre as
+rotas `/` e `/painel/$id`, porque quase todo esse código *é*
+genuinamente compartilhado (importado de ambas as rotas, direta ou
+transitivamente, através de `Dashboard`/`WidgetCard`). Reorganizar
+arquivos mexe em qual módulo "ganha" o nome do chunk (por isso a
+oscilação do nome a cada PR desta série), mas não move nenhum byte
+para fora do chunk nem para dentro — o grafo de dependências lógico é
+o mesmo antes e depois de cada extração. Isso confirma, com dado real
+em vez de hipótese, a decisão já registrada na seção 51 e a lição da
+tentativa revertida de isolar `widget-card`/`widget-support` (mesma
+seção): tentar isolar por regra de `id.includes(...)` não reduz o
+total, só realoca os mesmos bytes para outro chunk nomeado
+diferente — e um `manualChunks` que tentasse isolar `widget-card.tsx`
+sozinho reproduziria exatamente o problema já visto (777 KiB) porque
+ele mesmo puxa a maior parte do resto do grafo.
+
+**Consequência prática para o orçamento**: a extração estrutural em
+andamento nesta branch (mover código entre `index.tsx` e
+`components/oliam/`) é neutra para o tamanho deste chunk — o código
+não desaparece nem cresce, só troca de arquivo dentro do mesmo grafo
+compartilhado. A oscilação do maior chunk genérico entre PRs (423,5 →
+428,6 → 434,2 → 438,0 KiB) não é causada pela extração em si; é
+crescimento real de funcionalidade acumulado ao longo de várias
+sessões (iniciativa de widgets explicativos, widget "Insights
+automáticos", "Limpar filtros" etc.), que a extração apenas expõe ao
+deslocar a fachada. **Continuar a extração estrutural não é o que
+ameaça estourar o orçamento** — é o crescimento de `widget-card.tsx`
+(o módulo individual mais pesado do projeto) e do resto do código
+genuinamente compartilhado que precisaria de uma redução real (ex.:
+`import()` dinâmico por tipo de widget, carregando só o corpo de
+renderização do tipo realmente usado no painel) para diminuir de
+verdade — trabalho de escopo próprio, não uma reorganização de
+arquivos.
+
+**Ferramenta mantida para o futuro**: `clientChunkReportPlugin` fica
+em `vite.config.ts`, sem custo em build normal (só ativa com
+`ANALYZE=1 npm run build`), para a próxima vez que o orçamento
+apertar. Nenhuma dependência nova foi mantida no projeto.
+
+Verificado com `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados sem mudança de tamanho
+(a mudança em `vite.config.ts` só adiciona um plugin condicional a uma
+env var ausente em builds normais — confirmado comparando o build
+antes/depois da mudança, mesmo tamanho de chunk em ambos). `npx vitest
+run` não foi afetado (476 passou, 11 pulados, sem relação com
+`vite.config.ts`).

@@ -191,6 +191,7 @@ npm run performance:check   # orçamento dos artefatos gerados
 npm run verify              # testes + build + orçamento de desempenho
 npm run graph:build         # graphify-out/graph.json + relatório + HTML
 npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servidor rodando (roda na CI, job security-smoke)
+ANALYZE=1 npm run build     # gera client-chunk-report.json (gitignored) com módulo->chunk->tamanho real do bundle do cliente, sem SSR misturado; ver seção 58 do CURRENT_STATE_AUDIT.md
 ```
 
 ## Diagnóstico rápido
