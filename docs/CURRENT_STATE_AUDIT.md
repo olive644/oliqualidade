@@ -2863,3 +2863,78 @@ mais espaço nesta margem sem decisão explícita do usuário — mesmo o
 hook menor (~55 linhas) é arriscado com só 2,8 KiB de folga. Pausado
 aqui para decisão: subir o limite de novo, ou parar a extração
 estrutural nesta branch e publicar o que já foi feito.
+
+## 60. Bug real do gráfico de pizza quebrado visualmente com colunas de alta cardinalidade
+
+O usuário reportou com uma captura de tela: um widget de pizza
+agrupado por "ID Venda" (identificador quase único por linha)
+renderizava um emaranhado de traços finos saindo do centro em vez de
+um círculo — nada a ver com uma pizza. Pedido explícito de incluir a
+correção neste PR antes do merge (mesma branch de extração do
+Dashboard, ainda não mesclada).
+
+**Causa raiz confirmada por leitura de código, depois reproduzida ao
+vivo**: `pieSeries` em `widget-card.tsx` já tinha uma lógica de
+colapso "Top 5 + Outros" para não estourar o `<Pie>` do Recharts com
+muitas categorias — mas ela era **pulada inteiramente** quando
+`dataMode === "raw"` (modo "linha a linha"): `if (dataMode === "raw")
+return series;`. Como um widget de pizza novo com operação diferente
+de contagem **já nasce em modo raw por padrão**
+(`w.dataMode ?? (op === "count" ? "aggregate" : "raw")`), qualquer
+pizza criada com uma coluna de agrupamento de alta cardinalidade (ID
+único, código, etc.) cai direto nesse caminho sem proteção. Em modo
+raw, `chartSeries` gera **uma fatia por linha da planilha** (não por
+categoria), e um cap pré-existente de 120 (`limitChartSeriesForRendering`)
+amostrava até 120 pontos distribuídos — mas mesmo 120 fatias
+individuais, com ângulos de preenchimento fixos (`paddingAngle`
+calculado por `pieRoundnessFor`), quebram visualmente o desenho do
+Recharts. O texto "Prévia otimizada: 120 de 300 pontos..." visível na
+captura do usuário é exatamente esse cap em ação, mascarando o
+problema real em vez de preveni-lo.
+
+**Correção**: a lógica de colapso "Top 5 + Outros" (já existente e
+correta para o modo agregado) passou a rodar **sempre**, extraída
+para uma função pura nova, `collapsePieSeries` (`data-pipeline.ts`,
+ao lado de `pieRoundnessFor`/`pieComparisonFor`), e aplicada sobre
+`completeSeries` — a lista completa e não amostrada — em vez do
+`series` já cortado em 120. Isso é estritamente melhor que colapsar
+depois da amostragem: o "Top 5" real (as 5 maiores linhas por valor)
+é calculado sobre todos os dados, não sobre uma amostra distribuída
+que poderia nem conter as maiores linhas. Como consequência, o cap
+especial de 120 exclusivo do modo raw do pizza (`renderableSeries`)
+deixou de ser necessário e foi removido — o pizza nunca mais amostra,
+sempre colapsa para no máximo 6 fatias de verdade, então o banner
+"Prévia otimizada" (compartilhado com barra/linha/área) também deixa
+de aparecer para pizza, o que é correto: não há mais nada "otimizado
+por amostragem" para anunciar.
+
+Teste de regressão novo em `data-pipeline.test.ts`
+(`describe("collapsePieSeries")`): série com 6 categorias ou menos
+passa intacta; série com mais de 6 vira top 5 + "Outros" com `count`
+correto; caso que reproduz o relatado (120 entradas "linha a linha"
+com nomes quase únicos, imitando um `sourceRow` por linha) confirma
+que o resultado nunca passa de 6 itens e sempre termina em "Outros";
+caso em que o resto soma zero confirma que "Outros" não aparece à toa.
+
+**Verificado ao vivo no navegador**, reproduzindo o cenário exato do
+usuário: dados colados com coluna "ID Venda" (120 valores quase
+únicos) e "Quantidade" numérica, widget de pizza criado manualmente
+com X: ID Venda, Y: Quantidade — nasceu em modo "linha a linha" como
+esperado. Antes da correção isso geraria as mesmas ~120 fatias
+quebradas da captura do usuário; depois da correção, a legenda do
+widget mostra exatamente 6 itens (5 maiores linhas individuais +
+"Outros" com "115 categorias agrupadas · 92,7%"), confirmando que o
+colapso está ativo também em modo raw. A ferramenta de screenshot
+deste sandbox continua bloqueada (RAF não dispara, limitação já
+registrada nas seções 26/41), então a confirmação visual foi feita
+pela árvore de acessibilidade da página (lista da legenda, contagens
+e rótulos), não por captura de tela — mas é uma prova direta do DOM
+renderizado, não inferência de código.
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, era 476 — 4
+testes novos), `npx tsc --noEmit` sem erros, Prettier limpo (uma
+aspa dupla dentro de uma string de teste trocada por aspa simples
+pra bater com o formatador), `npm run build` e `npm run
+performance:check` aprovados (~447,1 KiB, dentro do limite de 450
+KiB, sem mudança relevante de tamanho — a correção remove código, não
+adiciona).

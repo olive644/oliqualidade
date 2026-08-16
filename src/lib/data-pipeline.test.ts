@@ -5,6 +5,7 @@ import {
   applyMissingRules,
   barChartPresentation,
   chartSeries,
+  collapsePieSeries,
   detectQualitySignals,
   groupAndAggregate,
   leftJoin,
@@ -422,6 +423,67 @@ describe("toggleClickFilter", () => {
       { key: "mes", value: "Janeiro", min: "", max: "" },
       { key: "regiao", value: "Sul", min: "", max: "" },
     ]);
+  });
+});
+
+describe("collapsePieSeries", () => {
+  it("mantém a série intacta quando já tem 6 categorias ou menos", () => {
+    const series = [
+      { name: "Norte", total: 50 },
+      { name: "Sul", total: 30 },
+      { name: "Leste", total: 20 },
+    ];
+    expect(collapsePieSeries(series)).toEqual(series);
+  });
+
+  it("reduz para top 5 + Outros quando há mais de 6 categorias", () => {
+    const series = [
+      { name: "A", total: 100 },
+      { name: "B", total: 90 },
+      { name: "C", total: 80 },
+      { name: "D", total: 70 },
+      { name: "E", total: 60 },
+      { name: "F", total: 10 },
+      { name: "G", total: 5 },
+    ];
+    expect(collapsePieSeries(series)).toEqual([
+      { name: "A", total: 100 },
+      { name: "B", total: 90 },
+      { name: "C", total: 80 },
+      { name: "D", total: 70 },
+      { name: "E", total: 60 },
+      { name: "Outros", total: 15, count: 2 },
+    ]);
+  });
+
+  it("reproduz o caso real relatado: coluna de alta cardinalidade em modo linha a linha vira no máximo 6 fatias", () => {
+    // Antes da correção, o modo "linha a linha" (raw) do gráfico de pizza
+    // pulava esse colapso inteiramente e mandava uma fatia por linha da
+    // planilha (ex.: até 120) direto pro <Pie> do Recharts, que quebrava
+    // visualmente (fatias viravam "espinhos" soltos em vez de um círculo).
+    const rawPerRowSeries = Array.from({ length: 120 }, (_, i) => ({
+      name: `V${String(i).padStart(5, "0")}`,
+      total: i % 10,
+      sourceRow: i + 1,
+    }));
+    const result = collapsePieSeries(rawPerRowSeries);
+    expect(result.length).toBeLessThanOrEqual(6);
+    expect(result.at(-1)?.name).toBe("Outros");
+  });
+
+  it('não cria "Outros" quando o resto soma zero', () => {
+    const series = [
+      { name: "A", total: 10 },
+      { name: "B", total: 8 },
+      { name: "C", total: 6 },
+      { name: "D", total: 4 },
+      { name: "E", total: 2 },
+      { name: "F", total: 0 },
+      { name: "G", total: 0 },
+    ];
+    const result = collapsePieSeries(series);
+    expect(result).toHaveLength(5);
+    expect(result.some((r) => r.name === "Outros")).toBe(false);
   });
 });
 

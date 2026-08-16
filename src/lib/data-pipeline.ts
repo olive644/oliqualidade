@@ -582,6 +582,29 @@ export function trendSummaryFor(series: { name: string; total: number }[]): Tren
   return { first, last, change, relativeChange, min, max, average, pointCount: series.length };
 }
 
+/**
+ * Reduz qualquer série (agregada ou "linha a linha") para no máximo 6 fatias
+ * antes de chegar num gráfico de pizza: as 5 maiores mais um agrupador
+ * "Outros" com o resto. Sem isso, uma coluna de agrupamento de alta
+ * cardinalidade (ex. um ID único por linha, ou centenas de categorias reais)
+ * manda dezenas ou centenas de fatias direto pro `<Pie>` do Recharts, que
+ * quebra visualmente — os ângulos de preenchimento fixos não escalam pra
+ * esse volume e o desenho vira um emaranhado de "espinhos" em vez de um
+ * círculo. `count` no agrupador "Outros" existe pra não virar uma fatia
+ * grande e muda: aparece no tooltip e na legenda, ex. "Outros: 445 (94.7%) ·
+ * 490 categorias".
+ */
+export function collapsePieSeries<T extends { name: string; total: number }>(
+  series: T[],
+): (T | { name: string; total: number; count: number })[] {
+  if (series.length <= 6) return series;
+  const sorted = [...series].sort((a, b) => b.total - a.total);
+  const top = sorted.slice(0, 5);
+  const restItems = sorted.slice(5);
+  const rest = restItems.reduce((s, x) => s + x.total, 0);
+  return rest ? [...top, { name: "Outros", total: rest, count: restItems.length }] : top;
+}
+
 export function pieRoundnessFor(series: { total: number }[]): {
   cornerRadius: number;
   paddingAngle: number;
