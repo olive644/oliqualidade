@@ -19,7 +19,7 @@ function advancedWorkbookPackage() {
     ),
     "xl/worksheets/sheet2.xml": xml('<worksheet xmlns:r="r"/>'),
     "xl/worksheets/sheet1.xml": xml(
-      '<worksheet xmlns:r="r"><autoFilter ref="A1:C5"/><hyperlinks><hyperlink ref="A2" r:id="rIdLink" tooltip="Abrir &amp; revisar"/><hyperlink ref="B2" location="Resumo!A1"/></hyperlinks><tableParts><tablePart r:id="rIdTable"/></tableParts><pivotTableDefinition r:id="rIdPivot"/></worksheet>',
+      '<worksheet xmlns:r="r"><autoFilter ref="A1:C5"/><dataValidations count="1"><dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="B2:B10" promptTitle="Selecione o nível" prompt="Escolha uma das opções da lista"><formula1>"Baixo,Médio,Alto"</formula1></dataValidation></dataValidations><hyperlinks><hyperlink ref="A2" r:id="rIdLink" tooltip="Abrir &amp; revisar"/><hyperlink ref="B2" location="Resumo!A1"/></hyperlinks><tableParts><tablePart r:id="rIdTable"/></tableParts><pivotTableDefinition r:id="rIdPivot"/></worksheet>',
     ),
     "xl/worksheets/_rels/sheet1.xml.rels": xml(
       '<Relationships><Relationship Id="rIdTable" Type="table" Target="../tables/table1.xml"/><Relationship Id="rIdPivot" Type="pivotTable" Target="../pivotTables/pivotTable1.xml"/><Relationship Id="rIdLink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/revisao?a=1&amp;b=2" TargetMode="External"/><Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/></Relationships>',
@@ -59,6 +59,16 @@ describe("metadados avançados de XLSX", () => {
         tooltip: "Abrir & revisar",
       },
       { address: "B2", target: "#Resumo!A1" },
+    ]);
+    expect(metadata?.dataValidations).toEqual([
+      {
+        range: "B2:B10",
+        type: "list",
+        allowBlank: true,
+        formula1: '"Baixo,Médio,Alto"',
+        promptTitle: "Selecione o nível",
+        prompt: "Escolha uma das opções da lista",
+      },
     ]);
   });
 

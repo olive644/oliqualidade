@@ -10,6 +10,7 @@ import {
   GripVertical,
   Info,
   Link as LinkIcon,
+  ListChecks,
   ShieldAlert,
   Sparkles,
   Tag,
@@ -620,6 +621,37 @@ export function Review(p: {
                   className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed break-all"
                 >
                   {link.target}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {active?.diagnostics?.dataValidations.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <ListChecks className="size-4 text-primary" />
+                Validações de dados do Excel
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.dataValidations.length}
+              </span>
+            </summary>
+            <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+              {active.diagnostics.dataValidations.map((validation, index) => (
+                <li
+                  key={`${validation.range}-${index}`}
+                  className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+                >
+                  <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
+                    {validation.range} · {validation.type}
+                  </span>
+                  {validation.formula1 ? (
+                    <span className="break-all">{validation.formula1}</span>
+                  ) : null}
+                  {validation.prompt ? (
+                    <span className="mt-1 block text-muted-foreground">{validation.prompt}</span>
+                  ) : null}
                 </li>
               ))}
             </ul>
