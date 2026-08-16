@@ -117,7 +117,17 @@ export function classifyDashboardColumn(
   let role: DashboardColumnRole;
   let confidence = (diagnostic?.confidence ?? 0.75) * 100;
 
-  if (
+  if (diagnostic && diagnostic.filled === 0) {
+    // Uma coluna sem nenhum valor preenchido não vira métrica nem dimensão,
+    // mesmo que o tipo detectado pareça numérico/categórico — "Total geral:
+    // 0" numa tabela dinâmica ou um gráfico agrupado por uma coluna
+    // inteiramente vazia é sempre ruído, nunca um achado real. `filled`/
+    // `missing` já vêm calculados no diagnóstico de importação; não precisa
+    // de nova leitura de dados aqui.
+    role = "unsupported";
+    reasons.push("A coluna não tem nenhum valor preenchido nas linhas importadas.");
+    confidence = Math.min(confidence, 20);
+  } else if (
     diagnostic?.sensitive ||
     (detectedKind && IDENTIFIER_KIND.has(detectedKind)) ||
     IDENTIFIER_NAME.test(name)

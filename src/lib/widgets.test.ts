@@ -171,6 +171,36 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
   });
 });
 
+describe("createWidget/buildDefaultWidgets ignoram coluna numérica 100% vazia como métrica padrão", () => {
+  const columnsWithEmptyMetric: Column[] = [
+    col("foto", "number"),
+    col("quantidade", "number"),
+    col("cliente", "category"),
+  ];
+  const rowsWithEmptyMetric: Row[] = Array.from({ length: 10 }, (_, i) => ({
+    foto: null,
+    quantidade: i + 1,
+    cliente: i % 2 === 0 ? "Ana" : "Beto",
+  }));
+
+  it("createWidget (metric) usa a primeira coluna numérica com dado real, não a vazia", () => {
+    const w = createWidget("metric", columnsWithEmptyMetric, undefined, rowsWithEmptyMetric);
+    expect(w.metricKey).toBe("quantidade");
+  });
+
+  it("createWidget (bar) usa a coluna numérica preenchida como valor padrão", () => {
+    const w = createWidget("bar", columnsWithEmptyMetric, undefined, rowsWithEmptyMetric);
+    expect(w.valueKey).toBe("quantidade");
+  });
+
+  it("cai na coluna vazia só se não houver nenhuma numérica preenchida", () => {
+    const onlyEmpty: Column[] = [col("foto", "number"), col("cliente", "category")];
+    const rows: Row[] = Array.from({ length: 5 }, () => ({ foto: null, cliente: "Ana" }));
+    const w = createWidget("metric", onlyEmpty, undefined, rows);
+    expect(w.metricKey).toBe("foto");
+  });
+});
+
 describe("columnDragType/columnDropAccepted (arrastar coluna para slot de gráfico)", () => {
   it("gera um tipo MIME diferente por Kind, para o slot saber aceitar ou não durante o dragover", () => {
     expect(columnDragType("category")).not.toBe(columnDragType("number"));

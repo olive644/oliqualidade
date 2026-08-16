@@ -284,7 +284,13 @@ export function createWidget(
   seed?: { groupKey?: string; valueKey?: string; op?: Widget["op"] },
   rows: Row[] = [],
 ): Widget {
-  const nums = columns.filter((c) => numericKinds.includes(c.kind));
+  const allNums = columns.filter((c) => numericKinds.includes(c.kind));
+  // Uma coluna numérica sem nenhum valor preenchido nunca deveria virar o
+  // padrão de métrica de um widget novo — só "Total geral: 0" sem
+  // explicação. Cai no pool completo (allNums) só se não sobrar nenhuma
+  // coluna com dado real, mesmo padrão de fallback de pickBestGroupColumn.
+  const filledNums = allNums.filter((c) => fillRatio(c, rows) > 0);
+  const nums = filledNums.length ? filledNums : allNums;
   const catCandidates = columns.filter((c) => c.kind === "category" || c.kind === "text");
   const cat = pickBestGroupColumn(catCandidates, rows);
   const dateCol = columns.find((c) => c.kind === "date");
@@ -380,7 +386,11 @@ export function buildDefaultWidgets(
   chartConfig?: ChartConfig,
   rows: Row[] = [],
 ): Widget[] {
-  const nums = columns.filter((c) => numericKinds.includes(c.kind));
+  const allNums = columns.filter((c) => numericKinds.includes(c.kind));
+  // Mesmo cuidado de createWidget: nunca usar uma coluna 100% vazia como
+  // métrica padrão só porque ela aparece primeiro na planilha.
+  const filledNums = allNums.filter((c) => fillRatio(c, rows) > 0);
+  const nums = filledNums.length ? filledNums : allNums;
   const catCandidates = columns.filter((c) => c.kind === "category" || c.kind === "text");
   const cat = pickBestGroupColumn(catCandidates, rows);
   const dateCol = columns.find((c) => c.kind === "date");

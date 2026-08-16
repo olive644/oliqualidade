@@ -2389,3 +2389,178 @@ na seção 51: mesmo depois de extrair os quatro blocos mais
 autocontidos, o núcleo de `Dashboard` continua grande — esta etapa
 organiza e reduz risco para mudanças futuras, não deixa o arquivo
 "pequeno".
+
+## 53. Dois bugs reais no clique-para-filtrar da barra, encontrados com o dev server funcionando ao vivo
+
+O usuário reportou "clicar numa barra não filtra do jeito que eu
+queria" e, questionado, confirmou: **nada acontece** — sem filtro, sem
+destaque, sem chip. Pela primeira vez nesta sessão o dev server ficou
+estável tempo suficiente (depois de esperar a pré-otimização de
+dependências do Vite terminar antes de navegar, não só reiniciar o
+preview) para investigar ao vivo, com `javascript_tool`/`computer`,
+em vez de só ler código.
+
+**Bug 1 — o payload do `onClick` da `<Bar>` não carrega `.name`
+confiável.** O código antigo (`onClick={(pt) => pt?.name &&
+handleGroupClick(groupCol.key, String(pt.name))}`) presumia que o
+primeiro argumento entregue pelo Recharts a um `<Bar>` com `<Cell>`
+filhas tem `.name` no nível raiz — igual ao que `<Pie>` já fazia
+funcionar com `(_, index) => setSelectedPieIndex(index)`, mas usando
+índice em vez de nome. Confirmado ao vivo: invocar a função `onClick`
+real (extraída via `element[Object.keys(element).find(k =>
+k.startsWith('__reactProps$'))].onClick`) com o evento real do
+Recharts nunca chamava `handleGroupClick` — instrumentado com um
+`Array.prototype.find` monkey-patchado para detectar a chamada de
+`toggleClickFilter`, zero chamadas. Corrigido usando o índice (2º
+argumento, comprovadamente correto) para buscar `barSeries[i].name`
+diretamente — mesmo padrão já validado no `<Pie>`.
+
+**Bug 2 — `setPointerCapture` incondicional no `pointerdown` quebra o
+clique em qualquer gráfico rolável.** `handleChartScrollPointerDown`
+(recurso de arrastar para rolar horizontalmente gráficos com muitas
+categorias) chamava `el.setPointerCapture(e.pointerId)` em todo
+`pointerdown`, mesmo sem nenhum movimento — isso redireciona o alvo de
+todo evento de ponteiro/clique seguinte para o container de rolagem
+(`el`), não para o elemento sob o cursor. Confirmado instrumentando um
+listener em fase de captura: antes da correção, o `pointerup` e o
+`click` de um clique parado (sem arrasto) chegavam com `target` igual
+ao `<div>` de rolagem, nunca ao `<path>` da barra — o clique
+literalmente nunca alcançava o elemento com o `onClick`. Corrigido
+adiando `setPointerCapture`/a classe `oliam-chart-dragging` para
+dentro do `onMove`, só quando o deslocamento realmente cruza o limiar
+de 3px que já definia "isso é um arrasto" — um clique parado nunca
+aciona a captura, então o clique segue seu caminho normal até a barra.
+A supressão de clique-após-arrasto (`stopPropagation` no `click`
+seguinte a um arrasto de verdade) continua funcionando, agora liberando
+a captura explicitamente no `pointerup` também.
+
+Os dois bugs juntos explicam "nada acontece": mesmo se um dia o clique
+alcançasse a barra (bug 2 corrigido primeiro isoladamente não bastaria),
+o handler ainda dependeria de um campo que não existe no payload (bug
+1). Só corrigir os dois juntos resolve. Confirmado ao vivo depois da
+correção: clique numa barra do gráfico "Quantidade por linha de
+Cliente" aplicou o filtro corretamente (`pointerdown`/`pointerup`/
+`click` todos com `target: path.recharts-rectangle`), reduziu a base
+de 300 para 16 linhas, mostrou o chip "Filtrado por: Amanda Barbosa" e
+propagou para os outros widgets do painel (ranking "Top 5" também
+mostrou o mesmo filtro) — cross-filter funcionando ponta a ponta.
+
+Nenhum teste automatizado novo: a lógica corrigida é inteiramente
+sobre entrega de evento do navegador e payload do Recharts, sem função
+pura pública para testar isoladamente — mesma lacuna já registrada
+para outros componentes de widget nesta sessão. A verificação ao vivo
+acima é a prova disponível.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados (~423,3 KiB).
+
+**Bugs adicionais encontrados durante a investigação, ainda não
+corrigidos** (fora do escopo do pedido original, registrados para
+decisão do usuário):
+
+- Uma coluna chamada "Foto" (oculta da tabela principal, `kind:
+  "Número"`, papel "Resultado", confiança 72% automática) virou
+  `groupKey` de pelo menos dois widgets auto-gerados (`bar`/`pie`)
+  apesar de não aparecer em `groupableCols` — o seletor X do widget
+  mostra a primeira opção da lista ("ID Venda") porque nenhuma opção
+  bate com o `groupKey` real, enquanto o gráfico de fato agrupa por
+  "Foto" (confirmado pelo `ChartReadingGuide`, "X · Foto"). Sintoma
+  visível: seletor e gráfico mostrando coisas diferentes, muito
+  confuso. Causa provável: a classificação de colunas do
+  `auto-dashboard.ts` (dimensão vs. métrica) diverge da classificação
+  de `kind` usada em `groupableCols`/no painel "Colunas" — as duas não
+  são a mesma fonte de verdade.
+- A tabela dinâmica (`Matriz de Foto × Cliente`) mostra "Total geral:
+  0" com "Cálculo: Média" sobre a mesma coluna "Foto" — consistente
+  com ela ser numérica mas com valores que não geram média útil
+  (possível: papel "Resultado" não é aditivo, e a média de um "Foto"
+  provavelmente não deveria ser o cálculo padrão para esse tipo de
+  coluna).
+
+Ambos os achados apontam para o mesmo lugar: a coluna "Foto" tem uma
+classificação semântica que não faz sentido para os usos que os
+widgets automáticos escolheram para ela. Vale investigar com o usuário
+o que essa coluna realmente representa antes de decidir a correção
+(esconder de seletores de agrupamento? mudar o papel/kind padrão?
+mudar o cálculo padrão para colunas com papel "Resultado"?).
+
+## 54. Coluna sem nenhum valor preenchido nunca vira métrica/dimensão automática, e "Limpar filtros"
+
+Continuação direta da seção 53: o usuário confirmou que "Foto" é uma
+coluna genuinamente vazia (checado ao vivo: os 12 primeiros valores da
+tabela detalhada eram todos "—") e pediu explicitamente para não
+deixar colunas vazias virarem dado em widget nenhum, além de "arrumar
+o bug da pizza" e a navegação de filtro ("filtro um nome lá em cima no
+gráfico de barras e não consigo desfiltrar embaixo, por exemplo, no
+gráfico de pizza").
+
+**Causa raiz confirmada**: `classifyDashboardColumn`
+(`auto-dashboard.ts`) classificava o papel de uma coluna só pelo tipo
+detectado (`kind`), nunca considerando se ela tinha algum valor de
+verdade. Uma coluna 100% vazia com `kind: "número"` virava role
+`"metric"` exatamente como uma coluna numérica de verdade, disponível
+para `generateAutoDashboardPlan` usar como `valueKey`/`groupKey` de
+qualquer widget automático — inclusive gráficos de pizza e barra, e a
+tabela dinâmica "Total geral: 0" da seção 53. O mesmo problema existia
+em paralelo em `createWidget`/`buildDefaultWidgets` (`widgets.ts`): o
+padrão de métrica de um widget novo (manual ou de painel legado) era
+`nums[0]?.key`, a primeira coluna numérica da planilha, sem considerar
+preenchimento.
+
+**Correção**: `classifyDashboardColumn` agora classifica role
+`"unsupported"` sempre que `diagnostic.filled === 0`, antes de
+qualquer outra checagem de tipo — isso exclui a coluna de `metrics`,
+`dimensions` e `temporal` em `generateAutoDashboardPlan`, então ela
+nunca mais é escolhida para nenhum widget automático, em nenhum dos
+pontos do arquivo que iteram essas listas (não foi preciso caçar cada
+ocorrência individualmente). `createWidget`/`buildDefaultWidgets`
+ganharam a mesma proteção: `nums` agora prioriza colunas numéricas com
+`fillRatio(col, rows) > 0`, caindo no conjunto completo só se
+nenhuma coluna numérica tiver dado real (mesmo padrão de fallback já
+usado por `pickBestGroupColumn` para colunas quase vazias).
+
+**Isso não corrige retroativamente widgets já salvos** — o painel de
+teste usado nesta sessão já tinha vários widgets configurados com
+"Foto" antes da correção (persistidos no estado salvo do painel); eles
+continuam assim até o usuário reconfigurar manualmente os seletores
+X/Y ou recriar os widgets pelo botão "+ Widget". Confirmado ao vivo
+que um widget de barra criado deliberadamente **depois** da correção
+já usa "Quantidade" (coluna real) como padrão de Y, não mais "Foto".
+
+**"Não consigo desfiltrar"**: investigado — a barra de filtros globais
+já existe (`routes/index.tsx`, renderizada sempre que `sheet.filters.length
+> 0`, logo abaixo da barra de ferramentas, com um "×" por filtro,
+independente de qual widget está visível na tela). O mecanismo já
+funciona; faltava um jeito rápido de limpar tudo de uma vez quando
+mais de um filtro se acumula de widgets diferentes (ex.: um filtro de
+"Cliente" clicado na barra e um de "País" clicado no mapa, ambos
+ativos ao mesmo tempo — remover só um ainda deixa a base
+filtrada, o que lê como "não consigo desfiltrar"). Adicionado botão
+"Limpar N filtros" (`setFilters([])`), visível só quando há mais de um
+filtro ativo. Confirmado ao vivo: com 2 filtros ativos (Cliente +
+País), o botão apareceu e o clique voltou a base para 300 de 300
+linhas num passo só.
+
+O "bug da pizza" relatado é o mesmo widget mostrado na seção 53
+(agrupado por "Foto", 300 categorias de fatias praticamente invisíveis
+— gráfico sem sentido para uma coluna vazia). A correção desta seção
+impede que esse tipo de widget seja gerado automaticamente de novo;
+não foi criada nenhuma correção adicional específica de renderização
+da pizza, porque a causa raiz era inteiramente a escolha da coluna
+errada, não o componente do gráfico em si.
+
+Dois testes novos: `classifyDashboardColumn` (`auto-dashboard.test.ts`)
+cobre coluna 100% vazia (numérica e categórica) virando
+`"unsupported"`, e coluna com pelo menos 1 valor preenchido
+continuando classificação normal; `createWidget`/`buildDefaultWidgets`
+(`widgets.test.ts`) cobre o mesmo padrão "quase vazia"/"100% vazia"
+já usado no teste existente de coluna quase vazia como agrupamento,
+agora para o caso de métrica.
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, era 471 — 5
+testes novos), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados (~423,5 KiB). Verificado
+ao vivo no navegador: widget novo usa coluna preenchida como padrão de
+métrica, e "Limpar filtros" resolve a base para o estado sem filtro em
+um clique com múltiplos filtros ativos.
