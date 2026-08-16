@@ -2564,3 +2564,63 @@ build` e `npm run performance:check` aprovados (~423,5 KiB). Verificado
 ao vivo no navegador: widget novo usa coluna preenchida como padrão de
 métrica, e "Limpar filtros" resolve a base para o estado sem filtro em
 um clique com múltiplos filtros ativos.
+
+## 55. Continuação da extração do Dashboard: primeiro lote de painéis autocontidos
+
+Retomada do plano registrado na seção 51 (item 5, "reavaliar o que
+sobra"). Um agente de exploração mapeou o restante de `Dashboard`
+(`routes/index.tsx`, ~1157 até o fim) em 18 candidatos a extração,
+ordenados por risco crescente — o mapeamento completo não foi
+transcrito aqui porque não é uma decisão de arquitetura duradoura, é
+um plano de trabalho consumido nesta e nas próximas etapas. Resumo dos
+achados de maior risco, que orientam a ordem das próximas etapas:
+exportação (`useDashboardExport`) depende de `contentRef` criado em
+`Dashboard`, o núcleo de undo/redo é hub de ~9 pontos de chamada de
+`recordHistory()`, e as ações de widget (`traceException` etc.) cruzam
+busca/filtro/foco/histórico ao mesmo tempo — nenhum dos três é
+recomendado antes dos candidatos mais simples estarem fora do caminho.
+
+Esta etapa extrai os quatro candidatos de menor risco, todos
+totalmente autocontidos (só recebem props/callbacks, sem 1 remissão a
+estado externo de `Dashboard` além do que já é passado):
+
+- **`shortcuts-dialog.tsx`** (`ShortcutsDialog`): diálogo estático de
+  atalhos de teclado, lista `SHORTCUTS` movida para dentro do arquivo.
+- **`source-notes-panel.tsx`** (`SourceNotesPanel`): painel de
+  observações/comentários da planilha, recebe só `sourceNotes`.
+- **`version-diff-banner.tsx`** (`VersionDiffBanner`): banner de
+  comparação com a versão anterior, recebe só `diff` (o `useMemo` que
+  calcula `detailedVersionDiff` continua em `Dashboard`, pois também
+  alimenta `SourceNotesPanel`/props do modo apresentação).
+- **`term-hint-banner.tsx`** (`useTermHint`): hook que devolve
+  `termHintBanner` já pronto para renderizar; move o estado
+  (`showTermHint`), o efeito que decide mostrar a dica (baseado em
+  `sheet.widgets` conter algum tipo de widget agrupado) e
+  `dismissTermHint` (grava `TERM_HINTS_KEY` no `localStorage`) para
+  fora de `Dashboard`.
+
+`index.tsx` caiu de 3.328 para 3.199 linhas nesta etapa. Dois imports
+ficaram órfãos depois do corte (`Info` de `lucide-react`,
+`TERM_HINTS_KEY` de `@/lib/storage`) e foram removidos — o projeto
+desliga `@typescript-eslint/no-unused-vars`, então isso não vira erro
+de lint, só limpeza de legibilidade feita manualmente conferindo
+contagem de ocorrências de cada identificador.
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, mesma
+contagem — reorganização estrutural pura, nenhum comportamento
+mudou), `npx tsc --noEmit` sem erros, Prettier limpo (depois de
+ajustar uma quebra de linha em `term-hint-banner.tsx` para bater com o
+formatador), `npm run build` e `npm run performance:check` aprovados
+(maior chunk genérico ~428,6 KiB, dentro do limite de 450 KiB — mesma
+fragilidade de "fachada de chunk compartilhado" já registrada nas
+seções 36/42/51, sem surpresa). Mesma limitação de verificação visual
+das etapas anteriores: os quatro componentes não foram exercitados ao
+vivo no navegador nesta etapa (baixo risco por serem puramente
+apresentacionais/prop-driven, sem lógica nova).
+
+Próximas etapas seguem o mapeamento acima, em ordem de risco
+crescente: painéis "quase autocontidos" (regras ausentes, formatação,
+sinais de qualidade, chips de filtro), depois os blocos com mais
+props (painel de colunas com drag-and-drop, sidebars, paleta de
+comandos), deixando exportação, undo/redo e ações de widget por
+último, como já recomendado.

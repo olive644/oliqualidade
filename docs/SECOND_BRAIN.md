@@ -98,7 +98,7 @@ flowchart TD
 | Quanto foi filtrado na tabela detalhada | prop `totalRows` de `WidgetCard`, passado como `rulesApplied.length` em `routes/index.tsx` | `npx tsc --noEmit` confirma o único call site atualizado |
 | Widget "Insights automáticos" (`insights`), narra achados em texto | `widget-card.tsx` (bloco `w.type === "insights"`), compõe `pieComparisonFor`/`rankingCoverageFor`/`detectQualitySignals` já testadas | `npx tsc --noEmit` (checklist completo de registro de `WidgetType` na seção 47 do audit) |
 | Importação/revisão (UI)                     | `components/oliam/{home,empty,import-workbench,review}.tsx`          | `routes/index.tsx` orquestra via props        |
-| Combinar planilha, apresentação, coluna calculada, marcadores (UI do Dashboard) | `components/oliam/{join-sheet-dialog,presentation-mode,formula-column-editor,bookmark-panel}.tsx` | extraídos de `Dashboard`; `tsc` pega referências órfãs se algo ficar pra trás |
+| Combinar planilha, apresentação, coluna calculada, marcadores, atalhos, notas de origem, diff de versão, dica de termos (UI do Dashboard) | `components/oliam/{join-sheet-dialog,presentation-mode,formula-column-editor,bookmark-panel,shortcuts-dialog,source-notes-panel,version-diff-banner,term-hint-banner}.tsx` | extraídos de `Dashboard`; `tsc` pega referências órfãs se algo ficar pra trás |
 | Cálculos e séries                           | `data-pipeline.ts`                                                    | `data-pipeline.test.ts`                      |
 | Cronograma                                  | `schedule-normalizer.ts`, `operational-widgets.ts`                    | testes dos dois módulos                      |
 | Revisão, auditoria e versões                | `data-review.ts`, `import-workbench.ts`, `review-export.ts`           | testes de revisão/exportação                 |
@@ -261,18 +261,23 @@ npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servido
 - A aplicação é deliberadamente local-first e usa IndexedDB no navegador.
 - Leitura pesada, análise de revisão e exportações pesadas são separadas do
   caminho interativo sempre que possível.
-- `src/routes/index.tsx` caiu de 10.282 para 3.715 linhas (64%) numa
-  refatoração puramente estrutural: `Home`, `Empty`, `ImportWorkbench`,
-  `Review`, `WidgetCard`/`EmptyWidget`, as peças de suporte de widget
-  (`FieldDropSlot`, `WidgetHead`, tooltips/eixos de gráfico, `MapWidgetBody`
-  etc.) e `FormatRulesEditor` foram movidos para arquivos próprios em
+- `src/routes/index.tsx` caiu de 10.282 para 3.199 linhas (69%) numa
+  refatoração puramente estrutural, em etapas sucessivas: `Home`, `Empty`,
+  `ImportWorkbench`, `Review`, `WidgetCard`/`EmptyWidget`, as peças de
+  suporte de widget (`FieldDropSlot`, `WidgetHead`, tooltips/eixos de
+  gráfico, `MapWidgetBody` etc.), `FormatRulesEditor`, o diálogo de combinar
+  planilha, o modo apresentação, o editor de coluna calculada, o painel de
+  marcadores, o diálogo de atalhos, o painel de notas de origem, o banner de
+  diff de versão e a dica de termos foram movidos para arquivos próprios em
   `src/components/oliam/`, sem mudar comportamento. O que resta em
-  `index.tsx` é `OliAm` (orquestração de rota/estágio) e `Dashboard` (o
-  maior estado local restante, ~2.500 linhas) — ver seção 36 do
-  `CURRENT_STATE_AUDIT.md` para o mapa completo e a regressão de bundle
-  descoberta e corrigida no processo. Extrair `Dashboard` exigiria primeiro
-  consolidar suas dezenas de `useState` (ex.: um reducer), então é um corte
-  maior e mais arriscado, deixado para uma etapa dedicada futura.
+  `index.tsx` é `OliAm` (orquestração de rota/estágio) e o núcleo de
+  `Dashboard` (busca/filtro, exportação, revisão de fundo, undo/redo, o
+  pipeline de dados e a orquestração da grade de widgets) — ver seções 36,
+  51, 52 e 55 do `CURRENT_STATE_AUDIT.md` para o histórico completo, o
+  mapeamento de candidatos restantes por risco e a regressão de bundle
+  descoberta e corrigida no processo. Sem reducer único planejado: os
+  estados que restam não formam uma máquina de estados coesa, são recursos
+  independentes (extração continua incremental, por candidato).
 - O mapa estrutural gerado em `graphify-out/` é um artefato derivado. Este
   documento explica intenção; o grafo mostra dependências extraídas do código.
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por

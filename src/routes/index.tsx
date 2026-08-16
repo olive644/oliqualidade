@@ -20,7 +20,6 @@ import {
   GripVertical,
   HelpCircle,
   History,
-  Info,
   LayoutDashboard,
   LayoutGrid,
   Maximize2,
@@ -114,7 +113,6 @@ import {
   removeFolderMonitor,
   saveDashboards,
   saveFolderMonitor,
-  TERM_HINTS_KEY,
   isPrivateMode,
   setPrivateMode,
   type SaveResult,
@@ -205,6 +203,10 @@ import { WidgetPickerIcon, widgetTypeDescriptions } from "@/components/oliam/wid
 import { WidgetCard } from "@/components/oliam/widget-card";
 import { FormatRulesEditor } from "@/components/oliam/format-rules-editor";
 import { ImportDiagnosticsDialog } from "@/components/oliam/import-diagnostics-dialog";
+import { ShortcutsDialog } from "@/components/oliam/shortcuts-dialog";
+import { SourceNotesPanel } from "@/components/oliam/source-notes-panel";
+import { VersionDiffBanner } from "@/components/oliam/version-diff-banner";
+import { useTermHint } from "@/components/oliam/term-hint-banner";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
 // código uma tabela com aparência de dado empresarial real e ainda exercita
@@ -1214,19 +1216,8 @@ function Dashboard(p: {
   const [importDiagnostics, setImportDiagnostics] = useState(false);
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
   const [insightOpen, setInsightOpen] = useState(true);
-  const [showTermHint, setShowTermHint] = useState(false);
+  const { termHintBanner } = useTermHint(sheet.widgets);
   const backupInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    const usesGrouping = (sheet.widgets ?? []).some((w) =>
-      ["bar", "pie", "line", "ranking", "map"].includes(w.type),
-    );
-    if (usesGrouping && !localStorage.getItem(TERM_HINTS_KEY)) setShowTermHint(true);
-  }, [sheet.widgets]);
-  const dismissTermHint = () => {
-    localStorage.setItem(TERM_HINTS_KEY, "1");
-    setShowTermHint(false);
-  };
   const contentRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
@@ -1944,33 +1935,7 @@ function Dashboard(p: {
     applyBookmark,
   );
 
-  const sourceNotesPanel = sheet.sourceNotes?.length ? (
-    <details className="mx-4 mb-4 rounded-2xl border border-primary/20 bg-card shadow-sm md:mx-6">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
-        <span className="inline-flex min-w-0 items-center gap-2">
-          <FileText className="size-4 shrink-0 text-primary" />
-          <span className="truncate">Observações da planilha</span>
-        </span>
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-          {sheet.sourceNotes.length}
-        </span>
-      </summary>
-      <ul className="grid max-h-72 gap-2 overflow-auto border-t border-border p-3 sm:grid-cols-2">
-        {sheet.sourceNotes.map((note, noteIndex) => (
-          <li
-            key={`${note.address}-${noteIndex}`}
-            className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
-          >
-            <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
-              {note.address} · {note.kind === "comment" ? "Comentário" : "Observação"}
-              {note.author ? ` · ${note.author}` : ""}
-            </span>
-            <span className="whitespace-pre-line">{note.text}</span>
-          </li>
-        ))}
-      </ul>
-    </details>
-  ) : null;
+  const sourceNotesPanel = <SourceNotesPanel sourceNotes={sheet.sourceNotes} />;
 
   const gridContent =
     widgets.length === 0 ? (
@@ -2472,25 +2437,7 @@ function Dashboard(p: {
             <HelpCircle />
           </Button>
         </div>
-        {showTermHint && (
-          <div className="flex items-start gap-3 border-b border-border bg-tint px-5 py-3">
-            <Info className="mt-0.5 size-4 shrink-0 text-primary" />
-            <p className="flex-1 text-xs text-foreground">
-              <strong>Agrupamento</strong> organiza os dados por uma coluna, como categoria ou data.{" "}
-              <strong>Agregação</strong> combina os valores dentro de cada grupo: soma, média,
-              contagem, mínimo ou máximo.
-            </p>
-            <button
-              className="shrink-0 text-xs font-medium text-primary hover:underline"
-              onClick={dismissTermHint}
-            >
-              Entendi
-            </button>
-            <button className="shrink-0" aria-label="Dispensar dica" onClick={dismissTermHint}>
-              <X className="size-3.5" />
-            </button>
-          </div>
-        )}
+        {termHintBanner}
         {sheet.filters.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-b px-5 py-2">
             {sheet.filters.length > 1 && (
@@ -2893,62 +2840,7 @@ function Dashboard(p: {
                 </p>
               </div>
             </div>
-            {detailedVersionDiff && (
-              <div className="mb-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <GitMerge className="size-4 text-primary" /> Comparação com a versão anterior
-                </div>
-                {detailedVersionDiff.reason && (
-                  <p
-                    className={cn(
-                      "mt-3 rounded-xl border px-3 py-2 text-xs",
-                      detailedVersionDiff.status === "incompatible"
-                        ? "border-red-500/25 bg-red-500/5 text-red-700 dark:text-red-300"
-                        : "border-amber-500/25 bg-amber-500/5 text-amber-700 dark:text-amber-300",
-                    )}
-                  >
-                    {detailedVersionDiff.reason}
-                  </p>
-                )}
-                {detailedVersionDiff.status !== "incompatible" && (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    <span className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
-                      +{detailedVersionDiff.added} linhas adicionadas
-                    </span>
-                    <span className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
-                      −{detailedVersionDiff.removed} linhas removidas
-                    </span>
-                    <span className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                      {detailedVersionDiff.changed} linhas alteradas
-                    </span>
-                  </div>
-                )}
-                {(detailedVersionDiff.addedColumns.length > 0 ||
-                  detailedVersionDiff.removedColumns.length > 0 ||
-                  detailedVersionDiff.typeChanges.length > 0) && (
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
-                    {detailedVersionDiff.addedColumns.map((column) => (
-                      <span key={`add-${column}`} className="rounded-full border px-2.5 py-1">
-                        Nova coluna: {column}
-                      </span>
-                    ))}
-                    {detailedVersionDiff.removedColumns.map((column) => (
-                      <span key={`remove-${column}`} className="rounded-full border px-2.5 py-1">
-                        Coluna não reconhecida na nova versão: {column}
-                      </span>
-                    ))}
-                    {detailedVersionDiff.typeChanges.map((change) => (
-                      <span
-                        key={`type-${change.column}`}
-                        className="rounded-full border px-2.5 py-1"
-                      >
-                        {change.column}: {change.before} → {change.after}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <VersionDiffBanner diff={detailedVersionDiff} />
             {sourceNotesPanel}
             {gridContent}
             <footer className="oliam-export-footer" aria-hidden="true">
@@ -3299,37 +3191,7 @@ function Dashboard(p: {
         </CommandList>
       </CommandDialog>
       {joinDialog}
-      <Dialog open={shortcuts} onOpenChange={setShortcuts}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Atalhos de teclado</DialogTitle>
-            <DialogDescription>Ações rápidas disponíveis dentro de um painel.</DialogDescription>
-          </DialogHeader>
-          <ul className="divide-y">
-            {[
-              { keys: "⌘K / Ctrl+K", label: "Abrir a paleta de comandos" },
-              { keys: "? ou ⌘/ / Ctrl+/", label: "Abrir esta referência de atalhos" },
-              { keys: "Clique numa barra ou fatia", label: "Filtrar a base pelo grupo clicado" },
-              { keys: "Arrastar ou ↑ / ↓", label: "Reordenar colunas no painel de colunas" },
-              {
-                keys: "Arrastar o cabeçalho ou ← / →",
-                label: "Reordenar widgets no painel",
-              },
-              { keys: "⌘Z / Ctrl+Z", label: "Desfazer a última alteração no painel" },
-              { keys: "⇧⌘Z / Ctrl+Shift+Z", label: "Refazer a alteração desfeita" },
-              { keys: "Esc", label: "Sair do modo apresentação" },
-              { keys: "Enter", label: "Confirmar edição de nome do painel ou de coluna" },
-            ].map((s) => (
-              <li key={s.keys} className="flex items-center justify-between gap-4 py-2 text-sm">
-                <span className="text-muted-foreground">{s.label}</span>
-                <kbd className="rounded-md border border-border bg-muted px-2 py-1 font-mono text-[11px]">
-                  {s.keys}
-                </kbd>
-              </li>
-            ))}
-          </ul>
-        </DialogContent>
-      </Dialog>
+      <ShortcutsDialog open={shortcuts} onOpenChange={setShortcuts} />
       <ImportDiagnosticsDialog open={importDiagnostics} onOpenChange={setImportDiagnostics} />
       <GeminiChatPanel dashboard={d} sheet={sheet} liveRows={data} liveView={assistantContext} />
     </div>
