@@ -3733,3 +3733,24 @@ desenvolvimento). O job de CI em si só pode ser verificado de fato
 rodando no GitHub Actions — a mesma sequência de comandos foi executada
 manualmente aqui antes de propor a PR, mas o runner `ubuntu-latest` real
 é a prova final.
+
+**Segunda descoberta real, encontrada só ao rodar de verdade no GitHub
+Actions**: a primeira tentativa desta PR falhou nos três jobs do CI
+(inclusive os dois que nem tocam em Playwright) logo na etapa `npm ci`,
+com `Missing: lru-cache@11.5.2 from lock file`. Causa: `npm 11` (versão
+instalada neste ambiente local) e `npm 10` (bundlado no Node 22 que a CI
+usa) resolvem de forma diferente uma dependência **opcional** de
+`nitro`/`unstorage` (`lru-cache` como peer dependency opcional) — o
+npm 11 omite silenciosamente a entrada resolvida do lockfile ao rodar
+`npm install`, o que é válido para o próprio npm 11 (`npm ci` local
+funciona normalmente), mas quebra `npm ci` na CI porque o npm 10 exige
+essa entrada presente. `git checkout origin/main -- package-lock.json`
+seguido de `npx npm@10 install --package-lock-only` (em vez do `npm
+install` padrão deste ambiente) reproduziu exatamente a mesma resolução
+que a CI espera — diff mínimo e puramente aditivo (12 linhas), sem
+remover nada. **Lição para sessões futuras**: qualquer alteração de
+dependências neste projeto deve rodar `npx npm@10 install` (ou a versão
+de npm que o `node-version` do workflow realmente bundla) em vez do
+`npm install` padrão do ambiente local, e sempre confirmar com um `rm
+-rf node_modules && npm ci` limpo antes de considerar a mudança
+pronta — sem isso, o problema só aparece na CI real, nunca localmente.
