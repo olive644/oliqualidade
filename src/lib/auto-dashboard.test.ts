@@ -92,6 +92,29 @@ describe("classifyDashboardColumn", () => {
     expect(result.role).toBe("identifier");
     expect(result.confidence).toBeGreaterThan(90);
   });
+
+  it("nunca vira métrica nem dimensão quando a coluna não tem nenhum valor preenchido", () => {
+    const numeric = classifyDashboardColumn(
+      column("foto", "number"),
+      diagnostic("foto", "number", { filled: 0, missing: 12 }),
+    );
+    expect(numeric.role).toBe("unsupported");
+    expect(numeric.reasons.join(" ")).toContain("não tem nenhum valor preenchido");
+
+    const categorical = classifyDashboardColumn(
+      column("observacao", "text"),
+      diagnostic("observacao", "text", { filled: 0, missing: 12 }),
+    );
+    expect(categorical.role).toBe("unsupported");
+  });
+
+  it("classifica normalmente quando a coluna tem ao menos um valor preenchido", () => {
+    const result = classifyDashboardColumn(
+      column("foto", "number"),
+      diagnostic("foto", "number", { filled: 1, missing: 11 }),
+    );
+    expect(result.role).toBe("metric");
+  });
 });
 
 describe("generateAutoDashboardPlan", () => {

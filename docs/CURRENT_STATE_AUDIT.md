@@ -2484,3 +2484,83 @@ widgets automáticos escolheram para ela. Vale investigar com o usuário
 o que essa coluna realmente representa antes de decidir a correção
 (esconder de seletores de agrupamento? mudar o papel/kind padrão?
 mudar o cálculo padrão para colunas com papel "Resultado"?).
+
+## 54. Coluna sem nenhum valor preenchido nunca vira métrica/dimensão automática, e "Limpar filtros"
+
+Continuação direta da seção 53: o usuário confirmou que "Foto" é uma
+coluna genuinamente vazia (checado ao vivo: os 12 primeiros valores da
+tabela detalhada eram todos "—") e pediu explicitamente para não
+deixar colunas vazias virarem dado em widget nenhum, além de "arrumar
+o bug da pizza" e a navegação de filtro ("filtro um nome lá em cima no
+gráfico de barras e não consigo desfiltrar embaixo, por exemplo, no
+gráfico de pizza").
+
+**Causa raiz confirmada**: `classifyDashboardColumn`
+(`auto-dashboard.ts`) classificava o papel de uma coluna só pelo tipo
+detectado (`kind`), nunca considerando se ela tinha algum valor de
+verdade. Uma coluna 100% vazia com `kind: "número"` virava role
+`"metric"` exatamente como uma coluna numérica de verdade, disponível
+para `generateAutoDashboardPlan` usar como `valueKey`/`groupKey` de
+qualquer widget automático — inclusive gráficos de pizza e barra, e a
+tabela dinâmica "Total geral: 0" da seção 53. O mesmo problema existia
+em paralelo em `createWidget`/`buildDefaultWidgets` (`widgets.ts`): o
+padrão de métrica de um widget novo (manual ou de painel legado) era
+`nums[0]?.key`, a primeira coluna numérica da planilha, sem considerar
+preenchimento.
+
+**Correção**: `classifyDashboardColumn` agora classifica role
+`"unsupported"` sempre que `diagnostic.filled === 0`, antes de
+qualquer outra checagem de tipo — isso exclui a coluna de `metrics`,
+`dimensions` e `temporal` em `generateAutoDashboardPlan`, então ela
+nunca mais é escolhida para nenhum widget automático, em nenhum dos
+pontos do arquivo que iteram essas listas (não foi preciso caçar cada
+ocorrência individualmente). `createWidget`/`buildDefaultWidgets`
+ganharam a mesma proteção: `nums` agora prioriza colunas numéricas com
+`fillRatio(col, rows) > 0`, caindo no conjunto completo só se
+nenhuma coluna numérica tiver dado real (mesmo padrão de fallback já
+usado por `pickBestGroupColumn` para colunas quase vazias).
+
+**Isso não corrige retroativamente widgets já salvos** — o painel de
+teste usado nesta sessão já tinha vários widgets configurados com
+"Foto" antes da correção (persistidos no estado salvo do painel); eles
+continuam assim até o usuário reconfigurar manualmente os seletores
+X/Y ou recriar os widgets pelo botão "+ Widget". Confirmado ao vivo
+que um widget de barra criado deliberadamente **depois** da correção
+já usa "Quantidade" (coluna real) como padrão de Y, não mais "Foto".
+
+**"Não consigo desfiltrar"**: investigado — a barra de filtros globais
+já existe (`routes/index.tsx`, renderizada sempre que `sheet.filters.length
+> 0`, logo abaixo da barra de ferramentas, com um "×" por filtro,
+independente de qual widget está visível na tela). O mecanismo já
+funciona; faltava um jeito rápido de limpar tudo de uma vez quando
+mais de um filtro se acumula de widgets diferentes (ex.: um filtro de
+"Cliente" clicado na barra e um de "País" clicado no mapa, ambos
+ativos ao mesmo tempo — remover só um ainda deixa a base
+filtrada, o que lê como "não consigo desfiltrar"). Adicionado botão
+"Limpar N filtros" (`setFilters([])`), visível só quando há mais de um
+filtro ativo. Confirmado ao vivo: com 2 filtros ativos (Cliente +
+País), o botão apareceu e o clique voltou a base para 300 de 300
+linhas num passo só.
+
+O "bug da pizza" relatado é o mesmo widget mostrado na seção 53
+(agrupado por "Foto", 300 categorias de fatias praticamente invisíveis
+— gráfico sem sentido para uma coluna vazia). A correção desta seção
+impede que esse tipo de widget seja gerado automaticamente de novo;
+não foi criada nenhuma correção adicional específica de renderização
+da pizza, porque a causa raiz era inteiramente a escolha da coluna
+errada, não o componente do gráfico em si.
+
+Dois testes novos: `classifyDashboardColumn` (`auto-dashboard.test.ts`)
+cobre coluna 100% vazia (numérica e categórica) virando
+`"unsupported"`, e coluna com pelo menos 1 valor preenchido
+continuando classificação normal; `createWidget`/`buildDefaultWidgets`
+(`widgets.test.ts`) cobre o mesmo padrão "quase vazia"/"100% vazia"
+já usado no teste existente de coluna quase vazia como agrupamento,
+agora para o caso de métrica.
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, era 471 — 5
+testes novos), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados (~423,5 KiB). Verificado
+ao vivo no navegador: widget novo usa coluna preenchida como padrão de
+métrica, e "Limpar filtros" resolve a base para o estado sem filtro em
+um clique com múltiplos filtros ativos.

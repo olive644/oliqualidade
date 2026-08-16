@@ -2492,7 +2492,16 @@ function Dashboard(p: {
           </div>
         )}
         {sheet.filters.length > 0 && (
-          <div className="flex flex-wrap gap-2 border-b px-5 py-2">
+          <div className="flex flex-wrap items-center gap-2 border-b px-5 py-2">
+            {sheet.filters.length > 1 && (
+              <button
+                type="button"
+                className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-destructive hover:underline"
+                onClick={() => setFilters([])}
+              >
+                Limpar {sheet.filters.length} filtros
+              </button>
+            )}
             {sheet.filters.map((f, i) => {
               const col = sheet.columns.find((c) => c.key === f.key);
               const isRange = col && (numericKinds.includes(col.kind) || col.kind === "date");
