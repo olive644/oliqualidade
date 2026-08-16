@@ -57,6 +57,7 @@ const diagnostics = (columns: ColumnDiagnostic[]): ImportDiagnostics => ({
   structuredTableNames: [],
   structuredTables: [],
   pivotTables: [],
+  hyperlinks: [],
   calculatedColumns: [],
   autofilterRange: null,
   formulaExamples: [],

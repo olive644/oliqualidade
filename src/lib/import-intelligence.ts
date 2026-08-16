@@ -8,6 +8,7 @@ import { buildTemporalCellModel, type TemporalCellModel } from "@/lib/temporal-m
 import type {
   PivotTableDiagnostic,
   StructuredTableDiagnostic,
+  WorkbookCellHyperlink,
   WorksheetWithAdvancedMetadata,
 } from "@/lib/workbook-metadata";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
@@ -98,6 +99,8 @@ export type ImportDiagnostics = {
   structuredTableNames: string[];
   structuredTables: StructuredTableDiagnostic[];
   pivotTables: PivotTableDiagnostic[];
+  /** Hyperlinks do Excel (endereço, destino e tooltip opcional) preservados por aba. */
+  hyperlinks: WorkbookCellHyperlink[];
   calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
@@ -454,6 +457,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     structuredTableNames,
     structuredTables,
     pivotTables,
+    hyperlinks: advanced?.hyperlinks ?? [],
     calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
@@ -706,6 +710,8 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     );
   if (meta.autofilterRange)
     warnings.push(`filtro do Excel aplicado ao intervalo ${meta.autofilterRange}`);
+  if (meta.hyperlinks.length)
+    warnings.push(`${meta.hyperlinks.length} hyperlink(s) do Excel preservado(s)`);
   if (meta.formulaExamples.length)
     transformations.push(
       `exemplos de fórmulas preservados: ${meta.formulaExamples.slice(0, 3).join(" | ")}`,

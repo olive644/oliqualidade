@@ -3360,3 +3360,39 @@ linhas — e de 10.282 desde o início do plano geral na seção 36. Próximo
 corte estrutural, se houver, precisa investigar o núcleo restante de
 `Dashboard` (pipeline de dados + grade de widgets) do zero, não
 mapeado nesta série.
+
+## 68. Inventário de hyperlinks exposto na revisão (item de menor esforço da reauditoria da seção 50)
+
+A seção 50 já tinha identificado que `parseHyperlinks`/`inspectWorkbookFeatures`
+(`workbook-metadata.ts`) extraem hyperlinks por endereço/aba desde a fase 3 do
+núcleo Rust (`target`, `tooltip` opcional), e que `attachWorkbookFeatures` já
+anexava esse array em `worksheet["!oliAdvanced"].hyperlinks` — mas o único
+consumidor era célula a célula, para popular `cell.l` (compatibilidade
+SheetJS). Nenhum código lia o array agregado; o dado existia e nunca virava
+inventário consultável, ao contrário de `structuredTables`/`pivotTables`
+(já expostos na revisão desde a extração inicial).
+
+Seguido o mesmo padrão já usado por essas duas: `ImportDiagnostics`
+(`import-intelligence.ts`) ganhou o campo `hyperlinks: WorkbookCellHyperlink[]`,
+populado em `sheetMeta()` a partir de `advanced?.hyperlinks ?? []` (o mesmo
+objeto que `!oliAdvanced` já carregava, sem parsing novo) e propagado ao
+retorno via o spread `...meta` que já existia. Um aviso
+`"N hyperlink(s) do Excel preservado(s)"` foi adicionado a `warnings`,
+espelhando o aviso já existente de Pivot Tables.
+
+Na revisão (`review.tsx`), um painel `<details>` "Hyperlinks preservados"
+lista endereço → destino → tooltip por aba, limitado às primeiras 20 entradas
+(mesmo limite já usado no painel de observações/comentários,
+`sourceNotes`), só aparecendo quando a aba ativa tem pelo menos um hyperlink.
+
+Teste de regressão em `import-intelligence.test.ts` monta um `!oliAdvanced`
+sintético com um hyperlink e confirma que `diagnoseImportedSheet` propaga o
+array e o aviso — não depende de nenhuma fixture real, já que o parsing em si
+(`parseHyperlinks`) já tinha cobertura própria em `workbook-metadata.test.ts`.
+
+Verificado com `npx vitest run` (481 passou, 11 pulados — um teste novo),
+`npx tsc --noEmit` sem erros (um mock de `ImportDiagnostics` em
+`auto-dashboard.test.ts` precisou do campo `hyperlinks: []` novo), Prettier
+limpo (checado via normalização CRLF→LF, ver seção de armadilhas), `npm run
+build` e `npm run performance:check` aprovados (maior chunk genérico subiu de
+365,2 para 366,5 KiB — dentro da margem de ~450 KiB).

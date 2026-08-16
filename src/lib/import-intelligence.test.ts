@@ -8,6 +8,7 @@ import {
   normalizeRows,
   sanitizeRowsForAi,
 } from "@/lib/import-intelligence";
+import type { WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
 
 const sheet = (aoa: (string | number | null)[][]) => XLSX.utils.aoa_to_sheet(aoa);
 
@@ -34,6 +35,25 @@ describe("import intelligence", () => {
         kind: "observation",
       },
     ]);
+  });
+
+  it("expõe o inventário de hyperlinks do Excel anexado pelo leitor OOXML", () => {
+    const ws = sheet([
+      ["Item", "Valor"],
+      ["Poço", 5],
+    ]);
+    (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [{ address: "A2", target: "https://exemplo.com/poco", tooltip: "Ver relatório" }],
+    };
+    const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
+    expect(diagnostics.hyperlinks).toEqual([
+      { address: "A2", target: "https://exemplo.com/poco", tooltip: "Ver relatório" },
+    ]);
+    expect(diagnostics.warnings).toContain("1 hyperlink(s) do Excel preservado(s)");
   });
 
   it("aumenta a confiança quando uma estrutura defeituosa é recuperada com evidências", () => {
