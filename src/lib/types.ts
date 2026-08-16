@@ -61,6 +61,7 @@ export type WidgetType =
   | "ranking"
   | "rating"
   | "map"
+  | "insights"
   | "schedule-heatmap"
   | "attendance-overview"
   | "validation-overview"
@@ -108,6 +109,7 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   ranking: "Ranking (Top N)",
   rating: "Indicador de avaliação",
   map: "Mapa por localização",
+  insights: "Insights automáticos",
   "schedule-heatmap": "Cronograma visual",
   "attendance-overview": "Presença e assinaturas",
   "validation-overview": "Validação de inspetores",

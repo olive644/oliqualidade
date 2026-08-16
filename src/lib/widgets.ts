@@ -154,7 +154,7 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "rating"
   )
     return 1;
-  if (type === "bar" || type === "ranking" || type === "map") return 2;
+  if (type === "bar" || type === "ranking" || type === "map" || type === "insights") return 2;
   return 3; // line, area, table
 }
 
@@ -347,7 +347,8 @@ export function createWidget(
     type === "line" ||
     type === "area" ||
     type === "ranking" ||
-    type === "map"
+    type === "map" ||
+    type === "insights"
   ) {
     const groupKey =
       seed?.groupKey ??

@@ -1822,3 +1822,266 @@ fórmulas e passou sem alteração, confirmando resultado idêntico.
 Verificado com `npx vitest run` (466 passou, 11 pulados, mesma
 contagem), `npx tsc --noEmit` sem erros, `npm run build` e `npm run
 performance:check` aprovados.
+
+## 43. Início de uma iniciativa maior: leitura guiada em mais widgets (`SeriesComparisonPanel`)
+
+Pedido do usuário: adicionar mais conteúdo explicativo a todos os
+widgets, no mesmo espírito do que já existia no gráfico de pizza (ver
+seção 41 e o painel de comparação de fatia), com liberdade para propor
+novos widgets. Escopo grande o suficiente para ser tratado como uma
+iniciativa em várias etapas pequenas e verificáveis, seguindo a mesma
+convenção já usada para a otimização de leitura OOXML (seções 42-43) —
+esta seção documenta a primeira etapa; etapas seguintes (linha/área,
+tabela, ranking, widgets novos) devem registrar suas próprias entradas
+sequenciais aqui em vez de expandir esta.
+
+**Achado ao investigar**: `pieComparisonFor` (`data-pipeline.ts:522`)
+já era genérica — opera sobre `{name, total}[]`, sem nada específico de
+pizza (rank, participação %, referência = maior outra categoria,
+diferença absoluta/relativa). Só o pizza a usava porque só ele tinha o
+painel de leitura construído em cima dela.
+
+**Primeira etapa entregue**: o painel de comparação da fatia
+selecionada foi extraído do JSX inline do pizza (`widget-card.tsx`)
+para um componente compartilhado, `SeriesComparisonPanel`
+(`widget-support.tsx`), parametrizado por `selected`/`comparison`/
+`kind`/`onFilter`/`filterLabel` em vez de nomes específicos de pizza.
+O gráfico de **barras** passou a usar o mesmo componente:
+
+- Estado novo `activeBarIndex` (hover apenas — diferente do pizza, que
+  também tem `selectedPieIndex` via clique). Decisão deliberada: no
+  bar, o clique já filtra diretamente (`handleGroupClick`), um
+  comportamento existente e documentado; reaproveitar clique também
+  para "selecionar para comparação" mudaria essa semântica. O painel
+  de barra segue o hover e, com nada sob o mouse, mostra por padrão a
+  maior categoria — mesma regra "sempre mostrar algo útil" já usada no
+  pizza (`summaryPieIndex`).
+- `<Bar>` ganhou `onMouseEnter`/`onMouseLeave` (o pizza já tinha o
+  equivalente no `<Pie>`) e as `<Cell>` ganharam o mesmo escurecimento
+  (`opacity: 0.45`) das categorias não destacadas que o pizza já tinha.
+- Botão "Filtrar por esta categoria" no painel chama a mesma
+  `handleGroupClick` que o clique direto na barra já chamava — não é
+  uma ação nova, só uma segunda forma de acionar a mesma ação.
+
+**Reuso de proteção de exportação**: a classe CSS que resolve o bug de
+colapso de texto letra-por-letra em modo de exportação (seção 41,
+`.oliam-export-mode .oliam-pie-comparison-row` → renomeada para
+`.oliam-export-mode .oliam-series-comparison-row`) passou a cobrir
+automaticamente qualquer novo uso do componente compartilhado, sem
+precisar repetir a regra CSS. Isso resolve preventivamente a advertência
+já registrada em `docs/SECOND_BRAIN.md` ("toda coluna de grid que usa
+`.truncate`/`.line-clamp` precisa de `minmax(<valor razoável>, ...)`,
+nunca `minmax(0, ...)`") para os próximos widgets que adotarem o mesmo
+painel.
+
+**Verificação**: `npx vitest run` (466 passou, 11 pulados, mesma
+contagem — como já registrado nas seções 26/28/41, componentes React
+sob `routes/index.tsx`/`components/oliam/` não têm convenção de teste
+automatizado no projeto, `@testing-library/react` não é usado, mudança
+de UI segue verificação manual), `npx tsc --noEmit` sem erros, `npm run
+build` e `npm run performance:check` aprovados. **Não foi possível
+verificar visualmente no navegador desta sessão**: além da limitação já
+conhecida de não simular o diálogo de upload de arquivo, o dev server
+apresentou a instabilidade intermitente já documentada
+(`NitroViteError: Vite environment "nitro" is unavailable`) mesmo após
+reiniciar o preview duas vezes e confirmar que não havia processo
+`node.exe` órfão na porta 3000 — mesma falha registrada como conhecida,
+sem causa identificada. Risco considerado baixo: a lógica nova
+(`activeBarIndex`, cálculo de `selectedBar`/`selectedBarComparison`)
+espelha exatamente o padrão já usado e testado indiretamente pelo pizza
+há várias sessões, e o componente extraído é uma reorganização de JSX
+já existente sem mudança de comportamento para o pizza. Fica registrado
+como verificação pendente — se o usuário testar e encontrar algo
+errado, comece relendo esta seção antes de investigar do zero.
+
+## 44. Segunda etapa da mesma iniciativa: resumo de tendência em linha/área
+
+Continuação da seção 43. Linha e área são séries **temporais**, não
+comparações de categorias — `pieComparisonFor`/`SeriesComparisonPanel`
+não fariam sentido aqui (não existe "a maior outra categoria" numa
+sequência de tempo, existe "de onde veio, para onde foi"). Nova função
+pura `trendSummaryFor` (`data-pipeline.ts`), testada em
+`data-pipeline.test.ts` (série normal, base zero no primeiro ponto,
+menos de dois pontos), resume: primeiro ponto, último ponto, variação
+absoluta/relativa entre eles, ponto de mínimo, ponto de máximo e média
+do período. Novo componente `TrendSummaryPanel`
+(`widget-support.tsx`), renderizado logo abaixo do gráfico em linha e
+em área.
+
+**Cuidado deliberado com correção, não só duplicação de padrão**: área
+pode ser agrupada por qualquer coluna categórica, não só por data
+(`groupOptions` em `widget-card.tsx` só restringe isso para `line`,
+não para `area`). "Início → Fim" só tem sentido quando o eixo é
+cronológico de verdade — do contrário seria fabricar uma narrativa
+temporal sobre uma comparação categórica sem ordem natural, o tipo de
+erro que o projeto explicitamente não permite (ver `docs/SECOND_BRAIN.md`,
+regras de produto). Por isso o painel só aparece quando
+`w.type === "line"` (sempre cronológico, `groupOptions` já restringe a
+colunas de data) ou `w.type === "area" && groupCol?.kind === "date"` —
+exatamente a mesma condição já usada para decidir se a série passa por
+`sortChronologically` antes de chegar ao gráfico.
+
+Reaproveitada a mesma proteção de exportação da seção 43: nova classe
+`oliam-trend-summary-row` adicionada preventivamente à mesma regra CSS
+que empilha a grade em modo de exportação, em vez de esperar um bug
+real de colapso de texto para corrigir depois.
+
+Verificado com `npx vitest run` (469 passou, 11 pulados, era 466 — 3
+testes novos de `trendSummaryFor`), `npx tsc --noEmit` sem erros,
+`npm run build` e `npm run performance:check` aprovados (maior chunk
+genérico subiu de ~407,6 para ~409,7 KiB, ainda dentro do limite de
+420 KiB, mas a margem segue apertada — próximas etapas desta iniciativa
+devem continuar monitorando isso a cada PR). Mesma limitação de
+verificação visual da seção 43 (dev server instável nesta sessão) —
+fica pendente confirmação visual do usuário.
+
+## 45. Terceira etapa: cobertura do Top N no ranking
+
+Continuação das seções 43-44. Um "Top N" mostra as maiores categorias
+mas nunca dizia se elas eram quase tudo ou uma fração pequena das
+dezenas que podem existir na base. Nova função pura
+`rankingCoverageFor` (`data-pipeline.ts`, testada) recebe os itens
+mostrados e a lista completa e devolve participação do Top N no total,
+contagem de categorias e quantas ficaram fora do ranking.
+
+Faixa de aviso no topo do widget (mesmo estilo já usado pela "Prévia
+otimizada" do gráfico de barras, `bg-secondary-accent/8`): "Top 5
+concentra 68,4% do total · 12 categorias no total, 7 fora deste
+ranking." Só aparece quando existem categorias fora do Top N mostrado
+(`coverage.remainingCount > 0`) — se o Top N já cobre tudo, a faixa
+seria ruído.
+
+`topShare` fica `null` (em vez de um número enganoso) quando o total
+geral não é positivo — participação percentual não tem leitura
+confiável com soma zero ou negativa (ex.: métrica com valores positivos
+e negativos que se cancelam).
+
+**Erro real pego só pela CI, não localmente**: dois erros reais de
+Prettier (um `title` de JSX que devia quebrar em várias linhas na
+`SeriesComparisonPanel` da etapa 43, um array de teste formatado errado
+em `data-pipeline.test.ts` desta etapa) passaram batido por
+`npx eslint <arquivo>` localmente — o volume de ruído CRLF pré-existente
+(milhares de ocorrências de `Delete \`␍\`` neste checkout Windows) afoga
+qualquer erro real de conteúdo no mesmo output, e só apareceram quando a
+CI do GitHub (Linux, sem CRLF) rodou de fato. Corrigido depois de
+confirmar com uma verificação que normaliza CRLF→LF numa cópia
+temporária antes de rodar `prettier --check` (registrado como memória
+de sessão para não repetir o erro). Nenhuma lógica foi afetada — os
+dois eram só formatação.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, era 469 — 2
+testes novos de `rankingCoverageFor`), `npx tsc --noEmit` sem erros,
+verificação de Prettier com CRLF normalizado limpa em todos os arquivos
+alterados da iniciativa (não só os desta etapa), `npm run build` e
+`npm run performance:check` aprovados (maior chunk genérico em
+~410,4 KiB). Mesma limitação de verificação visual pendente das etapas
+anteriores.
+
+## 46. Quarta etapa: quanto foi filtrado na tabela detalhada
+
+Continuação das seções 43-45. A tabela detalhada (`w.type === "table"`,
+fallback final de `WidgetCard`) sempre mostrou `data` (linhas já
+filtradas por busca/filtros de widget) sem dizer se isso era tudo que
+existia na planilha ou uma fração. Diferente das etapas anteriores,
+esta exigiu um prop novo (`totalRows`) em vez de só reorganizar dado
+já calculado dentro do componente — `WidgetCard` só recebia `data`
+(pós-filtro), nunca o total anterior aos filtros.
+
+`totalRows` é passado do único ponto de instanciação de `WidgetCard`
+(`routes/index.tsx`) como `rulesApplied.length` — as linhas depois de
+regras de dado ausente (`applyMissingRules`, que pode ocultar linha
+deliberadamente) mas antes de busca e filtros de widget. Essa é a base
+correta de comparação: "quanto a busca/filtro escondeu", não "quanto a
+regra de dado ausente escondeu" (essa já é uma decisão do usuário
+sobre a coluna, não um filtro temporário).
+
+Faixa "Mostrando X de Y linhas · Z ocultas por busca ou filtros
+ativos", mesmo estilo `bg-secondary-accent/8` das etapas anteriores, só
+aparece quando `totalRows !== data.length` (senão seria ruído dizendo
+o óbvio).
+
+**Erro real de Prettier pego antes do push desta vez** (não na CI): o
+texto do parágrafo quebrou numa linha diferente da esperada pelo
+Prettier. Confirmado e corrigido com a mesma verificação de CRLF→LF
+registrada na memória de sessão da etapa 45, antes de commitar — dessa
+vez sem precisar da CI para descobrir.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem — mudança de prop/JSX, sem lógica nova testável isoladamente),
+`npx tsc --noEmit` sem erros (confirma que o único ponto de
+instanciação de `WidgetCard` foi atualizado corretamente), Prettier
+limpo, `npm run build` e `npm run performance:check` aprovados (maior
+chunk genérico em ~410,8 KiB). Mesma limitação de verificação visual
+pendente.
+
+## 47. Widget novo: Insights automáticos (`insights`)
+
+Fecha a iniciativa das seções 43-46 com um widget proposto pelo
+usuário: em vez de melhorar um gráfico existente, narra em texto os
+achados de uma métrica por categoria, sem nenhum desenho — a diferença
+proposital em relação a todos os outros widgets de gráfico/tabela.
+Escolhida entre duas opções apresentadas ao usuário (a alternativa era
+um comparador de períodos, que exigiria modelo de dados novo; esta
+reaproveita inteiramente funções já testadas).
+
+**Composição, sem lógica nova a testar isoladamente** — os três
+achados vêm de funções puras já existentes e cobertas por teste,
+aplicadas sobre a mesma série (`chartSeries`) que bar/pizza/ranking já
+usam:
+
+1. **Quem lidera**: `pieComparisonFor(sorted, 0)` sobre a série
+   ordenada — reaproveita a mesma função da seção 43, agora numa
+   terceira posição de uso. "X lidera com Y (Z% do total) — W% à
+   frente de [segunda colocada]."
+2. **Concentração do topo**: `rankingCoverageFor(sorted.slice(0,3),
+   sorted)` — reaproveita a função da seção 45. "As 3 maiores
+   categorias concentram N% do total; restam M categorias menores."
+   Omitido quando não há categorias fora do top 3 (mesmo critério já
+   usado no ranking).
+3. **Qualidade de dados**: `detectQualitySignals(data, [groupCol,
+   valueCol])`, restrita às duas colunas em uso pelo widget — a base
+   inteira já tem seu próprio painel global (`routes/index.tsx`, banner
+   dispensável já existente); repetir tudo aqui seria ruído, não
+   achado novo. Só o subconjunto relevante para o que este widget
+   especificamente mostra.
+
+**Decisão deliberada: não entra na recomendação automática.** Registro
+extra da regra já documentada em `docs/SECOND_BRAIN.md` ("painel de
+exceções e validação são widgets manuais; não entram automaticamente
+no painel"), agora explicitamente estendida a este widget. Mexer em
+`auto-dashboard.ts` para recomendar automaticamente é uma decisão de
+produto com alcance amplo (afeta todo painel novo criado a partir de
+agora) — fora do escopo combinado com o usuário para esta etapa.
+`createWidget` (`widgets.ts`) ganhou suporte a criar o widget
+manualmente pelo seletor "Adicionar widget" (mesmos padrões de
+`groupKey`/`valueKey`/`op` de bar/ranking/mapa), mas nada em
+`auto-dashboard.ts` foi tocado.
+
+**Checklist de registro de `WidgetType` novo, para a próxima vez**:
+esta etapa expôs todos os pontos que precisam mudar juntos ao
+adicionar um tipo de widget — `types.ts` (união + label),
+`widget-support.tsx` (`widgetTypeDescriptions` + `WidgetPickerIcon`),
+`widgets.ts` (`defaultSpan` + branch de `createWidget`),
+`widget-card.tsx` (bloco de renderização) e, o que não é óbvio,
+`routes/index.tsx` (`canAdd: Record<WidgetType, boolean>`, que decide
+se o tipo aparece habilitado no seletor "Adicionar widget" dado o
+formato da planilha atual) — `npx tsc --noEmit` pegou o esquecimento
+deste último ponto automaticamente, por ser um `Record` exaustivo
+sobre `WidgetType`.
+
+**Atenção ao orçamento de bundle**: depois desta etapa o maior chunk
+genérico subiu para ~414,7 KiB, contra o limite de 420 KiB — a margem
+que já vinha apertada desde a seção 42 ficou genuinamente crítica
+(~5,3 KiB de folga). A próxima mudança de peso relevante em
+`import-diagnostics-dialog`/`widget-card.tsx` provavelmente vai exigir
+isolar mais uma categoria de vendor em `manualChunks`
+(`vite.config.ts`) antes de conseguir crescer mais, não só rodar
+`npm run performance:check` reativamente.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem — composição de funções já testadas, sem lógica pura nova),
+`npx tsc --noEmit` sem erros, Prettier limpo (verificação CRLF→LF),
+`npm run build` e `npm run performance:check` aprovados. Mesma
+limitação de verificação visual pendente das etapas anteriores — a
+faixa de "Adicionar widget" e o próprio conteúdo do widget não foram
+vistos renderizados de verdade nesta sessão.

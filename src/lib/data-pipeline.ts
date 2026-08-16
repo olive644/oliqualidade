@@ -552,6 +552,36 @@ export function pieComparisonFor(
   };
 }
 
+export type TrendSummary = {
+  first: { name: string; total: number };
+  last: { name: string; total: number };
+  change: number;
+  relativeChange: number | null;
+  min: { name: string; total: number };
+  max: { name: string; total: number };
+  average: number;
+  pointCount: number;
+};
+
+/**
+ * Resume uma série temporal (já em ordem cronológica) sem fingir que ela é
+ * uma comparação de categorias: variação do primeiro ao último ponto, e os
+ * pontos de mínimo/máximo já visíveis no gráfico. Diferente de
+ * `pieComparisonFor`, a ordem da série importa aqui — o chamador é
+ * responsável por passar pontos cronologicamente ordenados.
+ */
+export function trendSummaryFor(series: { name: string; total: number }[]): TrendSummary | null {
+  if (series.length < 2) return null;
+  const first = series[0]!;
+  const last = series[series.length - 1]!;
+  const change = last.total - first.total;
+  const relativeChange = first.total !== 0 ? change / Math.abs(first.total) : null;
+  const min = series.reduce((m, entry) => (entry.total < m.total ? entry : m), first);
+  const max = series.reduce((m, entry) => (entry.total > m.total ? entry : m), first);
+  const average = series.reduce((sum, entry) => sum + entry.total, 0) / series.length;
+  return { first, last, change, relativeChange, min, max, average, pointCount: series.length };
+}
+
 export function pieRoundnessFor(series: { total: number }[]): {
   cornerRadius: number;
   paddingAngle: number;
@@ -562,4 +592,36 @@ export function pieRoundnessFor(series: { total: number }[]): {
   return smallestShare < PIE_THIN_SLICE_THRESHOLD
     ? { cornerRadius: 0, paddingAngle: 1 }
     : { cornerRadius: 6, paddingAngle: 3 };
+}
+
+export type RankingCoverage = {
+  topTotal: number;
+  overallTotal: number;
+  topShare: number | null;
+  categoryCount: number;
+  shownCount: number;
+  remainingCount: number;
+};
+
+/**
+ * Um "Top N" some com o resto: sem isso, nada diz se as 5 categorias
+ * mostradas são quase tudo ou uma fração pequena das dezenas que existem.
+ * `topShare` fica `null` (em vez de 0 ou enganosamente positivo) quando o
+ * total geral é zero ou negativo — participação percentual não tem leitura
+ * confiável nesses casos.
+ */
+export function rankingCoverageFor(
+  shown: { total: number }[],
+  all: { total: number }[],
+): RankingCoverage {
+  const topTotal = shown.reduce((sum, item) => sum + item.total, 0);
+  const overallTotal = all.reduce((sum, item) => sum + item.total, 0);
+  return {
+    topTotal,
+    overallTotal,
+    topShare: overallTotal > 0 ? topTotal / overallTotal : null,
+    categoryCount: all.length,
+    shownCount: shown.length,
+    remainingCount: Math.max(0, all.length - shown.length),
+  };
 }

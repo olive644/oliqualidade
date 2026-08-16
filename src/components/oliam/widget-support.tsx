@@ -20,6 +20,7 @@ import {
   MapPin,
   PieChart as PieIcon,
   ShieldAlert,
+  Sparkles,
   Star,
   Trash2,
   TrendingUp,
@@ -47,7 +48,12 @@ import {
 import { columnDragType, columnDropAccepted, draggedColumnKind } from "@/lib/widgets";
 import type { ScheduleCellState } from "@/lib/schedule-normalizer";
 import { conditionalColor, fmt } from "@/lib/format";
-import { NOT_INFORMED, type AggregationOp } from "@/lib/data-pipeline";
+import {
+  NOT_INFORMED,
+  type AggregationOp,
+  type PieComparison,
+  type TrendSummary,
+} from "@/lib/data-pipeline";
 import {
   loadGeocodeCache,
   saveGeocodeCache,
@@ -253,6 +259,8 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
   ranking: "Ordena e exibe os maiores resultados.",
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
+  insights:
+    "Narra em texto os achados de uma métrica por categoria: quem lidera, quanto concentra e possíveis inconsistências.",
   "schedule-heatmap": "Cruza itens e períodos, colorindo o andamento do cronograma.",
   "attendance-overview": "Resume participantes, assinaturas ausentes, setores e turnos.",
   "validation-overview": "Separa aprovações, rejeições e pendências por inspetor.",
@@ -276,6 +284,7 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "ranking") return <ListOrdered className={className} />;
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
+  if (type === "insights") return <Sparkles className={className} />;
   if (type === "schedule-heatmap") return <CalendarRange className={className} />;
   if (type === "attendance-overview") return <Check className={className} />;
   if (type === "validation-overview") return <ShieldAlert className={className} />;
@@ -704,6 +713,179 @@ export function PieLegend({
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Painel de leitura guiada para uma categoria em destaque (hover ou seleção)
+ * dentro de um gráfico categórico: valor, participação no total e diferença
+ * para a maior outra categoria visível. Extraído do gráfico de pizza, que foi
+ * o primeiro a ganhar essa camada de explicação além do próprio desenho —
+ * `comparison` vem de `pieComparisonFor` (`data-pipeline.ts`), que já é
+ * genérica sobre `{name, total}[]` e não depende de nada específico de pizza.
+ *
+ * A classe `oliam-series-comparison-row` também é o gatilho de uma regra CSS
+ * de exportação (`styles.css`) que empilha esta grade em uma única coluna só
+ * em modo de exportação PDF/PNG — sem ela, o mínimo de largura da primeira
+ * coluna pode ser espremido a quase 0px e o texto quebra letra por letra
+ * (bug real já corrigido para o pizza, ver `docs/CURRENT_STATE_AUDIT.md`,
+ * seção 41). Qualquer novo uso deste componente herda a correção automaticamente.
+ */
+export function SeriesComparisonPanel({
+  selected,
+  comparison,
+  kind,
+  onFilter,
+  filterLabel,
+}: {
+  selected: { name: string; total: number };
+  comparison: PieComparison | null;
+  kind: Kind;
+  onFilter?: (() => void) | undefined;
+  filterLabel: string;
+}) {
+  return (
+    <div className="oliam-series-comparison-row grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(8rem,1.4fr)_repeat(3,minmax(7rem,0.7fr))_auto] sm:items-center">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold" title={selected.name}>
+          {selected.name}
+        </p>
+        <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+          {comparison
+            ? `Posição ${comparison.rank} de ${comparison.categoryCount} categorias visíveis`
+            : "Categoria em destaque"}
+          {comparison?.reference
+            ? ` · comparação com ${comparison.reference.name}, a maior outra categoria.`
+            : " · não há outra categoria para comparar."}
+        </p>
+      </div>
+      <div>
+        <p
+          className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+          title={`Valor de ${selected.name}`}
+        >
+          Valor de {selected.name}
+        </p>
+        <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+          {fmt(selected.total, kind)}
+        </p>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Participação</p>
+        <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+          {comparison?.share !== null && comparison?.share !== undefined
+            ? comparison.share.toLocaleString("pt-BR", {
+                style: "percent",
+                maximumFractionDigits: 1,
+              })
+            : "—"}
+        </p>
+      </div>
+      <div>
+        <p
+          className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+          title={
+            comparison?.reference ? `Diferença para ${comparison.reference.name}` : "Comparação"
+          }
+        >
+          {comparison?.reference ? `Diferença para ${comparison.reference.name}` : "Comparação"}
+        </p>
+        <p
+          className={cn(
+            "mt-0.5 font-mono text-sm font-semibold tabular-nums",
+            comparison?.difference !== null &&
+              comparison?.difference !== undefined &&
+              comparison.difference < 0
+              ? "text-destructive"
+              : "text-emerald-700 dark:text-emerald-300",
+          )}
+        >
+          {comparison?.difference !== null && comparison?.difference !== undefined
+            ? `${comparison.difference >= 0 ? "+" : ""}${fmt(comparison.difference, kind)}${
+                comparison.relativeDifference !== null
+                  ? ` · ${comparison.relativeDifference >= 0 ? "+" : ""}${comparison.relativeDifference.toLocaleString(
+                      "pt-BR",
+                      { style: "percent", maximumFractionDigits: 1 },
+                    )}`
+                  : ""
+              }`
+            : "Sem referência"}
+        </p>
+      </div>
+      {onFilter && (
+        <Button size="sm" variant="outline" onClick={onFilter}>
+          {filterLabel}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Resumo de tendência para linha/área: variação do primeiro ao último ponto
+ * cronológico, além dos pontos de mínimo e máximo já visíveis no gráfico e a
+ * média do período. `summary` vem de `trendSummaryFor` (`data-pipeline.ts`).
+ * Ao contrário de `SeriesComparisonPanel`, não compara categorias entre si —
+ * a ordem dos pontos é temporal, não um ranking.
+ */
+export function TrendSummaryPanel({ summary, kind }: { summary: TrendSummary; kind: Kind }) {
+  const positive = summary.change >= 0;
+  return (
+    <div className="oliam-trend-summary-row grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(8rem,1.3fr)_repeat(3,minmax(6rem,0.8fr))] sm:items-center">
+      <div className="min-w-0">
+        <p
+          className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+          title={`${summary.first.name} até ${summary.last.name}`}
+        >
+          {summary.first.name} → {summary.last.name}
+        </p>
+        <p
+          className={cn(
+            "mt-0.5 font-mono text-sm font-semibold tabular-nums",
+            positive ? "text-emerald-700 dark:text-emerald-300" : "text-destructive",
+          )}
+        >
+          {positive ? "+" : ""}
+          {fmt(summary.change, kind)}
+          {summary.relativeChange !== null
+            ? ` · ${positive ? "+" : ""}${summary.relativeChange.toLocaleString("pt-BR", {
+                style: "percent",
+                maximumFractionDigits: 1,
+              })}`
+            : ""}
+        </p>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Média · {summary.pointCount} períodos
+        </p>
+        <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+          {fmt(summary.average, kind)}
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p
+          className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+          title={`Mínimo em ${summary.min.name}`}
+        >
+          Mínimo · {summary.min.name}
+        </p>
+        <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+          {fmt(summary.min.total, kind)}
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p
+          className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+          title={`Máximo em ${summary.max.name}`}
+        >
+          Máximo · {summary.max.name}
+        </p>
+        <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+          {fmt(summary.max.total, kind)}
+        </p>
+      </div>
+    </div>
   );
 }
 

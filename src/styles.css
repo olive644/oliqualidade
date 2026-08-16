@@ -1362,15 +1362,16 @@
   -webkit-line-clamp: unset !important;
   overflow-wrap: anywhere !important;
 }
-/* A grade de comparação da fatia selecionada do gráfico de pizza usa colunas
-   com largura mínima combinada maior que a coluna de 1/3 que um widget
-   "pie" de span 1 recebe na grade fixa de exportação (3 colunas, 1440px).
-   Sem essa regra, a regra de desabilitar truncamento acima (necessária para
-   não perder texto no PDF) força `overflow-wrap: anywhere` sobre uma coluna
-   espremida a quase 0px, quebrando o texto letra por letra. Empilhar em uma
-   única coluna só na exportação evita o colapso sem afetar a grade
-   responsiva normal da tela. */
-.oliam-export-mode .oliam-pie-comparison-row {
+/* A grade de comparação de categoria em destaque (`SeriesComparisonPanel`,
+   usada por pizza, barra e outros gráficos categóricos) usa colunas com
+   largura mínima combinada maior que a coluna de 1/3 que um widget de span 1
+   recebe na grade fixa de exportação (3 colunas, 1440px). Sem essa regra, a
+   regra de desabilitar truncamento acima (necessária para não perder texto
+   no PDF) força `overflow-wrap: anywhere` sobre uma coluna espremida a quase
+   0px, quebrando o texto letra por letra. Empilhar em uma única coluna só na
+   exportação evita o colapso sem afetar a grade responsiva normal da tela. */
+.oliam-export-mode .oliam-series-comparison-row,
+.oliam-export-mode .oliam-trend-summary-row {
   grid-template-columns: 1fr !important;
 }
 .oliam-export-mode .overflow-y-auto:not([data-export-keep-scroll]),
