@@ -96,6 +96,7 @@ import {
   limitChartSeriesForRendering,
   NOT_INFORMED,
   pieComparisonFor,
+  trendSummaryFor,
   pieRoundnessFor,
   relevantAggregationOps,
   semanticAggregationOps,
@@ -131,6 +132,7 @@ import {
   CalculationButton,
   PieLegend,
   SeriesComparisonPanel,
+  TrendSummaryPanel,
   MapWidgetBody,
   ChartDot,
   type ChartDotProps,
@@ -2125,6 +2127,14 @@ export function WidgetCard({
     const selectedBar = summaryBarIndex !== null ? barSeries[summaryBarIndex] : null;
     const selectedBarComparison =
       summaryBarIndex !== null ? pieComparisonFor(barSeries, summaryBarIndex) : null;
+    // Só mostra resumo de tendência quando a série é de fato cronológica —
+    // mesma condição usada acima para decidir se `completeSeries` é ordenada
+    // por `sortChronologically`. Área agrupada por uma coluna não temporal
+    // não tem "início/fim" com sentido de tempo, é uma comparação categórica.
+    const trendSummary =
+      w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
+        ? trendSummaryFor(series)
+        : null;
     const pieLegendItems = pieSeries.map((entry, i) => ({
       ...entry,
       color:
@@ -2635,6 +2645,7 @@ export function WidgetCard({
             <p className="sr-only">
               Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
             </p>
+            {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
           </>
         ) : (
           <>
@@ -2741,6 +2752,7 @@ export function WidgetCard({
               Tabela alternativa à evolução: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}
               .
             </p>
+            {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
           </>
         )}
       </article>

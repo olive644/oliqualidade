@@ -47,7 +47,12 @@ import {
 import { columnDragType, columnDropAccepted, draggedColumnKind } from "@/lib/widgets";
 import type { ScheduleCellState } from "@/lib/schedule-normalizer";
 import { conditionalColor, fmt } from "@/lib/format";
-import { NOT_INFORMED, type AggregationOp, type PieComparison } from "@/lib/data-pipeline";
+import {
+  NOT_INFORMED,
+  type AggregationOp,
+  type PieComparison,
+  type TrendSummary,
+} from "@/lib/data-pipeline";
 import {
   loadGeocodeCache,
   saveGeocodeCache,
@@ -806,6 +811,74 @@ export function SeriesComparisonPanel({
           {filterLabel}
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Resumo de tendência para linha/área: variação do primeiro ao último ponto
+ * cronológico, além dos pontos de mínimo e máximo já visíveis no gráfico e a
+ * média do período. `summary` vem de `trendSummaryFor` (`data-pipeline.ts`).
+ * Ao contrário de `SeriesComparisonPanel`, não compara categorias entre si —
+ * a ordem dos pontos é temporal, não um ranking.
+ */
+export function TrendSummaryPanel({ summary, kind }: { summary: TrendSummary; kind: Kind }) {
+  const positive = summary.change >= 0;
+  return (
+    <div className="oliam-trend-summary-row grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(8rem,1.3fr)_repeat(3,minmax(6rem,0.8fr))] sm:items-center">
+      <div className="min-w-0">
+        <p
+          className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+          title={`${summary.first.name} até ${summary.last.name}`}
+        >
+          {summary.first.name} → {summary.last.name}
+        </p>
+        <p
+          className={cn(
+            "mt-0.5 font-mono text-sm font-semibold tabular-nums",
+            positive ? "text-emerald-700 dark:text-emerald-300" : "text-destructive",
+          )}
+        >
+          {positive ? "+" : ""}
+          {fmt(summary.change, kind)}
+          {summary.relativeChange !== null
+            ? ` · ${positive ? "+" : ""}${summary.relativeChange.toLocaleString("pt-BR", {
+                style: "percent",
+                maximumFractionDigits: 1,
+              })}`
+            : ""}
+        </p>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Média · {summary.pointCount} períodos
+        </p>
+        <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+          {fmt(summary.average, kind)}
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p
+          className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+          title={`Mínimo em ${summary.min.name}`}
+        >
+          Mínimo · {summary.min.name}
+        </p>
+        <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+          {fmt(summary.min.total, kind)}
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p
+          className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+          title={`Máximo em ${summary.max.name}`}
+        >
+          Máximo · {summary.max.name}
+        </p>
+        <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+          {fmt(summary.max.total, kind)}
+        </p>
+      </div>
     </div>
   );
 }

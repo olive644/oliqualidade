@@ -1893,3 +1893,44 @@ há várias sessões, e o componente extraído é uma reorganização de JSX
 já existente sem mudança de comportamento para o pizza. Fica registrado
 como verificação pendente — se o usuário testar e encontrar algo
 errado, comece relendo esta seção antes de investigar do zero.
+
+## 44. Segunda etapa da mesma iniciativa: resumo de tendência em linha/área
+
+Continuação da seção 43. Linha e área são séries **temporais**, não
+comparações de categorias — `pieComparisonFor`/`SeriesComparisonPanel`
+não fariam sentido aqui (não existe "a maior outra categoria" numa
+sequência de tempo, existe "de onde veio, para onde foi"). Nova função
+pura `trendSummaryFor` (`data-pipeline.ts`), testada em
+`data-pipeline.test.ts` (série normal, base zero no primeiro ponto,
+menos de dois pontos), resume: primeiro ponto, último ponto, variação
+absoluta/relativa entre eles, ponto de mínimo, ponto de máximo e média
+do período. Novo componente `TrendSummaryPanel`
+(`widget-support.tsx`), renderizado logo abaixo do gráfico em linha e
+em área.
+
+**Cuidado deliberado com correção, não só duplicação de padrão**: área
+pode ser agrupada por qualquer coluna categórica, não só por data
+(`groupOptions` em `widget-card.tsx` só restringe isso para `line`,
+não para `area`). "Início → Fim" só tem sentido quando o eixo é
+cronológico de verdade — do contrário seria fabricar uma narrativa
+temporal sobre uma comparação categórica sem ordem natural, o tipo de
+erro que o projeto explicitamente não permite (ver `docs/SECOND_BRAIN.md`,
+regras de produto). Por isso o painel só aparece quando
+`w.type === "line"` (sempre cronológico, `groupOptions` já restringe a
+colunas de data) ou `w.type === "area" && groupCol?.kind === "date"` —
+exatamente a mesma condição já usada para decidir se a série passa por
+`sortChronologically` antes de chegar ao gráfico.
+
+Reaproveitada a mesma proteção de exportação da seção 43: nova classe
+`oliam-trend-summary-row` adicionada preventivamente à mesma regra CSS
+que empilha a grade em modo de exportação, em vez de esperar um bug
+real de colapso de texto para corrigir depois.
+
+Verificado com `npx vitest run` (469 passou, 11 pulados, era 466 — 3
+testes novos de `trendSummaryFor`), `npx tsc --noEmit` sem erros,
+`npm run build` e `npm run performance:check` aprovados (maior chunk
+genérico subiu de ~407,6 para ~409,7 KiB, ainda dentro do limite de
+420 KiB, mas a margem segue apertada — próximas etapas desta iniciativa
+devem continuar monitorando isso a cada PR). Mesma limitação de
+verificação visual da seção 43 (dev server instável nesta sessão) —
+fica pendente confirmação visual do usuário.

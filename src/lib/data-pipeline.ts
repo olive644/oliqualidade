@@ -552,6 +552,36 @@ export function pieComparisonFor(
   };
 }
 
+export type TrendSummary = {
+  first: { name: string; total: number };
+  last: { name: string; total: number };
+  change: number;
+  relativeChange: number | null;
+  min: { name: string; total: number };
+  max: { name: string; total: number };
+  average: number;
+  pointCount: number;
+};
+
+/**
+ * Resume uma série temporal (já em ordem cronológica) sem fingir que ela é
+ * uma comparação de categorias: variação do primeiro ao último ponto, e os
+ * pontos de mínimo/máximo já visíveis no gráfico. Diferente de
+ * `pieComparisonFor`, a ordem da série importa aqui — o chamador é
+ * responsável por passar pontos cronologicamente ordenados.
+ */
+export function trendSummaryFor(series: { name: string; total: number }[]): TrendSummary | null {
+  if (series.length < 2) return null;
+  const first = series[0]!;
+  const last = series[series.length - 1]!;
+  const change = last.total - first.total;
+  const relativeChange = first.total !== 0 ? change / Math.abs(first.total) : null;
+  const min = series.reduce((m, entry) => (entry.total < m.total ? entry : m), first);
+  const max = series.reduce((m, entry) => (entry.total > m.total ? entry : m), first);
+  const average = series.reduce((sum, entry) => sum + entry.total, 0) / series.length;
+  return { first, last, change, relativeChange, min, max, average, pointCount: series.length };
+}
+
 export function pieRoundnessFor(series: { total: number }[]): {
   cornerRadius: number;
   paddingAngle: number;

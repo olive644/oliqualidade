@@ -17,6 +17,7 @@ import {
   sortAllBarCategories,
   timeSeriesChartPresentation,
   toggleClickFilter,
+  trendSummaryFor,
 } from "@/lib/data-pipeline";
 
 describe("chartSeries", () => {
@@ -493,5 +494,38 @@ describe("pieComparisonFor", () => {
 
   it("retorna null para uma seleção inexistente", () => {
     expect(pieComparisonFor(series, 8)).toBeNull();
+  });
+});
+
+describe("trendSummaryFor", () => {
+  it("resume início, fim, variação, mínimo, máximo e média de uma série cronológica", () => {
+    const series = [
+      { name: "Jan", total: 100 },
+      { name: "Fev", total: 80 },
+      { name: "Mar", total: 150 },
+    ];
+    expect(trendSummaryFor(series)).toEqual({
+      first: series[0],
+      last: series[2],
+      change: 50,
+      relativeChange: 0.5,
+      min: series[1],
+      max: series[2],
+      average: 110,
+      pointCount: 3,
+    });
+  });
+
+  it("trata base zero no primeiro ponto sem dividir por zero", () => {
+    const series = [
+      { name: "Jan", total: 0 },
+      { name: "Fev", total: 40 },
+    ];
+    expect(trendSummaryFor(series)).toMatchObject({ change: 40, relativeChange: null });
+  });
+
+  it("retorna null com menos de dois pontos", () => {
+    expect(trendSummaryFor([])).toBeNull();
+    expect(trendSummaryFor([{ name: "Jan", total: 10 }])).toBeNull();
   });
 });
