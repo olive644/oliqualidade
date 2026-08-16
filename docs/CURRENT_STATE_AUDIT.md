@@ -2987,3 +2987,62 @@ contagem — mudança de uma prop visual, sem lógica nova para testar),
 `npx tsc --noEmit` sem erros, Prettier limpo, `npm run build` e `npm
 run performance:check` aprovados (~447,2 KiB, sem mudança relevante
 de tamanho).
+
+## 62. Clique-para-filtrar da pizza agora filtra na hora, igual ao resto dos gráficos
+
+O usuário pediu explicitamente, depois de validar as duas correções
+das seções 60/61: "quero que todos façam ao clicar" — todo gráfico com
+dimensão de agrupamento deveria filtrar o painel inteiro com um clique
+só, como já acontecia na barra, sem precisar de um botão extra
+"Filtrar por tal coisa".
+
+**Auditoria de todos os widgets com dimensão de agrupamento**
+(`widget-card.tsx`): barra (`onClick` da `<Bar>`), linha e área
+(`ChartDot.onClick` → `onSelect`), ranking (`onClick` de cada linha) e
+mapa (`marker.on("click")` → `onSelect`) já chamavam `handleGroupClick`
+diretamente ao clicar, filtrando o painel inteiro na hora — confirmado
+lendo cada bloco, não só por inferência. **Só a pizza era a exceção**:
+o `onClick` do `<Pie>` e o `onSelectIndex` da legenda só chamavam
+`setSelectedPieIndex`, que apenas atualiza qual fatia aparece
+destacada no `SeriesComparisonPanel` — filtrar de verdade exigia um
+segundo clique no botão "Filtrar por esta fatia" dentro desse painel.
+
+**Correção**: o `onClick` do `<Pie>` e o `onSelectIndex` de
+`PieLegend` agora chamam `handleGroupClick` também, na mesma função
+que já seleciona (não são dois caminhos concorrentes, é a mesma ação
+fazendo as duas coisas). Guarda preservada: clicar em "Outros" (o
+agrupador sintético do colapso da seção 60, sem valor real na
+planilha) continua só selecionando, sem tentar filtrar por um nome que
+não existe em nenhuma linha — mesma regra que já existia no botão do
+`SeriesComparisonPanel` (`onFilter` vira `undefined` quando
+`selectedPie.name === "Outros"`). O botão "Filtrar por esta fatia"
+continua existindo, agora redundante com o clique direto na maioria
+dos casos, mas útil para quem só passou o mouse (hover) sem clicar, ou
+para telas sensíveis ao toque onde a fatia é pequena demais para
+acertar com precisão.
+
+Verificado ao vivo no navegador, reabrindo o mesmo painel de teste
+persistido das seções 60/61: clicar em "Filtrar por V00013" na legenda
+da pizza reduziu a base de 120 para 1 linha, mostrou o chip "Filtrado
+por: V00013" na barra de ferramentas, e propagou para os KPIs da
+sidebar (478 → 7) e para o ranking (lista completa → só V00013) —
+cross-filter ponta a ponta, mesmo padrão já confirmado pela barra na
+seção 53. Clicar de novo no botão "Remover filtro" desfez tudo,
+voltando a 120 de 120 linhas, confirmando o toggle (`toggleClickFilter`)
+funcionando também pela pizza.
+
+Nenhum outro widget com o mesmo padrão "seleciona mas não filtra" foi
+encontrado na auditoria — os únicos estados `setSelected*`/`setActive*`
+em `widget-card.tsx` são o par hover/seleção da pizza (agora corrigido)
+e o hover da barra (`activeBarIndex`, que nunca precisou de correção
+porque a barra já filtra direto no clique, sem depender desse estado).
+Tabela dinâmica e matriz de cruzamento (`pivot-table`/`matrix-heatmap`)
+não têm nenhuma interação de clique hoje — são tabelas, não gráficos
+com dimensão de agrupamento clicável, fora do escopo deste pedido.
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
+contagem — mudança de comportamento de clique, sem função pura nova
+para testar; mesma lacuna já registrada para outros componentes de
+widget nesta sessão), `npx tsc --noEmit` sem erros, Prettier limpo,
+`npm run build` e `npm run performance:check` aprovados (~447,3 KiB,
+sem mudança relevante de tamanho).
