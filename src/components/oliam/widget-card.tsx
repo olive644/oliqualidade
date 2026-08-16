@@ -235,15 +235,25 @@ export function WidgetCard({
     if (e.pointerType !== "mouse" || e.button !== 0) return;
     const el = chartScrollRef.current;
     if (!el) return;
+    const pointerId = e.pointerId;
     const startX = e.clientX;
     const startScroll = el.scrollLeft;
     let dragged = false;
-    el.setPointerCapture(e.pointerId);
-    el.classList.add("oliam-chart-dragging");
     const onMove = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startX;
-      if (Math.abs(delta) > 3) dragged = true;
-      el.scrollLeft = startScroll - delta;
+      if (!dragged && Math.abs(delta) > 3) {
+        dragged = true;
+        // Só captura o ponteiro quando o gesto vira arrasto de verdade. Fazer
+        // isso incondicionalmente no pointerdown (como antes) redireciona o
+        // alvo de todo evento de ponteiro/clique seguinte para `el`, mesmo
+        // sem nenhum arrasto real — um clique parado nunca chegava a disparar
+        // o onClick da barra por baixo do cursor, porque o clique "pousava"
+        // no container em vez da barra. Bug real, não só o caso de suprimir
+        // clique-após-arrasto que o código já tratava abaixo.
+        el.setPointerCapture(pointerId);
+        el.classList.add("oliam-chart-dragging");
+      }
+      if (dragged) el.scrollLeft = startScroll - delta;
     };
     const onUp = () => {
       el.classList.remove("oliam-chart-dragging");
@@ -253,6 +263,7 @@ export function WidgetCard({
       // Evita que o clique-arrasto dispare o cross-filter da barra por baixo
       // do cursor (onClick da <Bar>) quando o usuário só quis rolar.
       if (dragged) {
+        if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId);
         const suppress = (evt: MouseEvent) => evt.stopPropagation();
         el.addEventListener("click", suppress, { capture: true, once: true });
       }
@@ -2315,9 +2326,18 @@ export function WidgetCard({
                         fill={`url(#bar-grad-${w.id})`}
                         radius={[6, 6, 0, 0]}
                         maxBarSize={72}
-                        onClick={(pt) =>
-                          pt?.name && handleGroupClick(groupCol.key, String(pt.name))
-                        }
+                        onClick={(_, i) => {
+                          // O payload que o Recharts entrega ao onClick de uma
+                          // <Bar> com <Cell> filhas não confiavelmente carrega
+                          // `.name` (varia por versão/estrutura interna) — o
+                          // índice, sim, sempre corresponde à posição em
+                          // barSeries (mesmo array usado para renderizar as
+                          // Cell logo abaixo). Buscar o nome ali, em vez de
+                          // confiar no payload, é o mesmo padrão já usado com
+                          // sucesso no <Pie> (onClick={(_, index) => ...}).
+                          const entry = barSeries[i];
+                          if (entry) handleGroupClick(groupCol.key, entry.name);
+                        }}
                         onMouseEnter={(_, i) => setActiveBarIndex(i)}
                         onMouseLeave={() => setActiveBarIndex(null)}
                         cursor="pointer"

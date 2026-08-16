@@ -2389,3 +2389,98 @@ na seção 51: mesmo depois de extrair os quatro blocos mais
 autocontidos, o núcleo de `Dashboard` continua grande — esta etapa
 organiza e reduz risco para mudanças futuras, não deixa o arquivo
 "pequeno".
+
+## 53. Dois bugs reais no clique-para-filtrar da barra, encontrados com o dev server funcionando ao vivo
+
+O usuário reportou "clicar numa barra não filtra do jeito que eu
+queria" e, questionado, confirmou: **nada acontece** — sem filtro, sem
+destaque, sem chip. Pela primeira vez nesta sessão o dev server ficou
+estável tempo suficiente (depois de esperar a pré-otimização de
+dependências do Vite terminar antes de navegar, não só reiniciar o
+preview) para investigar ao vivo, com `javascript_tool`/`computer`,
+em vez de só ler código.
+
+**Bug 1 — o payload do `onClick` da `<Bar>` não carrega `.name`
+confiável.** O código antigo (`onClick={(pt) => pt?.name &&
+handleGroupClick(groupCol.key, String(pt.name))}`) presumia que o
+primeiro argumento entregue pelo Recharts a um `<Bar>` com `<Cell>`
+filhas tem `.name` no nível raiz — igual ao que `<Pie>` já fazia
+funcionar com `(_, index) => setSelectedPieIndex(index)`, mas usando
+índice em vez de nome. Confirmado ao vivo: invocar a função `onClick`
+real (extraída via `element[Object.keys(element).find(k =>
+k.startsWith('__reactProps$'))].onClick`) com o evento real do
+Recharts nunca chamava `handleGroupClick` — instrumentado com um
+`Array.prototype.find` monkey-patchado para detectar a chamada de
+`toggleClickFilter`, zero chamadas. Corrigido usando o índice (2º
+argumento, comprovadamente correto) para buscar `barSeries[i].name`
+diretamente — mesmo padrão já validado no `<Pie>`.
+
+**Bug 2 — `setPointerCapture` incondicional no `pointerdown` quebra o
+clique em qualquer gráfico rolável.** `handleChartScrollPointerDown`
+(recurso de arrastar para rolar horizontalmente gráficos com muitas
+categorias) chamava `el.setPointerCapture(e.pointerId)` em todo
+`pointerdown`, mesmo sem nenhum movimento — isso redireciona o alvo de
+todo evento de ponteiro/clique seguinte para o container de rolagem
+(`el`), não para o elemento sob o cursor. Confirmado instrumentando um
+listener em fase de captura: antes da correção, o `pointerup` e o
+`click` de um clique parado (sem arrasto) chegavam com `target` igual
+ao `<div>` de rolagem, nunca ao `<path>` da barra — o clique
+literalmente nunca alcançava o elemento com o `onClick`. Corrigido
+adiando `setPointerCapture`/a classe `oliam-chart-dragging` para
+dentro do `onMove`, só quando o deslocamento realmente cruza o limiar
+de 3px que já definia "isso é um arrasto" — um clique parado nunca
+aciona a captura, então o clique segue seu caminho normal até a barra.
+A supressão de clique-após-arrasto (`stopPropagation` no `click`
+seguinte a um arrasto de verdade) continua funcionando, agora liberando
+a captura explicitamente no `pointerup` também.
+
+Os dois bugs juntos explicam "nada acontece": mesmo se um dia o clique
+alcançasse a barra (bug 2 corrigido primeiro isoladamente não bastaria),
+o handler ainda dependeria de um campo que não existe no payload (bug
+1). Só corrigir os dois juntos resolve. Confirmado ao vivo depois da
+correção: clique numa barra do gráfico "Quantidade por linha de
+Cliente" aplicou o filtro corretamente (`pointerdown`/`pointerup`/
+`click` todos com `target: path.recharts-rectangle`), reduziu a base
+de 300 para 16 linhas, mostrou o chip "Filtrado por: Amanda Barbosa" e
+propagou para os outros widgets do painel (ranking "Top 5" também
+mostrou o mesmo filtro) — cross-filter funcionando ponta a ponta.
+
+Nenhum teste automatizado novo: a lógica corrigida é inteiramente
+sobre entrega de evento do navegador e payload do Recharts, sem função
+pura pública para testar isoladamente — mesma lacuna já registrada
+para outros componentes de widget nesta sessão. A verificação ao vivo
+acima é a prova disponível.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados (~423,3 KiB).
+
+**Bugs adicionais encontrados durante a investigação, ainda não
+corrigidos** (fora do escopo do pedido original, registrados para
+decisão do usuário):
+
+- Uma coluna chamada "Foto" (oculta da tabela principal, `kind:
+  "Número"`, papel "Resultado", confiança 72% automática) virou
+  `groupKey` de pelo menos dois widgets auto-gerados (`bar`/`pie`)
+  apesar de não aparecer em `groupableCols` — o seletor X do widget
+  mostra a primeira opção da lista ("ID Venda") porque nenhuma opção
+  bate com o `groupKey` real, enquanto o gráfico de fato agrupa por
+  "Foto" (confirmado pelo `ChartReadingGuide`, "X · Foto"). Sintoma
+  visível: seletor e gráfico mostrando coisas diferentes, muito
+  confuso. Causa provável: a classificação de colunas do
+  `auto-dashboard.ts` (dimensão vs. métrica) diverge da classificação
+  de `kind` usada em `groupableCols`/no painel "Colunas" — as duas não
+  são a mesma fonte de verdade.
+- A tabela dinâmica (`Matriz de Foto × Cliente`) mostra "Total geral:
+  0" com "Cálculo: Média" sobre a mesma coluna "Foto" — consistente
+  com ela ser numérica mas com valores que não geram média útil
+  (possível: papel "Resultado" não é aditivo, e a média de um "Foto"
+  provavelmente não deveria ser o cálculo padrão para esse tipo de
+  coluna).
+
+Ambos os achados apontam para o mesmo lugar: a coluna "Foto" tem uma
+classificação semântica que não faz sentido para os usos que os
+widgets automáticos escolheram para ela. Vale investigar com o usuário
+o que essa coluna realmente representa antes de decidir a correção
+(esconder de seletores de agrupamento? mudar o papel/kind padrão?
+mudar o cálculo padrão para colunas com papel "Resultado"?).
