@@ -2085,3 +2085,46 @@ contagem — composição de funções já testadas, sem lógica pura nova),
 limitação de verificação visual pendente das etapas anteriores — a
 faixa de "Adicionar widget" e o próprio conteúdo do widget não foram
 vistos renderizados de verdade nesta sessão.
+
+## 48. Bug real reportado pelo usuário: eixo Y piscava ao passar o mouse na barra
+
+A PR #99 (seção 43) introduziu `onMouseEnter`/`onMouseLeave` no `<Bar>`
+para acionar `setActiveBarIndex` e mostrar o painel de comparação por
+hover. O usuário reportou que, depois disso, os números do eixo Y do
+gráfico de barras somem e voltam ao passar o mouse sobre as barras.
+
+**Causa raiz**: `setActiveBarIndex` re-renderiza `WidgetCard`, que
+recalcula `barSeries` (via `chartSeries(...)`) do zero a cada
+renderização — um array com identidade de referência nova mesmo quando
+o conteúdo é idêntico, já que nada nessa cadeia de cálculo é
+memoizado. O Recharts recebe essa nova referência em `data={barSeries}`
+e trata como "o dado do gráfico mudou": reinicia a animação de entrada
+da barra (`animationDuration={500}`, ativa por padrão) e recalcula o
+layout, incluindo o eixo Y — visualmente, os ticks desaparecem e
+reaparecem a cada passagem do mouse, porque antes o hover não
+disparava re-render nenhum no gráfico de barras (só o pizza tinha esse
+padrão, e `RPieChart` não tem eixo para piscar).
+
+**Correção**: `isAnimationActive={false}` no `<Bar>`, removendo a
+propriedade `animationDuration` (que perde efeito sem animação ativa).
+Mesmo ajuste já existente no código para o sparkline da métrica com
+tendência (`widget-card.tsx`, ~linha 1388), aplicado ao mesmo tipo de
+problema — não foi inventado um padrão novo. A causa raiz mais
+profunda (recalcular toda a cadeia de dados do widget a cada
+re-render, sem memoização) é maior que este bug específico e não foi
+tocada; a correção resolve o sintoma visível da forma mais estreita e
+segura possível, sem mudar a lógica de recálculo de nenhum outro
+widget.
+
+**Verificação**: mesma limitação de sandbox das etapas anteriores — o
+dev server continuou instável (`NitroViteError`) e não foi possível
+confirmar visualmente que o flicker desapareceu. A causa raiz foi
+identificada por leitura de código e é uma explicação mecânica
+completa e consistente com o sintoma relatado (Recharts reinicia
+animação/recalcula eixo quando a referência de `data` muda), não uma
+hipótese não verificada. Pede confirmação do usuário depois do deploy.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
+build` e `npm run performance:check` aprovados (~414,7 KiB, sem
+mudança de tamanho — é uma linha de JSX a menos, uma prop a mais).
