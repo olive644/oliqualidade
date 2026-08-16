@@ -100,6 +100,7 @@ flowchart TD
 | Widget de mapa (Leaflet) ou widgets operacionais (presença/validação/carta de controle/planejado×realizado) | `map-widget-body.tsx`, `operational-widget-body.tsx` — carregados via `React.lazy()`+`Suspense` em `widget-card.tsx`, fora do chunk comum | `npm run build` + `ANALYZE=1 npm run build` confirma o chunk separado |
 | Exportação (XLSX, cópia corrigida, CSVs, PDF de revisão, PNG/PDF do painel, backup criptografado e restauração) | `use-dashboard-export.ts` — hook, recebe `contentRef` de fora; `restoreEncryptedBackup` grava direto via `onRestore` (`p.update`), sem passar pelo undo/redo, de propósito | verificação manual do fluxo de exportação |
 | Núcleo de undo/redo (pilha, `recordHistory`) | `use-undo-redo-history.ts` — hook, ~9 mutadores em `Dashboard` continuam chamando `recordHistory()` antes de mudar dados | verificação manual (editar, desfazer, refazer) |
+| Ações de widget (adicionar, copiar/colar, atualizar, remover, mover, reordenar) e `traceException` | `use-widget-actions.ts` — hook, recebe `setSearch`/`setSort`/`setFilters`/`setFocusedCell` como parâmetros porque `traceException` cruza todos eles; `canAdd` fica em `Dashboard` (só lê o pipeline, não muta nada) | verificação manual do fluxo de widgets |
 | Quanto foi filtrado na tabela detalhada | prop `totalRows` de `WidgetCard`, passado como `rulesApplied.length` em `routes/index.tsx` | `npx tsc --noEmit` confirma o único call site atualizado |
 | Widget "Insights automáticos" (`insights`), narra achados em texto | `widget-card.tsx` (bloco `w.type === "insights"`), compõe `pieComparisonFor`/`rankingCoverageFor`/`detectQualitySignals` já testadas | `npx tsc --noEmit` (checklist completo de registro de `WidgetType` na seção 47 do audit) |
 | Importação/revisão (UI)                     | `components/oliam/{home,empty,import-workbench,review}.tsx`          | `routes/index.tsx` orquestra via props        |
@@ -278,23 +279,29 @@ corrompem a árvore do DOM). Achar a URL:
 - A aplicação é deliberadamente local-first e usa IndexedDB no navegador.
 - Leitura pesada, análise de revisão e exportações pesadas são separadas do
   caminho interativo sempre que possível.
-- `src/routes/index.tsx` caiu de 10.282 para 2.523 linhas (75%) numa
-  refatoração puramente estrutural, em etapas sucessivas: `Home`, `Empty`,
-  `ImportWorkbench`, `Review`, `WidgetCard`/`EmptyWidget`, as peças de
-  suporte de widget (`FieldDropSlot`, `WidgetHead`, tooltips/eixos de
-  gráfico, `MapWidgetBody` etc.), `FormatRulesEditor`, o diálogo de combinar
+- `src/routes/index.tsx` caiu de 10.282 para 2.195 linhas (79%) numa
+  refatoração puramente estrutural, em etapas sucessivas ao longo de duas
+  sessões: `Home`, `Empty`, `ImportWorkbench`, `Review`,
+  `WidgetCard`/`EmptyWidget`, as peças de suporte de widget
+  (`FieldDropSlot`, `WidgetHead`, tooltips/eixos de gráfico,
+  `MapWidgetBody` etc.), `FormatRulesEditor`, o diálogo de combinar
   planilha, o modo apresentação, o editor de coluna calculada, o painel de
   marcadores, o diálogo de atalhos, o painel de notas de origem, o banner de
-  diff de versão e a dica de termos foram movidos para arquivos próprios em
-  `src/components/oliam/`, sem mudar comportamento. O que resta em
-  `index.tsx` é `OliAm` (orquestração de rota/estágio) e o núcleo de
-  `Dashboard` (busca/filtro, exportação, revisão de fundo, undo/redo, o
-  pipeline de dados e a orquestração da grade de widgets) — ver seções 36,
-  51, 52, 55 e 56 do `CURRENT_STATE_AUDIT.md` para o histórico completo, o
-  mapeamento de candidatos restantes por risco e a regressão de bundle
-  descoberta e corrigida no processo. Sem reducer único planejado: os
-  estados que restam não formam uma máquina de estados coesa, são recursos
-  independentes (extração continua incremental, por candidato).
+  diff de versão, a dica de termos, os painéis de regras ausentes/
+  formatação/qualidade/filtros, o painel de colunas, as sidebars, a paleta
+  de comandos, e por fim os três hooks mais entrelaçados (revisão em
+  segundo plano, exportação, undo/redo, ações de widget) foram movidos
+  para arquivos próprios em `src/components/oliam/`, sem mudar
+  comportamento. **O plano de extração mapeado nas seções 51/55/59 do
+  `CURRENT_STATE_AUDIT.md` está completo** — todos os candidatos
+  identificados foram extraídos. O que resta em `index.tsx` é `OliAm`
+  (orquestração de rota/estágio) e o núcleo genuíno de `Dashboard`: a
+  cadeia de `useMemo` do pipeline de dados e a orquestração da grade de
+  widgets (renderização de cada `WidgetCard`, `canAdd`,
+  `assistantContext` etc.) — não separável sem uma reestruturação maior
+  (ex.: reducer central), decisão já registrada como fora do escopo desta
+  série. Ver seções 36, 51, 52, 55, 56, 58, 63, 64, 65, 66 e 67 do
+  `CURRENT_STATE_AUDIT.md` para o histórico completo.
 - O mapa estrutural gerado em `graphify-out/` é um artefato derivado. Este
   documento explica intenção; o grafo mostra dependências extraídas do código.
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por

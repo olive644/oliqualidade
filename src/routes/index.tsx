@@ -48,7 +48,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { decodeCellAddress } from "@/lib/cell-address";
 import { createLatestTaskQueue, type LatestTaskQueue } from "@/lib/latest-task-queue";
 import type {
   Column,
@@ -64,7 +63,6 @@ import { numericKinds, widgetTypeLabels } from "@/lib/types";
 import {
   createWidget,
   buildDefaultWidgets,
-  duplicateWidget,
   groupableKinds,
   pickBestGroupColumn,
   schedulePeriodColumns,
@@ -151,6 +149,7 @@ import { useTermHint } from "@/components/oliam/term-hint-banner";
 import { useBackgroundReviewAnalysis } from "@/components/oliam/use-background-review-analysis";
 import { useDashboardExport } from "@/components/oliam/use-dashboard-export";
 import { useUndoRedoHistory } from "@/components/oliam/use-undo-redo-history";
+import { useWidgetActions } from "@/components/oliam/use-widget-actions";
 import { QualitySignalsPanel } from "@/components/oliam/quality-signals-panel";
 import { MissingRulesPanel } from "@/components/oliam/missing-rules-panel";
 import { FormatPanel } from "@/components/oliam/format-panel";
@@ -1453,8 +1452,28 @@ function Dashboard(p: {
   // Modelo de widgets: painéis salvos antes desse recurso existir ainda não
   // têm "widgets" persistido, então reproduzimos o layout fixo antigo até o
   // usuário mexer em algo (a primeira alteração já grava a lista completa).
-  const widgets =
-    sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows);
+  const {
+    widgets,
+    setWidgets,
+    addWidget,
+    copyCurrentWidget,
+    pasteCopiedWidget,
+    updateWidget,
+    traceException,
+    removeWidget,
+    moveWidget,
+    reorderWidget,
+  } = useWidgetActions({
+    sheet,
+    updateSheet,
+    recordHistory,
+    widgetClipboard,
+    setWidgetClipboard,
+    setSearch,
+    setSort,
+    setFilters,
+    setFocusedCell,
+  });
   const assistantContext = useMemo(
     () =>
       buildLiveDashboardContext({
@@ -1484,81 +1503,6 @@ function Dashboard(p: {
       p.folderMonitor,
     ],
   );
-  const setWidgets = (next: Widget[]) => {
-    recordHistory();
-    updateSheet({ widgets: next });
-  };
-  const addWidget = (type: WidgetType) =>
-    setWidgets([...widgets, createWidget(type, sheet.columns, undefined, sheet.rows)]);
-  const copyCurrentWidget = (widget: Widget) => {
-    setWidgetClipboard({ ...widget });
-    toast.success("Widget copiado. Agora é só colar onde quiser.");
-  };
-  const pasteCopiedWidget = (afterId?: string) => {
-    if (!widgetClipboard) return;
-    const copy = duplicateWidget(widgetClipboard);
-    const next = [...widgets];
-    const afterIndex = afterId ? next.findIndex((widget) => widget.id === afterId) : -1;
-    next.splice(afterIndex >= 0 ? afterIndex + 1 : next.length, 0, copy);
-    setWidgets(next);
-    toast.success("Cópia do widget adicionada ao painel.");
-  };
-  const updateWidget = (id: string, patch: Partial<Widget>) =>
-    setWidgets(widgets.map((w) => (w.id === id ? { ...w, ...patch } : w)));
-  const traceException = (exception: SpreadsheetException) => {
-    let columnKey = exception.columnKey;
-    let rowIndex = exception.rowIndex ?? 1;
-    if (exception.address) {
-      try {
-        const decoded = decodeCellAddress(exception.address);
-        columnKey ??= sheet.columns[decoded.column]?.key;
-        if (!exception.rowIndex) rowIndex = Math.max(1, decoded.row);
-      } catch {
-        // Endereço textual continua visível no painel mesmo quando não é uma célula A1 válida.
-      }
-    }
-    setSearch("");
-    setSort(null);
-    setFilters([]);
-    setFocusedCell({
-      rowIndex,
-      ...(columnKey ? { columnKey } : {}),
-      ...(exception.address ? { address: exception.address } : {}),
-    });
-    if (!widgets.some((widget) => widget.type === "table")) {
-      setWidgets([...widgets, createWidget("table", sheet.columns, undefined, sheet.rows)]);
-    }
-    setTimeout(() => {
-      document.querySelector("[data-detailed-table]")?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    });
-  };
-  const removeWidget = (id: string) => setWidgets(widgets.filter((w) => w.id !== id));
-  const moveWidget = (id: string, dir: -1 | 1) => {
-    const i = widgets.findIndex((w) => w.id === id);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= widgets.length) return;
-    const next = [...widgets];
-    const a = next[i],
-      b = next[j];
-    if (!a || !b) return;
-    next[i] = b;
-    next[j] = a;
-    setWidgets(next);
-  };
-  const reorderWidget = (fromId: string, toId: string) => {
-    if (fromId === toId) return;
-    const from = widgets.findIndex((w) => w.id === fromId);
-    const to = widgets.findIndex((w) => w.id === toId);
-    if (from < 0 || to < 0) return;
-    const next = [...widgets];
-    const moved = next.splice(from, 1)[0];
-    if (!moved) return;
-    next.splice(to, 0, moved);
-    setWidgets(next);
-  };
   const canAdd: Record<WidgetType, boolean> = {
     metric: nums.length > 0,
     "metric-trend": nums.length > 0,

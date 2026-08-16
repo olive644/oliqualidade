@@ -3296,3 +3296,53 @@ ponta a ponta pelo hook extraído, sem erro de console.
 Resta só o candidato final: ações de widget (~130 linhas,
 `traceException` cruza busca/filtro/foco/histórico ao mesmo tempo —
 o mais entrelaçado de todos, deixado por último de propósito).
+
+## 67. Oitavo e último lote da extração do Dashboard: ações de widget
+
+Fecha o mapeamento completo da seção 55/59 — o candidato deixado por
+último de propósito, o mais entrelaçado com o resto do estado da UI:
+`traceException` mexe em `search`/`sort`/`filters`/`focusedCell`/
+`widgets`/histórico ao mesmo tempo, para levar o usuário até a linha
+de origem de uma exceção.
+
+**`useWidgetActions`** (`use-widget-actions.ts`): recebe `sheet`,
+`updateSheet`, `recordHistory` (do `useUndoRedoHistory`, seção 66),
+`widgetClipboard`/`setWidgetClipboard`, e os setters de UI que
+`traceException` precisa cruzar (`setSearch`, `setSort`, `setFilters`,
+`setFocusedCell`) — recebidos como parâmetros em vez de reimplementados,
+mesma decisão já tomada para `useDashboardExport` (seção 65) com
+`contentRef`. Devolve `widgets` (a lista efetiva, com fallback pro
+plano automático) e as 8 funções de mutação
+(`setWidgets`/`addWidget`/`copyCurrentWidget`/`pasteCopiedWidget`/
+`updateWidget`/`traceException`/`removeWidget`/`moveWidget`/
+`reorderWidget`).
+
+**`canAdd` ficou em `Dashboard`**, deliberadamente fora do hook: é só
+um mapa estático que lê `nums`/`groupableCols`/`dateCol` (variáveis do
+pipeline de dados central, usadas em vários outros lugares de
+`Dashboard`) — mover isso pro hook inflaria a superfície de parâmetros
+sem reduzir risco real, já que não é uma mutação, só uma checagem de
+"esse tipo de widget faz sentido com os dados atuais".
+
+`index.tsx` caiu de 2.251 para 2.195 linhas. Dois imports ficaram
+órfãos e foram removidos: `duplicateWidget` (`widgets.ts`) e
+`decodeCellAddress` (`cell-address.ts`) — ambos agora só usados dentro
+do hook.
+
+**Isso fecha o plano de extração do Dashboard mapeado nas seções 51 e
+55**: dos oito candidatos identificados (diálogo de junção,
+apresentação, coluna calculada, marcadores, painéis/sidebars/paleta de
+comandos, revisão em segundo plano, exportação, undo/redo, ações de
+widget), todos foram extraídos ao longo de 8 lotes nesta sessão e na
+anterior. O núcleo que resta em `Dashboard` é genuinamente o núcleo:
+a cadeia de `useMemo` do pipeline de dados e a orquestração da grade
+de widgets (renderização de cada `WidgetCard`, cálculo de `data`
+filtrado, `canAdd`, `assistantContext` etc.) — que não formam um
+conjunto de responsabilidades separável sem uma reestruturação maior
+(ex.: um reducer central), decisão já registrada como fora do escopo
+desta série de extrações.
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros de primeira, Prettier (duas
+quebras de linha ajustadas para bater com o formatador), `npm run
+build` e `npm run performance:check` aprovados (~365,2 KiB).
