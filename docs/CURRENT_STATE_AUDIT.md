@@ -103,14 +103,29 @@ automaticamente a nota como “incorreto”, nem ser contado como “validado”
 
 ### Parcial ou não suportado de forma completa
 
-- fills, fontes, bordas e cores semânticas na reconciliação;
-- imagens, desenhos, objetos e gráficos nativos;
-- validações de dados, agrupamentos/outlines e segmentações;
-- nomes definidos, links externos e hyperlinks como inventário rastreável;
-- macros VBA: nunca executadas e ainda sem inventário detalhado;
-- recálculo integral de fórmulas do Excel;
-- arquivos XLS/Numbers/ODS parcialmente corrompidos sem leitor alternativo;
-- auditoria de abas vazias/ocultas separada das opções analíticas.
+Reauditado em 2026-08-15 (seção 50) — verificado por código, não por
+memória do documento; a lista abaixo reflete o estado real de hoje:
+
+- fills, fontes, bordas e cores semânticas na reconciliação — sem mudança;
+- imagens, desenhos, objetos e gráficos nativos — sem mudança, zero inventário;
+- validações de dados, agrupamentos/outlines e segmentações (slicers) — sem mudança;
+- **hyperlinks: parcialmente evoluído.** Parsing estruturado existe
+  (`parseHyperlinks`, `workbook-metadata.ts:117-143`, endereço + destino +
+  tooltip), mas só alimenta `cell.l` do SheetJS célula a célula — não vira
+  inventário consultável em lugar nenhum (nenhuma UI, relatório ou
+  diagnóstico lista os hyperlinks do arquivo);
+- nomes definidos e links externos: zero leitura, sem mudança;
+- macros VBA: nunca executadas e ainda sem inventário detalhado — sem mudança;
+- recálculo integral de fórmulas do Excel: escopo cresceu marginalmente
+  (`SUMIF`/`COUNTIF` além do aritmético/lógico/`SUM`/`AVERAGE`/`COUNT`/
+  `MIN`/`MAX`), mas continua sem referência entre abas, sem lookup
+  (`VLOOKUP`/`XLOOKUP`/`INDEX`/`MATCH`) e sem motor completo;
+- arquivos XLS/Numbers/ODS parcialmente corrompidos sem leitor alternativo — sem mudança;
+- auditoria de abas vazias/ocultas separada das opções analíticas — sem
+  mudança; `buildSheetConfidenceMatrix` (seção 28) não resolve isso, porque
+  opera só sobre abas já filtradas por `sheetsWithData` (que continua
+  excluindo abas sem dado por definição); não existe leitura de
+  visibilidade de aba (`Hidden`/`SheetVisibility`) em nenhum lugar.
 
 ## 4. Matriz de cobertura dos leitores
 
@@ -2165,3 +2180,81 @@ Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
 contagem), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
 build` e `npm run performance:check` aprovados (~415,3 KiB). Mesma
 limitação de verificação visual pendente.
+
+## 50. Reauditoria de fidelidade: as 8 lacunas da seção 3, verificadas por código
+
+Pedido do usuário: revisitar as lacunas documentadas na seção 3
+("Parcial ou não suportado de forma completa") para saber se ainda são
+reais ou se evoluíram nas sessões desde que foram escritas. Escopo
+deliberadamente só investigativo/documental nesta etapa — nenhum
+código foi alterado.
+
+Resultado: 7 das 8 lacunas continuam exatamente como descritas
+originalmente, sem nenhuma evolução. Uma evoluiu parcialmente.
+
+1. **Fills/fontes/bordas/cores**: sem mudança. `ReaderCell`
+   (`ooxml-reader.ts:7-13`) só tem `address`, `rawValue`,
+   `displayValue`, `numberFormat`, `formula` — nada de estilo visual.
+2. **Imagens/desenhos/objetos/gráficos nativos**: sem mudança. Zero
+   ocorrência de "drawing"/"image"/"chart"/"oleObject" nos três
+   arquivos de leitura verificados.
+3. **Validações de dados/outlines/slicers**: sem mudança. Zero
+   ocorrência de "dataValidation"/"outlineLevel"/"slicer".
+   `OoxmlSheetStructure` (`ooxml-reader.ts:30-34`) só tem
+   `mergedRanges`/`hiddenRows`/`hiddenColumns`.
+4. **Hyperlinks — parcialmente evoluído.** `parseHyperlinks`
+   (`workbook-metadata.ts:117-143`) já extrai endereço, destino e
+   tooltip, resolvendo relacionamentos externos e âncoras internas —
+   isso não existia quando a lacuna foi escrita. Mas o único
+   consumidor (`attachWorkbookFeatures`, `workbook-metadata.ts:243-253`)
+   só usa isso para preencher `cell.l` do SheetJS célula a célula;
+   depois disso `advanced.hyperlinks` não é lido em lugar nenhum —
+   nem `import-intelligence.ts` (que usa `advanced.structuredTables`/
+   `pivotTables` do mesmo objeto, mas não `advanced.hyperlinks`), nem
+   nenhuma UI. Existe extração, não existe inventário rastreável e
+   consultável, que era o objetivo original da lacuna.
+5. **Nomes definidos**: sem mudança. Zero ocorrência de "definedName"
+   em todo `src/`.
+6. **Links externos**: sem mudança. Zero ocorrência de
+   "externalReference"/"externalLink" em todo `src/`.
+7. **Macros VBA**: sem mudança. As únicas ocorrências de
+   "macro"/"vba" em `src/` são rótulos de UI para extensão de arquivo
+   (`folder-monitor-widget.tsx`) e a entrada estática na lista de não
+   suportados — nenhum parsing de `vbaProject.bin`.
+8. **Recálculo integral de fórmulas**: continua sendo, por desenho,
+   um "avaliador propositalmente limitado" (comentário de cabeçalho,
+   `formula.ts:1-31`) — só recupera valor de fórmula sem cache
+   gravado no arquivo, nunca recalcula a planilha inteira. Escopo
+   cresceu marginalmente desde a última verificação: `SUMIF`/`COUNTIF`
+   se juntaram a `IF`/`AND`/`OR`/`IFERROR`/`ROUND`/`ABS`/`SUM`/
+   `AVERAGE`/`COUNT`/`MIN`/`MAX` (`formula.ts:271`). Continua sem
+   referência entre abas, sem `VLOOKUP`/`XLOOKUP`/`INDEX`/`MATCH`, sem
+   texto/data — qualquer função fora da lista lança erro em runtime
+   (`formula.ts:165`).
+9. **XLS/Numbers/ODS corrompidos**: sem mudança. A única checagem de
+   "corromp" em `src/` (`workbook-reader.ts:75`) lança erro e aborta
+   ao detectar EOCD de ZIP incompleto — não é um leitor alternativo
+   nem um modo degradado, é uma rejeição.
+10. **Auditoria de abas vazias/ocultas**: sem mudança, apesar de a
+    seção 28 (matriz de confiança por aba) parecer relacionada à
+    primeira vista. `buildSheetConfidenceMatrix`
+    (`import-intelligence.ts:140-164`) só reclassifica diagnósticos já
+    calculados sobre o array `sheets` que já recebe como argumento —
+    e esse array vem de `sheetsWithData` (`import.ts:2364-2370`), que
+    por definição já excluiu abas sem dado antes de chegar na matriz.
+    Também não existe leitura de visibilidade de aba
+    (`Hidden`/`SheetVisibility` do `workbook.xml`) em lugar nenhum —
+    só de linhas ocultas dentro de uma aba, um conceito diferente.
+
+A seção 3 (lista curta) foi atualizada acima para refletir este
+levantamento. Nenhum código foi alterado nesta etapa — é
+deliberadamente só o mapeamento pedido pelo usuário antes de decidir o
+que, se algo, vale a pena implementar. Dos itens acima, os mais
+plausíveis para uma próxima etapa de implementação, por ordem de
+esforço/risco crescente, seriam: (a) expor o inventário de hyperlinks
+já extraído em algum lugar consultável (menor esforço, dado já existe
+e só precisa de um consumidor novo); (b) inventariar nomes
+definidos/links externos (esforço médio, parsing novo mas seguindo o
+mesmo padrão já usado para hyperlinks); (c) qualquer coisa envolvendo
+imagens/desenhos, validações ou macros (esforço maior, formato XML
+mais complexo e sem precedente de parsing no código atual).
