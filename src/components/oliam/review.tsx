@@ -8,6 +8,7 @@ import {
   FileText,
   GitMerge,
   GripVertical,
+  Image as ImageIcon,
   Info,
   Link as LinkIcon,
   ListChecks,
@@ -652,6 +653,32 @@ export function Review(p: {
                   {validation.prompt ? (
                     <span className="mt-1 block text-muted-foreground">{validation.prompt}</span>
                   ) : null}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {active?.diagnostics?.images.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <ImageIcon className="size-4 text-primary" />
+                Imagens embutidas
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.images.length}
+              </span>
+            </summary>
+            <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+              {active.diagnostics.images.map((image, index) => (
+                <li
+                  key={`${image.name}-${index}`}
+                  className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+                >
+                  <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
+                    {image.anchor ?? "posição não determinada"} · {image.format}
+                  </span>
+                  <span className="break-all">{image.name}</span>
                 </li>
               ))}
             </ul>

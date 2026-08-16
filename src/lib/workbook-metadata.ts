@@ -26,6 +26,8 @@ export type AdvancedSheetMetadata = {
   dataValidations: DataValidationDiagnostic[];
   /** `xl/vbaProject.bin` presente no pacote. As macros nunca são executadas nem decompiladas. */
   hasVbaMacros: boolean;
+  /** Imagens embutidas (fotos/logos coladas na planilha). Formas/gráficos nativos não são inventariados. */
+  images: WorkbookImageDiagnostic[];
 };
 
 export type WorkbookCellComment = {
@@ -62,6 +64,14 @@ export type DataValidationDiagnostic = {
   prompt?: string;
   errorTitle?: string;
   error?: string;
+};
+
+export type WorkbookImageDiagnostic = {
+  name: string;
+  /** Célula de ancoragem (canto superior esquerdo), ou `null` se não for possível determinar. */
+  anchor: string | null;
+  /** Formato inferido pela extensão do arquivo de mídia: PNG, JPEG, GIF etc. */
+  format: string;
 };
 
 export type WorksheetWithAdvancedMetadata = XLSX.WorkSheet & {
@@ -242,6 +252,57 @@ function parseDataValidations(worksheetXml: string): DataValidationDiagnostic[] 
   return validations;
 }
 
+const IMAGE_FORMATS_BY_EXTENSION: Record<string, string> = {
+  png: "PNG",
+  jpg: "JPEG",
+  jpeg: "JPEG",
+  gif: "GIF",
+  bmp: "BMP",
+  emf: "EMF",
+  wmf: "WMF",
+  tif: "TIFF",
+  tiff: "TIFF",
+};
+
+function parseImages(
+  worksheetXml: string,
+  sheetRels: ReturnType<typeof relationships>,
+  text: (part: string) => string,
+): WorkbookImageDiagnostic[] {
+  const drawingRelId = attr(worksheetXml.match(/<drawing\b[^>]*\/?\s*>/i)?.[0] ?? "", "r:id");
+  const drawingRelationship = drawingRelId ? sheetRels.get(drawingRelId) : undefined;
+  if (!drawingRelationship) return [];
+  const drawingXml = text(drawingRelationship.target);
+  const parts = drawingRelationship.target.split("/");
+  const file = parts.pop();
+  const dir = parts.join("/");
+  if (!file) return [];
+  const drawingRels = relationships(text(`${dir}/_rels/${file}.rels`), dir);
+
+  const images: WorkbookImageDiagnostic[] = [];
+  for (const match of drawingXml.matchAll(
+    /<xdr:(?:twoCellAnchor|oneCellAnchor)\b[^>]*>([\s\S]*?)<\/xdr:(?:twoCellAnchor|oneCellAnchor)>/gi,
+  )) {
+    const body = match[1]!;
+    const picBody = body.match(/<xdr:pic\b[^>]*>([\s\S]*?)<\/xdr:pic>/i)?.[1];
+    if (!picBody) continue;
+    const name = decodeXml(attr(picBody, "name") ?? "Imagem");
+    const embedId = attr(picBody, "r:embed");
+    const relationship = embedId ? drawingRels.get(embedId) : undefined;
+    const extension = relationship?.target.split(".").pop()?.toLowerCase();
+    const format = (extension && IMAGE_FORMATS_BY_EXTENSION[extension]) || "desconhecido";
+    const fromBody = body.match(/<xdr:from>([\s\S]*?)<\/xdr:from>/i)?.[1] ?? "";
+    const col = fromBody.match(/<xdr:col>(\d+)<\/xdr:col>/i)?.[1];
+    const row = fromBody.match(/<xdr:row>(\d+)<\/xdr:row>/i)?.[1];
+    const anchor =
+      col !== undefined && row !== undefined
+        ? XLSX.utils.encode_cell({ r: Number(row), c: Number(col) })
+        : null;
+    images.push({ name, anchor, format });
+  }
+  return images;
+}
+
 function parseTable(xml: string): StructuredTableDiagnostic {
   const root = xml.match(/<table\b[^>]*>/i)?.[0] ?? "";
   const columns: string[] = [];
@@ -302,6 +363,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
     );
     const hyperlinks = parseHyperlinks(worksheetXml, sheetRels);
     const dataValidations = parseDataValidations(worksheetXml);
+    const images = parseImages(worksheetXml, sheetRels, text);
     const commentsRelationship = [...sheetRels.values()].find((relationship) =>
       relationship.type.toLowerCase().endsWith("/comments"),
     );
@@ -330,6 +392,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
       externalLinks,
       dataValidations,
       hasVbaMacros,
+      images,
     });
   }
   return result;
