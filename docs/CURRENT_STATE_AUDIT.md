@@ -2165,3 +2165,67 @@ Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
 contagem), `npx tsc --noEmit` sem erros, Prettier limpo, `npm run
 build` e `npm run performance:check` aprovados (~415,3 KiB). Mesma
 limitação de verificação visual pendente.
+
+## 51. Primeira etapa da extração do Dashboard: diálogo de "combinar planilha"
+
+Primeiro corte do plano de extração apresentado ao usuário (registro
+do plano completo abaixo). Escolhido por ser o bloco mais autocontido
+dos ~32 `useState` de `Dashboard`: 9 estados só usados entre si
+(`joinOpen`...`joinSheetPickerIndex`), lógica isolada (`applyJoinSheet`,
+`parseJoinFile`, `confirmJoinSheetPicker`, `resetJoin`, `combineJoin`)
+e ~115 linhas de JSX que não referenciam nada específico do resto de
+`Dashboard` além de `sheet.columns`/`sheet.rows` e `updateSheet`.
+
+Extraído para `src/components/oliam/join-sheet-dialog.tsx`, mesmo
+padrão já usado para `SheetPickerDialog` (que o novo hook também
+reaproveita internamente, sem duplicar a lógica de escolha de aba).
+`useJoinSheetDialog(columns, rows, onCombine)` retorna `{ openJoin,
+dialog }` — o chamador não precisa saber que existem 9 estados internos,
+só chama `openJoin()` nos dois gatilhos (botão da barra de ferramentas
+e item da paleta de comandos) e renderiza `{dialog}` uma vez. Mudança
+puramente estrutural: nenhuma lógica de junção (`leftJoin`) foi tocada.
+
+**Plano completo de extração do `Dashboard`** (`routes/index.tsx`,
+1164 até o fim do arquivo, ~2.575 linhas), por ordem de risco
+crescente — cada etapa deve ser seu próprio PR pequeno e verificável:
+
+1. ~~Diálogo de junção~~ — feito nesta etapa.
+2. Modo apresentação (`presentation`, `autoPlay`, `presentIndex`,
+   `intervalSeconds`, 4 estados).
+3. Editor de fórmula (`addingFormula`, `formulaLabel`, `formulaText`,
+   `formulaError`, 4 estados).
+4. Painel de bookmark (`bookmarkPanel`, `bookmarkName`, 2 estados).
+5. Reavaliar o que sobra: busca/filtro, exportação, revisão de fundo,
+   células focadas, sinais de qualidade — provavelmente continuam em
+   `Dashboard`, entrelaçados com a cadeia de `useMemo` do pipeline de
+   dados. **Não recomendado um reducer único** para os itens 2-4: os
+   estados não formam uma máquina de estados coesa, são recursos
+   independentes; um reducer grande só trocaria um objeto-deus por
+   outro.
+
+**Achado crítico sobre o orçamento de bundle**: esta extração é
+puramente estrutural (move código, não adiciona lógica nova), mas o
+maior chunk genérico ainda assim subiu de ~415,3 para ~418,6 KiB —
+**margem de só 1,4 KiB** contra o limite de 420 KiB. Isso confirma, de
+novo, a mesma fragilidade já registrada nas seções 42 e na tentativa
+revertida de isolar `widget-card`/`widget-support`: mover código entre
+arquivos de primeira-parte muda qual módulo vira a "fachada" do chunk
+compartilhado, mesmo sem nenhuma mudança de comportamento. **As
+próximas etapas do plano acima (2-4) têm risco real de estourar o
+orçamento mesmo sendo extrações igualmente pequenas e "seguras" em
+termos de lógica** — a margem já não suporta outra rodada de churn
+estrutural sem uma decisão explícita: aumentar o limite do orçamento
+(`scripts/check-performance-budget.mjs`) para refletir o crescimento
+real e legítimo do produto, ou investir em análise real do grafo de
+dependências (`rollup-plugin-visualizer`, não instalado hoje) antes de
+continuar. Registrado para o usuário decidir antes da próxima etapa.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem — hook novo é reorganização de lógica já existente, sem teste
+automatizado para componentes React sob `routes/index.tsx`/
+`components/oliam/`, mesma lacuna já registrada), `npx tsc --noEmit`
+sem erros, Prettier limpo, `npm run build` e `npm run
+performance:check` aprovados, mas com a margem crítica descrita acima.
+Mesma limitação de verificação visual pendente das etapas anteriores —
+o fluxo de combinar planilha (upload, escolha de colunas, confirmação)
+não foi exercitado de verdade nesta sessão.
