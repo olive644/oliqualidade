@@ -102,7 +102,6 @@ import {
   fmt,
   hue,
   infer,
-  inferColumns,
   validateFormula,
   withCalculatedColumns,
 } from "@/lib/format";
@@ -110,7 +109,6 @@ import {
   applyMissingRules,
   detectQualitySignals,
   groupAndAggregate,
-  leftJoin,
   matchesRange,
 } from "@/lib/data-pipeline";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
@@ -130,7 +128,6 @@ import {
 } from "@/lib/storage";
 import {
   LARGE_FILE_BYTES,
-  preferredSheetIndex,
   sheetToRows,
   type SheetOption,
   type SourceGrid,
@@ -154,7 +151,7 @@ import {
   type SpreadsheetException,
   type SpreadsheetIntelligence,
 } from "@/lib/spreadsheet-intelligence";
-import { readWorkbookFile, readWorkbookFileWithReport } from "@/lib/workbook-reader-client";
+import { readWorkbookFileWithReport } from "@/lib/workbook-reader-client";
 import { describeReaderOutcome, workbookFormat } from "@/lib/workbook-reading-engine";
 import {
   buildFailedImportMetricEntry,
@@ -203,7 +200,7 @@ import { OliFace } from "@/components/oliam/oli-face";
 import { useTheme, ThemeToggle } from "@/components/oliam/theme-toggle";
 import { AnimatedNumber } from "@/components/oliam/animated-number";
 import { Onboarding } from "@/components/oliam/onboarding";
-import { SheetPickerDialog } from "@/components/oliam/sheet-picker-dialog";
+import { useJoinSheetDialog } from "@/components/oliam/join-sheet-dialog";
 import { GeminiChatPanel } from "@/components/oliam/gemini-chat-panel";
 import { Home } from "@/components/oliam/home";
 import { Empty } from "@/components/oliam/empty";
@@ -1223,18 +1220,6 @@ function Dashboard(p: {
   const [formatPanel, setFormatPanel] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [importDiagnostics, setImportDiagnostics] = useState(false);
-  const [joinOpen, setJoinOpen] = useState(false);
-  const [joinRows, setJoinRows] = useState<Row[] | null>(null);
-  const [joinFileName, setJoinFileName] = useState("");
-  const [joinDragging, setJoinDragging] = useState(false);
-  const [joinBaseKey, setJoinBaseKey] = useState("");
-  const [joinOtherKey, setJoinOtherKey] = useState("");
-  const [joinError, setJoinError] = useState<string | null>(null);
-  const [joinSheetPicker, setJoinSheetPicker] = useState<{
-    fileName: string;
-    sheets: SheetOption[];
-  } | null>(null);
-  const [joinSheetPickerIndex, setJoinSheetPickerIndex] = useState(0);
   const [bookmarkPanel, setBookmarkPanel] = useState(false);
   const [bookmarkName, setBookmarkName] = useState("");
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
@@ -1256,7 +1241,6 @@ function Dashboard(p: {
     localStorage.setItem(TERM_HINTS_KEY, "1");
     setShowTermHint(false);
   };
-  const joinInput = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
@@ -1947,68 +1931,11 @@ function Dashboard(p: {
     setEditingName(false);
   };
 
-  const applyJoinSheet = (rows: Row[], fileName: string) => {
-    setJoinRows(rows);
-    setJoinFileName(fileName);
-    setJoinOtherKey(Object.keys(rows[0] ?? {})[0] ?? "");
-    setJoinBaseKey(sheet.columns[0]?.key ?? "");
-    setJoinError(null);
-  };
-  const parseJoinFile = async (file: File) => {
-    try {
-      const sheets = await readWorkbookFile(file);
-      if (!sheets.length) {
-        setJoinError("Essa planilha está vazia ou não foi possível lê-la.");
-        return;
-      }
-      if (sheets.length === 1) {
-        applyJoinSheet(sheets[0]!.rows, file.name);
-        return;
-      }
-      // Mais de uma aba com dado: deixa o usuário escolher, em vez de
-      // combinar direto com a primeira e descartar o resto silenciosamente.
-      setJoinSheetPicker({ fileName: file.name, sheets });
-      setJoinSheetPickerIndex(preferredSheetIndex(sheets));
-    } catch {
-      setJoinError(
-        `Não foi possível ler esse arquivo. Formatos aceitos: ${WORKBOOK_FORMATS_LABEL}.`,
-      );
-    }
-  };
-  const confirmJoinSheetPicker = () => {
-    if (!joinSheetPicker) return;
-    const chosen = joinSheetPicker.sheets[joinSheetPickerIndex];
-    if (!chosen) return;
-    applyJoinSheet(chosen.rows, joinSheetPicker.fileName);
-    setJoinSheetPicker(null);
-  };
-  const resetJoin = () => {
-    setJoinRows(null);
-    setJoinFileName("");
-    setJoinBaseKey("");
-    setJoinOtherKey("");
-    setJoinError(null);
-    if (joinInput.current) joinInput.current.value = "";
-  };
-  const combineJoin = () => {
-    if (!joinRows || !joinBaseKey || !joinOtherKey) return;
-    const existingKeys = sheet.columns.map((c) => c.key);
-    const { rows: joinedRows, addedKeys } = leftJoin(
-      sheet.rows,
-      joinBaseKey,
-      joinRows,
-      joinOtherKey,
-      existingKeys,
-    );
-    if (!addedKeys.length) {
-      setJoinError("A segunda planilha não tem colunas novas para combinar.");
-      return;
-    }
-    const newColumns = inferColumns(joinedRows, addedKeys);
-    updateSheet({ rows: joinedRows, columns: [...sheet.columns, ...newColumns] });
-    setJoinOpen(false);
-    resetJoin();
-  };
+  const { openJoin, dialog: joinDialog } = useJoinSheetDialog(
+    sheet.columns,
+    sheet.rows,
+    updateSheet,
+  );
 
   // Marcadores: um estado nomeado de filtros, busca e ordenação, salvo dentro
   // da própria aba para poder voltar a ele com um clique (ou alternar entre
@@ -2565,13 +2492,7 @@ function Dashboard(p: {
             <Palette />
             <span className="hidden sm:inline">Formatação</span>
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              resetJoin();
-              setJoinOpen(true);
-            }}
-          >
+          <Button variant="outline" onClick={openJoin}>
             <GitMerge />
             <span className="hidden sm:inline">Combinar planilha</span>
           </Button>
@@ -3567,12 +3488,7 @@ function Dashboard(p: {
               <Maximize2 />
               Modo apresentação
             </CommandItem>
-            <CommandItem
-              onSelect={() => {
-                resetJoin();
-                setJoinOpen(true);
-              }}
-            >
+            <CommandItem onSelect={openJoin}>
               <GitMerge />
               Combinar planilha
             </CommandItem>
@@ -3586,121 +3502,7 @@ function Dashboard(p: {
           </CommandGroup>
         </CommandList>
       </CommandDialog>
-      <Dialog
-        open={joinOpen}
-        onOpenChange={(open) => {
-          setJoinOpen(open);
-          if (!open) resetJoin();
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Combinar planilha</DialogTitle>
-            <DialogDescription>
-              Importe uma segunda planilha e combine com o painel atual por uma coluna em comum
-              (left join: todas as linhas do painel são mantidas, e os campos da segunda planilha
-              entram como colunas novas).
-            </DialogDescription>
-          </DialogHeader>
-          {!joinRows ? (
-            <button
-              className="oliam-dropzone w-full"
-              data-dragging={joinDragging}
-              onClick={() => joinInput.current?.click()}
-              type="button"
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setJoinDragging(true);
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                setJoinDragging(false);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setJoinDragging(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) void parseJoinFile(file);
-              }}
-            >
-              <Upload className="size-6 text-primary" />
-              <strong>{joinDragging ? "Solte o arquivo aqui" : "Enviar segunda planilha"}</strong>
-              <span className="text-sm text-muted-foreground">Excel, CSV, ODS ou Numbers</span>
-            </button>
-          ) : (
-            <div className="space-y-3">
-              <p className="font-mono text-xs text-muted-foreground">
-                {joinFileName} · {joinRows.length} linhas
-              </p>
-              <label className="block text-sm">
-                Coluna de correspondência no painel atual
-                <select
-                  className="oliam-select mt-1 w-full max-w-none"
-                  value={joinBaseKey}
-                  onChange={(e) => setJoinBaseKey(e.target.value)}
-                >
-                  {sheet.columns.map((c) => (
-                    <option key={c.key} value={c.key}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm">
-                Coluna de correspondência na nova planilha
-                <select
-                  className="oliam-select mt-1 w-full max-w-none"
-                  value={joinOtherKey}
-                  onChange={(e) => setJoinOtherKey(e.target.value)}
-                >
-                  {Object.keys(joinRows[0] ?? {}).map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Linhas do painel sem correspondência na nova planilha ficam com essas novas colunas
-                em branco.
-              </p>
-            </div>
-          )}
-          {joinError && <p className="text-xs text-destructive">{joinError}</p>}
-          <input
-            ref={joinInput}
-            type="file"
-            accept={WORKBOOK_ACCEPT}
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void parseJoinFile(file);
-            }}
-          />
-          {joinRows && (
-            <DialogFooter>
-              <Button variant="ghost" onClick={resetJoin}>
-                Trocar arquivo
-              </Button>
-              <Button onClick={combineJoin}>
-                <GitMerge />
-                Combinar
-              </Button>
-            </DialogFooter>
-          )}
-        </DialogContent>
-      </Dialog>
-      {joinSheetPicker && (
-        <SheetPickerDialog
-          fileName={joinSheetPicker.fileName}
-          sheets={joinSheetPicker.sheets}
-          selected={joinSheetPickerIndex}
-          onSelectedChange={setJoinSheetPickerIndex}
-          onConfirm={confirmJoinSheetPicker}
-          onCancel={() => setJoinSheetPicker(null)}
-        />
-      )}
+      {joinDialog}
       <Dialog open={shortcuts} onOpenChange={setShortcuts}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
