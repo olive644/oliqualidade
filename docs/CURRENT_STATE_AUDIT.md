@@ -3508,3 +3508,62 @@ novo), `npx tsc --noEmit` sem erros (mock de `ImportDiagnostics` em
 Prettier limpo (checado via normalização CRLF→LF), `npm run build` e
 `npm run performance:check` aprovados (maior chunk genérico subiu de
 369,8 para 371,9 KiB — ainda dentro da margem de ~450 KiB).
+
+## 71. Detecção de macros VBA, e correção de uma lista desatualizada pelas próprias seções 68-70
+
+Último item de esforço maior pedido pelo usuário: detecção (não
+execução) de macros VBA. Mais simples que os anteriores — um workbook
+com macros carrega o binário compilado da VBA em `xl/vbaProject.bin`
+dentro do pacote OOXML; a presença desse arquivo já é 100% do que
+precisa ser verificado, sem nenhum parsing de XML. `hasVbaMacros`
+(`workbook-metadata.ts`) é só `Boolean(zip["xl/vbaProject.bin"])`,
+calculado uma vez em `inspectWorkbookFeatures` (mesmo padrão de
+"calculado uma vez, replicado em toda aba" já usado para
+`externalLinks` na seção 69, já que a presença de macros também é uma
+propriedade do workbook inteiro, não de uma aba específica).
+
+Como é um flag booleano único (não uma coleção), não ganhou painel
+`<details>` próprio — só um aviso em `warnings` (mesmo tratamento já
+dado a `hasAutoFilter`/`hasTables`), que já aparece na seção
+"Diagnóstico da planilha" existente sem precisar de UI nova: "a
+planilha contém macros VBA; elas são preservadas no arquivo original,
+mas não são executadas nem decompiladas".
+
+**Efeito colateral encontrado e corrigido**: `UNSUPPORTED_FIDELITY_FEATURES`
+(`fidelity-meter.ts`), a lista que documenta o que a métrica de fidelidade
+de reconciliação célula-a-célula deliberadamente não mede, tinha ficado
+desatualizada pelas próprias seções 68-70 desta sessão. A linha "Nomes
+definidos, links externos e hyperlinks como inventário rastreável"
+afirmava que esses três não eram sequer um inventário rastreável — o que
+deixou de ser verdade a partir da seção 68. Removida por completo,
+alinhando com o precedente já existente de `structuredTables`/
+`pivotTables` (também inventariados sem reconciliação célula-a-célula e
+nunca estiveram nessa lista). A linha "Validações de dados,
+agrupamentos/outlines e segmentações" foi reduzida para "Agrupamentos/
+outlines e segmentações", pelo mesmo motivo (data validation já virou
+inventário na seção 70). "Macros VBA" permanece na lista — detectar a
+presença do binário não é o mesmo que reconciliar/executar o conteúdo,
+mesma lógica já aplicada a "Recálculo integral de fórmulas do Excel"
+(fórmulas já são diagnosticadas e listadas, mas recálculo completo
+continua fora de escopo) — só ganhou uma qualificação entre parênteses
+("detectadas, mas nunca executadas nem decompiladas") para deixar clara
+a diferença entre "detectado" e "reconciliado". O teste que fixava a
+string exata `"Macros VBA"` em `workbook-fidelity.test.ts` foi ajustado
+para checar por prefixo, já que o texto mudou.
+
+Cobertura em duas camadas: `workbook-metadata.test.ts` ganhou
+`xl/vbaProject.bin` na fixture compartilhada (com asserção
+`hasVbaMacros: true`) e um teste dedicado confirmando `false` quando o
+arquivo está ausente; `import-intelligence.test.ts` ganhou um teste
+espelhando os já existentes, confirmando a propagação via `!oliAdvanced`
+sintético e o aviso correspondente.
+
+Verificado com `npx vitest run` (486 passou, 11 pulados — dois testes
+novos), `npx tsc --noEmit` sem erros (mock de `ImportDiagnostics` em
+`auto-dashboard.test.ts` precisou do campo `hasVbaMacros: false` novo,
+e uma duplicata acidental de `dataValidations: []` introduzida ao editar
+foi corrigida antes do commit), Prettier limpo (duas quebras de linha
+ajustadas manualmente para bater com o formatador, checado via
+normalização CRLF→LF), `npm run build` e `npm run performance:check`
+aprovados (maior chunk genérico subiu de 371,9 para 372,2 KiB — ainda
+dentro da margem de ~450 KiB).

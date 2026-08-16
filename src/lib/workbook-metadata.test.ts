@@ -33,6 +33,7 @@ function advancedWorkbookPackage() {
     "xl/comments1.xml": xml(
       '<comments><authors><author>Ana &amp; João</author></authors><commentList><comment ref="C2" authorId="0"><text><r><t>Conferir </t></r><r><t>total</t></r></text></comment></commentList></comments>',
     ),
+    "xl/vbaProject.bin": new Uint8Array([1, 2, 3]),
   });
 }
 
@@ -70,6 +71,20 @@ describe("metadados avançados de XLSX", () => {
         prompt: "Escolha uma das opções da lista",
       },
     ]);
+    expect(metadata?.hasVbaMacros).toBe(true);
+  });
+
+  it("detecta ausência de macros VBA quando xl/vbaProject.bin não está no pacote", () => {
+    const zip = zipSync({
+      "xl/workbook.xml": xml(
+        '<workbook xmlns:r="r"><sheets><sheet name="Dados" r:id="rId1"/></sheets></workbook>',
+      ),
+      "xl/_rels/workbook.xml.rels": xml(
+        '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+      ),
+      "xl/worksheets/sheet1.xml": xml('<worksheet xmlns:r="r"/>'),
+    });
+    expect(inspectWorkbookFeatures(zip).get("Dados")?.hasVbaMacros).toBe(false);
   });
 
   it("expõe nomes definidos por escopo e referências a arquivos externos, ignorando nomes internos do Excel", () => {
@@ -111,6 +126,8 @@ describe("metadados avançados de XLSX", () => {
     expect(diagnostics.calculatedColumns).toEqual(["Total"]);
     expect(diagnostics.pivotTables[0]?.name).toBe("ResumoVendas");
     expect(diagnostics.warnings.some((warning) => warning.includes("Pivot Table"))).toBe(true);
+    expect(diagnostics.hasVbaMacros).toBe(true);
+    expect(diagnostics.warnings.some((warning) => warning.includes("macros VBA"))).toBe(true);
   });
 
   it("mantém o workbook utilizável quando os metadados avançados não podem ser lidos", () => {

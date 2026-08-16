@@ -13,9 +13,8 @@ import { verifyWorkbookWithExcelJs } from "@/lib/workbook-verifier";
 export const UNSUPPORTED_FIDELITY_FEATURES: readonly string[] = [
   "Preenchimento, fonte, borda e cor semântica de célula",
   "Imagens, desenhos, objetos e gráficos nativos",
-  "Validações de dados, agrupamentos/outlines e segmentações",
-  "Nomes definidos, links externos e hyperlinks como inventário rastreável",
-  "Macros VBA",
+  "Agrupamentos/outlines e segmentações",
+  "Macros VBA (detectadas, mas nunca executadas nem decompiladas)",
   "Recálculo integral de fórmulas do Excel",
 ];
 
