@@ -2624,3 +2624,54 @@ sinais de qualidade, chips de filtro), depois os blocos com mais
 props (painel de colunas com drag-and-drop, sidebars, paleta de
 comandos), deixando exportação, undo/redo e ações de widget por
 último, como já recomendado.
+
+## 56. Segundo lote da extração do Dashboard: regras ausentes, formatação, sinais de qualidade, chips de filtro
+
+Continuação direta da seção 55, mesma branch (PR ainda não mesclado —
+empilhado para evitar o conflito de merge conhecido neste arquivo
+append-only). Extrai os quatro candidatos "quase autocontidos"
+seguintes do mapeamento, todos recebendo só props/callbacks já
+calculados em `Dashboard`, sem estado próprio de UI compartilhado:
+
+- **`missing-rules-panel.tsx`** (`MissingRulesPanel`): painel "Regras
+  de dados ausentes", recebe `columns`/`setColumns`.
+- **`format-panel.tsx`** (`FormatPanel`): painel de formatação
+  condicional, wrapper de `FormatRulesEditor` (já extraído na seção
+  36) por coluna numérica; recebe `nums`/`columns`/`setColumns`. O
+  import de `FormatRulesEditor` em `index.tsx` ficou órfão depois
+  desta extração e foi removido.
+- **`quality-signals-panel.tsx`** (`QualitySignalsPanel`): painel
+  "Qualidade dos dados"; recebe `visibleSignals`/`onDismiss`. O
+  contador no botão do toolbar (badge com `visibleSignals.length`)
+  continua em `Dashboard`, já que `visibleSignals` também alimenta
+  esse badge fora do painel — não é um estado que "vaza", é um valor
+  já calculado consumido em dois lugares.
+- **`filter-chips-bar.tsx`** (`FilterChipsBar`): barra de chips de
+  filtros ativos com o botão "Limpar N filtros" (seção 54); recebe
+  `filters`/`columns`/`setFilters`. Confirmado por leitura: os dois
+  tipos de `<input>` já tinham `autoFocus` incondicional antes da
+  extração (não é condicional por índice), então mover o JSX não muda
+  esse comportamento.
+
+`index.tsx` caiu de 3.199 para 3.020 linhas nesta etapa. Nenhum
+comportamento mudou — os quatro componentes são puramente
+apresentacionais/prop-driven sobre estado que continua em `Dashboard`
+(`missingPanel`, `formatPanel`, `qualityPanel`, `dismissedSignals`,
+`sheet.filters`).
+
+Verificado com `npx vitest run` (476 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros, Prettier limpo (duas quebras
+de linha ajustadas para bater com o formatador, em
+`filter-chips-bar.tsx` e no JSX de `FilterChipsBar` em `index.tsx`),
+`npm run build` e `npm run performance:check` aprovados (maior chunk
+genérico ~434,2 KiB, dentro do limite de 450 KiB — margem restante de
+~15,8 KiB antes de precisar reabrir a decisão de orçamento ou investir
+em `rollup-plugin-visualizer`). Mesma limitação de verificação visual
+das etapas anteriores: os quatro painéis não foram exercitados ao vivo
+no navegador nesta etapa.
+
+Restam do mapeamento da seção 55, por risco crescente: painel de
+colunas com drag-and-drop, sidebar de navegação, sidebar de insights,
+paleta de comandos, hook de revisão em segundo plano, e por último
+exportação, undo/redo e ações de widget (os três mais entrelaçados
+entre si).

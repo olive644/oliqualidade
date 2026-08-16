@@ -201,12 +201,15 @@ import { Empty } from "@/components/oliam/empty";
 import { Review } from "@/components/oliam/review";
 import { WidgetPickerIcon, widgetTypeDescriptions } from "@/components/oliam/widget-support";
 import { WidgetCard } from "@/components/oliam/widget-card";
-import { FormatRulesEditor } from "@/components/oliam/format-rules-editor";
 import { ImportDiagnosticsDialog } from "@/components/oliam/import-diagnostics-dialog";
 import { ShortcutsDialog } from "@/components/oliam/shortcuts-dialog";
 import { SourceNotesPanel } from "@/components/oliam/source-notes-panel";
 import { VersionDiffBanner } from "@/components/oliam/version-diff-banner";
 import { useTermHint } from "@/components/oliam/term-hint-banner";
+import { QualitySignalsPanel } from "@/components/oliam/quality-signals-panel";
+import { MissingRulesPanel } from "@/components/oliam/missing-rules-panel";
+import { FormatPanel } from "@/components/oliam/format-panel";
+import { FilterChipsBar } from "@/components/oliam/filter-chips-bar";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
 // código uma tabela com aparência de dado empresarial real e ainda exercita
@@ -2438,120 +2441,13 @@ function Dashboard(p: {
           </Button>
         </div>
         {termHintBanner}
-        {sheet.filters.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b px-5 py-2">
-            {sheet.filters.length > 1 && (
-              <button
-                type="button"
-                className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-destructive hover:underline"
-                onClick={() => setFilters([])}
-              >
-                Limpar {sheet.filters.length} filtros
-              </button>
-            )}
-            {sheet.filters.map((f, i) => {
-              const col = sheet.columns.find((c) => c.key === f.key);
-              const isRange = col && (numericKinds.includes(col.kind) || col.kind === "date");
-              return (
-                <div
-                  className="flex items-center rounded-full border border-border bg-accent text-xs"
-                  key={i}
-                >
-                  <span className="px-2 text-muted-foreground">{col?.label}</span>
-                  {isRange ? (
-                    <>
-                      <input
-                        autoFocus
-                        type={col.kind === "date" ? "text" : "number"}
-                        className="w-20 bg-transparent py-1 outline-none"
-                        placeholder={col.kind === "date" ? "dd/mm/aaaa" : "mín"}
-                        value={f.min ?? ""}
-                        onChange={(e) =>
-                          setFilters(
-                            sheet.filters.map((x, j) =>
-                              j === i ? { ...x, min: e.target.value } : x,
-                            ),
-                          )
-                        }
-                      />
-                      <span className="text-muted-foreground">–</span>
-                      <input
-                        type={col.kind === "date" ? "text" : "number"}
-                        className="w-20 bg-transparent py-1 outline-none"
-                        placeholder={col.kind === "date" ? "dd/mm/aaaa" : "máx"}
-                        value={f.max ?? ""}
-                        onChange={(e) =>
-                          setFilters(
-                            sheet.filters.map((x, j) =>
-                              j === i ? { ...x, max: e.target.value } : x,
-                            ),
-                          )
-                        }
-                      />
-                    </>
-                  ) : (
-                    <input
-                      autoFocus
-                      className="w-24 bg-transparent py-1 outline-none"
-                      placeholder="valor…"
-                      value={f.value}
-                      onChange={(e) =>
-                        setFilters(
-                          sheet.filters.map((x, j) =>
-                            j === i ? { ...x, value: e.target.value } : x,
-                          ),
-                        )
-                      }
-                    />
-                  )}
-                  <button
-                    className="rounded-r-full p-1.5 pr-2.5 text-muted-foreground transition-colors hover:text-destructive"
-                    aria-label="Remover filtro"
-                    onClick={() => setFilters(sheet.filters.filter((_, j) => j !== i))}
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {qualityPanel && (
-          <div className="absolute inset-x-4 top-28 z-40 w-auto max-w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-96">
-            <div className="flex items-center justify-between border-b p-3">
-              <strong className="text-sm">Qualidade dos dados</strong>
-              <Button variant="ghost" size="icon" onClick={() => setQualityPanel(false)}>
-                <X />
-              </Button>
-            </div>
-            {visibleSignals.length === 0 ? (
-              <p className="p-4 text-[12px] text-muted-foreground">
-                Nenhum problema encontrado nos dados atuais.
-              </p>
-            ) : (
-              <div className="max-h-96 overflow-auto p-2">
-                {visibleSignals.map((s) => (
-                  <div
-                    key={`${s.kind}-${s.columnKey}`}
-                    className="flex items-start gap-2 border-b p-2 text-[12px] last:border-b-0"
-                  >
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                    <p className="flex-1 leading-relaxed">{s.message}</p>
-                    <button
-                      className="shrink-0 p-0.5"
-                      aria-label="Dispensar aviso"
-                      onClick={() =>
-                        setDismissedSignals((prev) => new Set(prev).add(`${s.kind}-${s.columnKey}`))
-                      }
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <FilterChipsBar filters={sheet.filters} columns={sheet.columns} setFilters={setFilters} />
+        <QualitySignalsPanel
+          open={qualityPanel}
+          onOpenChange={setQualityPanel}
+          visibleSignals={visibleSignals}
+          onDismiss={(key) => setDismissedSignals((prev) => new Set(prev).add(key))}
+        />
         {panel && (
           <div className="absolute inset-x-4 top-28 z-40 w-auto overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-[42rem]">
             <div className="flex items-center justify-between border-b p-3">
@@ -2729,94 +2625,19 @@ function Dashboard(p: {
             {exportError}
           </div>
         )}
-        {missingPanel && (
-          <div className="absolute inset-x-4 top-28 z-40 w-auto max-w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-96">
-            <div className="flex items-center justify-between border-b p-3">
-              <strong className="text-sm">Regras de dados ausentes</strong>
-              <Button variant="ghost" size="icon" onClick={() => setMissingPanel(false)}>
-                <X />
-              </Button>
-            </div>
-            <div className="max-h-96 overflow-auto p-2">
-              {sheet.columns
-                .filter((c) => !c.formula)
-                .map((c) => {
-                  const isNumeric = numericKinds.includes(c.kind);
-                  return (
-                    <div
-                      key={c.key}
-                      className="flex items-center justify-between gap-3 p-2 text-sm"
-                    >
-                      <span className="truncate">{c.label}</span>
-                      <select
-                        className="oliam-select w-44 shrink-0"
-                        value={c.missingRule ?? "ignore"}
-                        onChange={(e) => {
-                          const value = e.target.value as NonNullable<Column["missingRule"]>;
-                          setColumns(
-                            sheet.columns.map((x) =>
-                              x.key === c.key ? { ...x, missingRule: value } : x,
-                            ),
-                          );
-                        }}
-                      >
-                        {isNumeric ? (
-                          <>
-                            <option value="ignore">Ignorar nos totais</option>
-                            <option value="zero">Tratar como zero</option>
-                            <option value="interpolate">Interpolação linear</option>
-                            <option value="hide-row">Ocultar linha</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="ignore">Exibir "Não informado"</option>
-                            <option value="hide-row">Ocultar linha</option>
-                          </>
-                        )}
-                      </select>
-                    </div>
-                  );
-                })}
-              <p className="p-2 text-xs text-muted-foreground">
-                Valores estimados por interpolação aparecem com um contorno fino na tabela.
-              </p>
-            </div>
-          </div>
-        )}
-        {formatPanel && (
-          <div className="absolute inset-x-4 top-28 z-40 w-auto max-w-96 overflow-hidden rounded-2xl border border-border bg-card shadow-panel sm:inset-x-auto sm:right-4 sm:w-96">
-            <div className="flex items-center justify-between border-b p-3">
-              <strong className="text-sm">Formatação condicional</strong>
-              <Button variant="ghost" size="icon" onClick={() => setFormatPanel(false)}>
-                <X />
-              </Button>
-            </div>
-            <div className="max-h-96 overflow-auto p-2">
-              {nums.length === 0 && (
-                <p className="p-2 text-xs text-muted-foreground">
-                  Nenhuma coluna numérica disponível para formatar.
-                </p>
-              )}
-              {nums.map((c) => (
-                <FormatRulesEditor
-                  key={c.key}
-                  column={c}
-                  onChange={(rules) =>
-                    setColumns(
-                      sheet.columns.map((x) =>
-                        x.key === c.key ? { ...x, conditionalFormat: rules } : x,
-                      ),
-                    )
-                  }
-                />
-              ))}
-              <p className="p-2 text-xs text-muted-foreground">
-                Regras de limite colorem o valor quando ele cruza um número. Regras de escala pintam
-                o fundo em degradê entre um mínimo e um máximo, estilo heatmap.
-              </p>
-            </div>
-          </div>
-        )}
+        <MissingRulesPanel
+          open={missingPanel}
+          onOpenChange={setMissingPanel}
+          columns={sheet.columns}
+          setColumns={setColumns}
+        />
+        <FormatPanel
+          open={formatPanel}
+          onOpenChange={setFormatPanel}
+          nums={nums}
+          columns={sheet.columns}
+          setColumns={setColumns}
+        />
         <div className="flex min-h-0 flex-1">
           <div ref={contentRef} className="min-w-0 flex-1 overflow-auto bg-canvas p-4 md:p-6">
             <div className="oliam-export-watermark" aria-hidden="true" />
