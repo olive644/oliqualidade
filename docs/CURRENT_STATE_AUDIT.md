@@ -2013,3 +2013,75 @@ instanciação de `WidgetCard` foi atualizado corretamente), Prettier
 limpo, `npm run build` e `npm run performance:check` aprovados (maior
 chunk genérico em ~410,8 KiB). Mesma limitação de verificação visual
 pendente.
+
+## 47. Widget novo: Insights automáticos (`insights`)
+
+Fecha a iniciativa das seções 43-46 com um widget proposto pelo
+usuário: em vez de melhorar um gráfico existente, narra em texto os
+achados de uma métrica por categoria, sem nenhum desenho — a diferença
+proposital em relação a todos os outros widgets de gráfico/tabela.
+Escolhida entre duas opções apresentadas ao usuário (a alternativa era
+um comparador de períodos, que exigiria modelo de dados novo; esta
+reaproveita inteiramente funções já testadas).
+
+**Composição, sem lógica nova a testar isoladamente** — os três
+achados vêm de funções puras já existentes e cobertas por teste,
+aplicadas sobre a mesma série (`chartSeries`) que bar/pizza/ranking já
+usam:
+
+1. **Quem lidera**: `pieComparisonFor(sorted, 0)` sobre a série
+   ordenada — reaproveita a mesma função da seção 43, agora numa
+   terceira posição de uso. "X lidera com Y (Z% do total) — W% à
+   frente de [segunda colocada]."
+2. **Concentração do topo**: `rankingCoverageFor(sorted.slice(0,3),
+   sorted)` — reaproveita a função da seção 45. "As 3 maiores
+   categorias concentram N% do total; restam M categorias menores."
+   Omitido quando não há categorias fora do top 3 (mesmo critério já
+   usado no ranking).
+3. **Qualidade de dados**: `detectQualitySignals(data, [groupCol,
+   valueCol])`, restrita às duas colunas em uso pelo widget — a base
+   inteira já tem seu próprio painel global (`routes/index.tsx`, banner
+   dispensável já existente); repetir tudo aqui seria ruído, não
+   achado novo. Só o subconjunto relevante para o que este widget
+   especificamente mostra.
+
+**Decisão deliberada: não entra na recomendação automática.** Registro
+extra da regra já documentada em `docs/SECOND_BRAIN.md` ("painel de
+exceções e validação são widgets manuais; não entram automaticamente
+no painel"), agora explicitamente estendida a este widget. Mexer em
+`auto-dashboard.ts` para recomendar automaticamente é uma decisão de
+produto com alcance amplo (afeta todo painel novo criado a partir de
+agora) — fora do escopo combinado com o usuário para esta etapa.
+`createWidget` (`widgets.ts`) ganhou suporte a criar o widget
+manualmente pelo seletor "Adicionar widget" (mesmos padrões de
+`groupKey`/`valueKey`/`op` de bar/ranking/mapa), mas nada em
+`auto-dashboard.ts` foi tocado.
+
+**Checklist de registro de `WidgetType` novo, para a próxima vez**:
+esta etapa expôs todos os pontos que precisam mudar juntos ao
+adicionar um tipo de widget — `types.ts` (união + label),
+`widget-support.tsx` (`widgetTypeDescriptions` + `WidgetPickerIcon`),
+`widgets.ts` (`defaultSpan` + branch de `createWidget`),
+`widget-card.tsx` (bloco de renderização) e, o que não é óbvio,
+`routes/index.tsx` (`canAdd: Record<WidgetType, boolean>`, que decide
+se o tipo aparece habilitado no seletor "Adicionar widget" dado o
+formato da planilha atual) — `npx tsc --noEmit` pegou o esquecimento
+deste último ponto automaticamente, por ser um `Record` exaustivo
+sobre `WidgetType`.
+
+**Atenção ao orçamento de bundle**: depois desta etapa o maior chunk
+genérico subiu para ~414,7 KiB, contra o limite de 420 KiB — a margem
+que já vinha apertada desde a seção 42 ficou genuinamente crítica
+(~5,3 KiB de folga). A próxima mudança de peso relevante em
+`import-diagnostics-dialog`/`widget-card.tsx` provavelmente vai exigir
+isolar mais uma categoria de vendor em `manualChunks`
+(`vite.config.ts`) antes de conseguir crescer mais, não só rodar
+`npm run performance:check` reativamente.
+
+Verificado com `npx vitest run` (471 passou, 11 pulados, mesma
+contagem — composição de funções já testadas, sem lógica pura nova),
+`npx tsc --noEmit` sem erros, Prettier limpo (verificação CRLF→LF),
+`npm run build` e `npm run performance:check` aprovados. Mesma
+limitação de verificação visual pendente das etapas anteriores — a
+faixa de "Adicionar widget" e o próprio conteúdo do widget não foram
+vistos renderizados de verdade nesta sessão.

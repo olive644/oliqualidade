@@ -20,6 +20,7 @@ import {
   MapPin,
   PieChart as PieIcon,
   ShieldAlert,
+  Sparkles,
   Star,
   Trash2,
   TrendingUp,
@@ -258,6 +259,8 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
   ranking: "Ordena e exibe os maiores resultados.",
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
+  insights:
+    "Narra em texto os achados de uma métrica por categoria: quem lidera, quanto concentra e possíveis inconsistências.",
   "schedule-heatmap": "Cruza itens e períodos, colorindo o andamento do cronograma.",
   "attendance-overview": "Resume participantes, assinaturas ausentes, setores e turnos.",
   "validation-overview": "Separa aprovações, rejeições e pendências por inspetor.",
@@ -281,6 +284,7 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "ranking") return <ListOrdered className={className} />;
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
+  if (type === "insights") return <Sparkles className={className} />;
   if (type === "schedule-heatmap") return <CalendarRange className={className} />;
   if (type === "attendance-overview") return <Check className={className} />;
   if (type === "validation-overview") return <ShieldAlert className={className} />;

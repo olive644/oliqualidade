@@ -1743,6 +1743,7 @@ function Dashboard(p: {
     ranking: nums.length > 0 && groupableCols.length > 0,
     rating: nums.length > 0,
     map: nums.length > 0 && groupableCols.length > 0,
+    insights: nums.length > 0 && groupableCols.length > 0,
     "schedule-heatmap": schedulePeriodColumns(sheet.columns).length > 0,
     "attendance-overview": detectOperationalWidgetTypes(sheet.columns).includes(
       "attendance-overview",
