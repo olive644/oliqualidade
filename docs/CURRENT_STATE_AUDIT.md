@@ -3286,7 +3286,12 @@ contagem), `npx tsc --noEmit` sem erros (um ajuste: `ExceptionDecisions`
 vinha de `spreadsheet-intelligence.ts`, não de `types.ts` como
 presumido na primeira versão do hook — corrigido antes do commit),
 Prettier limpo, `npm run build` e `npm run performance:check`
-aprovados (~363,7 KiB).
+aprovados (~363,7 KiB). **Verificado ao vivo na preview do Vercel, o
+ciclo completo**: mudança do papel semântico da coluna "Vendas" (painel
+de Colunas, `setSemanticOverride` → `recordHistory`) de "Resultado"
+para "Total" → "Desfazer" confirmado voltando pra "Resultado" →
+"Refazer" confirmado voltando pra "Total" — undo/redo funcionando de
+ponta a ponta pelo hook extraído, sem erro de console.
 
 Resta só o candidato final: ações de widget (~130 linhas,
 `traceException` cruza busca/filtro/foco/histórico ao mesmo tempo —
