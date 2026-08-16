@@ -2229,3 +2229,16 @@ performance:check` aprovados, mas com a margem crítica descrita acima.
 Mesma limitação de verificação visual pendente das etapas anteriores —
 o fluxo de combinar planilha (upload, escolha de colunas, confirmação)
 não foi exercitado de verdade nesta sessão.
+
+**Decisão do usuário sobre o achado acima**: em vez de investir em
+análise real do grafo de dependências agora ou pausar a extração, o
+usuário optou por subir o limite do orçamento genérico de 420 para
+450 KiB (`scripts/check-performance-budget.mjs`), reconhecendo que o
+crescimento é legítimo (iniciativa de widgets explicativos + widget
+novo + início da extração do Dashboard), não inchaço acidental. Dá
+margem (~31 KiB acima do estado atual de ~418,6 KiB) para terminar as
+etapas 2-4 do plano de extração sem reabrir essa decisão a cada PR
+pequena. Se a margem voltar a ficar apertada depois dessas etapas, a
+análise real com `rollup-plugin-visualizer` continua sendo o caminho
+recomendado antes de subir o limite de novo — subir o número
+repetidamente sem entender a causa vira só adiar o problema.

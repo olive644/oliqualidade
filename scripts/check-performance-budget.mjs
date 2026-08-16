@@ -15,9 +15,20 @@ const budgets = [
   { label: "Excel sob demanda", pattern: /^xlsx-.*\.js$/, max: 550 * kib },
   { label: "Rust WASM", pattern: /^oli_ooxml_core.*\.wasm$/, max: 450 * kib },
   {
+    // Subido de 420 para 450 KiB em 2026-08-15: a iniciativa de widgets
+    // explicativos (painéis de comparação/tendência/cobertura, widget novo
+    // "Insights") e a primeira etapa de extração do Dashboard levaram o
+    // maior chunk genérico a ~418,6 KiB de forma legítima — crescimento real
+    // de produto, não inchaço acidental. A margem de 420 KiB já não
+    // suportava nem uma extração puramente estrutural sem lógica nova (ver
+    // seção 51 do docs/CURRENT_STATE_AUDIT.md: mover código entre arquivos
+    // de primeira-parte muda qual módulo vira "fachada" do chunk
+    // compartilhado, adicionando alguns KiB mesmo sem mudança de
+    // comportamento). 450 KiB dá margem para terminar as etapas planejadas
+    // de extração sem reabrir esta decisão a cada PR pequena.
     label: "chunk JavaScript",
     pattern: /\.js$/,
-    max: 420 * kib,
+    max: 450 * kib,
     exclude: /^(leaflet-|xlsx-)|worker-/,
   },
 ];
