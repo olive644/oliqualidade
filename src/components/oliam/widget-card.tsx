@@ -1,5 +1,4 @@
-import { Fragment, useRef, useState } from "react";
-import "leaflet/dist/leaflet.css";
+import { Fragment, lazy, Suspense, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -48,7 +47,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table-widget";
-import { OperationalWidgetBody } from "@/components/operational-widget-body";
 import { FolderMonitorWidget } from "@/components/folder-monitor-widget";
 import { cn } from "@/lib/utils";
 import {
@@ -137,10 +135,21 @@ import {
   PieLegend,
   SeriesComparisonPanel,
   TrendSummaryPanel,
-  MapWidgetBody,
   ChartDot,
   type ChartDotProps,
 } from "./widget-support";
+// Carregado sob demanda: Leaflet só entra no bundle quando um widget de mapa
+// é realmente exibido, em vez de pesar no chunk compartilhado por qualquer
+// painel (mesmo os que nunca usam mapa). Ver seção 63 do CURRENT_STATE_AUDIT.md.
+const MapWidgetBody = lazy(() => import("./map-widget-body"));
+// Widgets operacionais (presença, validação, carta de controle, planejado x
+// realizado) são recursos de nicho, não recomendados automaticamente — ver
+// seção 63 do CURRENT_STATE_AUDIT.md.
+const OperationalWidgetBody = lazy(() =>
+  import("@/components/operational-widget-body").then((m) => ({
+    default: m.OperationalWidgetBody,
+  })),
+);
 
 export function WidgetCard({
   widget: w,
@@ -428,7 +437,15 @@ export function WidgetCard({
       >
         <WidgetHead title={w.title || presentation.title} icon={presentation.icon} {...dragProps} />
         {sizeControls}
-        <OperationalWidgetBody type={w.type} columns={columns} rows={data} />
+        <Suspense
+          fallback={
+            <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
+              Carregando…
+            </div>
+          }
+        >
+          <OperationalWidgetBody type={w.type} columns={columns} rows={data} />
+        </Suspense>
       </article>
     );
   }
@@ -3249,11 +3266,19 @@ export function WidgetCard({
           </p>
         ) : (
           <>
-            <MapWidgetBody
-              grouped={grouped}
-              valueColumn={valueCol}
-              onSelect={(name) => handleGroupClick(groupCol.key, name)}
-            />
+            <Suspense
+              fallback={
+                <div className="flex h-64 w-full items-center justify-center text-xs text-muted-foreground">
+                  Carregando mapa…
+                </div>
+              }
+            >
+              <MapWidgetBody
+                grouped={grouped}
+                valueColumn={valueCol}
+                onSelect={(name) => handleGroupClick(groupCol.key, name)}
+              />
+            </Suspense>
             {leadingLocation && (
               <SeriesComparisonPanel
                 selected={leadingLocation.selected}

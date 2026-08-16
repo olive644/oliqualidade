@@ -31,7 +31,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table-widget";
-import { OperationalWidgetBody } from "@/components/operational-widget-body";
 import { FolderMonitorWidget } from "@/components/folder-monitor-widget";
 import {
   Dialog,
