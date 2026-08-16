@@ -8,6 +8,7 @@ import {
   GitMerge,
   GripVertical,
   Info,
+  Link as LinkIcon,
   ShieldAlert,
   Sparkles,
 } from "lucide-react";
@@ -540,6 +541,33 @@ export function Review(p: {
                     {note.author ? ` · ${note.author}` : ""}
                   </span>
                   <span className="whitespace-pre-line">{note.text}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {active?.diagnostics?.hyperlinks.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <LinkIcon className="size-4 text-primary" />
+                Hyperlinks preservados
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.hyperlinks.length}
+              </span>
+            </summary>
+            <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+              {active.diagnostics.hyperlinks.slice(0, 20).map((link, index) => (
+                <li
+                  key={`${link.address}-${index}`}
+                  className="rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+                >
+                  <span className="mb-1 block font-mono text-[10px] text-muted-foreground">
+                    {link.address}
+                    {link.tooltip ? ` · ${link.tooltip}` : ""}
+                  </span>
+                  <span className="break-all">{link.target}</span>
                 </li>
               ))}
             </ul>
