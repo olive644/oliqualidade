@@ -201,6 +201,12 @@ export function OliAm({ routeId }: { routeId?: string }) {
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(routeId ?? null);
   const [ready, setReady] = useState(false);
+  // Falso na renderização do servidor; vira true só depois que o React conecta
+  // os handlers no cliente. Evita que um clique na tela Empty (visível antes
+  // da hidratação terminar) seja perdido silenciosamente — ver seção 74 do
+  // CURRENT_STATE_AUDIT.md.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const [reviewTarget, setReviewTarget] = useState<string | "new">("new");
   const [stage, setStage] = useState<"home" | "empty" | "review" | "dashboard">(
     routeId ? "dashboard" : "empty",
@@ -1055,6 +1061,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
             importError={importError}
             privateMode={privateMode}
             togglePrivateMode={() => void togglePrivateMode()}
+            hydrated={hydrated}
           />
         )}
         {stage === "review" && (

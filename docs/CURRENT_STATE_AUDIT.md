@@ -3881,3 +3881,64 @@ uma corrida real de hidratação SSR do TanStack Start foi encontrada
 durante a configuração do Playwright (seção 73 acima) — um clique
 disparado antes da hidratação terminar é silenciosamente perdido. Não
 investigado a fundo aqui; ver o chip de tarefa criado naquela sessão.
+
+## 75. Corrigida a corrida de hidratação SSR sinalizada nas seções 73/74: botões da tela Empty desabilitados nativamente até o React conectar
+
+Item 1 do backlog priorizado (`SECOND_BRAIN.md`). Análise estática (sem
+rodar o Playwright de novo) confirmou primeiro o alcance real do bug:
+como a hidratação do TanStack Start acontece uma vez só para a árvore
+inteira no carregamento inicial, o risco está inteiramente concentrado
+nos controles que já vêm prontos no HTML do servidor. `Empty`
+(`components/oliam/empty.tsx`) é o único estágio nessa situação na
+rota `/` — `dashboards` começa como `[]` e só é populado depois do
+`useEffect` assíncrono em `index.tsx`, que roda bem depois da
+hidratação terminar, então `Home` nunca está sujeita à janela de
+corrida; `Review`/`Dashboard` só aparecem como resultado de uma ação do
+usuário que já passou dessa janela.
+
+Decisão do usuário (perguntado diretamente, sem opção "não decidir"):
+desabilitar os controles até a hidratação terminar, sem indicador de
+carregamento visível — risco mínimo de mudança de layout, aparência
+igual à de hoje enquanto a janela dura (tipicamente bem menos de 1s).
+
+Implementação: `OliAm` (`routes/index.tsx`) ganhou um estado
+`hydrated`, `false` por padrão — igual em qualquer render, incluindo a
+do servidor — que vira `true` num `useEffect` de dependências vazias
+(só roda depois que o React conecta os event handlers no cliente, por
+definição de como hidratação funciona). Passado como prop pro `Empty`,
+que aplica o atributo HTML nativo `disabled` a todo controle visível no
+primeiro paint: o botão grande de upload (`disabled={p.loading ||
+!p.hydrated}`, combinando com a condição que já existia), o botão de
+ativar modo privado, os dois toggles de expandir (Google Sheets, colar
+dados), os botões "Pasta monitorada" e "Ver demonstração", o botão de
+voltar (quando `showBack`) e a checkbox de tema (`ThemeToggle` ganhou
+um prop `disabled?: boolean` novo, opcional — não quebra os outros
+call sites).
+
+O motivo de usar o atributo `disabled` do HTML, e não só uma guarda no
+início do `onClick` (`if (!hydrated) return`): o `disabled` sai
+renderizado pelo próprio servidor, então o navegador já recebe o botão
+genuinamente inerte no primeiro payload, sem depender de nenhum
+JavaScript ter rodado. Uma guarda em `onClick` teria a mesma janela de
+corrida do bug original, porque o handler só existe depois da
+hidratação de qualquer forma — o problema nunca foi "o handler faz a
+coisa errada", foi "o handler ainda não existe".
+
+Verificação ao vivo (não só análise estática): subi o dev server local
+via Bash (`preview_start` do Browser pane abre numa rede isolada da do
+Bash — Playwright/curl usados pra verificação de HTML bruto precisam do
+servidor no lado do Bash, não do preview) e capturei o HTML gerado pelo
+servidor direto com `curl` antes de qualquer hidratação — confirma
+`disabled=""` presente nos 6 elementos interativos (5 botões +
+checkbox) já no payload SSR. Depois, verifiquei via `javascript_tool`
+no Browser pane que, pós-hidratação, os mesmos elementos voltam a
+`disabled: false`, e que clicar em "Ver demonstração" ainda leva
+normalmente à revisão (fluxo funcional intacto).
+
+Verificado com `npx vitest run` (506 passou, 11 pulados — sem teste
+novo: é uma mudança de atributo HTML condicional, sem lógica nova para
+cobrir com unidade; a prova é a verificação SSR ao vivo acima), `npx
+tsc --noEmit` sem erros, `npm run build` e `npm run performance:check`
+aprovados (maior chunk genérico foi de 375,7 para 375,8 KiB —
+variação desprezível), e `npm run test:e2e` (1 passou, mesmo teste da
+seção 73).

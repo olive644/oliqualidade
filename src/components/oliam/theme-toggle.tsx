@@ -24,7 +24,15 @@ export function useTheme() {
   return { theme, toggle };
 }
 
-export function ThemeToggle({ theme, toggle }: { theme: string; toggle: () => void }) {
+export function ThemeToggle({
+  theme,
+  toggle,
+  disabled,
+}: {
+  theme: string;
+  toggle: () => void;
+  disabled?: boolean;
+}) {
   return (
     <label
       className="theme-switch shrink-0"
@@ -35,6 +43,7 @@ export function ThemeToggle({ theme, toggle }: { theme: string; toggle: () => vo
         className="theme-switch__checkbox"
         checked={theme === "dark"}
         onChange={toggle}
+        disabled={disabled}
         aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
       />
       <div className="theme-switch__container">

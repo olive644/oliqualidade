@@ -41,6 +41,7 @@ export function Empty(p: {
   importError: string | null;
   privateMode: boolean;
   togglePrivateMode: () => void;
+  hydrated: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -87,6 +88,7 @@ export function Empty(p: {
               size="icon"
               aria-label="Voltar aos painéis"
               onClick={p.backHome}
+              disabled={!p.hydrated}
             >
               <ChevronLeft />
             </Button>
@@ -98,7 +100,7 @@ export function Empty(p: {
           <span className="hidden text-xs text-muted-foreground sm:inline">
             BI para dados que precisam fechar
           </span>
-          <ThemeToggle theme={p.theme} toggle={p.toggleTheme} />
+          <ThemeToggle theme={p.theme} toggle={p.toggleTheme} disabled={!p.hydrated} />
         </div>
       </header>
       <main className="oli-welcome">
@@ -132,7 +134,7 @@ export function Empty(p: {
             className="oli-welcome-dropzone"
             data-dragging={dragging}
             onClick={p.onUpload}
-            disabled={p.loading}
+            disabled={p.loading || !p.hydrated}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -181,6 +183,7 @@ export function Empty(p: {
                 type="button"
                 className="ml-2 underline underline-offset-2"
                 onClick={p.togglePrivateMode}
+                disabled={!p.hydrated}
               >
                 {p.privateMode ? "Modo privado ligado" : "Ativar modo privado"}
               </button>
@@ -195,6 +198,7 @@ export function Empty(p: {
               type="button"
               aria-expanded={sheetOpen}
               onClick={() => setSheetOpen(!sheetOpen)}
+              disabled={!p.hydrated}
             >
               <span>
                 <SheetIcon />
@@ -205,7 +209,12 @@ export function Empty(p: {
               </div>
               <ChevronDown className={cn(sheetOpen && "rotate-180")} />
             </button>
-            <button type="button" aria-expanded={p.editor} onClick={() => p.setEditor(!p.editor)}>
+            <button
+              type="button"
+              aria-expanded={p.editor}
+              onClick={() => p.setEditor(!p.editor)}
+              disabled={!p.hydrated}
+            >
               <span>
                 <ClipboardPaste />
               </span>
@@ -215,7 +224,7 @@ export function Empty(p: {
               </div>
               <ChevronDown className={cn(p.editor && "rotate-180")} />
             </button>
-            <button type="button" onClick={p.onFolder}>
+            <button type="button" onClick={p.onFolder} disabled={!p.hydrated}>
               <span>
                 <FolderSync />
               </span>
@@ -225,7 +234,7 @@ export function Empty(p: {
               </div>
               <ArrowRight />
             </button>
-            <button type="button" onClick={p.onDemo}>
+            <button type="button" onClick={p.onDemo} disabled={!p.hydrated}>
               <span>
                 <Play />
               </span>
