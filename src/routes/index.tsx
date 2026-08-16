@@ -102,11 +102,8 @@ import { compareVersions, type VersionDiff } from "@/lib/import-workbench";
 import {
   analyzeSpreadsheet,
   type ExceptionDecision,
-  type ExceptionDecisions,
-  type SemanticOverrides,
   type SemanticRole,
   type SpreadsheetException,
-  type SpreadsheetIntelligence,
 } from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFileWithReport } from "@/lib/workbook-reader-client";
 import { describeReaderOutcome, workbookFormat } from "@/lib/workbook-reading-engine";
@@ -118,17 +115,7 @@ import {
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { buildLiveDashboardContext } from "@/lib/assistant-context";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
-import {
-  applyCellEdit,
-  auditEntry,
-  markSourceRows,
-  parseEditedValue,
-  recordUndo,
-  stepRedo,
-  stepUndo,
-  type AuditEntry,
-  type UndoHistory,
-} from "@/lib/data-review";
+import { applyCellEdit, auditEntry, markSourceRows, parseEditedValue } from "@/lib/data-review";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
@@ -163,6 +150,7 @@ import { VersionDiffBanner } from "@/components/oliam/version-diff-banner";
 import { useTermHint } from "@/components/oliam/term-hint-banner";
 import { useBackgroundReviewAnalysis } from "@/components/oliam/use-background-review-analysis";
 import { useDashboardExport } from "@/components/oliam/use-dashboard-export";
+import { useUndoRedoHistory } from "@/components/oliam/use-undo-redo-history";
 import { QualitySignalsPanel } from "@/components/oliam/quality-signals-panel";
 import { MissingRulesPanel } from "@/components/oliam/missing-rules-panel";
 import { FormatPanel } from "@/components/oliam/format-panel";
@@ -1231,70 +1219,16 @@ function Dashboard(p: {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
-  // Pilha de desfazer/refazer, com escopo na aba atual. Inclui dados e
-  // auditoria para que uma correção nunca seja parcialmente desfeita.
-  type HistorySnapshot = {
-    rows: Row[];
-    filters: FilterRule[];
-    columns: Column[];
-    widgets: Widget[];
-    intelligence?: SpreadsheetIntelligence;
-    semanticOverrides: SemanticOverrides;
-    exceptionDecisions: ExceptionDecisions;
-    auditTrail: AuditEntry[];
-  };
-  const historyRef = useRef<UndoHistory<HistorySnapshot>>({ undo: [], redo: [] });
-  const [, forceHistoryUpdate] = useState(0);
-  useEffect(() => {
-    historyRef.current = { undo: [], redo: [] };
-    forceHistoryUpdate((t) => t + 1);
-  }, [d.id, activeSheetIndex]);
-  const dashboardSnapshot = (): HistorySnapshot => ({
-    rows: sheet.rows,
-    filters: sheet.filters,
-    columns: sheet.columns,
-    widgets: sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows),
-    ...(sheet.intelligence ? { intelligence: sheet.intelligence } : {}),
-    semanticOverrides: sheet.semanticOverrides ?? {},
-    exceptionDecisions: sheet.exceptionDecisions ?? {},
-    auditTrail: sheet.auditTrail ?? [],
-  });
-  const recordHistory = () => {
-    historyRef.current = recordUndo(historyRef.current, dashboardSnapshot());
-    forceHistoryUpdate((t) => t + 1);
-  };
-  const undo = () => {
-    const result = stepUndo(historyRef.current, dashboardSnapshot());
-    if (!result) return;
-    historyRef.current = result.history;
-    const prev = result.next;
-    updateSheet({
-      ...prev,
-      intelligence:
-        prev.intelligence ??
-        analyzeSpreadsheet(prev.rows, prev.columns, undefined, prev.semanticOverrides),
-    });
-    forceHistoryUpdate((t) => t + 1);
-  };
-  const redo = () => {
-    const result = stepRedo(historyRef.current, dashboardSnapshot());
-    if (!result) return;
-    historyRef.current = result.history;
-    const next = result.next;
-    updateSheet({
-      ...next,
-      intelligence:
-        next.intelligence ??
-        analyzeSpreadsheet(next.rows, next.columns, undefined, next.semanticOverrides),
-    });
-    forceHistoryUpdate((t) => t + 1);
-  };
+  const { canUndo, canRedo, undo, redo, recordHistory } = useUndoRedoHistory(
+    sheet,
+    d.id,
+    activeSheetIndex,
+    updateSheet,
+  );
   useEffect(() => {
     undoRef.current = undo;
     redoRef.current = redo;
   });
-  const canUndo = historyRef.current.undo.length > 0;
-  const canRedo = historyRef.current.redo.length > 0;
   const setFilters = (filters: FilterRule[]) => {
     recordHistory();
     updateSheet({ filters });

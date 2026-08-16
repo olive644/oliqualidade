@@ -3244,3 +3244,50 @@ lógica interna alterada.
 Restam undo/redo (~65 linhas, o "cérebro" chamado por ~9 pontos
 diferentes) e ações de widget (~130 linhas, `traceException` cruza
 busca/filtro/foco/histórico) — os dois últimos e mais entrelaçados.
+
+## 66. Sétimo lote da extração do Dashboard: núcleo de undo/redo
+
+Penúltimo candidato do mapeamento da seção 55/59, marcado como risco
+alto: o "cérebro" de undo/redo que ~9 mutadores diferentes em
+`Dashboard` chamam via `recordHistory()` antes de alterar linhas,
+filtros, colunas, widgets ou decisões de exceção.
+
+**`useUndoRedoHistory`** (`use-undo-redo-history.ts`): recebe `sheet`,
+`dashboardId` (`d.id`), `activeSheetIndex` e `updateSheet`, devolve
+`{ canUndo, canRedo, undo, redo, recordHistory }`. Move o tipo
+`HistorySnapshot`, `historyRef`/`forceHistoryUpdate`,
+`dashboardSnapshot()`, `recordHistory`, `undo` e `redo` — mesma lógica,
+mesma pilha (`recordUndo`/`stepUndo`/`stepRedo` de `data-review.ts`),
+mesmo reset ao trocar de painel/aba. O `useEffect` que sincroniza
+`undoRef.current`/`redoRef.current` (usados pelo atalho de teclado
+⌘Z/⇧⌘Z definido antes deste bloco) **continua em `Dashboard`** —
+só passou a apontar para o `undo`/`redo` que agora vêm do hook, em vez
+de funções locais.
+
+Os ~9 pontos que chamam `recordHistory()` (`setFilters`, `setColumns`,
+`setSemanticOverride`, `resetSemanticOverride`,
+`setExceptionDecision`, `correctException`, `editTableCell`,
+`setWidgets` e afins) **não foram tocados** — continuam em `Dashboard`,
+só chamando a função que agora vem do hook em vez de uma closure local.
+Isso é intencional: mover só o núcleo, sem reescrever os call-sites,
+reduz o número de coisas que podem quebrar de uma vez.
+
+`index.tsx` caiu de 2.317 para 2.251 linhas. Oito imports ficaram
+órfãos e foram removidos: `recordUndo`/`stepRedo`/`stepUndo`/
+`AuditEntry`/`UndoHistory` (`data-review.ts`) e `ExceptionDecisions`/
+`SemanticOverrides`/`SpreadsheetIntelligence`
+(`spreadsheet-intelligence.ts`) — `analyzeSpreadsheet`,
+`ExceptionDecision` (singular), `SemanticRole` e
+`SpreadsheetException` continuam em uso em `Dashboard` fora do bloco
+de histórico, então ficaram.
+
+Verificado com `npx vitest run` (480 passou, 11 pulados, mesma
+contagem), `npx tsc --noEmit` sem erros (um ajuste: `ExceptionDecisions`
+vinha de `spreadsheet-intelligence.ts`, não de `types.ts` como
+presumido na primeira versão do hook — corrigido antes do commit),
+Prettier limpo, `npm run build` e `npm run performance:check`
+aprovados (~363,7 KiB).
+
+Resta só o candidato final: ações de widget (~130 linhas,
+`traceException` cruza busca/filtro/foco/histórico ao mesmo tempo —
+o mais entrelaçado de todos, deixado por último de propósito).
