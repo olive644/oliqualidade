@@ -1822,3 +1822,74 @@ fórmulas e passou sem alteração, confirmando resultado idêntico.
 Verificado com `npx vitest run` (466 passou, 11 pulados, mesma
 contagem), `npx tsc --noEmit` sem erros, `npm run build` e `npm run
 performance:check` aprovados.
+
+## 43. Início de uma iniciativa maior: leitura guiada em mais widgets (`SeriesComparisonPanel`)
+
+Pedido do usuário: adicionar mais conteúdo explicativo a todos os
+widgets, no mesmo espírito do que já existia no gráfico de pizza (ver
+seção 41 e o painel de comparação de fatia), com liberdade para propor
+novos widgets. Escopo grande o suficiente para ser tratado como uma
+iniciativa em várias etapas pequenas e verificáveis, seguindo a mesma
+convenção já usada para a otimização de leitura OOXML (seções 42-43) —
+esta seção documenta a primeira etapa; etapas seguintes (linha/área,
+tabela, ranking, widgets novos) devem registrar suas próprias entradas
+sequenciais aqui em vez de expandir esta.
+
+**Achado ao investigar**: `pieComparisonFor` (`data-pipeline.ts:522`)
+já era genérica — opera sobre `{name, total}[]`, sem nada específico de
+pizza (rank, participação %, referência = maior outra categoria,
+diferença absoluta/relativa). Só o pizza a usava porque só ele tinha o
+painel de leitura construído em cima dela.
+
+**Primeira etapa entregue**: o painel de comparação da fatia
+selecionada foi extraído do JSX inline do pizza (`widget-card.tsx`)
+para um componente compartilhado, `SeriesComparisonPanel`
+(`widget-support.tsx`), parametrizado por `selected`/`comparison`/
+`kind`/`onFilter`/`filterLabel` em vez de nomes específicos de pizza.
+O gráfico de **barras** passou a usar o mesmo componente:
+
+- Estado novo `activeBarIndex` (hover apenas — diferente do pizza, que
+  também tem `selectedPieIndex` via clique). Decisão deliberada: no
+  bar, o clique já filtra diretamente (`handleGroupClick`), um
+  comportamento existente e documentado; reaproveitar clique também
+  para "selecionar para comparação" mudaria essa semântica. O painel
+  de barra segue o hover e, com nada sob o mouse, mostra por padrão a
+  maior categoria — mesma regra "sempre mostrar algo útil" já usada no
+  pizza (`summaryPieIndex`).
+- `<Bar>` ganhou `onMouseEnter`/`onMouseLeave` (o pizza já tinha o
+  equivalente no `<Pie>`) e as `<Cell>` ganharam o mesmo escurecimento
+  (`opacity: 0.45`) das categorias não destacadas que o pizza já tinha.
+- Botão "Filtrar por esta categoria" no painel chama a mesma
+  `handleGroupClick` que o clique direto na barra já chamava — não é
+  uma ação nova, só uma segunda forma de acionar a mesma ação.
+
+**Reuso de proteção de exportação**: a classe CSS que resolve o bug de
+colapso de texto letra-por-letra em modo de exportação (seção 41,
+`.oliam-export-mode .oliam-pie-comparison-row` → renomeada para
+`.oliam-export-mode .oliam-series-comparison-row`) passou a cobrir
+automaticamente qualquer novo uso do componente compartilhado, sem
+precisar repetir a regra CSS. Isso resolve preventivamente a advertência
+já registrada em `docs/SECOND_BRAIN.md` ("toda coluna de grid que usa
+`.truncate`/`.line-clamp` precisa de `minmax(<valor razoável>, ...)`,
+nunca `minmax(0, ...)`") para os próximos widgets que adotarem o mesmo
+painel.
+
+**Verificação**: `npx vitest run` (466 passou, 11 pulados, mesma
+contagem — como já registrado nas seções 26/28/41, componentes React
+sob `routes/index.tsx`/`components/oliam/` não têm convenção de teste
+automatizado no projeto, `@testing-library/react` não é usado, mudança
+de UI segue verificação manual), `npx tsc --noEmit` sem erros, `npm run
+build` e `npm run performance:check` aprovados. **Não foi possível
+verificar visualmente no navegador desta sessão**: além da limitação já
+conhecida de não simular o diálogo de upload de arquivo, o dev server
+apresentou a instabilidade intermitente já documentada
+(`NitroViteError: Vite environment "nitro" is unavailable`) mesmo após
+reiniciar o preview duas vezes e confirmar que não havia processo
+`node.exe` órfão na porta 3000 — mesma falha registrada como conhecida,
+sem causa identificada. Risco considerado baixo: a lógica nova
+(`activeBarIndex`, cálculo de `selectedBar`/`selectedBarComparison`)
+espelha exatamente o padrão já usado e testado indiretamente pelo pizza
+há várias sessões, e o componente extraído é uma reorganização de JSX
+já existente sem mudança de comportamento para o pizza. Fica registrado
+como verificação pendente — se o usuário testar e encontrar algo
+errado, comece relendo esta seção antes de investigar do zero.

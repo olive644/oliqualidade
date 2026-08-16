@@ -130,6 +130,7 @@ import {
   calculationCopy,
   CalculationButton,
   PieLegend,
+  SeriesComparisonPanel,
   MapWidgetBody,
   ChartDot,
   type ChartDotProps,
@@ -210,6 +211,7 @@ export function WidgetCard({
   // filtro. Usado por barra, pizza, linha, área, ranking e mapa.
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const [selectedPieIndex, setSelectedPieIndex] = useState<number | null>(null);
+  const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const [exceptionView, setExceptionView] = useState<"pending" | "handled" | "audit">("pending");
   const [editingException, setEditingException] = useState<string | null>(null);
   const [correctionValue, setCorrectionValue] = useState("");
@@ -2108,6 +2110,21 @@ export function WidgetCard({
     const selectedPie = summaryPieIndex !== null ? pieSeries[summaryPieIndex] : null;
     const selectedPieComparison =
       summaryPieIndex !== null ? pieComparisonFor(pieSeries, summaryPieIndex) : null;
+    // Mesma leitura guiada do pizza, mas sem estado de "seleção" própria: o
+    // clique na barra já filtra diretamente (comportamento existente,
+    // preservado), então aqui só o hover troca o destaque, com a maior
+    // categoria como padrão quando nada está sob o mouse.
+    const largestBarIndex = barSeries.reduce(
+      (largest, entry, index, entries) =>
+        largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
+          ? index
+          : largest,
+      -1,
+    );
+    const summaryBarIndex = activeBarIndex ?? (largestBarIndex >= 0 ? largestBarIndex : null);
+    const selectedBar = summaryBarIndex !== null ? barSeries[summaryBarIndex] : null;
+    const selectedBarComparison =
+      summaryBarIndex !== null ? pieComparisonFor(barSeries, summaryBarIndex) : null;
     const pieLegendItems = pieSeries.map((entry, i) => ({
       ...entry,
       color:
@@ -2285,6 +2302,8 @@ export function WidgetCard({
                         onClick={(pt) =>
                           pt?.name && handleGroupClick(groupCol.key, String(pt.name))
                         }
+                        onMouseEnter={(_, i) => setActiveBarIndex(i)}
+                        onMouseLeave={() => setActiveBarIndex(null)}
                         cursor="pointer"
                         animationDuration={500}
                       >
@@ -2298,6 +2317,10 @@ export function WidgetCard({
                                 valueCol.conditionalFormat,
                               ) ?? `url(#bar-grad-${w.id})`
                             }
+                            opacity={
+                              activeBarIndex === null || activeBarIndex === entryIndex ? 1 : 0.45
+                            }
+                            style={{ transition: "opacity 150ms ease" }}
                           />
                         ))}
                         <LabelList
@@ -2324,6 +2347,15 @@ export function WidgetCard({
               Tabela alternativa ao gráfico de barras:{" "}
               {barSeries.map((g) => `${g.name}, ${g.total}`).join("; ")}.
             </p>
+            {selectedBar && (
+              <SeriesComparisonPanel
+                selected={selectedBar}
+                comparison={selectedBarComparison}
+                kind={valueCol.kind}
+                filterLabel="Filtrar por esta categoria"
+                onFilter={() => handleGroupClick(groupCol.key, selectedBar.name)}
+              />
+            )}
           </>
         ) : w.type === "pie" ? (
           <>
@@ -2468,87 +2500,17 @@ export function WidgetCard({
               />
             </div>
             {selectedPie && (
-              <div className="oliam-pie-comparison-row grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(8rem,1.4fr)_repeat(3,minmax(7rem,0.7fr))_auto] sm:items-center">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold" title={selectedPie.name}>
-                    {selectedPie.name}
-                  </p>
-                  <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
-                    {selectedPieComparison
-                      ? `Posição ${selectedPieComparison.rank} de ${selectedPieComparison.categoryCount} categorias visíveis`
-                      : "Categoria selecionada"}
-                    {selectedPieComparison?.reference
-                      ? ` · comparação com ${selectedPieComparison.reference.name}, a maior outra categoria.`
-                      : " · não há outra categoria para comparar."}
-                  </p>
-                </div>
-                <div>
-                  <p
-                    className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
-                    title={`Valor de ${selectedPie.name}`}
-                  >
-                    Valor de {selectedPie.name}
-                  </p>
-                  <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-                    {fmt(selectedPie.total, valueCol.kind)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Participação
-                  </p>
-                  <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-                    {selectedPieComparison?.share !== null &&
-                    selectedPieComparison?.share !== undefined
-                      ? selectedPieComparison.share.toLocaleString("pt-BR", {
-                          style: "percent",
-                          maximumFractionDigits: 1,
-                        })
-                      : "—"}
-                  </p>
-                </div>
-                <div>
-                  <p
-                    className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
-                    title={
-                      selectedPieComparison?.reference
-                        ? `Diferença para ${selectedPieComparison.reference.name}`
-                        : "Comparação"
-                    }
-                  >
-                    {selectedPieComparison?.reference
-                      ? `Diferença para ${selectedPieComparison.reference.name}`
-                      : "Comparação"}
-                  </p>
-                  <p
-                    className={cn(
-                      "mt-0.5 font-mono text-sm font-semibold tabular-nums",
-                      selectedPieComparison?.difference !== null &&
-                        selectedPieComparison?.difference !== undefined &&
-                        selectedPieComparison.difference < 0
-                        ? "text-destructive"
-                        : "text-emerald-700 dark:text-emerald-300",
-                    )}
-                  >
-                    {selectedPieComparison?.difference !== null &&
-                    selectedPieComparison?.difference !== undefined
-                      ? `${selectedPieComparison.difference >= 0 ? "+" : ""}${fmt(
-                          selectedPieComparison.difference,
-                          valueCol.kind,
-                        )}${selectedPieComparison.relativeDifference !== null ? ` · ${selectedPieComparison.relativeDifference >= 0 ? "+" : ""}${selectedPieComparison.relativeDifference.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })}` : ""}`
-                      : "Sem referência"}
-                  </p>
-                </div>
-                {selectedPie.name !== "Outros" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleGroupClick(groupCol.key, selectedPie.name)}
-                  >
-                    Filtrar por esta fatia
-                  </Button>
-                )}
-              </div>
+              <SeriesComparisonPanel
+                selected={selectedPie}
+                comparison={selectedPieComparison}
+                kind={valueCol.kind}
+                filterLabel="Filtrar por esta fatia"
+                onFilter={
+                  selectedPie.name !== "Outros"
+                    ? () => handleGroupClick(groupCol.key, selectedPie.name)
+                    : undefined
+                }
+              />
             )}
             <p className="sr-only">
               Tabela alternativa à pizza:{" "}
