@@ -12,6 +12,8 @@ test-fixtures/generated/
 test-fixtures/private/
 test-fixtures/sanitized-real/
 test-results/
+playwright-report/
+blob-report/
 docs/.obsidian/
 docs/*.canvas
 client-chunk-report.json

@@ -3641,14 +3641,120 @@ Vercel. Formas/gráficos nativos, agrupamentos/outlines e segmentações
 continuam fora — nenhum foi pedido explicitamente, e cada um exigiria
 investigação de formato própria, sem reaproveitar diretamente o que já
 foi construído aqui.
-## 73. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas
+## 73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo
 
-> Nota de numeração: esta seção foi escrita em paralelo a uma PR
-> separada e ainda não mesclada que configura Playwright (também
-> numerada como próxima seção disponível na branch dela). Quando as
-> duas branches forem mescladas, uma das duas precisará ser renumerada
-> — mesma armadilha já documentada sobre branches empilhadas não
-> mescladas conflitarem neste arquivo append-only.
+Usuário confirmou explicitamente (via pergunta direta) que queria
+configurar Playwright — item que a seção 65 já tinha identificado como
+"pode se tornar mais viável [com a descoberta da preview do Vercel], mas
+ainda não foi tentado, e é uma decisão de ferramenta/CI que talvez
+mereça confirmação do usuário antes de começar".
+
+**Instalação**: `@playwright/test` como devDependency;
+`npx playwright install --with-deps chromium` baixou o Chrome for
+Testing (~192 MiB) sem problema de rede neste ambiente. Sem impacto no
+bundle de produção (dependência de desenvolvimento só usada pelo runner
+de teste).
+
+**Descoberta real durante a primeira tentativa**: o mecanismo nativo
+`webServer` do Playwright (que sobe o `npm run dev` e faz polling HTTP
+até responder) trava indefinidamente contra este dev server — não por
+lentidão comum, mas porque a primeira requisição feita bem no instante
+em que a porta abre colide com uma janela real onde o ambiente `nitro`
+do Vite ainda não terminou de inicializar (`NitroViteError: Vite
+environment "nitro" is unavailable`, status 503) e a conexão HTTP fica
+pendurada por dezenas de segundos antes de sequer retornar erro — tempo
+suficiente para estourar os 180s de timeout configurado, mesmo o
+servidor ficando genuinamente pronto e respondendo bem logo depois
+(confirmado manualmente: uma única requisição `curl` disparada 20s após
+o start funciona sem problema). Isso é o mesmo fenômeno documentado nas
+armadilhas de ambiente já conhecidas ("espere ~10-15s depois de
+`preview_start` antes do primeiro `navigate`"), só que atingindo o probe
+automático do Playwright em vez de uma navegação manual.
+
+**Solução**: em vez de reinventar a detecção de prontidão, o
+`playwright.config.ts` ganhou suporte a uma variável `OLI_E2E_BASE_URL`
+que, quando definida, desativa o `webServer` nativo do Playwright e usa
+a URL já fornecida como pronta — permitindo reaproveitar
+**exatamente** o mesmo mecanismo já comprovado e documentado no job
+`security-smoke` do CI (`application.yml`): sobe o dev server em
+background, espera com um laço de `curl --max-time 60` até 10
+tentativas, só então roda os testes. Sem essa variável (uso local sem
+CI), o `webServer` nativo continua disponível para conveniência, com um
+timeout generoso (180s) — funciona bem quando não há corrida com a
+inicialização a frio do bundler.
+
+**Bug real de produto encontrado e não corrigido nesta PR**: com o
+`webServer` contornado, o primeiro teste (clicar em "Ver demonstração"
+→ confirmar a revisão → chegar ao painel) ainda falhava de forma
+consistente (3/3 execuções) até adicionar
+`page.waitForLoadState("networkidle")` logo após `page.goto("/")`. Sem
+essa espera, o primeiro clique no botão "Ver demonstração"
+(`components/oliam/empty.tsx`) não tem nenhum efeito — nem erro no
+console, nem mudança de tela — e só o **segundo** clique funciona.
+Confirmado com um script de depuração isolado (clique duplo + captura de
+console/erros de página): é uma corrida real de hidratação SSR do
+TanStack Start, não flakiness do Playwright — o HTML já está visível na
+tela quando o clique acontece, mas o `onClick` do React ainda não foi
+conectado. **Sinalizado como tarefa separada** (fora do escopo desta
+configuração de ferramenta, é uma decisão de arquitetura/UX que precisa
+de confirmação do usuário) — pode afetar usuários reais em conexões
+lentas, não só o teste automatizado.
+
+**Primeiro teste** (`e2e/demo-dashboard.spec.ts`): fluxo "dados de
+demonstração" completo (carregamento → clique em "Ver demonstração" →
+tela de revisão → "Gerar relatório" → painel com widgets visível).
+Escolhido por não depender de upload de arquivo real (sem diálogo
+nativo do SO, que o Playwright evita via `setInputFiles`, mas manter o
+primeiro teste o mais simples possível fazia mais sentido). Rodado 4x
+seguidas sem falha após a correção da corrida de hidratação.
+
+**CI**: novo job `e2e` em `application.yml`, mesmo padrão estrutural do
+`security-smoke` (sobe servidor, espera com curl, roda o teste, sobe
+relatório HTML do Playwright como artefato só em caso de falha). Roda
+em todo PR (mesmo gate que os outros dois jobs), decisão deliberada de
+manter simples com "configurar" significando "rodar continuamente", não
+"disponível mas nunca executado" — se o custo de CI/tempo virar problema
+real, é uma decisão futura de mover para `workflow_dispatch` manual.
+
+Adicionado `.gitignore` para `playwright-report/` e `blob-report/`
+(`test-results/` já estava ignorado, coincidência feliz com o nome
+padrão do Playwright para artefatos de execução).
+
+Verificado localmente: `npx tsc --noEmit` limpo tanto no projeto
+principal quanto isolado para `playwright.config.ts`/`e2e/*.ts` (fora do
+`tsconfig.json` principal, que só inclui `src/**`), `npx eslint .` sem
+erros novos (só o ruído de CRLF pré-existente), Prettier limpo, YAML do
+workflow validado com `js-yaml`, `npx vitest run` confirma que
+`vitest.config.ts` (`include: ["src/**/*.test.ts"]`) não pega os
+arquivos `.spec.ts` do Playwright, `npm run build` e `npm run
+performance:check` sem nenhuma mudança de tamanho (dependência de
+desenvolvimento). O job de CI em si só pode ser verificado de fato
+rodando no GitHub Actions — a mesma sequência de comandos foi executada
+manualmente aqui antes de propor a PR, mas o runner `ubuntu-latest` real
+é a prova final.
+
+**Segunda descoberta real, encontrada só ao rodar de verdade no GitHub
+Actions**: a primeira tentativa desta PR falhou nos três jobs do CI
+(inclusive os dois que nem tocam em Playwright) logo na etapa `npm ci`,
+com `Missing: lru-cache@11.5.2 from lock file`. Causa: `npm 11` (versão
+instalada neste ambiente local) e `npm 10` (bundlado no Node 22 que a CI
+usa) resolvem de forma diferente uma dependência **opcional** de
+`nitro`/`unstorage` (`lru-cache` como peer dependency opcional) — o
+npm 11 omite silenciosamente a entrada resolvida do lockfile ao rodar
+`npm install`, o que é válido para o próprio npm 11 (`npm ci` local
+funciona normalmente), mas quebra `npm ci` na CI porque o npm 10 exige
+essa entrada presente. `git checkout origin/main -- package-lock.json`
+seguido de `npx npm@10 install --package-lock-only` (em vez do `npm
+install` padrão deste ambiente) reproduziu exatamente a mesma resolução
+que a CI espera — diff mínimo e puramente aditivo (12 linhas), sem
+remover nada. **Lição para sessões futuras**: qualquer alteração de
+dependências neste projeto deve rodar `npx npm@10 install` (ou a versão
+de npm que o `node-version` do workflow realmente bundla) em vez do
+`npm install` padrão do ambiente local, e sempre confirmar com um `rm
+-rf node_modules && npm ci` limpo antes de considerar a mudança
+pronta — sem isso, o problema só aparece na CI real, nunca localmente.
+
+## 74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas
 
 Usuário trouxe um arquivo real (planilha de cronograma de análises
 microbiológicas e água) com dois problemas visíveis: a aba
@@ -3772,7 +3878,6 @@ performance:check` aprovados (maior chunk genérico subiu de 374,4 para
 Fora do escopo, sinalizado como tarefa separada (não é um bug de
 leitura, é uma descoberta de UX que precisa de decisão de arquitetura):
 uma corrida real de hidratação SSR do TanStack Start foi encontrada
-durante a configuração do Playwright, numa PR separada e ainda não
-mesclada — um clique disparado antes da hidratação terminar é
-silenciosamente perdido. Não investigado a fundo aqui; ver o chip de
-tarefa criado pela sessão que configurou o Playwright.
+durante a configuração do Playwright (seção 73 acima) — um clique
+disparado antes da hidratação terminar é silenciosamente perdido. Não
+investigado a fundo aqui; ver o chip de tarefa criado naquela sessão.
