@@ -48,12 +48,39 @@ describe("import intelligence", () => {
       autoFilterRange: null,
       comments: [],
       hyperlinks: [{ address: "A2", target: "https://exemplo.com/poco", tooltip: "Ver relatório" }],
+      definedNames: [],
+      externalLinks: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.hyperlinks).toEqual([
       { address: "A2", target: "https://exemplo.com/poco", tooltip: "Ver relatório" },
     ]);
     expect(diagnostics.warnings).toContain("1 hyperlink(s) do Excel preservado(s)");
+  });
+
+  it("expõe nomes definidos e referências a arquivos externos anexados pelo leitor OOXML", () => {
+    const ws = sheet([
+      ["Item", "Valor"],
+      ["Poço", 5],
+    ]);
+    (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [],
+      definedNames: [{ name: "PrecoPoco", refersTo: "Dados!$B$2", scope: null }],
+      externalLinks: [{ target: "https://exemplo.com/planilha-externa.xlsx" }],
+    };
+    const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
+    expect(diagnostics.definedNames).toEqual([
+      { name: "PrecoPoco", refersTo: "Dados!$B$2", scope: null },
+    ]);
+    expect(diagnostics.externalLinks).toEqual([
+      { target: "https://exemplo.com/planilha-externa.xlsx" },
+    ]);
+    expect(diagnostics.warnings).toContain("1 nome(s) definido(s) detectado(s)");
+    expect(diagnostics.warnings).toContain("1 referência(s) a arquivo(s) externo(s) detectada(s)");
   });
 
   it("aumenta a confiança quando uma estrutura defeituosa é recuperada com evidências", () => {

@@ -9,6 +9,8 @@ import type {
   PivotTableDiagnostic,
   StructuredTableDiagnostic,
   WorkbookCellHyperlink,
+  WorkbookDefinedName,
+  WorkbookExternalLink,
   WorksheetWithAdvancedMetadata,
 } from "@/lib/workbook-metadata";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
@@ -101,6 +103,10 @@ export type ImportDiagnostics = {
   pivotTables: PivotTableDiagnostic[];
   /** Hyperlinks do Excel (endereço, destino e tooltip opcional) preservados por aba. */
   hyperlinks: WorkbookCellHyperlink[];
+  /** Nomes definidos (Name Manager) visíveis nesta aba: globais do workbook + locais dela. */
+  definedNames: WorkbookDefinedName[];
+  /** Referências a outros arquivos externos (workbook.xml `externalReferences`). */
+  externalLinks: WorkbookExternalLink[];
   calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
@@ -458,6 +464,8 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     structuredTables,
     pivotTables,
     hyperlinks: advanced?.hyperlinks ?? [],
+    definedNames: advanced?.definedNames ?? [],
+    externalLinks: advanced?.externalLinks ?? [],
     calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
@@ -712,6 +720,12 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     warnings.push(`filtro do Excel aplicado ao intervalo ${meta.autofilterRange}`);
   if (meta.hyperlinks.length)
     warnings.push(`${meta.hyperlinks.length} hyperlink(s) do Excel preservado(s)`);
+  if (meta.definedNames.length)
+    warnings.push(`${meta.definedNames.length} nome(s) definido(s) detectado(s)`);
+  if (meta.externalLinks.length)
+    warnings.push(
+      `${meta.externalLinks.length} referência(s) a arquivo(s) externo(s) detectada(s)`,
+    );
   if (meta.formulaExamples.length)
     transformations.push(
       `exemplos de fórmulas preservados: ${meta.formulaExamples.slice(0, 3).join(" | ")}`,
