@@ -321,9 +321,16 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    Verificado com arquivo real: aba "Tendência 2" do FRS-QA-BR-405 (14
    gráficos, 0 linhas) só aparece depois desta correção. Ver
    [[CURRENT_STATE_AUDIT#85. Abas só com gráficos/formas/imagens nativos (sem linha de dado tabular) agora são importáveis]].
-3. **Corpus real sanitizado** `#pendente` — XLSX/XLSM precisam de mais
-   arquivos; XLTX/XLTM não têm nenhum. Bloqueado em arquivos reais do
-   usuário; parar e perguntar antes de tentar sintetizar substitutos.
+3. **Corpus real sanitizado** `#pendente` — XLSX/XLSM têm 6 fontes (acima
+   do mínimo de 5); XLTX/XLTM continuam em 0/5. `corpus:sanitize` já
+   aceita `.xltx` como entrada (seção 88), mas a saída sempre grava
+   `.xlsx` de verdade (limite do SheetJS instalado) — então nenhum
+   arquivo `.xltx` real chega a contar pro gate XLTX especificamente,
+   só amplia as fontes possíveis pro gate XLSX. Os 2 arquivos `.xltx`
+   reais trazidos até agora eram duplicata exata de fontes já no corpus.
+   Bloqueado em arquivo real do usuário que ainda não esteja coberto;
+   parar e perguntar antes de tentar sintetizar substitutos. Ver
+   [[CURRENT_STATE_AUDIT#88. Usuário trouxe 2 arquivos .xltx reais de verdade — eram duplicatas do corpus já sanitizado]].
 5. ~~Núcleo restante de `Dashboard`~~ **Parcialmente resolvido** —
    investigação concluiu que um `useReducer` genérico não compensa (13
    `useState` de UI são independentes; reducer só trocaria forma sem ganho

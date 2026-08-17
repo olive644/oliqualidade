@@ -4663,3 +4663,46 @@ lote.
 hierárquico misto sem dado + fórmula vazia com formato de data não vira
 "31/12/1899"), `npx tsc --noEmit`, `npm run build` e `npm run
 performance:check` aprovados.
+
+## 88. Usuário trouxe 2 arquivos `.xltx` reais de verdade — eram duplicatas do corpus já sanitizado
+
+Diferente das seções 86/87 (modelos vazios gerados por script), usuário
+trouxe desta vez 2 arquivos `.xltx` confirmados como reais: "FRS-QA-435-
+Suape Recebimento de Resinas" (7 abas, ~67 mil células — controle de
+recebimento de resina) e "Anexo FRS-QA-028-Suape - Controle de Análise
+Diária de Cloro Residual Livre" (2 abas — mesmo assunto do fixture
+`frs-qa-028-import.test.ts` já existente no projeto). Junto vieram mais 3
+arquivos claramente sintéticos ("modelo fictício"/"exemplo
+propositalmente aleatório" no próprio conteúdo), não usados.
+
+`npm run corpus:sanitize` só aceitava `.xlsx` — bloqueado antes mesmo de
+tentar. Estendido pra aceitar `.xltx` também
+(`scripts/sanitize-workbook-corpus.mjs`), mas a saída sanitizada de um
+`.xltx` sempre grava `.xlsx` de verdade: o SheetJS instalado só sabe
+escrever `bookType` `xlsx`/`xlsm` (`XLSX.write` lança `Unrecognized
+bookType |xltx|` pra qualquer outro valor, já documentado na seção
+"Outros formatos OOXML" do `WASM_PROMOTION_CRITERIA.md`). Decisão
+confirmada com o usuário antes de implementar: sanitizar normalmente e
+gravar `.xlsx` — preserva o conteúdo real pra teste de paridade TS×Rust,
+mas não conta como fonte `.xltx` no gate (extensão/Content-Types não
+batem com o que o gate espera).
+
+Sanitizado num destino temporário (`test-fixtures/private/batch4` →
+`sanitized-batch4-tmp`, ambos fora do Git, apagados depois) pra comparar
+com o corpus existente antes de mesclar — mesmo processo já usado na
+seção 82. Resultado: as métricas de ambos os arquivos (abas, células,
+strings/números/datas sanitizados) bateram **exatamente** com
+`sanitized-001.xlsx` e `sanitized-002.xlsx` já presentes no corpus. São o
+mesmo conteúdo de origem que já tinha sido sanitizado numa sessão
+anterior (provavelmente a partir das versões `.xlsx` desses mesmos
+documentos) — por definição do projeto, duplicata não conta como fonte
+nova. Nenhum arquivo novo mesclado no corpus.
+
+**Resultado líquido**: `npm run corpus:sanitize` agora aceita `.xltx`
+como entrada (útil pra qualquer arquivo real futuro nesse formato que
+ainda não esteja no corpus), mas XLTX/XLTM continuam em 0/5 no gate de
+promoção — nenhum arquivo real disponível até agora acrescentou conteúdo
+que já não estivesse coberto. `npx vitest run` (545 passou, 1 pulado, sem
+teste novo — mudança é só no script de tooling, coberto indiretamente por
+`workbook-sanitizer.test.ts` que já existia e continua passando), `npx
+tsc --noEmit`, `npm run build` e `npm run performance:check` aprovados.
