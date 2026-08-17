@@ -4613,3 +4613,53 @@ nenhum nome genérico. `npx vitest run` (543 passou, 1 pulado — 2 testes
 novos: banner com texto repetido + cabeçalho hierárquico sem dado não
 fabrica registro fantasma), `npx tsc --noEmit`, `npm run build` e `npm run
 performance:check` aprovados.
+
+## 87. Usuário trouxe mais 5 modelos `.xltx` reais (06-10): cabeçalho misto e data fantasma "31/12/1899"
+
+Continuação direta da seção 86: usuário trouxe 5 modelos `.xltx` novos
+(calibração de equipamentos, inspeção de recebimento, matriz de
+treinamento, monitoramento ambiental, avaliação de fornecedores) — mesmo
+padrão de modelo genuinamente vazio, ainda sem dado real de negócio (não
+desbloqueiam o gate de promoção). Estrutura de título diferente do lote
+anterior (célula única, não repetida — o fix da seção 86 não era
+necessário aqui), mas encontraram dois bugs reais novos.
+
+**Bug 1 — cabeçalho hierárquico misto não estendia.** O modelo "08"
+(matriz de treinamento) tem uma linha de cabeçalho com colunas simples
+("Colaborador", "Função") ao lado de colunas mescladas agrupando
+subcolunas ("Treinamentos obrigatórios" cobrindo 4 subcolunas,
+"Avaliação" cobrindo 2). A trava em `findHierarchicalHeaderEnd`
+("`distinctParents.size >= 3 && unmergedLabels.length >= 2` → break",
+pensada pra não confundir uma mesclagem isolada de leaf-header com um
+cabeçalho de verdade) bloqueava a extensão mesmo com a mesclagem real
+presente, porque a linha misturava rótulos mesclados com não-mesclados.
+Corrigido reaproveitando o mesmo sinal `noDataAnywhereBelow` da seção 86:
+sem dado nenhum abaixo, os rótulos não mesclados são colunas de nível
+único legítimas, não indício de que a próxima linha já é dado — a trava
+original só se aplica quando ainda pode haver dado real embaixo.
+
+**Bug 2 — data fantasma "31/12/1899" numa fórmula não calculada com
+formato de data.** O modelo "06" (calibração) tem uma célula com fórmula
+condicional (`IF(OR(A2="",B2=""),"",A2+B2)`) sem valor calculado no
+arquivo (`t="s"`, `v=""`) e formato de data no estilo. O SheetJS 0.20, ao
+montar o AOA, sintetiza `new Date(0)` a partir do valor vazio + formato de
+número, e `normalizeRawRow` (`import.ts`) já tinha uma correção pra esse
+tipo de artefato (recuperar a string original quando `sourceCell.t ===
+"s"`) — mas ela rodava **depois** de tentar formatar a data fantasma como
+texto, então o `if (formatted) return formatted` sempre ganhava primeiro.
+Corrigido invertendo a ordem: checar o tipo original da célula antes de
+tentar formatar como data. Mesmo mecanismo já documentado pro caso "Torre
+de Processo" do FRS-QA-028 (célula textual virando `Date` só pelo estilo),
+agora cobrindo também célula de fórmula vazia com formato de data.
+
+Efeito colateral positivo idêntico ao da seção 86: como as únicas células
+"preenchidas" nesses modelos eram justamente esses dois artefatos
+fabricados (cabeçalho vazando como dado, data fantasma), corrigir os dois
+bugs fez os 5 modelos voltarem a ser reconhecidos como genuinamente vazios
+(0 abas — nada de dado real pra importar), consistente com o restante do
+lote.
+
+`npx vitest run` (545 passou, 1 pulado — 2 testes novos: cabeçalho
+hierárquico misto sem dado + fórmula vazia com formato de data não vira
+"31/12/1899"), `npx tsc --noEmit`, `npm run build` e `npm run
+performance:check` aprovados.
