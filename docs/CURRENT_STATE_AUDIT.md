@@ -4500,3 +4500,56 @@ e verificação ao vivo (editar célula → toast de sucesso → Ctrl+Z desfaz e
 volta ao valor original, confirmando que `recordHistory()` chamado de
 dentro do hook novo continua integrado com `useUndoRedoHistory` exatamente
 como antes).
+
+## 85. Abas só com gráficos/formas/imagens nativos (sem linha de dado tabular) agora são importáveis
+
+Retomando a pendência registrada na seção 76/81 e no backlog (item 2b):
+`sheetsWithData` (`import.ts`) descartava inteira qualquer aba sem nenhuma
+linha de dado, mesmo tendo conteúdo visual nativo do Excel (gráficos,
+formas com texto, imagens). Decisão de produto pedida ao usuário antes de
+implementar (regra do projeto para mudança no núcleo de importação):
+uma aba assim vira opção de importação normal, gera um painel (mesmo que
+sem widget de dado, já que não há coluna/linha pra construir um), e o
+inventário de gráficos/formas passa a **persistir** em `SheetData`
+(`sourceCharts`/`sourceShapes`) em vez de existir só durante a revisão
+efêmera — novo componente `SourceVisualsPanel` (mesmo padrão de
+`SourceNotesPanel`) renderiza esse inventário no painel final, não só na
+bancada de importação.
+
+Escopo real, maior que "só trocar um filtro": havia um **segundo** filtro
+idêntico em `routes/index.tsx` (`prepare()`, usado por todos os caminhos de
+importação — arquivo, colar, Google Sheets, demo) que também cortava por
+`rows.length > 0` antes da aba chegar à revisão; sem corrigir os dois, a
+aba nunca aparecia. `infer([])` (0 linhas) retorna 0 colunas, mas a etapa
+"Confirme como cada coluna deve ser lida" da revisão não quebra com 0
+colunas — só mostra a lista vazia e, como a confiança fica baixa (0%), pede
+a mesma confirmação de "leitura ambígua" já usada em qualquer aba de baixa
+confiança (nenhum bypass novo foi necessário).
+
+Verificado com o arquivo real do usuário: a aba "Tendência 2" do
+FRS-QA-BR-405 tem 14 gráficos nativos e zero linhas de dado — só apareceu
+depois desta correção (`readWorkbookBytes` foi de 18 para 19 abas
+recuperadas). `real-upload-validation.test.ts` atualizado para refletir
+isso: as asserções de qualidade/fidelidade (`fidelity.score >= 90` etc.)
+agora rodam só sobre as 18 abas com dado — o score de fidelidade de uma aba
+sem nenhuma célula pra comparar (`fidelity: 25` na aba "Tendência 2") não é
+um bug, é a métrica não ter sido desenhada para comparação vazia; não
+alterado, fora do escopo desta mudança. Teste novo dedicado confirma a aba
+"Tendência 2" aparece com `rows: []` e 14 gráficos inventariados.
+
+Verificado também ao vivo com uma fixture sintética própria (`.xlsx`
+mínimo com 1 gráfico nativo e 0 linhas, construído via `fflate.zipSync`
+imitando a estrutura de `advancedWorkbookPackage()` do
+`workbook-metadata.test.ts` — não usa nenhum dado do usuário): fluxo
+completo funciona, do upload até o painel final mostrar "Gráficos nativos
+do Excel · 1" persistido. Divergência pequena do que foi combinado: o
+painel final não fica com 0 widgets — `buildRecommendedWidgets` ainda cria
+1 widget de tabela detalhada vazia (0 linhas × 0 colunas) por padrão, sem
+crash nem aparência quebrada; não foi tratado como bug, decisão de não
+mexer em `buildRecommendedWidgets`/`generateAutoDashboardPlan` para esse
+caso degenerado sem evidência de que vale o risco.
+
+`npx vitest run` (541 passou, 1 pulado — 3 testes novos: 2 em `import.ts`
+para o filtro de `sheetsWithData`, 1 em `real-upload-validation.test.ts`
+para a aba "Tendência 2" real), `npx tsc --noEmit`, `npm run build` e `npm
+run performance:check` aprovados.

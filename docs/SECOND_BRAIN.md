@@ -198,6 +198,7 @@ audit inteiro.
 | Inventário de cor de preenchimento sólido por célula (só RGB direto) | `parseFillRgbByFillId`/`parseFillIdByCellXf`/`parseCellFills` (`workbook-metadata.ts`, cruza `xl/styles.xml` `<fills>`→`<cellXfs>` com o atributo `s` de cada `<c>`); `ImportDiagnostics.cellFills`; painel `<details>` em `review.tsx` | `workbook-metadata.test.ts` (RGB direto resolvido, cor de tema fica de fora) — ver [[CURRENT_STATE_AUDIT#79. Diagnosticado o widget "Matriz" mal configurado do usuário; inventário novo de cor de preenchimento de célula (metade 1 de 2)]] |
 | Widget Tabela colorido com a cor original do Excel, em abas simples (sem linha pulada entre cabeçalho e dado) | `resolveSourceCellFills` (`cell-fill-provenance.ts`), calculado em `confirmReview`/`buildImportedSheets` (`routes/index.tsx`); `SheetData.sourceCellFills`; consumido em `DataTable` (`data-table-widget.tsx`, prioridade menor que `conditionalStyle` explícito) | `cell-fill-provenance.test.ts` (gates de segurança) + verificação ao vivo reproduzindo as cores do Excel original — ver [[CURRENT_STATE_AUDIT#80. Metade 2: cor de preenchimento original ligada ao widget Tabela, via rastreamento de endereço restrito a abas simples]] |
 | Tolerância a namespace OOXML prefixada (`<x:dataValidation>`) e `Target` de relacionamento absoluto (`/xl/worksheets/sheet1.xml`) no inventário avançado | fragmento `NS` (`workbook-metadata.ts`, tolera prefixo opcional em toda regra da namespace principal do spreadsheetML) + `normalizePart` (usa `Target` direto quando começa com `/`, sem combinar com a pasta base) | `workbook-metadata.test.ts` (pacote OOXML mínimo prefixado+Target absoluto) — ver [[CURRENT_STATE_AUDIT#83. Usuário trouxe corpus sintético de 6 planilhas próprias: bug real de dois estágios no inventário avançado OOXML (namespace prefixada + Target absoluto)]] |
+| Aba sem linha de dado (só gráficos/formas/imagens nativos do Excel) virar opção de importação e persistir o inventário no painel final | `hasVisualOnlyContent`/filtro em `sheetsWithData` (`import.ts`) + filtro espelhado em `prepare()` (`routes/index.tsx`); `SheetData.sourceCharts`/`sourceShapes`; `SourceVisualsPanel` (mesmo padrão de `SourceNotesPanel`) | `import.test.ts` (`sheetsWithData`) + `real-upload-validation.test.ts` (aba real "Tendência 2", 14 gráficos) — ver [[CURRENT_STATE_AUDIT#85. Abas só com gráficos/formas/imagens nativos (sem linha de dado tabular) agora são importáveis]] |
 
 ## Regras de produto que não podem regredir
 
@@ -307,10 +308,16 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    preenchimento pros limites exatos de cada região, sem tocar na lógica de
    corte do `import.ts`. Testado nos dois caminhos de divisão (região
    geométrica e título de seção), caso positivo com endereço exato conferido
-   e caso negativo (âncora órfã não vaza pra região nenhuma). Continua
-   pendente: permitir abas sem linha de dado virarem opção de importação
-   quando tiverem só gráficos/formas `#pendente` — decisão de produto
-   separada, não tentada. Ver [[CURRENT_STATE_AUDIT#81. Item 2b do backlog: propaga !oliAdvanced através da divisão de regiões/seções independentes]].
+   e caso negativo (âncora órfã não vaza pra região nenhuma). Ver
+   [[CURRENT_STATE_AUDIT#81. Item 2b do backlog: propaga !oliAdvanced através da divisão de regiões/seções independentes]].
+2c. ~~Abas sem linha de dado, só gráficos/formas/imagens~~ **Corrigido** —
+   decisão de produto confirmada com o usuário: viram opção de importação
+   normal, painel final persiste o inventário (`SourceVisualsPanel`, não só
+   revisão efêmera). Dois filtros idênticos precisaram de correção
+   (`sheetsWithData` em `import.ts` e `prepare()` em `routes/index.tsx`).
+   Verificado com arquivo real: aba "Tendência 2" do FRS-QA-BR-405 (14
+   gráficos, 0 linhas) só aparece depois desta correção. Ver
+   [[CURRENT_STATE_AUDIT#85. Abas só com gráficos/formas/imagens nativos (sem linha de dado tabular) agora são importáveis]].
 3. **Corpus real sanitizado** `#pendente` — XLSX/XLSM precisam de mais
    arquivos; XLTX/XLTM não têm nenhum. Bloqueado em arquivos reais do
    usuário; parar e perguntar antes de tentar sintetizar substitutos.

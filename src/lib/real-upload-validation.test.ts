@@ -117,15 +117,29 @@ describe.skipIf(!fixture)("validação local do cronograma real", () => {
 
   it("recupera todas as abas com validade e fidelidade integrais", () => {
     const sheets = readWorkbookBytes(bytes, source);
-    expect(sheets).toHaveLength(18);
-    expect(sheets.every((sheet) => sheet.rows.length > 0)).toBe(true);
-    for (const sheet of sheets) {
+    // "Tendência 2" não tem nenhuma linha de dado tabular — só 14 gráficos
+    // nativos do Excel — e por isso não conta como aba "com dado" nas
+    // asserções abaixo, mas ainda aparece na lista (ver
+    // "mantém aba sem dado tabular quando só tem gráficos/formas nativos").
+    const dataSheets = sheets.filter((sheet) => sheet.rows.length > 0);
+    expect(sheets).toHaveLength(19);
+    expect(dataSheets).toHaveLength(18);
+    for (const sheet of dataSheets) {
       const keys = Object.keys(sheet.rows[0] ?? {});
       expect(keys.join(" ")).not.toMatch(/NaN|undefined|Invalid Date/i);
       expect(sheet.diagnostics?.qualityAudit?.dimensions.validity.score).toBe(100);
       expect(sheet.diagnostics?.qualityAudit?.dimensions.fidelity.score).toBeGreaterThanOrEqual(90);
       expect(sheet.diagnostics?.qualityAudit?.unresolvedReaderDivergences).toBe(0);
     }
+  });
+
+  it("mantém aba sem dado tabular quando só tem gráficos/formas nativos", () => {
+    const sheets = readWorkbookBytes(bytes, source);
+    const visualOnly = sheets.find((sheet) => sheet.name === "Tendência 2");
+    expect(visualOnly).toBeDefined();
+    expect(visualOnly?.rows).toEqual([]);
+    expect(visualOnly?.diagnostics?.charts.length).toBe(14);
+    expect(visualOnly?.warning).toMatch(/não tem linhas de dado tabular/);
   });
 
   it("preserva comentários de célula e o bloco textual de observações", () => {
