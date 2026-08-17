@@ -311,8 +311,12 @@ function parseDataValidations(worksheetXml: string): DataValidationDiagnostic[] 
     if (!range) continue;
     const type = attr(attributes, "type") ?? "none";
     const allowBlank = attr(attributes, "allowBlank") === "1";
-    const formula1 = body.match(new RegExp(`<${NS}formula1>([\\s\\S]*?)<\\/${NS}formula1>`, "i"))?.[1];
-    const formula2 = body.match(new RegExp(`<${NS}formula2>([\\s\\S]*?)<\\/${NS}formula2>`, "i"))?.[1];
+    const formula1 = body.match(
+      new RegExp(`<${NS}formula1>([\\s\\S]*?)<\\/${NS}formula1>`, "i"),
+    )?.[1];
+    const formula2 = body.match(
+      new RegExp(`<${NS}formula2>([\\s\\S]*?)<\\/${NS}formula2>`, "i"),
+    )?.[1];
     const promptTitle = attr(attributes, "promptTitle");
     const prompt = attr(attributes, "prompt");
     const errorTitle = attr(attributes, "errorTitle");
@@ -533,8 +537,9 @@ function parseFillRgbByFillId(stylesXml: string): (string | undefined)[] {
   return [...fillsBody.matchAll(new RegExp(`<${NS}fill>([\\s\\S]*?)<\\/${NS}fill>`, "gi"))].map(
     (match) => {
       const pattern =
-        match[1]!.match(new RegExp(`<${NS}patternFill\\b[^>]*>([\\s\\S]*?)<\\/${NS}patternFill>`, "i"))
-          ?.[1] ?? "";
+        match[1]!.match(
+          new RegExp(`<${NS}patternFill\\b[^>]*>([\\s\\S]*?)<\\/${NS}patternFill>`, "i"),
+        )?.[1] ?? "";
       if (!/patternType="solid"/.test(match[1]!)) return undefined;
       const fgColor = pattern.match(new RegExp(`<${NS}fgColor\\b[^>]*\\/?\\s*>`, "i"))?.[0] ?? "";
       const argb = attr(fgColor, "rgb");
@@ -589,7 +594,8 @@ function parseTable(xml: string): StructuredTableDiagnostic {
     const body = match[3] ?? "";
     const name = decodeXml(attr(attributes, "name") ?? "Coluna");
     columns.push(name);
-    if (new RegExp(`<${NS}calculatedColumnFormula\\b`, "i").test(body)) calculatedColumns.push(name);
+    if (new RegExp(`<${NS}calculatedColumnFormula\\b`, "i").test(body))
+      calculatedColumns.push(name);
   }
   return {
     name: decodeXml(attr(root, "displayName") ?? attr(root, "name") ?? "Tabela"),
