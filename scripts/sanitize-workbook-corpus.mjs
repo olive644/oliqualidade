@@ -68,7 +68,9 @@ if (!inputArgument || !outputArgument) {
     if (macroFiles.length > 0) {
       fail("A origem contem arquivo(s) com macros. Remova-os antes de sanitizar este corpus.");
     } else if (candidates.length === 0) {
-      fail("Nenhum arquivo XLSX/XLTX foi encontrado. Formatos com macros sao recusados nesta etapa.");
+      fail(
+        "Nenhum arquivo XLSX/XLTX foi encontrado. Formatos com macros sao recusados nesta etapa.",
+      );
     } else {
       mkdirSync(outputRoot, { recursive: true });
       const cases = [];
