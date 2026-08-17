@@ -1582,6 +1582,56 @@ describe("sheetsWithData", () => {
     XLSX.utils.book_append_sheet(wb, sheet([]), "Página1");
     expect(sheetsWithData(wb)).toEqual([]);
   });
+
+  it("mantém uma aba sem linha de dado quando ela tem gráfico/forma/imagem nativos do Excel", () => {
+    const wb = XLSX.utils.book_new();
+    const ws = sheet([]) as WorksheetWithAdvancedMetadata;
+    ws["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [],
+      definedNames: [],
+      externalLinks: [],
+      dataValidations: [],
+      hasVbaMacros: false,
+      images: [],
+      shapes: [],
+      charts: [{ type: "bar", title: "Vendas do trimestre", anchor: "A1" }],
+      cellFills: [],
+    };
+    XLSX.utils.book_append_sheet(wb, ws, "Só gráfico");
+    const options = sheetsWithData(wb);
+    expect(options.map((o) => o.name)).toEqual(["Só gráfico"]);
+    expect(options[0]?.rows).toEqual([]);
+    expect(options[0]?.diagnostics?.charts).toEqual([
+      { type: "bar", title: "Vendas do trimestre", anchor: "A1" },
+    ]);
+    expect(options[0]?.warning).toMatch(/não tem linhas de dado tabular/);
+  });
+
+  it("continua descartando uma aba vazia sem nenhum conteúdo visual", () => {
+    const wb = XLSX.utils.book_new();
+    const ws = sheet([]) as WorksheetWithAdvancedMetadata;
+    ws["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [],
+      definedNames: [],
+      externalLinks: [],
+      dataValidations: [],
+      hasVbaMacros: false,
+      images: [],
+      shapes: [],
+      charts: [],
+      cellFills: [],
+    };
+    XLSX.utils.book_append_sheet(wb, ws, "Página1");
+    expect(sheetsWithData(wb)).toEqual([]);
+  });
 });
 
 describe("preferredSheetIndex", () => {

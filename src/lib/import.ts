@@ -2490,6 +2490,20 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
       if (split.length === result.diagnostics.tableRegions.length) return split;
     }
     const { rows, warning, diagnostics, sourceGrid, audit } = result;
+    // Uma aba sem nenhuma linha de dado tabular normalmente é descartada
+    // (filtro abaixo), mas se ela tiver gráficos, formas com texto ou
+    // imagens nativos do Excel, ainda vale a pena aparecer como opção —
+    // o usuário perderia esse conteúdo silenciosamente. `visualOnlyWarning`
+    // substitui o aviso padrão (que falaria de estrutura de tabela
+    // inexistente) por um específico desse caso.
+    const visualOnlyContent = Boolean(
+      diagnostics &&
+      (diagnostics.charts.length || diagnostics.shapes.length || diagnostics.images.length),
+    );
+    const visualOnlyWarning =
+      !rows.length && visualOnlyContent
+        ? `A aba "${name}" não tem linhas de dado tabular, só conteúdo visual nativo do Excel (${diagnostics!.charts.length} gráfico(s), ${diagnostics!.shapes.length} forma(s) com texto, ${diagnostics!.images.length} imagem(ns)). Sem dados para tabela ou widgets, mas o inventário fica disponível no painel.`
+        : undefined;
     const longScheduleRows = scheduleToLong(rows);
     // Regiões independentes foram detectadas (diagnostics.tableRegions), mas a
     // separação automática não ocorreu acima: ou regionsAreSafeToSplit recusou
@@ -2505,7 +2519,7 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
       {
         name,
         rows,
-        warning,
+        warning: visualOnlyWarning ?? warning,
         ...(diagnostics ? { diagnostics } : {}),
         ...(sourceGrid ? { sourceGrid } : {}),
         ...(audit
@@ -2514,7 +2528,13 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
         ...(longScheduleRows.length ? { longScheduleRows } : {}),
       },
     ];
-  }).filter((s) => s.rows.length > 0);
+  }).filter((s) => s.rows.length > 0 || hasVisualOnlyContent(s));
+}
+
+/** Uma aba sem linha de dado ainda vale como opção se tiver gráfico, forma com texto ou imagem nativos do Excel — ver `sheetsWithData`. */
+function hasVisualOnlyContent(s: SheetOption): boolean {
+  const d = s.diagnostics;
+  return Boolean(d && (d.charts.length || d.shapes.length || d.images.length));
 }
 
 /**

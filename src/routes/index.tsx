@@ -76,7 +76,11 @@ import {
 } from "@/lib/data-pipeline";
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
-import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
+import type {
+  WorkbookChartDiagnostic,
+  WorkbookImageDiagnostic,
+  WorkbookShapeDiagnostic,
+} from "@/lib/workbook-metadata";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
 import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
@@ -141,6 +145,7 @@ import { WidgetCard } from "@/components/oliam/widget-card";
 import { ImportDiagnosticsDialog } from "@/components/oliam/import-diagnostics-dialog";
 import { ShortcutsDialog } from "@/components/oliam/shortcuts-dialog";
 import { SourceNotesPanel } from "@/components/oliam/source-notes-panel";
+import { SourceVisualsPanel } from "@/components/oliam/source-visuals-panel";
 import { VersionDiffBanner } from "@/components/oliam/version-diff-banner";
 import { useTermHint } from "@/components/oliam/term-hint-banner";
 import { useBackgroundReviewAnalysis } from "@/components/oliam/use-background-review-analysis";
@@ -218,6 +223,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
       audit?: ImportAudit;
       sourceNotes?: SourceNote[];
       sourceImages?: WorkbookImageDiagnostic[];
+      sourceShapes?: WorkbookShapeDiagnostic[];
+      sourceCharts?: WorkbookChartDiagnostic[];
     }[]
   >([]);
   const [reviewSheetIndex, setReviewSheetIndex] = useState(0);
@@ -413,7 +420,20 @@ export function OliAm({ routeId }: { routeId?: string }) {
     }[],
     n: string,
   ) => {
-    const nonEmpty = data.filter((s) => s.rows.length > 0);
+    // Uma aba sem linha de dado ainda vale a pena mostrar na revisão se
+    // tiver gráfico, forma com texto ou imagem nativos do Excel — mesma
+    // exceção já aplicada em `sheetsWithData` (import.ts), que só chega até
+    // aqui se essa condição também for respeitada neste segundo filtro.
+    const nonEmpty = data.filter(
+      (s) =>
+        s.rows.length > 0 ||
+        Boolean(
+          s.diagnostics &&
+          (s.diagnostics.charts.length ||
+            s.diagnostics.shapes.length ||
+            s.diagnostics.images.length),
+        ),
+    );
     if (!nonEmpty.length) return;
     setReviewSheets(
       nonEmpty.map((s) => ({
@@ -425,6 +445,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.audit ? { audit: s.audit } : {}),
         ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
         ...(s.diagnostics?.images.length ? { sourceImages: s.diagnostics.images } : {}),
+        ...(s.diagnostics?.shapes.length ? { sourceShapes: s.diagnostics.shapes } : {}),
+        ...(s.diagnostics?.charts.length ? { sourceCharts: s.diagnostics.charts } : {}),
       })),
     );
     setReviewSheetIndex(0);
@@ -497,6 +519,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
         widgets: buildRecommendedWidgets(autoDashboard, columns, s.rows),
         ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
         ...(s.diagnostics?.images.length ? { sourceImages: s.diagnostics.images } : {}),
+        ...(s.diagnostics?.shapes.length ? { sourceShapes: s.diagnostics.shapes } : {}),
+        ...(s.diagnostics?.charts.length ? { sourceCharts: s.diagnostics.charts } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
         ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
       };
@@ -891,6 +915,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
         widgets: buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
         ...(s.sourceNotes?.length ? { sourceNotes: s.sourceNotes } : {}),
         ...(s.sourceImages?.length ? { sourceImages: s.sourceImages } : {}),
+        ...(s.sourceShapes?.length ? { sourceShapes: s.sourceShapes } : {}),
+        ...(s.sourceCharts?.length ? { sourceCharts: s.sourceCharts } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
         ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
       };
@@ -1488,6 +1514,9 @@ function Dashboard(p: {
   );
 
   const sourceNotesPanel = <SourceNotesPanel sourceNotes={sheet.sourceNotes} />;
+  const sourceVisualsPanel = (
+    <SourceVisualsPanel sourceShapes={sheet.sourceShapes} sourceCharts={sheet.sourceCharts} />
+  );
 
   const gridContent =
     widgets.length === 0 ? (
@@ -1986,6 +2015,7 @@ function Dashboard(p: {
             </div>
             <VersionDiffBanner diff={detailedVersionDiff} />
             {sourceNotesPanel}
+            {sourceVisualsPanel}
             {gridContent}
             <footer className="oliam-export-footer" aria-hidden="true">
               <div className="oliam-export-signature">
@@ -2052,6 +2082,7 @@ function Dashboard(p: {
           {presentationBar}
           <div className="flex-1 overflow-auto p-4 md:p-6">
             {sourceNotesPanel}
+            {sourceVisualsPanel}
             {gridContent}
           </div>
         </div>
