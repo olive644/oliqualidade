@@ -343,14 +343,18 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    widgets) continua deliberadamente não extraído — é pipeline funcional,
    não mutação de estado, sem candidato natural a hook. Ver
    [[CURRENT_STATE_AUDIT#84. Extraído \`useSheetMutations\`: os 7 mutadores de dados que sobravam soltos em \`Dashboard\`]].
-6. **Separação de regiões independentes falha em modelo vazio com título
-   de seção mesclado parcialmente** `#pendente` — `detectIndependentSections`/
-   `regionsAreSafeToSplit` (`import.ts`) também exigem evidência de dado
-   pra confirmar a divisão, que um modelo `.xltx` genuinamente vazio não
-   tem; diferente do banner de largura inteira corrigido na seção 86 (dois
-   grupos mesclados parcialmente na mesma linha, um por região). Sem
-   evidência de quão comum é esse padrão em arquivo real — não tentado.
-   Ver [[CURRENT_STATE_AUDIT#86. Usuário trouxe modelos .xltx reais em cima do mesmo corpus: cabeçalho hierárquico virava registro fantasma em planilha sem dado]].
+6. ~~Separação de regiões independentes falha em modelo vazio com título
+   de seção mesclado parcialmente~~ **Investigado, já resolvido sem
+   código novo** — `regionsAreSafeToSplit` de fato exige evidência de
+   dado que um modelo vazio não tem, mas as correções das seções 86/87
+   (banner com texto repetido + cabeçalho hierárquico misto) já eliminam
+   o sintoma observável *antes* dessa função entrar em jogo: o caminho
+   sem split já reconhece o cabeçalho combinado corretamente, então o
+   resultado final (0 linhas) é idêntico com ou sem a divisão em regiões.
+   Mudança tentada em `regionsAreSafeToSplit` (mesmo padrão
+   `noDataAnywhere` das seções 86/87) não teve nenhum efeito observável em
+   nenhum cenário testado — revertida por falta de benefício demonstrável.
+   Ver [[CURRENT_STATE_AUDIT#89. Item 6 do backlog investigado: já estava resolvido como efeito colateral das seções 86/87]].
 
 ## Comandos operacionais
 
