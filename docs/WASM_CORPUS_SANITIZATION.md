@@ -19,14 +19,19 @@ nenhuma macro dentro &mdash; o Rust nunca executa VBA mesmo, ent&atilde;o o obje
 aqui n&atilde;o &eacute; preservar a macro, &eacute; preservar a extens&atilde;o real do arquivo pra
 o gate de promo&ccedil;&atilde;o contar a fonte no formato certo (`docs/WASM_PROMOTION_CRITERIA.md`).
 
-A sa&iacute;da sanitizada de um `.xltx`/`.xltm` de origem sempre grava um
-`.xlsx`/`.xlsm` "normal" de verdade, nunca um template &mdash; o SheetJS
-instalado neste projeto s&oacute; sabe escrever `bookType` `xlsx`/`xlsm`
-(`XLSX.write` lan&ccedil;a `Unrecognized bookType |xltx|` pra qualquer outro
-valor), ent&atilde;o o Content-Types interno nunca declara "template". Isso
-preserva fielmente o conte&uacute;do real pra teste de paridade TS&times;Rust, mas
-esse arquivo sanitizado **n&atilde;o conta como fonte `.xltx`/`.xltm`** no gate de
-promo&ccedil;&atilde;o &mdash; s&oacute; amplia as fontes do gate `xlsx`/`xlsm` j&aacute; existente.
+A sa&iacute;da sanitizada de um `.xltx`/`.xltm` de origem preserva o formato de
+modelo de verdade. O SheetJS instalado neste projeto s&oacute; sabe ESCREVER
+`bookType` `xlsx`/`xlsm` (`XLSX.write` lan&ccedil;a `Unrecognized bookType |xltx|`
+pra qualquer outro valor), mas a &uacute;nica diferen&ccedil;a OOXML real entre um
+workbook "documento" e o "modelo" equivalente &eacute; a declara&ccedil;&atilde;o de
+Content-Type da parte `/xl/workbook.xml` dentro do ZIP &mdash; todo o resto
+(c&eacute;lulas, f&oacute;rmulas, estilos) &eacute; id&ecirc;ntico. O sanitizador grava com o
+`bookType` que o SheetJS suporta e depois reabre s&oacute; o
+`[Content_Types].xml` pra trocar essa &uacute;nica string, sem tocar em mais nada
+do ZIP. O resultado &eacute; um `.xltx`/`.xltm` sanitizado que o Excel reconhece
+como modelo de verdade, ent&atilde;o **conta como fonte real no gate de
+promo&ccedil;&atilde;o do pr&oacute;prio formato** (`docs/WASM_PROMOTION_CRITERIA.md`), n&atilde;o
+s&oacute; do gate `xlsx`/`xlsm`.
 
 Em cada workbook, o processo:
 

@@ -1,9 +1,47 @@
 import { createHash, createHmac } from "node:crypto";
 
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import * as XLSX from "xlsx";
 
 const SAFE_SHEET_PREFIX = "SHEET_";
 const INVALID_SALT_MESSAGE = "A chave local de sanitizacao deve ter pelo menos 16 caracteres.";
+
+// O SheetJS instalado so sabe ESCREVER bookType xlsx/xlsm (XLSX.write lanca
+// "Unrecognized bookType |xltx|" pra qualquer outro valor). A UNICA diferenca
+// real, no nivel do OOXML, entre um workbook "documento" (xlsx/xlsm) e o
+// "modelo" equivalente (xltx/xltm) e a declaracao de Content-Type da parte
+// principal /xl/workbook.xml dentro do ZIP — todo o resto (celulas, formulas,
+// estilos) e identico. Entao gravamos com o bookType real que o SheetJS
+// suporta e depois reabrimos so o `[Content_Types].xml` pra trocar essa unica
+// string, sem tocar em mais nada do ZIP.
+const TEMPLATE_CONTENT_TYPE_PATCH = {
+  xltx: {
+    sheetJsBookType: "xlsx",
+    from: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+    to: "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml",
+  },
+  xltm: {
+    sheetJsBookType: "xlsm",
+    from: "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+    to: "application/vnd.ms-excel.template.macroEnabled.main+xml",
+  },
+};
+
+function retemplateWorkbookBytes(bytes, patch) {
+  const parts = unzipSync(bytes);
+  const contentTypesPath = "[Content_Types].xml";
+  const contentTypes = strFromU8(parts[contentTypesPath]);
+  const needle = `PartName="/xl/workbook.xml" ContentType="${patch.from}"`;
+  if (!contentTypes.includes(needle)) {
+    throw new Error(
+      "Content-Types do workbook gerado pelo SheetJS nao bateu com o esperado para conversao em modelo (xltx/xltm).",
+    );
+  }
+  parts[contentTypesPath] = strToU8(
+    contentTypes.replace(needle, `PartName="/xl/workbook.xml" ContentType="${patch.to}"`),
+  );
+  return zipSync(parts, { level: 6 });
+}
 
 function digest(salt, value) {
   return createHmac("sha256", salt).update(value).digest("hex");
@@ -107,8 +145,10 @@ function removeWorkbookMetadata(workbook) {
 export function sanitizeWorkbookBytes(input, options) {
   const { salt, workbookId = "workbook", bookType = "xlsx" } = options;
   if (typeof salt !== "string" || salt.length < 16) throw new Error(INVALID_SALT_MESSAGE);
-  if (bookType !== "xlsx" && bookType !== "xlsm") {
-    throw new Error(`bookType de saida nao suportado pelo SheetJS instalado: ${bookType}`);
+  const templatePatch = TEMPLATE_CONTENT_TYPE_PATCH[bookType];
+  const sheetJsBookType = templatePatch ? templatePatch.sheetJsBookType : bookType;
+  if (sheetJsBookType !== "xlsx" && sheetJsBookType !== "xlsm") {
+    throw new Error(`bookType de saida nao suportado pelo sanitizador: ${bookType}`);
   }
 
   const workbook = XLSX.read(input, {
@@ -174,12 +214,13 @@ export function sanitizeWorkbookBytes(input, options) {
   }
   removeWorkbookMetadata(workbook);
 
-  const output = XLSX.write(workbook, {
+  let output = XLSX.write(workbook, {
     type: "buffer",
-    bookType,
+    bookType: sheetJsBookType,
     cellStyles: true,
     compression: true,
   });
+  if (templatePatch) output = retemplateWorkbookBytes(output, templatePatch);
   return {
     bytes: Buffer.from(output),
     summary: {

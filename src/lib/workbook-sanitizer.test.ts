@@ -109,11 +109,76 @@ describe("sanitizador local de corpus", () => {
     }
   });
 
-  it("recusa bookType de saída não suportado pelo SheetJS instalado", () => {
+  it("sanitiza origem .xltx preservando o Content-Type de modelo (não .xlsx renomeado)", () => {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Cliente", "Valor"],
+      ["Empresa Confidencial LTDA", 999.5],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, sheet, "Dados");
+    const templateSource = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    const result = sanitizeWorkbookBytes(templateSource, {
+      salt: "chave-local-de-teste-123",
+      workbookId: "fixture-xltx",
+      bookType: "xltx",
+    });
+
+    const parts = unzipSync(result.bytes);
+    const contentTypes = Buffer.from(parts["[Content_Types].xml"]!).toString("utf8");
+    expect(contentTypes).toContain(
+      'PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml"',
+    );
+    expect(contentTypes).not.toContain(
+      'PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"',
+    );
+
+    const reread = XLSX.read(result.bytes, { type: "buffer", cellStyles: true });
+    expect(reread.SheetNames).toEqual(["SHEET_001"]);
+    expect(JSON.stringify(reread)).not.toContain("Empresa Confidencial LTDA");
+  });
+
+  it("sanitiza origem .xltm preservando Content-Type de modelo macro-enabled, sem VBA", () => {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Cliente", "Valor"],
+      ["Empresa Confidencial LTDA", 999.5],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, sheet, "Dados");
+    workbook.Workbook = { WBProps: { CodeName: "EstaPasta" } };
+    const macroTemplateSource = XLSX.write(workbook, { type: "buffer", bookType: "xlsm" });
+
+    const result = sanitizeWorkbookBytes(macroTemplateSource, {
+      salt: "chave-local-de-teste-123",
+      workbookId: "fixture-xltm",
+      bookType: "xltm",
+    });
+
+    const parts = unzipSync(result.bytes);
+    const contentTypes = Buffer.from(parts["[Content_Types].xml"]!).toString("utf8");
+    expect(contentTypes).toContain(
+      'PartName="/xl/workbook.xml" ContentType="application/vnd.ms-excel.template.macroEnabled.main+xml"',
+    );
+    expect(contentTypes).not.toContain(
+      'PartName="/xl/workbook.xml" ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml"',
+    );
+    expect(Object.keys(parts).some((name) => name.toLowerCase().includes("vbaproject"))).toBe(
+      false,
+    );
+    for (const bytes of Object.values(parts)) {
+      expect(Buffer.from(bytes).toString("latin1")).not.toContain("Attribute VB_Name");
+    }
+
+    const reread = XLSX.read(result.bytes, { type: "buffer", bookVBA: false, cellStyles: true });
+    expect(reread.SheetNames).toEqual(["SHEET_001"]);
+    expect(reread.vbaraw).toBeUndefined();
+  });
+
+  it("recusa bookType de saída não suportado pelo sanitizador", () => {
     expect(() =>
       sanitizeWorkbookBytes(sensitiveWorkbook(), {
         salt: "chave-local-de-teste-123",
-        bookType: "xltx" as "xlsx",
+        bookType: "xlsb" as "xlsx",
       }),
     ).toThrow(/bookType de saida nao suportado/);
   });

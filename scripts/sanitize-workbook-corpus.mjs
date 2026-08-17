@@ -49,30 +49,30 @@ if (!inputArgument || !outputArgument) {
     fail("A pasta de destino deve estar vazia para impedir sobrescritas acidentais.");
   } else {
     const sourceFiles = filesBelow(inputRoot);
-    // .xltx/.xltm (modelos do Excel) sao aceitos alem de .xlsx/.xlsm: mesma
-    // estrutura ZIP/OOXML, e o SheetJS instalado so sabe ESCREVER bookType
-    // xlsx/xlsm (XLSX.write lanca "Unrecognized bookType |xltx|" pra
-    // qualquer outro valor) — entao a saida sanitizada de um modelo de
-    // origem sempre sai como arquivo "normal" de verdade (nunca preservando
-    // o Content-Types de template). Isso e aceitavel pro proposito deste
-    // corpus (paridade de leitura TS x Rust sobre o CONTEUDO real), mas
-    // esse arquivo sanitizado nao conta como fonte .xltx/.xltm no gate de
-    // promocao (ver docs/WASM_PROMOTION_CRITERIA.md, secao "Outros
-    // formatos OOXML") — so amplia as fontes do gate xlsx/xlsm ja existente.
+    // .xlsx/.xlsm/.xltx/.xltm sao todos aceitos. sanitizeWorkbookBytes grava
+    // a saida preservando o formato real da origem — inclusive .xltx/.xltm
+    // (modelo do Excel): o SheetJS instalado so sabe ESCREVER bookType
+    // xlsx/xlsm de verdade, mas a UNICA diferenca OOXML entre documento e
+    // modelo e a declaracao de Content-Type da parte /xl/workbook.xml, entao
+    // sanitizeWorkbookBytes grava com xlsx/xlsm e depois troca so essa
+    // string, sem tocar em mais nada do ZIP (ver comentario em
+    // workbook-sanitizer.mjs). O resultado e um `.xltx`/`.xltm` sanitizado
+    // que o Excel reconhece como modelo de verdade, entao conta como fonte
+    // real no gate de promocao do formato correto (ver
+    // docs/WASM_PROMOTION_CRITERIA.md).
     //
     // Arquivos com macro (.xlsm/.xltm) sao aceitos como entrada, mas o
     // conteudo VBA em si nunca chega a ser lido nem reescrito:
     // sanitizeWorkbookBytes le com `bookVBA: false` (o SheetJS nem chega a
     // decodificar o binario da macro) e sempre remove `workbook.vbaraw`
     // antes de gravar. A saida e um arquivo macro-enabled valido (Excel
-    // aceita normalmente) so que sem nenhuma macro dentro — o objetivo e
-    // preservar a extensao real pro gate de promocao contar por formato
-    // corretamente, nao preservar a macro (que o Rust nunca executa mesmo).
+    // aceita normalmente) so que sem nenhuma macro dentro — o Rust nunca
+    // executa VBA mesmo.
     const bookTypeByExtension = {
       ".xlsx": "xlsx",
-      ".xltx": "xlsx",
+      ".xltx": "xltx",
       ".xlsm": "xlsm",
-      ".xltm": "xlsm",
+      ".xltm": "xltm",
     };
     const candidates = sourceFiles.filter(
       (file) => extname(file).toLowerCase() in bookTypeByExtension,

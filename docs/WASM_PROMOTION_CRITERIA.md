@@ -208,3 +208,31 @@ todas as partes), que o Content-Types ainda declara `macroEnabled`
 rejeitado explicitamente. XLSM permanece em 0/5 até um arquivo `.xlsm`
 real do usuário chegar — a lacuna agora é só falta de arquivo, não mais
 uma recusa estrutural do próprio sanitizador.
+
+**Correção do bloqueio "permanente" de XLTX/XLTM**: a limitação descrita
+acima ("a saída sanitizada de um `.xltx` sempre grava um `.xlsx` de
+verdade... não conta como fonte XLTX") também foi corrigida. O SheetJS
+instalado continua só sabendo ESCREVER `bookType` `xlsx`/`xlsm` — isso não
+mudou —, mas a única diferença OOXML real entre um workbook "documento" e
+o "modelo" equivalente é a declaração de Content-Type da parte
+`/xl/workbook.xml` dentro do ZIP (`application/...spreadsheetml.sheet.main+xml`
+vs. `...spreadsheetml.template.main+xml`, e o par macro-enabled
+equivalente para `.xltm`); todo o resto do ZIP (células, fórmulas,
+estilos) é idêntico. `sanitizeWorkbookBytes` agora grava com o `bookType`
+que o SheetJS suporta e, quando a origem era `.xltx`/`.xltm`, reabre só o
+`[Content_Types].xml` pra trocar essa única string antes de devolver os
+bytes — sem tocar em mais nada do ZIP. O `format` gravado no manifesto
+passa a ser `"xltx"`/`"xltm"` de verdade (não mais `"xlsx"`/`"xlsm"`), e o
+nome do arquivo sanitizado usa a extensão real. Smoke test manual
+confirmou que o resultado reabre no SheetJS como um workbook normal, com
+conteúdo sanitizado intacto, e que o Content-Type de modelo persiste no
+ZIP. Prova de regressão em `src/lib/workbook-sanitizer.test.ts` cobre os
+dois casos (`.xltx` e `.xltm`), inspecionando o `[Content_Types].xml`
+byte a byte.
+
+**Resultado líquido**: XLSX (6/5) e XLSM (corpus sintético completo,
+0/5 real) já estavam cobertos; agora XLTX e XLTM também têm caminho de
+promoção completo — nenhum dos quatro formatos tem mais bloqueio
+estrutural no próprio sanitizador. Os únicos gates ainda em 0/5 (XLSM,
+XLTX, XLTM) dependem só de arquivo real do usuário chegando, o mesmo tipo
+de bloqueio que XLSX já superou.

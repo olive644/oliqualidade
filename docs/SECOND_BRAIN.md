@@ -157,7 +157,7 @@ audit inteiro.
 | ------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------- |
 | Novo formato ou fidelidade de Excel         | `workbook-reader.ts`, `ooxml-reader.ts`, `ooxml-archive.ts`, `import.ts` | fixture + teste de corpus                    |
 | Inventário Rust de planilha universal (ODS) | `rust/oli-ooxml-core/src/ods.rs`                                      | `rust/oli-ooxml-core/tests/ods_inventory.rs` |
-| Sanitização local de corpus real (para preencher o gate de promoção Rust/WASM por formato) | `scripts/workbook-sanitizer.mjs` (`sanitizeWorkbookBytes`, aceita `bookType` `xlsx`/`xlsm`), `scripts/sanitize-workbook-corpus.mjs` (CLI, decide `bookType` pela extensão de origem) | `src/lib/workbook-sanitizer.test.ts` |
+| Sanitização local de corpus real (para preencher o gate de promoção Rust/WASM por formato) | `scripts/workbook-sanitizer.mjs` (`sanitizeWorkbookBytes`, aceita `bookType` `xlsx`/`xlsm`/`xltx`/`xltm` — os dois últimos via patch pontual no `[Content_Types].xml` depois do `XLSX.write`, `TEMPLATE_CONTENT_TYPE_PATCH`), `scripts/sanitize-workbook-corpus.mjs` (CLI, `bookType` = extensão de origem) | `src/lib/workbook-sanitizer.test.ts` |
 | Cabeçalhos, blocos e regiões                | `import.ts`, `structural-model.ts`                                    | `import.test.ts`                             |
 | Tipos, fórmulas e semântica                 | `format.ts`, `formula.ts`, `spreadsheet-intelligence.ts`              | teste dedicado                               |
 | Widget novo ou recomendação                 | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `components/oliam/widget-card.tsx`, `components/oliam/widget-support.tsx` | widgets + auto-dashboard                     |
@@ -322,16 +322,20 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    Verificado com arquivo real: aba "Tendência 2" do FRS-QA-BR-405 (14
    gráficos, 0 linhas) só aparece depois desta correção. Ver
    [[CURRENT_STATE_AUDIT#85. Abas só com gráficos/formas/imagens nativos (sem linha de dado tabular) agora são importáveis]].
-3. **Corpus real sanitizado** `#pendente` — XLSX/XLSM têm 6 fontes (acima
-   do mínimo de 5); XLTX/XLTM continuam em 0/5. `corpus:sanitize` já
-   aceita `.xltx` como entrada (seção 88), mas a saída sempre grava
-   `.xlsx` de verdade (limite do SheetJS instalado) — então nenhum
-   arquivo `.xltx` real chega a contar pro gate XLTX especificamente,
-   só amplia as fontes possíveis pro gate XLSX. Os 2 arquivos `.xltx`
-   reais trazidos até agora eram duplicata exata de fontes já no corpus.
-   Bloqueado em arquivo real do usuário que ainda não esteja coberto;
-   parar e perguntar antes de tentar sintetizar substitutos. Ver
-   [[CURRENT_STATE_AUDIT#88. Usuário trouxe 2 arquivos .xltx reais de verdade — eram duplicatas do corpus já sanitizado]].
+3. **Corpus real sanitizado** `#pendente` — XLSX tem 6 fontes (acima do
+   mínimo de 5, gate fechado). XLSM, XLTX e XLTM: os dois bloqueios
+   estruturais do sanitizador que existiam foram corrigidos (seções 90 e
+   91) — `.xlsm`/`.xltx`/`.xltm` já são aceitos como entrada, e a saída
+   preserva o formato real (inclusive Content-Type de modelo pra
+   `.xltx`/`.xltm`, via patch pontual no `[Content_Types].xml` depois do
+   `XLSX.write`, já que o SheetJS instalado só sabe escrever `bookType`
+   `xlsx`/`xlsm`). Os três gates continuam em 0/5 só por falta de arquivo
+   real do usuário — mesmo tipo de lacuna que XLSX já fechou, não mais
+   recusa estrutural. Os arquivos `.xltx` reais trazidos até agora eram
+   duplicata exata de fontes já no corpus. Bloqueado em arquivo real do
+   usuário que ainda não esteja coberto; parar e perguntar antes de
+   tentar sintetizar substitutos. Ver [[CURRENT_STATE_AUDIT#90. Corrigido bloqueio estrutural do gate XLSM: sanitizador recusava .xlsm/.xltm por política, não por lacuna real]]
+   e [[CURRENT_STATE_AUDIT#91. Corrigido o segundo bloqueio "permanente": XLTX/XLTM agora preservam o Content-Type de modelo de verdade, não viram .xlsx/.xlsm disfarçado]].
 5. ~~Núcleo restante de `Dashboard`~~ **Parcialmente resolvido** —
    investigação concluiu que um `useReducer` genérico não compensa (13
    `useState` de UI são independentes; reducer só trocaria forma sem ganho

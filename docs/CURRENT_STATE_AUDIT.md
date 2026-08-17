@@ -4805,5 +4805,79 @@ como limite permanente do sanitizador.
 só "falta arquivo `.xlsm` real do usuário", não mais uma recusa
 estrutural do próprio sanitizador. `npx vitest run` (547 passou, 1
 pulado — 2 testes novos), `npx tsc --noEmit` e `npx eslint --fix` nos 4
-arquivos tocados (mais checagem CRLF-safe do Prettier) aprovados. Branch
-não mesclada — pendente de autorização do usuário.
+arquivos tocados (mais checagem CRLF-safe do Prettier) aprovados.
+
+Mesclada como [PR #138](https://github.com/olive644/oliqualidade/pull/138)
+depois de todos os checks de CI passarem (E2E Playwright, lint/test/build/
+performance, security headers, Vercel) e autorização explícita do
+usuário. Main avançou de `950c16d` para `859dac8`.
+
+## 91. Corrigido o segundo bloqueio "permanente": XLTX/XLTM agora preservam o Content-Type de modelo de verdade, não viram .xlsx/.xlsm disfarçado
+
+Depois da seção 90 (XLSM), o usuário perguntou "preciso mudar a lib?"
+sobre a limitação restante documentada em `WASM_PROMOTION_CRITERIA.md`:
+a saída sanitizada de um `.xltx`/`.xltm` sempre gravava `.xlsx`/`.xlsm`
+de verdade, então nunca contava como fonte real pro gate específico
+desses dois formatos — só ampliava as fontes do gate `xlsx`/`xlsm` já
+superado. A causa raiz era a mesma de sempre: o SheetJS instalado só
+sabe **escrever** `bookType` `xlsx`/`xlsm` (`XLSX.write` lança
+`Unrecognized bookType |xltx|` pra qualquer outro valor).
+
+Investigação: trocar a lib inteira (`xlsx`/SheetJS) seria desproporcional
+e arriscado — é a dependência usada em toda a importação real do app, não
+só no sanitizador, e a versão instalada (`0.20.3`) já é a build atual da
+CDN oficial, não uma versão desatualizada esperando update; a lacuna de
+escrita de `bookType` de template é conhecida da própria lib. Inspecionando
+o `[Content_Types].xml` gerado (`unzipSync` via `fflate`, já dependência do
+projeto), a diferença OOXML real entre um workbook "documento" e o
+"modelo" equivalente é só a declaração de Content-Type da parte
+`/xl/workbook.xml` — `...spreadsheetml.sheet.main+xml` vs.
+`...spreadsheetml.template.main+xml` (e o par macro-enabled equivalente
+pra `.xltm`). Todo o resto do ZIP (células, fórmulas, estilos, hyperlinks
+removidos, etc.) já era idêntico.
+
+**Correção** (mesma branch da seção 90, `fix/sanitize-template-formats`,
+sem merge ainda): `sanitizeWorkbookBytes` grava com o `bookType` real que
+o SheetJS suporta (`xlsx` para `.xltx`, `xlsm` para `.xltm`) e, só quando
+a origem pedida é um modelo, reabre o ZIP resultante com `unzipSync`/
+`zipSync` (`fflate`) pra trocar essa única string no
+`[Content_Types].xml` antes de devolver os bytes — nada mais no ZIP é
+tocado. `scripts/sanitize-workbook-corpus.mjs` simplificou: o mapa
+extensão→`bookType` agora é identidade (`.xltx`→`"xltx"`,
+`.xltm`→`"xltm"`), então o nome do arquivo de saída e o campo `format`
+do manifesto usam a extensão real, não mais `.xlsx`/`"xlsx"` disfarçado.
+
+Validado manualmente com `unzipSync` antes de escrever o teste: o ZIP
+resultante de uma origem `.xltx` sintética tem
+`ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml"`
+na parte `/xl/workbook.xml` (não mais `.sheet.main+xml`), reabre
+normalmente no SheetJS, e o conteúdo sanitizado permanece intacto. Mesmo
+teste pra `.xltm` (`application/vnd.ms-excel.template.macroEnabled.main+xml`),
+confirmando também ausência de `vbaProject` e de qualquer assinatura
+`Attribute VB_Name` no ZIP (mesma prova já usada pra `.xlsm` na seção
+90). Smoke test manual da CLI completa confirmou `sanitized-001.xltx`
+(`"format": "xltx"`) e `sanitized-002.xltm` (`"format": "xltm"`) no
+manifesto, fora do repositório e apagado depois.
+
+Prova de regressão em `src/lib/workbook-sanitizer.test.ts`: 2 testes
+novos (`.xltx` e `.xltm`), cada um inspecionando o `[Content_Types].xml`
+byte a byte pra confirmar a string de Content-Type trocada e ausente a
+antiga. O teste antigo que verificava a recusa de `bookType: "xltx"`
+como inválido foi atualizado — `"xltx"` agora é um valor válido, então o
+teste de rejeição passou a usar `"xlsb"` (formato binário legado, que o
+SheetJS instalado também não sabe escrever) pra continuar provando que
+`bookType`s realmente não suportados são rejeitados explicitamente.
+
+Documentação atualizada: `docs/WASM_CORPUS_SANITIZATION.md` e
+`docs/WASM_PROMOTION_CRITERIA.md` não descrevem mais XLTX/XLTM como
+bloqueio permanente sem caminho de correção — agora têm o mesmo tipo de
+pendência que XLSX já superou (só falta arquivo real do usuário).
+
+**Resultado líquido**: os quatro formatos OOXML suportados (XLSX, XLSM,
+XLTX, XLTM) não têm mais nenhum bloqueio estrutural no sanitizador de
+corpus. XLSM/XLTX/XLTM continuam em 0/5 no gate de promoção — dependem
+só de arquivo real chegando, mesmo tipo de lacuna que XLSX já fechou
+(6/5). `npx vitest run` (549 passou, 1 pulado — 2 testes novos desta
+seção), `npx tsc --noEmit`, `npx eslint --fix` nos 4 arquivos tocados e
+checagem CRLF-safe do Prettier aprovados. Branch não mesclada — pendente
+de autorização do usuário.
