@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveSourceCellFills } from "@/lib/cell-fill-provenance";
+import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
+import type { SourceCellFill } from "@/lib/cell-fill-provenance";
 import type { ImportAudit, SourceGrid } from "@/lib/import";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
 import type { Column, Row } from "@/lib/types";
@@ -121,5 +122,59 @@ describe("resolveSourceCellFills", () => {
         sourceGrid,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("resolveColorGroupLabels", () => {
+  // Caso real: "Anexo III" - "Bebidas lácteas/Iogurtes" cobre 3 linhas por
+  // cor de preenchimento, sem nenhuma mesclagem de célula na coluna A.
+  const groupColumns: Column[] = [
+    { key: "categoria", label: "Categoria", kind: "text", visible: true, description: "" },
+    { key: "item", label: "Item", kind: "text", visible: true, description: "" },
+  ];
+  const groupRows: Row[] = [
+    { categoria: "Bebidas lácteas/Iogurtes", item: "Leite" },
+    { categoria: null, item: "Iogurte natural" },
+    { categoria: null, item: "Iogurte grego" },
+    { categoria: "Água mineral", item: "Sem gás" },
+  ];
+
+  it("propaga o rótulo pra linhas vazias na mesma banda de cor", () => {
+    const fills: SourceCellFill[] = [
+      { rowIndex: 0, columnKey: "categoria", color: "#FCE4D6" },
+      { rowIndex: 1, columnKey: "categoria", color: "#FCE4D6" },
+      { rowIndex: 2, columnKey: "categoria", color: "#FCE4D6" },
+    ];
+    expect(resolveColorGroupLabels(groupRows, groupColumns, fills)).toEqual([
+      { rowIndex: 1, columnKey: "categoria", label: "Bebidas lácteas/Iogurtes" },
+      { rowIndex: 2, columnKey: "categoria", label: "Bebidas lácteas/Iogurtes" },
+    ]);
+  });
+
+  it("não propaga quando a cor muda entre as linhas vazias", () => {
+    const fills: SourceCellFill[] = [
+      { rowIndex: 0, columnKey: "categoria", color: "#FCE4D6" },
+      { rowIndex: 1, columnKey: "categoria", color: "#DDEBF7" },
+      { rowIndex: 2, columnKey: "categoria", color: "#FCE4D6" },
+    ];
+    expect(resolveColorGroupLabels(groupRows, groupColumns, fills)).toEqual([]);
+  });
+
+  it("não propaga quando a linha vazia não tem nenhuma cor de preenchimento", () => {
+    const fills: SourceCellFill[] = [{ rowIndex: 0, columnKey: "categoria", color: "#FCE4D6" }];
+    expect(resolveColorGroupLabels(groupRows, groupColumns, fills)).toEqual([]);
+  });
+
+  it("nunca gera rótulo pra uma linha que já tem valor próprio", () => {
+    const fills: SourceCellFill[] = [
+      { rowIndex: 0, columnKey: "categoria", color: "#FCE4D6" },
+      { rowIndex: 3, columnKey: "categoria", color: "#FCE4D6" },
+    ];
+    const resolved = resolveColorGroupLabels(groupRows, groupColumns, fills);
+    expect(resolved.some((r) => r.rowIndex === 3)).toBe(false);
+  });
+
+  it("retorna vazio sem nenhum sourceCellFills", () => {
+    expect(resolveColorGroupLabels(groupRows, groupColumns, [])).toEqual([]);
   });
 });

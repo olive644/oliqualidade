@@ -69,3 +69,57 @@ export function resolveSourceCellFills(
   });
   return results;
 }
+
+export type ColorGroupLabel = {
+  rowIndex: number;
+  columnKey: string;
+  label: string;
+};
+
+/**
+ * Infere um rótulo de agrupamento visual quando uma sequência de linhas
+ * compartilha a mesma cor de preenchimento de célula do Excel original numa
+ * coluna, mas SEM mesclagem real (ao contrário do preenchimento de
+ * mesclagem em `import.ts`, que já expande o valor de origem porque a
+ * mesclagem é um fato estrutural do arquivo). Cor de fundo é só um sinal
+ * visual — nunca escreve em `rows`, só produz rótulos para exibição, para
+ * nunca contaminar cálculo/agregação com um valor que não existia na
+ * célula. Ver investigação "Anexo III" no CURRENT_STATE_AUDIT.md.
+ */
+export function resolveColorGroupLabels(
+  rows: Row[],
+  columns: Column[],
+  sourceCellFills: SourceCellFill[],
+): ColorGroupLabel[] {
+  if (!sourceCellFills.length) return [];
+  const colorByKey = new Map(
+    sourceCellFills.map((fill) => [`${fill.rowIndex}:${fill.columnKey}`, fill.color]),
+  );
+  const results: ColorGroupLabel[] = [];
+  for (const column of columns) {
+    let bandColor: string | null = null;
+    let bandLabel: string | null = null;
+    rows.forEach((row, rowIndex) => {
+      const color = colorByKey.get(`${rowIndex}:${column.key}`) ?? null;
+      const value = row[column.key];
+      const hasValue = value !== null && value !== undefined && value !== "";
+      if (!color) {
+        bandColor = null;
+        bandLabel = null;
+        return;
+      }
+      if (hasValue) {
+        bandColor = color;
+        bandLabel = String(value);
+        return;
+      }
+      if (bandColor === color && bandLabel) {
+        results.push({ rowIndex, columnKey: column.key, label: bandLabel });
+      } else {
+        bandColor = null;
+        bandLabel = null;
+      }
+    });
+  }
+  return results;
+}

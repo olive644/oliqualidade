@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { SourceCellFill } from "@/lib/cell-fill-provenance";
+import type { ColorGroupLabel, SourceCellFill } from "@/lib/cell-fill-provenance";
 import { parseEditedValue, sourceRowIndexOf } from "@/lib/data-review";
 import { conditionalStyle, fmt } from "@/lib/format";
 import { exportTableColumnWidths, exportTablePreviewRows } from "@/lib/table-export-preview";
@@ -22,6 +22,8 @@ type DataTableProps = {
   onEditCell?: (sourceRowIndex: number, columnKey: string, value: string, reason: string) => void;
   /** Cor de preenchimento original do Excel, por (linha de origem, coluna). Sem regra explícita de formatação condicional, prevalece sobre ela. */
   sourceCellFills?: SourceCellFill[];
+  /** Rótulo inferido por banda de cor de preenchimento sem mesclagem real. Só exibição — a célula continua vazia nos dados/exportação. */
+  colorGroupLabels?: ColorGroupLabel[];
 };
 
 export function DataTable({
@@ -33,6 +35,7 @@ export function DataTable({
   focusedCell,
   onEditCell,
   sourceCellFills,
+  colorGroupLabels,
 }: DataTableProps) {
   const fillByKey = useMemo(() => {
     const map = new Map<string, string>();
@@ -40,6 +43,12 @@ export function DataTable({
       map.set(`${fill.rowIndex}:${fill.columnKey}`, fill.color);
     return map;
   }, [sourceCellFills]);
+  const groupLabelByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const group of colorGroupLabels ?? [])
+      map.set(`${group.rowIndex}:${group.columnKey}`, group.label);
+    return map;
+  }, [colorGroupLabels]);
   const [editing, setEditing] = useState<{
     sourceRowIndex: number;
     columnKey: string;
@@ -155,6 +164,10 @@ export function DataTable({
                     const shown = fmt(row[column.key] ?? null, column.kind);
                     const numeric = numericKinds.includes(column.kind);
                     const isInterpolated = interpolated?.has(`${item.index}-${column.key}`);
+                    const groupLabel =
+                      shown === null && sourceRowIndex !== null
+                        ? groupLabelByKey.get(`${sourceRowIndex}:${column.key}`)
+                        : undefined;
                     const cellStyle =
                       conditionalStyle(
                         row[column.key] ?? null,
@@ -185,13 +198,18 @@ export function DataTable({
                           beginEdit(row, column);
                         }}
                         title={
-                          isInterpolated ? "Valor estimado por interpolação" : (shown ?? undefined)
+                          isInterpolated
+                            ? "Valor estimado por interpolação"
+                            : groupLabel
+                              ? `Agrupamento visual por cor de preenchimento no Excel original (sem mesclagem de célula): "${groupLabel}"`
+                              : (shown ?? undefined)
                         }
                         style={cellStyle ?? undefined}
                         className={cn(
                           "w-44 truncate border-r border-border px-3 py-2 text-xs",
                           numeric && "text-right font-mono",
                           shown === null && "text-muted-foreground",
+                          groupLabel && "italic",
                           isInterpolated &&
                             "outline outline-1 -outline-offset-1 outline-secondary-accent",
                           isFocusedRow &&
@@ -204,7 +222,7 @@ export function DataTable({
                             "cursor-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
                         )}
                       >
-                        <span>{shown ?? "—"}</span>
+                        <span>{groupLabel ?? shown ?? "—"}</span>
                       </div>
                     );
                   })}
