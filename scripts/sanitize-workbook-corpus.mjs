@@ -49,28 +49,36 @@ if (!inputArgument || !outputArgument) {
     fail("A pasta de destino deve estar vazia para impedir sobrescritas acidentais.");
   } else {
     const sourceFiles = filesBelow(inputRoot);
-    const macroFiles = sourceFiles.filter((file) =>
-      [".xlsm", ".xltm"].includes(extname(file).toLowerCase()),
-    );
-    // .xltx (modelo do Excel) e aceito alem de .xlsx: mesma estrutura
-    // ZIP/OOXML sem macro, e o SheetJS instalado so sabe ESCREVER
-    // bookType xlsx/xlsm (XLSX.write lanca "Unrecognized bookType |xltx|"
-    // pra qualquer outro valor) — entao a saida sanitizada de um .xltx de
-    // origem sempre sai como .xlsx de verdade, nunca preservando o
-    // Content-Types de template. Isso e aceitavel pro proposito deste
+    // .xltx/.xltm (modelos do Excel) sao aceitos alem de .xlsx/.xlsm: mesma
+    // estrutura ZIP/OOXML, e o SheetJS instalado so sabe ESCREVER bookType
+    // xlsx/xlsm (XLSX.write lanca "Unrecognized bookType |xltx|" pra
+    // qualquer outro valor) — entao a saida sanitizada de um modelo de
+    // origem sempre sai como arquivo "normal" de verdade (nunca preservando
+    // o Content-Types de template). Isso e aceitavel pro proposito deste
     // corpus (paridade de leitura TS x Rust sobre o CONTEUDO real), mas
-    // esse .xlsx sanitizado nao conta como fonte .xltx no gate de
+    // esse arquivo sanitizado nao conta como fonte .xltx/.xltm no gate de
     // promocao (ver docs/WASM_PROMOTION_CRITERIA.md, secao "Outros
-    // formatos OOXML").
-    const candidates = sourceFiles.filter((file) =>
-      [".xlsx", ".xltx"].includes(extname(file).toLowerCase()),
+    // formatos OOXML") — so amplia as fontes do gate xlsx/xlsm ja existente.
+    //
+    // Arquivos com macro (.xlsm/.xltm) sao aceitos como entrada, mas o
+    // conteudo VBA em si nunca chega a ser lido nem reescrito:
+    // sanitizeWorkbookBytes le com `bookVBA: false` (o SheetJS nem chega a
+    // decodificar o binario da macro) e sempre remove `workbook.vbaraw`
+    // antes de gravar. A saida e um arquivo macro-enabled valido (Excel
+    // aceita normalmente) so que sem nenhuma macro dentro — o objetivo e
+    // preservar a extensao real pro gate de promocao contar por formato
+    // corretamente, nao preservar a macro (que o Rust nunca executa mesmo).
+    const bookTypeByExtension = {
+      ".xlsx": "xlsx",
+      ".xltx": "xlsx",
+      ".xlsm": "xlsm",
+      ".xltm": "xlsm",
+    };
+    const candidates = sourceFiles.filter(
+      (file) => extname(file).toLowerCase() in bookTypeByExtension,
     );
-    if (macroFiles.length > 0) {
-      fail("A origem contem arquivo(s) com macros. Remova-os antes de sanitizar este corpus.");
-    } else if (candidates.length === 0) {
-      fail(
-        "Nenhum arquivo XLSX/XLTX foi encontrado. Formatos com macros sao recusados nesta etapa.",
-      );
+    if (candidates.length === 0) {
+      fail("Nenhum arquivo XLSX/XLSM/XLTX/XLTM foi encontrado na pasta de origem.");
     } else {
       mkdirSync(outputRoot, { recursive: true });
       const cases = [];
@@ -84,13 +92,14 @@ if (!inputArgument || !outputArgument) {
           continue;
         }
         sourceIds.add(id);
-        const file = `sanitized-${String(cases.length + 1).padStart(3, "0")}.xlsx`;
-        const sanitized = sanitizeWorkbookBytes(sourceBytes, { salt, workbookId: id });
+        const bookType = bookTypeByExtension[extname(sourcePath).toLowerCase()];
+        const file = `sanitized-${String(cases.length + 1).padStart(3, "0")}.${bookType}`;
+        const sanitized = sanitizeWorkbookBytes(sourceBytes, { salt, workbookId: id, bookType });
         writeFileSync(join(outputRoot, file), sanitized.bytes, { flag: "wx" });
         cases.push({
           id,
           file,
-          format: "xlsx",
+          format: bookType,
           source: "sanitized-real",
           features: ["local-sanitized"],
           sha256: sha256(sanitized.bytes),

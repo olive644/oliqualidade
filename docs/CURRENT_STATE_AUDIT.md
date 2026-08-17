@@ -4741,3 +4741,69 @@ código adicional necessário".
 `npx vitest run` (545 passou, 1 pulado, sem mudança — nenhum código de
 `import.ts` foi alterado nesta seção), confirmando que a suíte já cobria
 esse caso.
+
+## 90. Corrigido bloqueio estrutural do gate XLSM: sanitizador recusava `.xlsm`/`.xltm` por política, não por lacuna real
+
+Usuário trouxe mais 10 arquivos `.xltx` (5 confirmados duplicata exata de
+fontes já no corpus, 5 confirmados sintéticos pelo próprio cabeçalho
+interno — "Corpus sintético preenchido — [Área]" — depois de uma resposta
+inicial errada dizendo que eram reais; nenhum contou como fonte nova).
+Rodados pelo pipeline real (`sheetsWithData`/`sheetToRows`) mesmo assim,
+sem crash e sem bug novo.
+
+Perguntado ao usuário qual prioridade seguinte, escolhida "desbloquear
+XLSM". Investigação: `docs/WASM_PROMOTION_CRITERIA.md` já documentava que
+XLSM tem corpus sintético completo (25 arquivos, ≥10.000 células, zero
+divergências) mas está em 0/5 no gate real. O motivo não era só "falta
+arquivo real" — `scripts/sanitize-workbook-corpus.mjs` recusava de
+propósito qualquer arquivo `.xlsm`/`.xltm` antes de gerar qualquer saída
+("A origem contem arquivo(s) com macros..."). Mesmo que o usuário trouxesse
+5 `.xlsm` reais agora, o gate nunca fecharia.
+
+Investigando `scripts/workbook-sanitizer.mjs` (`sanitizeWorkbookBytes`),
+a recusa era redundante: a função já lê com `bookVBA: false` (o SheetJS
+nem chega a decodificar o binário da macro) e já remove `workbook.vbaraw`
+antes de gravar, e sempre grava `bookType: "xlsx"` fixo — nunca havia
+lacuna real de segurança na sanitização em si, só uma política de bloqueio
+na camada de cima que nem sequer combinava com o que a função por baixo já
+garantia.
+
+**Correção** (confirmada com o usuário antes de implementar, branch
+`fix/sanitize-xlsm-support`, sem merge ainda): `.xlsm`/`.xltm` passam a
+ser aceitos como entrada; `sanitizeWorkbookBytes` recebe um `bookType`
+explícito (`"xlsx"` ou `"xlsm"` — os dois únicos que o `XLSX.write`
+instalado sabe escrever) em vez de hardcoded, e valida que só esses dois
+valores são aceitos. `.xlsm` de origem sai como `.xlsm` sanitizado de
+verdade (macro-enabled, Excel abre normalmente, mas sem nenhuma macro
+dentro); `.xltm` de origem sai como `.xlsm` (mesma limitação de template
+que já existia pra `.xltx`→`.xlsx`, documentada). O `format` gravado no
+manifesto agora reflete o `bookType` real em vez de ficar hardcoded em
+`"xlsx"`, então o gate por formato (que lê `format` do manifesto e a
+extensão do arquivo pra rotear o leitor) passa a contar fontes `.xlsm`
+corretamente.
+
+Prova de regressão em `src/lib/workbook-sanitizer.test.ts`: um workbook
+`.xlsm` sintético com `WBProps.CodeName` (metadado de macro) sanitizado
+e então (1) relido sem `vbaraw`, (2) o ZIP de saída inspecionado byte a
+byte confirmando ausência de qualquer parte `vbaProject` e ausência da
+string `Attribute VB_Name` (assinatura de código VBA) em qualquer parte
+do arquivo, (3) `[Content_Types].xml` ainda declarando `macroEnabled`
+(necessário pro gate contar o formato certo). Mais um teste confirmando
+que um `bookType` fora de `xlsx`/`xlsm` (ex.: `"xltx"`, que o SheetJS
+instalado não sabe escrever) lança erro explícito em vez de deixar
+`XLSX.write` falhar com uma mensagem genérica. Smoke test manual da CLI
+completa (`npm run corpus:sanitize` com um `.xlsm` sintético) confirmou
+`sanitized-001.xlsm` com `"format": "xlsm"` no manifesto, fora do
+repositório e apagado depois.
+
+Documentação atualizada: `docs/WASM_CORPUS_SANITIZATION.md` (seção
+"Garantias e limites") e `docs/WASM_PROMOTION_CRITERIA.md` (nova
+subseção descrevendo a correção) não descrevem mais a recusa de macros
+como limite permanente do sanitizador.
+
+**Resultado líquido**: XLSM permanece em 0/5 no gate — a lacuna agora é
+só "falta arquivo `.xlsm` real do usuário", não mais uma recusa
+estrutural do próprio sanitizador. `npx vitest run` (547 passou, 1
+pulado — 2 testes novos), `npx tsc --noEmit` e `npx eslint --fix` nos 4
+arquivos tocados (mais checagem CRLF-safe do Prettier) aprovados. Branch
+não mesclada — pendente de autorização do usuário.
