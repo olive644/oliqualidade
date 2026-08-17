@@ -216,6 +216,42 @@ describe("sheetToRows", () => {
     expect(rows).toEqual([]);
   });
 
+  it("reconhece cabeçalho hierárquico misto (colunas simples + colunas agrupadas na mesma linha) sem dado abaixo", () => {
+    // Linha pai com "Colaborador"/"Função" (colunas simples, sem sub-linha)
+    // ao lado de "Treinamentos obrigatórios"/"Avaliação" (mescladas,
+    // cobrindo sub-colunas na linha seguinte). A trava que existe pra não
+    // confundir um cabeçalho folha (mesclagem isolada) com dado real não
+    // pode se aplicar aqui: sem dado nenhum abaixo, os rótulos não
+    // mesclados são colunas de nível único legítimas, não sinal de que a
+    // próxima linha já é dado.
+    const title = "Matriz de Treinamento e Competência";
+    const ws = sheet([
+      [title, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      ["Colaborador", "Função", "Treinamentos obrigatórios", null, null, null, "Avaliação", null],
+      [
+        null,
+        null,
+        "Integração",
+        "Segurança",
+        "Procedimento",
+        "Qualidade",
+        "Status",
+        "Próxima revisão",
+      ],
+      [null, null, null, null, null, null, "", null],
+      [null, null, null, null, null, null, "", null],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 2, c: 2 }, e: { r: 2, c: 5 } },
+      { s: { r: 2, c: 6 }, e: { r: 2, c: 7 } },
+    ];
+
+    const { rows } = sheetToRows(ws);
+
+    expect(rows).toEqual([]);
+  });
+
   it("não inclui duas vezes o mesmo rótulo vindo de mesclagem vertical no cabeçalho", () => {
     const ws = sheet([
       ["Amostra", "Medições", null],
@@ -1129,6 +1165,23 @@ describe("sheetToRows", () => {
     ws["B2"] = { t: "z", f: 'SUMIF(Vendas!E5:E104,"Brasil",Vendas!P5:P104)', v: 0 };
     const { rows } = sheetToRows(ws);
     expect(rows).toEqual([{ País: "Brasil", Receita: null }]);
+  });
+
+  it("não fabrica data fantasma (31/12/1899) numa célula de fórmula não calculada com formato de data", () => {
+    // Reproduz o caso real: um modelo (.xltx) gerado por script tem uma
+    // fórmula condicional (`IF(OR(A2="",B2=""),"",A2+B2)`) sem valor
+    // calculado guardado (t="s", v="") numa célula formatada como data. O
+    // SheetJS 0.20, ao montar o AOA, sintetiza `new Date(0)` a partir do
+    // valor vazio e do formato de número — que formatTemporalCell then
+    // converte pro texto "31/12/1899" (o epoch zero do Excel), fabricando
+    // um valor que nunca existiu na planilha original.
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Última calibração", "Periodicidade", "Próxima calibração"],
+      [null, null, null],
+    ]);
+    ws["C2"] = { t: "s", f: 'IF(OR(A2="",B2=""),"",A2+B2)', v: "", z: "yyyy-mm-dd" };
+    const { rows } = sheetToRows(ws);
+    expect(rows).toEqual([]);
   });
 });
 

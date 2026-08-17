@@ -251,19 +251,28 @@ function normalizeRawRow(
       c: start.c + columnIndex,
     });
     const sourceCell = worksheetCellAtAddress(worksheet, address);
-    const sourceDate = sourceCell?.v instanceof Date ? sourceCell.v : value;
-    const formatted = formatTemporalCell(sourceDate, sourceCell);
-    if (formatted) return formatted;
 
     // O SheetJS 0.20 pode tentar converter uma célula textual para Date
     // apenas porque o estilo dela é de data. Nesse caso ele entrega
     // `Invalid Date` no AOA, apesar de o objeto original ainda preservar o
     // texto correto. Isso ocorre, por exemplo, com o cabeçalho "Torre de
-    // Processo" no formulário FRS-QA-028. Recuperar somente strings evita
-    // alterar o tratamento normal de datas e números legítimos.
+    // Processo" no formulário FRS-QA-028. Checar isso ANTES de tentar
+    // formatar como data (não depois) importa num segundo caso real: uma
+    // célula de fórmula não calculada por um gerador fora do Excel
+    // (`t="s"`, valor cru `""`) com formato de data no estilo. Nesse caso
+    // `sourceCell.v` não é `Date`, então o código abaixo cairia no valor
+    // "fantasma" que o SheetJS sintetizou (`new Date(0)`, formatado como
+    // "31/12/1899" — o epoch zero do Excel) em vez de reconhecer que a
+    // célula nunca teve data nenhuma. Recuperar a string original (mesmo
+    // vazia) evita alterar o tratamento normal de datas e números
+    // legítimos.
     if (sourceCell?.t === "s" && typeof sourceCell.v === "string") {
-      return sourceCell.v;
+      return sourceCell.v || null;
     }
+
+    const sourceDate = sourceCell?.v instanceof Date ? sourceCell.v : value;
+    const formatted = formatTemporalCell(sourceDate, sourceCell);
+    if (formatted) return formatted;
 
     return null;
   });
@@ -595,11 +604,29 @@ function findHierarchicalHeaderEnd(
       numericBelow &&
       (duplicateNext >= 2 || temporalNext >= 3);
     if (!horizontal.length && !sparseUnmergedParent) break;
+    // Sem nenhum dado em lugar nenhum abaixo (modelo .xltx/.xltm vazio),
+    // as duas travas seguintes (pensadas pra não confundir dado real com
+    // cabeçalho) não têm nada de real pra proteger — calculado uma vez e
+    // reaproveitado nas duas.
+    const noDataAnywhereBelowForLayer = aoa
+      .slice(end + 2)
+      .every((row) => row.every((value) => value === null || value === ""));
     // Um cabeçalho folha pode conter uma ou duas mesclagens apenas para
     // ampliar visualmente um rótulo (ex.: "Limites" em F:H). Quando há
     // vários outros rótulos não mesclados na mesma linha, a próxima linha é
-    // dado, não uma nova camada hierárquica.
-    if (!sparseUnmergedParent && distinctParents.size >= 3 && unmergedLabels.length >= 2) break;
+    // dado, não uma nova camada hierárquica — exceto quando a linha atual
+    // já mistura colunas simples ("Colaborador", "Função") com colunas
+    // realmente agrupadas ("Treinamentos obrigatórios" mesclada cobrindo
+    // 4 subcolunas) e não há dado nenhum abaixo pra confundir: nesse caso
+    // os rótulos não mesclados são colunas de nível único legítimas, não
+    // sinal de que a próxima linha é dado.
+    if (
+      !sparseUnmergedParent &&
+      distinctParents.size >= 3 &&
+      unmergedLabels.length >= 2 &&
+      !(horizontal.length > 0 && noDataAnywhereBelowForLayer)
+    )
+      break;
     const isSingleFullWidthGroup =
       horizontal.length === 1 &&
       horizontal[0]!.s.c === 0 &&
@@ -633,14 +660,11 @@ function findHierarchicalHeaderEnd(
     // mesclagem horizontal real (evidência estrutural, não estatística) e
     // não há dado nenhum abaixo pra confundir com cabeçalho, estender é
     // seguro: não há registro real que essa extensão possa engolir.
-    const noDataAnywhereBelow = aoa
-      .slice(end + 2)
-      .every((row) => row.every((value) => value === null || value === ""));
     const dataEvidence =
       numericDataEvidence ||
       nextHasGroupedMerges ||
       (nextHasHeaderVocabulary && textualDataBelow) ||
-      (horizontal.length > 0 && noDataAnywhereBelow);
+      (horizontal.length > 0 && noDataAnywhereBelowForLayer);
     if (!dataEvidence) break;
 
     end++;
