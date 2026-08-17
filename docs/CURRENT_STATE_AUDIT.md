@@ -4472,3 +4472,31 @@ Corrigido com um fragmento de regex tolerante a prefixo (`NS = "(?:[A-Za-z_][\\w
 Verificado ao vivo: aba real "Matriz de Risco" (arquivo 03) foi de "0 células com cor de preenchimento" pra "**30 célula(s) com cor de preenchimento original detectada(s)**" no painel de revisão. `npx vitest run` (533 passou, 1 pulado — 1 teste novo com pacote OOXML mínimo prefixado+Target absoluto), `npx tsc --noEmit`, `npm run build` e `npm run performance:check` aprovados. PR [#131](https://github.com/olive644/oliqualidade/pull/131), branch `fix/ooxml-namespace-prefix-tolerance`.
 
 Nesta mesma sessão, também implementado (branch separada `feat/color-group-labels`, PR [#130](https://github.com/olive644/oliqualidade/pull/130), aguardando merge — não documentado nesta seção pra evitar o conflito de append-only já registrado em [[#Armadilhas de ambiente conhecidas]] entre branches simultâneas tocando este arquivo): `resolveColorGroupLabels` (`cell-fill-provenance.ts`) infere rótulo de agrupamento visual quando uma banda de linhas compartilha cor de preenchimento sem mesclagem real (investigação "Anexo III" da seção anterior a esta) — só exibição no widget Tabela, nunca escreve em `rows`.
+
+## 84. Extraído `useSheetMutations`: os 7 mutadores de dados que sobravam soltos em `Dashboard`
+
+Investigação anterior (pedida pelo usuário: avaliar se o núcleo restante do
+`Dashboard`, ~1.089 linhas, merece um reducer central) concluiu que os 13
+`useState` de UI não ganhavam nada com reducer, mas os 7 mutadores de dados
+ainda soltos (`setFilters`, `setColumns`, `setSemanticOverride`,
+`resetSemanticOverride`, `setExceptionDecision`, `correctException`,
+`editTableCell`) deveriam seguir o mesmo padrão já provado em
+`useWidgetActions` (hook dedicado, não `useReducer` genérico) — porque um
+reducer genérico teria que reproduzir manualmente duas exceções
+comportamentais deliberadas (`restoreEncryptedBackup` grava sem passar pelo
+undo/redo; `correctException`/`editTableCell` só chamam `recordHistory()`
+depois de checar `Object.is(before, after)`), com risco real de alterar o
+undo/redo visível ao usuário se a regra genérica errasse.
+
+`useSheetMutations` (`use-sheet-mutations.ts`) é extração puramente
+estrutural — mesmo código, mesma ordem de chamadas, mesmas duas guardas
+condicionais preservadas literalmente. Recebe `sheet`/`updateSheet`/
+`recordHistory`/`setFocusedCell` como parâmetros, mesmo formato de
+`useWidgetActions`. `Dashboard` caiu de ~1.089 para ~940 linhas.
+
+Verificado: `npx vitest run` (538 passou, 1 pulado, nenhum teste novo — é
+extração pura, sem mudança de comportamento), `npx tsc --noEmit` sem erros,
+e verificação ao vivo (editar célula → toast de sucesso → Ctrl+Z desfaz e
+volta ao valor original, confirmando que `recordHistory()` chamado de
+dentro do hook novo continua integrado com `useUndoRedoHistory` exatamente
+como antes).

@@ -99,12 +99,7 @@ import {
 } from "@/lib/import";
 import { mergeReimportedSheets } from "@/lib/dashboard";
 import { compareVersions, type VersionDiff } from "@/lib/import-workbench";
-import {
-  analyzeSpreadsheet,
-  type ExceptionDecision,
-  type SemanticRole,
-  type SpreadsheetException,
-} from "@/lib/spreadsheet-intelligence";
+import { analyzeSpreadsheet } from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFileWithReport } from "@/lib/workbook-reader-client";
 import { describeReaderOutcome, workbookFormat } from "@/lib/workbook-reading-engine";
 import {
@@ -115,7 +110,7 @@ import {
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { buildLiveDashboardContext } from "@/lib/assistant-context";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
-import { applyCellEdit, auditEntry, markSourceRows, parseEditedValue } from "@/lib/data-review";
+import { markSourceRows } from "@/lib/data-review";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
@@ -150,6 +145,7 @@ import { VersionDiffBanner } from "@/components/oliam/version-diff-banner";
 import { useTermHint } from "@/components/oliam/term-hint-banner";
 import { useBackgroundReviewAnalysis } from "@/components/oliam/use-background-review-analysis";
 import { useDashboardExport } from "@/components/oliam/use-dashboard-export";
+import { useSheetMutations } from "@/components/oliam/use-sheet-mutations";
 import { useUndoRedoHistory } from "@/components/oliam/use-undo-redo-history";
 import { useWidgetActions } from "@/components/oliam/use-widget-actions";
 import { QualitySignalsPanel } from "@/components/oliam/quality-signals-panel";
@@ -1261,146 +1257,15 @@ function Dashboard(p: {
     undoRef.current = undo;
     redoRef.current = redo;
   });
-  const setFilters = (filters: FilterRule[]) => {
-    recordHistory();
-    updateSheet({ filters });
-  };
-  const setColumns = (columns: Column[]) => {
-    recordHistory();
-    updateSheet({ columns });
-  };
-  const setSemanticOverride = (
-    columnKey: string,
-    patch: { role?: SemanticRole; unit?: string | null },
-  ) => {
-    recordHistory();
-    const current = sheet.semanticOverrides ?? {};
-    const next = { ...current, [columnKey]: { ...current[columnKey], ...patch } };
-    const intelligence = analyzeSpreadsheet(sheet.rows, sheet.columns, undefined, next);
-    updateSheet({ semanticOverrides: next, intelligence });
-  };
-  const resetSemanticOverride = (columnKey: string) => {
-    recordHistory();
-    const next = { ...(sheet.semanticOverrides ?? {}) };
-    delete next[columnKey];
-    const intelligence = analyzeSpreadsheet(sheet.rows, sheet.columns, undefined, next);
-    updateSheet({ semanticOverrides: next, intelligence });
-  };
-  const setExceptionDecision = (
-    exceptionId: string,
-    status: ExceptionDecision["status"] | null,
-  ) => {
-    recordHistory();
-    const next = { ...(sheet.exceptionDecisions ?? {}) };
-    if (status) next[exceptionId] = { status, updatedAt: Date.now() };
-    else delete next[exceptionId];
-    const action =
-      status === "resolved"
-        ? "exception-resolved"
-        : status === "ignored"
-          ? "exception-ignored"
-          : "exception-reopened";
-    updateSheet({
-      exceptionDecisions: next,
-      auditTrail: [
-        ...(sheet.auditTrail ?? []),
-        auditEntry({
-          action,
-          exceptionId,
-          reason:
-            status === "ignored"
-              ? "Exceção ignorada pelo usuário."
-              : status === "resolved"
-                ? "Exceção marcada como revisada pelo usuário."
-                : "Exceção reaberta para nova revisão.",
-        }),
-      ].slice(-1000),
-    });
-  };
-  const correctException = (exception: SpreadsheetException, input: string, reason: string) => {
-    if (!exception.columnKey || !exception.rowIndex) return;
-    const rowOffset = exception.rowIndex - 1;
-    const column = sheet.columns.find((item) => item.key === exception.columnKey);
-    const before = sheet.rows[rowOffset]?.[exception.columnKey] ?? null;
-    const after = parseEditedValue(input, column);
-    if (Object.is(before, after)) {
-      toast.info("O valor informado é igual ao valor atual.");
-      return;
-    }
-    recordHistory();
-    const rows = applyCellEdit(sheet.rows, rowOffset, exception.columnKey, after);
-    const nextDecisions = {
-      ...(sheet.exceptionDecisions ?? {}),
-      [exception.id]: { status: "resolved" as const, updatedAt: Date.now() },
-    };
-    const intelligence = analyzeSpreadsheet(
-      rows,
-      sheet.columns,
-      undefined,
-      sheet.semanticOverrides,
-    );
-    updateSheet({
-      rows,
-      intelligence,
-      exceptionDecisions: nextDecisions,
-      auditTrail: [
-        ...(sheet.auditTrail ?? []),
-        auditEntry({
-          action: "cell-correction",
-          exceptionId: exception.id,
-          ...(exception.address ? { address: exception.address } : {}),
-          rowIndex: exception.rowIndex,
-          columnKey: exception.columnKey,
-          before,
-          after,
-          reason: reason.trim() || "Correção manual confirmada pelo usuário.",
-        }),
-      ].slice(-1000),
-    });
-    toast.success("Célula corrigida e registrada no histórico.");
-  };
-  const editTableCell = (
-    sourceRowIndex: number,
-    columnKey: string,
-    input: string,
-    reason: string,
-  ) => {
-    const column = sheet.columns.find((item) => item.key === columnKey);
-    if (!column || column.formula || sourceRowIndex < 0 || sourceRowIndex >= sheet.rows.length)
-      return;
-    const before = sheet.rows[sourceRowIndex]?.[columnKey] ?? null;
-    const after = parseEditedValue(input, column);
-    if (Object.is(before, after)) {
-      toast.info("O valor informado é igual ao valor atual.");
-      return;
-    }
-    recordHistory();
-    const rows = applyCellEdit(sheet.rows, sourceRowIndex, columnKey, after);
-    const intelligence = analyzeSpreadsheet(
-      rows,
-      sheet.columns,
-      undefined,
-      sheet.semanticOverrides,
-    );
-    updateSheet({
-      rows,
-      intelligence,
-      auditTrail: [
-        ...(sheet.auditTrail ?? []),
-        auditEntry({
-          action: "cell-correction",
-          exceptionId: `manual-${sourceRowIndex + 1}-${columnKey}`,
-          rowIndex: sourceRowIndex + 1,
-          columnKey,
-          before,
-          after,
-          reason: reason.trim(),
-        }),
-      ].slice(-1000),
-    });
-    setFocusedCell({ rowIndex: sourceRowIndex + 1, columnKey });
-    toast.success("Célula atualizada. Use Ctrl+Z para desfazer.");
-  };
+  const {
+    setFilters,
+    setColumns,
+    setSemanticOverride,
+    resetSemanticOverride,
+    setExceptionDecision,
+    correctException,
+    editTableCell,
+  } = useSheetMutations({ sheet, updateSheet, recordHistory, setFocusedCell });
 
   // Colunas calculadas recalculam ao vivo antes de qualquer filtro.
   const traceableRows = useMemo(() => markSourceRows(sheet.rows), [sheet.rows]);

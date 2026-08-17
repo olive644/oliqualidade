@@ -174,8 +174,9 @@ audit inteiro.
 | O que a métrica de fidelidade célula-a-célula deliberadamente não mede | `UNSUPPORTED_FIDELITY_FEATURES` (`fidelity-meter.ts`) — manter em sincronia com o que já virou inventário rastreável na revisão (hyperlinks/nomes definidos/links externos/validações não estão mais nesta lista; tabelas/pivôs nunca estiveram) | `workbook-fidelity.test.ts` (`unsupportedFeatures`) |
 | Inventário de imagens embutidas (só `xdr:pic`, não formas/gráficos) | `parseImages` (`workbook-metadata.ts`, resolve aba→drawing→media em dois níveis de `.rels` encadeados); `ImportDiagnostics.images`; painel `<details>` em `review.tsx` | `import-intelligence.test.ts` + `workbook-metadata.test.ts` (cadeia completa de 3 relacionamentos) — ver [[CURRENT_STATE_AUDIT#72. Inventário de imagens embutidas (fecha a lista de itens de esforço maior pedidos pelo usuário nesta sessão)]] |
 | Exportação (XLSX, cópia corrigida, CSVs, PDF de revisão, PNG/PDF do painel, backup criptografado e restauração) | `use-dashboard-export.ts` — hook, recebe `contentRef` de fora; `restoreEncryptedBackup` grava direto via `onRestore` (`p.update`), sem passar pelo undo/redo, de propósito | verificação manual do fluxo de exportação |
-| Núcleo de undo/redo (pilha, `recordHistory`) | `use-undo-redo-history.ts` — hook, ~9 mutadores em `Dashboard` continuam chamando `recordHistory()` antes de mudar dados | verificação manual (editar, desfazer, refazer) |
+| Núcleo de undo/redo (pilha, `recordHistory`) | `use-undo-redo-history.ts` — hook | verificação manual (editar, desfazer, refazer) |
 | Ações de widget (adicionar, copiar/colar, atualizar, remover, mover, reordenar) e `traceException` | `use-widget-actions.ts` — hook, recebe `setSearch`/`setSort`/`setFilters`/`setFocusedCell` como parâmetros porque `traceException` cruza todos eles; `canAdd` fica em `Dashboard` (só lê o pipeline, não muta nada) | verificação manual do fluxo de widgets |
+| Mutações de dados da aba (filtros, colunas, overrides semânticos, decisões de exceção, correção de célula) | `use-sheet-mutations.ts` — hook, mesmo padrão de `use-widget-actions.ts`; todos os 7 mutadores chamam `recordHistory()` antes de mudar dado, preservando as duas guardas condicionais originais (`Object.is(before, after)` em `correctException`/`editTableCell`) | verificação manual (editar célula, desfazer) — ver [[CURRENT_STATE_AUDIT#84. Extraído \`useSheetMutations\`: os 7 mutadores de dados que sobravam soltos em \`Dashboard\`]] |
 | Quanto foi filtrado na tabela detalhada | prop `totalRows` de `WidgetCard`, passado como `rulesApplied.length` em `routes/index.tsx` | `npx tsc --noEmit` confirma o único call site atualizado |
 | Widget "Insights automáticos" (`insights`), narra achados em texto | `widget-card.tsx` (bloco `w.type === "insights"`), compõe `pieComparisonFor`/`rankingCoverageFor`/`detectQualitySignals` já testadas | `npx tsc --noEmit` (checklist completo de registro de `WidgetType` na seção 47 do audit) |
 | Importação/revisão (UI)                     | `components/oliam/{home,empty,import-workbench,review}.tsx`          | `routes/index.tsx` orquestra via props        |
@@ -313,10 +314,18 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
 3. **Corpus real sanitizado** `#pendente` — XLSX/XLSM precisam de mais
    arquivos; XLTX/XLTM não têm nenhum. Bloqueado em arquivos reais do
    usuário; parar e perguntar antes de tentar sintetizar substitutos.
-5. **Núcleo restante de `Dashboard`** (~1.500-2.000 linhas, pipeline de
-   dados + grade de widgets) — deliberadamente fora do escopo da série de
-   extração já fechada (ver [[#Estado conhecido]]); precisaria de
-   mapeamento novo do zero, provavelmente um reducer central.
+5. ~~Núcleo restante de `Dashboard`~~ **Parcialmente resolvido** —
+   investigação concluiu que um `useReducer` genérico não compensa (13
+   `useState` de UI são independentes; reducer só trocaria forma sem ganho
+   real, e teria que reproduzir manualmente duas exceções comportamentais
+   deliberadas do undo/redo, com risco de quebrar o Ctrl+Z visível ao
+   usuário). Os 7 mutadores de dados que ainda estavam soltos foram
+   extraídos para `use-sheet-mutations.ts`, seguindo o padrão já provado em
+   `use-widget-actions.ts` — `Dashboard` caiu de ~1.089 para ~940 linhas.
+   Restante do núcleo (pipeline `useMemo` + orquestração da grade de
+   widgets) continua deliberadamente não extraído — é pipeline funcional,
+   não mutação de estado, sem candidato natural a hook. Ver
+   [[CURRENT_STATE_AUDIT#84. Extraído \`useSheetMutations\`: os 7 mutadores de dados que sobravam soltos em \`Dashboard\`]].
 
 ## Comandos operacionais
 
