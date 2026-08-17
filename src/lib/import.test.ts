@@ -153,6 +153,69 @@ describe("sheetToRows", () => {
     expect(warning).toContain("cabeçalho hierárquico");
   });
 
+  it("reconhece o título mesclado como banner mesmo quando o gerador repete o texto em toda célula da mesclagem", () => {
+    // Excel de verdade só grava o valor na célula de origem da mesclagem;
+    // alguns geradores de OOXML fora do Excel (scripts próprios) escrevem o
+    // mesmo texto em cada célula coberta. Sem reconhecer isso como banner,
+    // essa linha de título virava o cabeçalho da tabela, e o cabeçalho
+    // hierárquico real (linhas 2-3) vazava como duas linhas de dado.
+    const title = "Modelo — Avaliação HACCP";
+    const ws = sheet([
+      [title, title, title, title, title, title, title],
+      [null, null, null, null, null, null, null],
+      ["Perigo identificado", "Avaliação", null, null, "Tratamento", null, null],
+      [null, "Probabilidade", "Severidade", "Nível", "Responsável", "Prazo", "Decisão"],
+      ["Vazamento", 3, 3, 9, "Qualidade", "10/04/2026", "Crítico"],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } },
+      { s: { r: 2, c: 1 }, e: { r: 2, c: 3 } },
+      { s: { r: 2, c: 4 }, e: { r: 2, c: 6 } },
+    ];
+
+    const { rows } = sheetToRows(ws);
+
+    expect(Object.keys(rows[0] ?? {})).toEqual([
+      "Perigo identificado",
+      "Avaliação — Probabilidade",
+      "Avaliação — Severidade",
+      "Avaliação — Nível",
+      "Tratamento — Responsável",
+      "Tratamento — Prazo",
+      "Tratamento — Decisão",
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.["Perigo identificado"]).toBe("Vazamento");
+  });
+
+  it("não fabrica registro fantasma a partir do cabeçalho hierárquico de um modelo genuinamente vazio", () => {
+    // Um modelo (.xltx/.xltm) sem nenhuma linha preenchida não tem
+    // evidência de dado (numérica/data) pra confirmar a segunda camada do
+    // cabeçalho — mas também não tem dado nenhum que a extensão do
+    // cabeçalho possa engolir por engano, então é seguro reconhecer as duas
+    // camadas puramente pela mesclagem estrutural.
+    const title = "Modelo — Avaliação HACCP";
+    const ws = sheet([
+      [title, title, title, title, title, title, title],
+      [null, null, null, null, null, null, null],
+      ["Perigo identificado", "Avaliação", null, null, "Tratamento", null, null],
+      [null, "Probabilidade", "Severidade", "Nível", "Responsável", "Prazo", "Decisão"],
+      [null, null, null, "", null, null, ""],
+      [null, null, null, "", null, null, ""],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } },
+      { s: { r: 2, c: 1 }, e: { r: 2, c: 3 } },
+      { s: { r: 2, c: 4 }, e: { r: 2, c: 6 } },
+    ];
+
+    const { rows } = sheetToRows(ws);
+
+    expect(rows).toEqual([]);
+  });
+
   it("não inclui duas vezes o mesmo rótulo vindo de mesclagem vertical no cabeçalho", () => {
     const ws = sheet([
       ["Amostra", "Medições", null],
