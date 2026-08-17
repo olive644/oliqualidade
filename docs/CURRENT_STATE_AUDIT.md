@@ -4706,3 +4706,38 @@ que já não estivesse coberto. `npx vitest run` (545 passou, 1 pulado, sem
 teste novo — mudança é só no script de tooling, coberto indiretamente por
 `workbook-sanitizer.test.ts` que já existia e continua passando), `npx
 tsc --noEmit`, `npm run build` e `npm run performance:check` aprovados.
+
+## 89. Item 6 do backlog investigado: já estava resolvido como efeito colateral das seções 86/87
+
+Investigação pedida pelo usuário sobre o achado pendente da seção 86
+(arquivo "04", duas tabelas independentes lado a lado com título de seção
+mesclado parcialmente na mesma linha, não dividia em regiões quando a
+planilha está genuinamente vazia). Causa confirmada: `regionsAreSafeToSplit`
+(`import.ts`) exige pelo menos 2 linhas de dado por região com evidência
+numérica/data — sinal que um modelo `.xltx` vazio nunca tem.
+
+Implementado o mesmo padrão já usado nas seções 86/87 (`noDataAnywhereAcrossRegions`:
+dispensa a exigência de linha de dado quando não há dado nenhum em nenhuma
+região, preservando a checagem original intacta quando há dado real).
+Mas, testando com um fixture reconstruído fielmente à estrutura real
+(arquivo original não estava mais disponível pra reteste direto — usuário
+já tinha limpado o Downloads), o resultado final ficou **idêntico com e
+sem a mudança**, em todos os cenários testados (com/sem título acima, com
+conteúdo visual sobrevivendo ao filtro de aba vazia). As correções das
+seções 86 (banner com texto repetido) e 87 (cabeçalho hierárquico misto)
+já eliminam o sintoma observável (registro fantasma com colunas
+genéricas) *antes* de `regionsAreSafeToSplit` sequer entrar em jogo — o
+caminho de tabela única (sem split) já reconhece corretamente o cabeçalho
+combinado como cabeçalho, não como dado, então o resultado final (0
+linhas, nada pra importar) é o mesmo independente de a divisão em regiões
+acontecer ou não.
+
+**Decisão**: revertida a mudança em `regionsAreSafeToSplit` — sem
+benefício demonstrável em nenhum teste, mudança especulativa que só
+acrescentaria superfície de risco no núcleo de importação sem prova de
+necessidade real. Item 6 do backlog fechado como "já resolvido, sem
+código adicional necessário".
+
+`npx vitest run` (545 passou, 1 pulado, sem mudança — nenhum código de
+`import.ts` foi alterado nesta seção), confirmando que a suíte já cobria
+esse caso.
