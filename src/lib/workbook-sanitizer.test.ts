@@ -77,6 +77,47 @@ describe("sanitizador local de corpus", () => {
     expect(() => sanitizeWorkbookBytes(input, { salt: "curta" })).toThrow(/16 caracteres/);
   });
 
+  it("sanitiza origem .xlsm sem carregar nem regravar VBA, preservando bookType xlsm", () => {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Cliente", "Valor"],
+      ["Empresa Confidencial LTDA", 999.5],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, sheet, "Dados");
+    workbook.Workbook = { WBProps: { CodeName: "EstaPasta" } };
+    const macroSource = XLSX.write(workbook, { type: "buffer", bookType: "xlsm" });
+
+    const result = sanitizeWorkbookBytes(macroSource, {
+      salt: "chave-local-de-teste-123",
+      workbookId: "fixture-xlsm",
+      bookType: "xlsm",
+    });
+
+    const reread = XLSX.read(result.bytes, { type: "buffer", bookVBA: false, cellStyles: true });
+    expect(reread.SheetNames).toEqual(["SHEET_001"]);
+    expect(reread.vbaraw).toBeUndefined();
+    expect(JSON.stringify(reread)).not.toContain("Empresa Confidencial LTDA");
+
+    const parts = unzipSync(result.bytes);
+    expect(Object.keys(parts).some((name) => name.toLowerCase().includes("vbaproject"))).toBe(
+      false,
+    );
+    const contentTypes = Buffer.from(parts["[Content_Types].xml"]!).toString("utf8");
+    expect(contentTypes).toContain("macroEnabled");
+    for (const bytes of Object.values(parts)) {
+      expect(Buffer.from(bytes).toString("latin1")).not.toContain("Attribute VB_Name");
+    }
+  });
+
+  it("recusa bookType de saída não suportado pelo SheetJS instalado", () => {
+    expect(() =>
+      sanitizeWorkbookBytes(sensitiveWorkbook(), {
+        salt: "chave-local-de-teste-123",
+        bookType: "xltx" as "xlsx",
+      }),
+    ).toThrow(/bookType de saida nao suportado/);
+  });
+
   it("neutraliza fórmulas com referências externas", () => {
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([[1]]);

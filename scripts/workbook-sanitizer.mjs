@@ -105,8 +105,11 @@ function removeWorkbookMetadata(workbook) {
 }
 
 export function sanitizeWorkbookBytes(input, options) {
-  const { salt, workbookId = "workbook" } = options;
+  const { salt, workbookId = "workbook", bookType = "xlsx" } = options;
   if (typeof salt !== "string" || salt.length < 16) throw new Error(INVALID_SALT_MESSAGE);
+  if (bookType !== "xlsx" && bookType !== "xlsm") {
+    throw new Error(`bookType de saida nao suportado pelo SheetJS instalado: ${bookType}`);
+  }
 
   const workbook = XLSX.read(input, {
     type: "buffer",
@@ -173,7 +176,7 @@ export function sanitizeWorkbookBytes(input, options) {
 
   const output = XLSX.write(workbook, {
     type: "buffer",
-    bookType: "xlsx",
+    bookType,
     cellStyles: true,
     compression: true,
   });

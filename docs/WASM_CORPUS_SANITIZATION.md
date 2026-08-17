@@ -7,17 +7,26 @@ do Git por meio do `.gitignore`.
 
 ## Garantias e limites
 
-O sanitizador aceita `.xlsx` e `.xltx`. Arquivos com macros (`.xlsm` ou `.xltm`)
-fazem a execu&ccedil;&atilde;o falhar antes de qualquer sa&iacute;da ser criada. A origem nunca &eacute;
+O sanitizador aceita `.xlsx`, `.xlsm`, `.xltx` e `.xltm`. A origem nunca &eacute;
 alterada e o destino precisa estar vazio.
 
-A sa&iacute;da sanitizada de um `.xltx` de origem sempre grava um `.xlsx` de
-verdade &mdash; o SheetJS instalado neste projeto s&oacute; sabe escrever
-`bookType` `xlsx`/`xlsm` (`XLSX.write` lan&ccedil;a `Unrecognized bookType |xltx|`
-pra qualquer outro valor), ent&atilde;o o Content-Types interno nunca declara
-"template". Isso preserva fielmente o conte&uacute;do real pra teste de paridade
-TS&times;Rust, mas esse `.xlsx` sanitizado **n&atilde;o conta como fonte `.xltx`** no
-gate de promo&ccedil;&atilde;o (ver `docs/WASM_PROMOTION_CRITERIA.md`).
+Arquivos com macro (`.xlsm`/`.xltm`) s&atilde;o aceitos, mas o conte&uacute;do VBA em si
+nunca chega a ser lido nem regravado: a leitura usa `bookVBA: false` (o
+SheetJS nem decodifica o bin&aacute;rio da macro) e `workbook.vbaraw` &eacute; sempre
+removido antes de gravar, independente do que a origem continha. A sa&iacute;da &eacute;
+um arquivo macro-enabled v&aacute;lido (o Excel abre normalmente) s&oacute; que sem
+nenhuma macro dentro &mdash; o Rust nunca executa VBA mesmo, ent&atilde;o o objetivo
+aqui n&atilde;o &eacute; preservar a macro, &eacute; preservar a extens&atilde;o real do arquivo pra
+o gate de promo&ccedil;&atilde;o contar a fonte no formato certo (`docs/WASM_PROMOTION_CRITERIA.md`).
+
+A sa&iacute;da sanitizada de um `.xltx`/`.xltm` de origem sempre grava um
+`.xlsx`/`.xlsm` "normal" de verdade, nunca um template &mdash; o SheetJS
+instalado neste projeto s&oacute; sabe escrever `bookType` `xlsx`/`xlsm`
+(`XLSX.write` lan&ccedil;a `Unrecognized bookType |xltx|` pra qualquer outro
+valor), ent&atilde;o o Content-Types interno nunca declara "template". Isso
+preserva fielmente o conte&uacute;do real pra teste de paridade TS&times;Rust, mas
+esse arquivo sanitizado **n&atilde;o conta como fonte `.xltx`/`.xltm`** no gate de
+promo&ccedil;&atilde;o &mdash; s&oacute; amplia as fontes do gate `xlsx`/`xlsm` j&aacute; existente.
 
 Em cada workbook, o processo:
 
@@ -26,7 +35,8 @@ Em cada workbook, o processo:
 - renomeia abas e ajusta refer&ecirc;ncias internas nas f&oacute;rmulas;
 - pseudonimiza literais de texto dentro das f&oacute;rmulas;
 - neutraliza f&oacute;rmulas com refer&ecirc;ncias externas;
-- remove links, coment&aacute;rios, propriedades, nomes definidos e conte&uacute;do VBA;
+- remove links, coment&aacute;rios, propriedades, nomes definidos e conte&uacute;do VBA
+  (nunca lido, ver "Garantias e limites" acima);
 - preserva f&oacute;rmulas internas, formatos de c&eacute;lula, mesclagens, linhas ocultas e
   colunas ocultas.
 

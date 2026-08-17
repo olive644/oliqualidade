@@ -181,3 +181,30 @@ mesmo conteúdo de origem (provavelmente exportado como `.xlsx` numa sessão
 anterior e como `.xltx` nesta), não contam como fonte nova. XLTX/XLTM
 continuam em 0/5, sem nenhum arquivo real disponível que ainda não esteja
 no corpus.
+
+**Correção do bloqueio estrutural do XLSM**: até esta seção,
+`npm run corpus:sanitize` recusava de propósito qualquer arquivo
+`.xlsm`/`.xltm` ("A origem contem arquivo(s) com macros...") antes de
+gerar qualquer saída — mesmo que o usuário trouxesse 5 arquivos `.xlsm`
+reais, o gate 0/5 nunca teria como fechar. Investigando o motivo,
+`sanitizeWorkbookBytes` (`scripts/workbook-sanitizer.mjs`) já lia com
+`bookVBA: false` (o SheetJS nem chega a decodificar o binário da macro) e
+sempre removia `workbook.vbaraw` antes de gravar — a recusa na camada de
+cima não estava protegendo contra nenhuma lacuna real da função de
+sanitização, era só uma política redundante. A correção: `.xlsm`/`.xltm`
+agora são aceitos como entrada; `sanitizeWorkbookBytes` recebe um
+`bookType` explícito (`"xlsx"` ou `"xlsm"`, os dois únicos que o
+`XLSX.write` instalado sabe escrever) e grava a saída preservando esse
+formato — um arquivo macro-enabled válido (Excel abre normalmente) sem
+nenhuma macro dentro, já que o Rust nunca executa VBA mesmo. `.xltm` de
+origem vira `.xlsm` de saída (mesma limitação de template que já existia
+pra `.xltx`→`.xlsx`). O `format` gravado no manifesto agora reflete o
+`bookType` real (`"xlsm"` para fontes `.xlsm`/`.xltm`), então o gate por
+formato conta essas fontes corretamente. Prova de regressão em
+`src/lib/workbook-sanitizer.test.ts`: confirma que nenhum byte de VBA
+sobrevive na saída (procura `vbaProject` no ZIP e `Attribute VB_Name` em
+todas as partes), que o Content-Types ainda declara `macroEnabled`
+(formato correto pro gate) e que `bookType` fora de `xlsx`/`xlsm` é
+rejeitado explicitamente. XLSM permanece em 0/5 até um arquivo `.xlsm`
+real do usuário chegar — a lacuna agora é só falta de arquivo, não mais
+uma recusa estrutural do próprio sanitizador.

@@ -12,7 +12,7 @@ export type SanitizationSummary = {
 
 export function sanitizeWorkbookBytes(
   input: Uint8Array,
-  options: { salt: string; workbookId?: string },
+  options: { salt: string; workbookId?: string; bookType?: "xlsx" | "xlsm" },
 ): { bytes: Buffer; summary: SanitizationSummary };
 
 export function sha256(input: Uint8Array): string;
