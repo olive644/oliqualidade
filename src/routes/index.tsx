@@ -74,7 +74,7 @@ import {
   groupAndAggregate,
   matchesRange,
 } from "@/lib/data-pipeline";
-import { resolveSourceCellFills } from "@/lib/cell-fill-provenance";
+import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
@@ -491,6 +491,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.audit,
         s.sourceGrid,
       );
+      const colorGroupLabels = resolveColorGroupLabels(s.rows, columns, sourceCellFills);
       return {
         name: s.name,
         rows: s.rows,
@@ -501,6 +502,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
         ...(s.diagnostics?.images.length ? { sourceImages: s.diagnostics.images } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
+        ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
       };
     });
 
@@ -883,6 +885,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.audit,
         s.sourceGrid,
       );
+      const colorGroupLabels = resolveColorGroupLabels(s.rows, s.columns, sourceCellFills);
       return {
         name: s.name,
         rows: s.rows,
@@ -893,6 +896,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.sourceNotes?.length ? { sourceNotes: s.sourceNotes } : {}),
         ...(s.sourceImages?.length ? { sourceImages: s.sourceImages } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
+        ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
       };
     });
     if (reviewTarget === "new") {
@@ -1649,6 +1653,7 @@ function Dashboard(p: {
             groupableCols={groupableCols}
             sourceImages={sheet.sourceImages ?? []}
             sourceCellFills={sheet.sourceCellFills ?? []}
+            colorGroupLabels={sheet.colorGroupLabels ?? []}
             interpolated={interpolated}
             sort={sort}
             setSort={setSort}
