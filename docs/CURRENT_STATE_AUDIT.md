@@ -4048,3 +4048,51 @@ novos de `workbook-metadata.test.ts`), `npx tsc --noEmit` sem erros,
 `npm run build` e `npm run performance:check`, e verificação ao vivo
 contra o arquivo real (`upload/`, não commitado) confirmando os dados
 acima.
+
+## 77. Investigado e corrigido o achado à parte da seção 76: as 9 divergências de fidelidade eram todas o mesmo falso positivo de fim de linha
+
+Continuação direta da sessão anterior. Dump das 9 divergências
+(`meta.readerDivergences` da aba "FRS QA BR 405 Brasil") mostrou um
+único padrão repetido: o SheetJS (leitor "primary") lê texto multilinha
+de célula com `\n` puro, enquanto o leitor OOXML independente
+("independent") preservava `\r\n` literal do XML — o mesmo texto,
+divergindo só pelo fim de linha, não por perda ou corrupção de dado.
+As 9 células eram observações, notas de revisão e nomes de item com
+quebra de linha (`xml:space="preserve"`).
+
+Causa raiz: `xmlText()` (`ooxml-reader.ts`), a função central que
+converte conteúdo de `<t>` para string JS, nunca normalizava fim de
+linha — só decodificava entidades e referências numéricas de
+caractere. Corrigido com `.replace(/\r\n?/g, "\n")` no fim do
+pipeline, igualando o comportamento do SheetJS. Como `xmlText` é o
+único ponto de conversão usado por shared strings, inline strings,
+texto de fórmula e valores `str`/`e` (ver os 5 call sites no arquivo),
+a correção cobre todo texto lido pelo leitor independente, não só o
+caso testado.
+
+Efeito colateral importante, não uma correção separada: `unresolvedReaderDivergences`
+(`import-intelligence.ts`) conta toda divergência não reparada,
+inclusive severidade `warning` (diferente de `fidelity-meter.ts`, que
+já tinha a decisão explícita de não penalizar avisos — ver comentário
+em `WorkbookFidelityReport.warnings`). Essa inconsistência entre os
+dois caminhos de pontuação de fidelidade continua existindo em teoria
+para qualquer divergência de aviso que não seja de fim de linha; não
+foi alterada aqui porque, com a causa raiz corrigida, as 9 divergências
+reais do arquivo desapareceram por completo — não sobrou nenhum caso
+para justificar mudar a semântica de pontuação nesta sessão. Fica
+registrado como possível trabalho futuro se aparecer um novo tipo de
+divergência de aviso recorrente.
+
+Teste de regressão novo em `workbook-fidelity.test.ts`: shared string
+sintética com `\r\n` literal, confirma `rawValue` normalizado e zero
+divergências contra um `primary` fabricado com `\n`.
+
+Verificado com o arquivo real: as 9 divergências somem por completo
+(`readerDivergences` vazio), e o teste antes falho
+(`real-upload-validation.test.ts`, "recupera todas as abas com
+validade e fidelidade integrais") passa — fidelidade da aba "FRS QA BR
+405 Brasil" volta a 100%. Suíte completa: `npx vitest run` (518
+passou, 1 pulado — o pulado é uma fixture privada diferente, não
+relacionada), `npx tsc --noEmit` sem erros, `npm run build` e `npm run
+performance:check` aprovados, sem mudança de tamanho de bundle
+(`ooxml-reader.ts` não é código de rota, é parte do worker de leitura).

@@ -143,6 +143,32 @@ describe("fidelidade entre leitores independentes", () => {
     );
   });
 
+  it("normaliza \\r\\n para \\n no texto OOXML, como o SheetJS já faz", () => {
+    // Texto multilinha (xml:space="preserve") de um arquivo real gerado no
+    // Windows guarda \r\n literal no XML. O SheetJS normaliza para \n na
+    // leitura; sem a mesma normalização aqui, o mesmo texto virava uma
+    // divergência de severidade "warning" entre os dois leitores só por
+    // causa do fim de linha — 9 falsos positivos num arquivo real, todos
+    // pelo mesmo motivo. Ver seção 77 do CURRENT_STATE_AUDIT.md.
+    const bytes = minimalWorkbookPackage(
+      '<sst><si><t xml:space="preserve">Linha 1\r\nLinha 2</t></si></sst>',
+    );
+    const inspection = inspectOoxml(bytes);
+    expect(inspection.sheets.get("Teste")?.get("A1")?.rawValue).toBe("Linha 1\nLinha 2");
+
+    const primary: XLSX.WorkBook = {
+      SheetNames: ["Teste"],
+      Sheets: {
+        Teste: {
+          "!ref": "A1:A1",
+          A1: { t: "s", v: "Linha 1\nLinha 2" } as XLSX.CellObject,
+        },
+      },
+    };
+    const divergences = compareAndRepairWithOoxml(primary, inspection);
+    expect(divergences).toEqual([]);
+  });
+
   it("respeita workbookPr date1904 ao converter datas seriais no leitor OOXML", () => {
     // O inventário OOXML independente (usado para reconciliação e como
     // referência do shadow mode) nunca lia `workbookPr date1904` e sempre
