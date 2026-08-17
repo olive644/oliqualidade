@@ -1445,6 +1445,16 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     )
       continue;
     for (let r = m.s.r; r <= m.e.r; r++) {
+      // Uma linha que já não tinha NENHUM valor digitado de forma
+      // independente (em qualquer coluna, não só a desta mesclagem) antes
+      // de qualquer preenchimento não é um registro real — é só o efeito
+      // visual da mesclagem esticando a altura da linha de origem (comum em
+      // planilhas de matriz de risco, onde a mesma linha aparece "alta" por
+      // formatação, não por ter 3 observações distintas). Preencher mesmo
+      // assim faria um registro só virar 3 idênticos, triplicando contagens
+      // e somas. A linha de origem (r === m.s.r) sempre tem pelo menos o
+      // valor de origem, então nunca é pulada por esta condição.
+      if (r !== m.s.r && originalFilledCount.get(r) === 0) continue;
       const row = (aoa[r] ?? []) as (string | number | null)[];
       for (let c = m.s.c; c <= m.e.c; c++) {
         if (r === m.s.r && c === m.s.c) continue;
@@ -1813,9 +1823,18 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   const redundantToCanonical = new Map<string, string>();
   const redundantColumns = headersWithoutGhosts.filter((header, index) => {
     const base = header.replace(/_\d+$/, "");
-    if (/^coluna$/i.test(base)) return false;
-    const earlier = headersWithoutGhosts.slice(0, index).find((candidate) => {
+    // Nomes genéricos "Coluna N" (cabeçalho vazio, numerado automaticamente)
+    // não contam como redundantes por padrão: duas colunas sem nome com o
+    // mesmo valor por coincidência não implicam a mesma origem. Mas quando
+    // são vizinhas diretas no cabeçalho, a coincidência deixa de ser
+    // plausível — o padrão real é uma célula mesclada horizontalmente (ex:
+    // uma nota de rodapé) que transborda pra coluna imediatamente seguinte,
+    // ambas sem cabeçalho por não pertencerem à tabela de verdade. Só nesse
+    // caso adjacente a redundância genérica é aceita.
+    const isGenericPair = /^coluna$/i.test(base);
+    const earlier = headersWithoutGhosts.slice(0, index).find((candidate, candidateIndex) => {
       if (candidate.replace(/_\d+$/, "") !== base) return false;
+      if (isGenericPair && index - candidateIndex !== 1) return false;
       return rowsWithoutGhosts.every((row) => {
         const current = row[header];
         const previous = row[candidate];

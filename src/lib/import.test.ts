@@ -302,6 +302,45 @@ describe("sheetToRows", () => {
     expect(warning).toContain("rodapé institucional");
   });
 
+  it("remove coluna genérica redundante e adjacente (nota de rodapé mesclada horizontalmente transbordando pra 2 colunas sem cabeçalho)", () => {
+    // Reproduz o padrão real (Requisitos de Monitoramento, seção 79/80 do
+    // audit): uma matriz pequena (3 linhas) sem nome pra coluna de rótulo,
+    // com uma nota de rodapé curta mesclada horizontalmente (2 colunas) na
+    // última linha, ambas as colunas sem cabeçalho. Colunas genéricas
+    // "Coluna N" normalmente não são consideradas redundantes entre si
+    // (podem ser coincidência), mas quando são vizinhas diretas no
+    // cabeçalho, o padrão é quase certamente mesclagem transbordando, não
+    // coincidência — a segunda coluna deve sumir.
+    const ws = sheet([
+      ["Nível", "Valor", null, null],
+      ["Alto", 1, null, null],
+      ["Médio", 2, null, null],
+      ["Baixo", 3, "Adaptada de FSSC 22000", "Adaptada de FSSC 22000"],
+    ]);
+    const { rows } = sheetToRows(ws);
+    expect(Object.keys(rows[0] ?? {})).toHaveLength(3);
+    expect(rows).toEqual([
+      { Nível: "Alto", Valor: 1, coluna_3: null },
+      { Nível: "Médio", Valor: 2, coluna_3: null },
+      { Nível: "Baixo", Valor: 3, coluna_3: "Adaptada de FSSC 22000" },
+    ]);
+  });
+
+  it("não remove colunas genéricas coincidentemente iguais quando não são vizinhas diretas no cabeçalho", () => {
+    // Guarda de proteção do teste acima: duas colunas sem nome, com o
+    // mesmo valor esparso, mas SEPARADAS por outra coluna com dado
+    // próprio — nada indica mesclagem transbordando aqui, é coincidência
+    // plausível. Ambas devem sobreviver.
+    const ws = sheet([
+      ["Nível", null, "Meio", null],
+      ["Alto", "X", "m1", "X"],
+      ["Médio", null, "m2", null],
+      ["Baixo", null, "m3", null],
+    ]);
+    const { rows } = sheetToRows(ws);
+    expect(Object.keys(rows[0] ?? {})).toHaveLength(4);
+  });
+
   it("preenche células de dados vindas de mesclagem vertical (item cobrindo várias linhas de fornecedores)", () => {
     // Reproduz o padrão real relatado: um item de compra (Descrição,
     // Código, Unidade, Qtd) mesclado verticalmente cobrindo 3 linhas de
@@ -326,6 +365,40 @@ describe("sheetToRows", () => {
       { Item: 1, Descrição: "Cloreto de sódio", Qtd: 1, Fornecedor: "Empresa C", Preço: 95 },
     ]);
     expect(warning).toContain("mesclada");
+  });
+
+  it("não triplica um registro quando todas as colunas da linha estão mescladas com a mesma altura (só formatação visual, não dado repetido)", () => {
+    // Reproduz o padrão real de uma matriz de risco (HACCP): cada "linha"
+    // visual é na verdade um bloco de 3 linhas de planilha mescladas em
+    // TODAS as colunas com a mesma altura — ao contrário do teste acima
+    // (só Item/Descrição/Qtd mesclados, Fornecedor/Preço variam por linha
+    // de verdade), aqui não sobra nenhuma coluna com dado independente por
+    // linha. As duas linhas de baixo são só esticamento visual do Excel,
+    // não 3 observações distintas — preenchê-las triplica contagens/somas.
+    const ws = sheet([
+      ["Superfície", "Probabilidade", "Perigo", "Criticidade"],
+      ["Sacos Plásticos", 3, 1, 3],
+      [null, null, null, null],
+      [null, null, null, null],
+      ["Silos", 3, 2, 6],
+      [null, null, null, null],
+      [null, null, null, null],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } },
+      { s: { r: 1, c: 1 }, e: { r: 3, c: 1 } },
+      { s: { r: 1, c: 2 }, e: { r: 3, c: 2 } },
+      { s: { r: 1, c: 3 }, e: { r: 3, c: 3 } },
+      { s: { r: 4, c: 0 }, e: { r: 6, c: 0 } },
+      { s: { r: 4, c: 1 }, e: { r: 6, c: 1 } },
+      { s: { r: 4, c: 2 }, e: { r: 6, c: 2 } },
+      { s: { r: 4, c: 3 }, e: { r: 6, c: 3 } },
+    ];
+    const { rows } = sheetToRows(ws);
+    expect(rows).toEqual([
+      { Superfície: "Sacos Plásticos", Probabilidade: 3, Perigo: 1, Criticidade: 3 },
+      { Superfície: "Silos", Probabilidade: 3, Perigo: 2, Criticidade: 6 },
+    ]);
   });
 
   it("ignora linhas de nota/resumo soltas no fim da planilha, sem confundir com dado da tabela", () => {
