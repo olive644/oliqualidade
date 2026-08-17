@@ -153,6 +153,8 @@ export type SheetData = {
   sourceNotes?: import("@/lib/import-intelligence").SourceNote[];
   /** Imagens embutidas na planilha original (fotos, logos, diagramas). */
   sourceImages?: import("@/lib/workbook-metadata").WorkbookImageDiagnostic[];
+  /** Cor de preenchimento original do Excel por (linha, coluna), só quando a aba é simples o bastante para resolver com segurança. */
+  sourceCellFills?: import("@/lib/cell-fill-provenance").SourceCellFill[];
 };
 
 export type Dashboard = {

@@ -74,6 +74,7 @@ import {
   groupAndAggregate,
   matchesRange,
 } from "@/lib/data-pipeline";
+import { resolveSourceCellFills } from "@/lib/cell-fill-provenance";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
@@ -483,6 +484,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
       });
       const intelligence = analyzeSpreadsheet(s.rows, columns, s.diagnostics);
+      const sourceCellFills = resolveSourceCellFills(
+        s.rows,
+        columns,
+        s.diagnostics,
+        s.audit,
+        s.sourceGrid,
+      );
       return {
         name: s.name,
         rows: s.rows,
@@ -492,6 +500,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         widgets: buildRecommendedWidgets(autoDashboard, columns, s.rows),
         ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
         ...(s.diagnostics?.images.length ? { sourceImages: s.diagnostics.images } : {}),
+        ...(sourceCellFills.length ? { sourceCellFills } : {}),
       };
     });
 
@@ -867,6 +876,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
       });
       const intelligence = analyzeSpreadsheet(s.rows, s.columns, s.diagnostics);
+      const sourceCellFills = resolveSourceCellFills(
+        s.rows,
+        s.columns,
+        s.diagnostics,
+        s.audit,
+        s.sourceGrid,
+      );
       return {
         name: s.name,
         rows: s.rows,
@@ -876,6 +892,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         widgets: buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
         ...(s.sourceNotes?.length ? { sourceNotes: s.sourceNotes } : {}),
         ...(s.sourceImages?.length ? { sourceImages: s.sourceImages } : {}),
+        ...(sourceCellFills.length ? { sourceCellFills } : {}),
       };
     });
     if (reviewTarget === "new") {
@@ -1631,6 +1648,7 @@ function Dashboard(p: {
             numericCols={nums}
             groupableCols={groupableCols}
             sourceImages={sheet.sourceImages ?? []}
+            sourceCellFills={sheet.sourceCellFills ?? []}
             interpolated={interpolated}
             sort={sort}
             setSort={setSort}

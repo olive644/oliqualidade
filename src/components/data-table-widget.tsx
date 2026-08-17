@@ -1,9 +1,10 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Calculator, ArrowDown, ArrowUp, Pencil } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { SourceCellFill } from "@/lib/cell-fill-provenance";
 import { parseEditedValue, sourceRowIndexOf } from "@/lib/data-review";
 import { conditionalStyle, fmt } from "@/lib/format";
 import { exportTableColumnWidths, exportTablePreviewRows } from "@/lib/table-export-preview";
@@ -19,6 +20,8 @@ type DataTableProps = {
   interpolated?: Set<string>;
   focusedCell?: { rowIndex: number; columnKey?: string; address?: string } | null;
   onEditCell?: (sourceRowIndex: number, columnKey: string, value: string, reason: string) => void;
+  /** Cor de preenchimento original do Excel, por (linha de origem, coluna). Sem regra explícita de formatação condicional, prevalece sobre ela. */
+  sourceCellFills?: SourceCellFill[];
 };
 
 export function DataTable({
@@ -29,7 +32,14 @@ export function DataTable({
   interpolated,
   focusedCell,
   onEditCell,
+  sourceCellFills,
 }: DataTableProps) {
+  const fillByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const fill of sourceCellFills ?? [])
+      map.set(`${fill.rowIndex}:${fill.columnKey}`, fill.color);
+    return map;
+  }, [sourceCellFills]);
   const [editing, setEditing] = useState<{
     sourceRowIndex: number;
     columnKey: string;
@@ -145,11 +155,15 @@ export function DataTable({
                     const shown = fmt(row[column.key] ?? null, column.kind);
                     const numeric = numericKinds.includes(column.kind);
                     const isInterpolated = interpolated?.has(`${item.index}-${column.key}`);
-                    const cellStyle = conditionalStyle(
-                      row[column.key] ?? null,
-                      column.kind,
-                      column.conditionalFormat,
-                    );
+                    const cellStyle =
+                      conditionalStyle(
+                        row[column.key] ?? null,
+                        column.kind,
+                        column.conditionalFormat,
+                      ) ??
+                      (sourceRowIndex !== null && fillByKey.get(`${sourceRowIndex}:${column.key}`)
+                        ? { background: fillByKey.get(`${sourceRowIndex}:${column.key}`) }
+                        : null);
                     return (
                       <div
                         key={column.key}
@@ -216,25 +230,33 @@ export function DataTable({
             </tr>
           </thead>
           <tbody>
-            {previewRows.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                {visible.map((column) => {
-                  const raw = row[column.key] ?? null;
-                  const shown = fmt(raw, column.kind);
-                  return (
-                    <td
-                      key={column.key}
-                      className={cn(numericKinds.includes(column.kind) && "is-numeric")}
-                      style={
-                        conditionalStyle(raw, column.kind, column.conditionalFormat) ?? undefined
-                      }
-                    >
-                      {shown ?? "—"}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {previewRows.map((row, rowIndex) => {
+              const previewSourceRowIndex = sourceRowIndexOf(row);
+              return (
+                <tr key={rowIndex}>
+                  {visible.map((column) => {
+                    const raw = row[column.key] ?? null;
+                    const shown = fmt(raw, column.kind);
+                    const fillColor =
+                      previewSourceRowIndex !== null
+                        ? fillByKey.get(`${previewSourceRowIndex}:${column.key}`)
+                        : undefined;
+                    return (
+                      <td
+                        key={column.key}
+                        className={cn(numericKinds.includes(column.kind) && "is-numeric")}
+                        style={
+                          conditionalStyle(raw, column.kind, column.conditionalFormat) ??
+                          (fillColor ? { background: fillColor } : undefined)
+                        }
+                      >
+                        {shown ?? "—"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
           {rows.length > previewRows.length && (
             <caption>
