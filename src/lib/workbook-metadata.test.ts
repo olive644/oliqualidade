@@ -225,6 +225,42 @@ describe("metadados avançados de XLSX", () => {
   });
 });
 
+// Corpus real trazido pelo usuário (arquivos sintéticos gerados por um
+// script próprio, não Excel/openpyxl/exceljs) expôs dois bugs silenciosos
+// juntos: a namespace principal do spreadsheetML vinculada a um prefixo
+// explícito (`x:`), e o Target de relacionamento do workbook usando um
+// caminho absoluto a partir da raiz do pacote (`/xl/worksheets/sheet1.xml`)
+// em vez de relativo à pasta `xl`. Os dois formatos são XML/OPC igualmente
+// válidos — só a serialização difere do que o Excel emite. Sem as duas
+// correções, `inspectWorkbookFeatures` retornava tudo vazio sem nenhum erro
+// (a parte do worksheet resolvia para um caminho de ZIP inexistente).
+function prefixedAbsoluteTargetPackage() {
+  return zipSync({
+    "xl/workbook.xml": xml(
+      '<?xml version="1.0" encoding="utf-8"?><x:workbook xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><x:sheets><x:sheet name="Plano" sheetId="1" r:id="rId1" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" /></x:sheets></x:workbook>',
+    ),
+    "xl/_rels/workbook.xml.rels": xml(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="/xl/worksheets/sheet1.xml" Id="rId1" /><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="/xl/styles.xml" Id="rIdStyles" /></Relationships>',
+    ),
+    "xl/worksheets/sheet1.xml": xml(
+      '<x:worksheet xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><x:sheetData><x:row r="1"><x:c r="A1" s="1"><x:v>Alta</x:v></x:c></x:row></x:sheetData><x:dataValidations count="1"><x:dataValidation type="list" sqref="A1:A5"><x:formula1>"Alta,Média,Baixa"</x:formula1></x:dataValidation></x:dataValidations></x:worksheet>',
+    ),
+    "xl/styles.xml": xml(
+      '<x:styleSheet xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><x:fills count="2"><x:fill><x:patternFill patternType="none" /></x:fill><x:fill><x:patternFill patternType="solid"><x:fgColor rgb="FFFF0000" /></x:patternFill></x:fill></x:fills><x:cellXfs count="2"><x:xf numFmtId="0" fontId="0" fillId="0" borderId="0" /><x:xf numFmtId="0" fontId="0" fillId="1" borderId="0" /></x:cellXfs></x:styleSheet>',
+    ),
+  });
+}
+
+describe("tolerância a namespace prefixado e Target absoluto (corpus real do usuário)", () => {
+  it("lê dataValidations e cellFills quando a namespace do spreadsheetML está prefixada e o Target do workbook é absoluto", () => {
+    const metadata = inspectWorkbookFeatures(prefixedAbsoluteTargetPackage()).get("Plano");
+    expect(metadata?.dataValidations).toEqual([
+      { range: "A1:A5", type: "list", allowBlank: false, formula1: '"Alta,Média,Baixa"' },
+    ]);
+    expect(metadata?.cellFills).toEqual([{ address: "A1", color: "#FF0000" }]);
+  });
+});
+
 describe("sliceAdvancedMetadata", () => {
   const base: AdvancedSheetMetadata = {
     structuredTables: [{ name: "T", range: "A1:A1", columns: [], calculatedColumns: [] }],

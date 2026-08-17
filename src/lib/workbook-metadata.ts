@@ -131,6 +131,18 @@ export type WorksheetWithAdvancedMetadata = XLSX.WorkSheet & {
 const attr = (xml: string, name: string) =>
   xml.match(new RegExp(`\\b${name}="([^"]*)"`, "i"))?.[1] ?? null;
 
+// Alguns geradores de OOXML (fora do Excel/openpyxl/exceljs) vinculam a
+// namespace principal do spreadsheetML (workbook/worksheet/styles) a um
+// prefixo explícito (`<x:dataValidation>`) em vez do namespace padrão sem
+// prefixo que o Excel sempre usa — os dois são XML igualmente válido pelo
+// mesmo schema, só a serialização difere. Toda regra deste arquivo que casa
+// um elemento dessa namespace precisa tolerar um prefixo opcional, senão o
+// inventário inteiro (hyperlinks, validações, cores, comentários, tabelas)
+// fica vazio silenciosamente nesses arquivos, sem nenhum erro. Não se aplica
+// às namespaces de desenho/gráfico (`xdr:`/`a:`/`c:`), que já são sempre
+// prefixadas por convenção mesmo em arquivos gerados pelo Excel.
+const NS = "(?:[A-Za-z_][\\w.-]*:)?";
+
 const decodeXml = (value: string) =>
   value
     .replaceAll("&quot;", '"')
@@ -140,7 +152,14 @@ const decodeXml = (value: string) =>
     .replaceAll("&amp;", "&");
 
 function normalizePart(base: string, target: string): string {
-  const parts = `${base}/${target}`.replaceAll("\\", "/").split("/");
+  // Um Target de relacionamento OPC pode ser relativo à pasta da parte de
+  // origem (`worksheets/sheet1.xml`) OU absoluto a partir da raiz do pacote
+  // (`/xl/worksheets/sheet1.xml`) — os dois são válidos pelo mesmo padrão
+  // OPC/OOXML. Combinar um Target absoluto com `base` produzia um caminho
+  // inexistente no ZIP (ex: `xl/xl/worksheets/sheet1.xml`), fazendo a parte
+  // resolver para XML vazio sem nenhum erro.
+  const combined = target.startsWith("/") ? target : `${base}/${target}`;
+  const parts = combined.replaceAll("\\", "/").split("/");
   const normalized: string[] = [];
   for (const part of parts) {
     if (!part || part === ".") continue;
@@ -170,14 +189,18 @@ function relationships(xml: string, base: string) {
 }
 
 function parseComments(xml: string): WorkbookCellComment[] {
-  const authors = [...xml.matchAll(/<author(?:\s[^>]*)?>([\s\S]*?)<\/author>/gi)].map((match) =>
-    decodeXml(match[1]!.replace(/<[^>]+>/g, "")),
-  );
+  const authors = [
+    ...xml.matchAll(new RegExp(`<${NS}author(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${NS}author>`, "gi")),
+  ].map((match) => decodeXml(match[1]!.replace(/<[^>]+>/g, "")));
   const comments: WorkbookCellComment[] = [];
-  for (const match of xml.matchAll(/<comment\b([^>]*)>([\s\S]*?)<\/comment>/gi)) {
+  for (const match of xml.matchAll(
+    new RegExp(`<${NS}comment\\b([^>]*)>([\\s\\S]*?)<\\/${NS}comment>`, "gi"),
+  )) {
     const address = attr(match[1]!, "ref");
     if (!address) continue;
-    const text = [...match[2]!.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/gi)]
+    const text = [
+      ...match[2]!.matchAll(new RegExp(`<${NS}t(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${NS}t>`, "gi")),
+    ]
       .map((part) => decodeXml(part[1]!))
       .join("");
     const rawAuthorId = attr(match[1]!, "authorId");
@@ -208,7 +231,7 @@ function parseHyperlinks(
   sheetRels: ReturnType<typeof relationships>,
 ): WorkbookCellHyperlink[] {
   const hyperlinks: WorkbookCellHyperlink[] = [];
-  for (const match of worksheetXml.matchAll(/<hyperlink\b[^>]*\/?\s*>/gi)) {
+  for (const match of worksheetXml.matchAll(new RegExp(`<${NS}hyperlink\\b[^>]*\\/?\\s*>`, "gi"))) {
     const address = attr(match[0], "ref");
     const relationshipId = attr(match[0], "r:id");
     const relationship = relationshipId ? sheetRels.get(relationshipId) : undefined;
@@ -233,7 +256,9 @@ function parseHyperlinks(
 
 function parseDefinedNames(workbookXml: string, sheetNames: string[]): WorkbookDefinedName[] {
   const names: WorkbookDefinedName[] = [];
-  for (const match of workbookXml.matchAll(/<definedName\b([^>]*)>([\s\S]*?)<\/definedName>/gi)) {
+  for (const match of workbookXml.matchAll(
+    new RegExp(`<${NS}definedName\\b([^>]*)>([\\s\\S]*?)<\\/${NS}definedName>`, "gi"),
+  )) {
     const attributes = match[1]!;
     const name = decodeXml(attr(attributes, "name") ?? "");
     // Nomes internos do Excel (área de impressão, banco de filtro etc.) não são
@@ -254,7 +279,9 @@ function parseExternalLinks(
   text: (part: string) => string,
 ): WorkbookExternalLink[] {
   const links: WorkbookExternalLink[] = [];
-  for (const match of workbookXml.matchAll(/<externalReference\b[^>]*\/?\s*>/gi)) {
+  for (const match of workbookXml.matchAll(
+    new RegExp(`<${NS}externalReference\\b[^>]*\\/?\\s*>`, "gi"),
+  )) {
     const relationshipId = attr(match[0], "r:id");
     const relationship = relationshipId ? workbookRels.get(relationshipId) : undefined;
     if (!relationship) continue;
@@ -273,7 +300,10 @@ function parseExternalLinks(
 function parseDataValidations(worksheetXml: string): DataValidationDiagnostic[] {
   const validations: DataValidationDiagnostic[] = [];
   for (const match of worksheetXml.matchAll(
-    /<dataValidation\b([^>]*)\/>|<dataValidation\b([^>]*)>([\s\S]*?)<\/dataValidation>/gi,
+    new RegExp(
+      `<${NS}dataValidation\\b([^>]*)\\/>|<${NS}dataValidation\\b([^>]*)>([\\s\\S]*?)<\\/${NS}dataValidation>`,
+      "gi",
+    ),
   )) {
     const attributes = match[1] ?? match[2] ?? "";
     const body = match[3] ?? "";
@@ -281,8 +311,12 @@ function parseDataValidations(worksheetXml: string): DataValidationDiagnostic[] 
     if (!range) continue;
     const type = attr(attributes, "type") ?? "none";
     const allowBlank = attr(attributes, "allowBlank") === "1";
-    const formula1 = body.match(/<formula1>([\s\S]*?)<\/formula1>/i)?.[1];
-    const formula2 = body.match(/<formula2>([\s\S]*?)<\/formula2>/i)?.[1];
+    const formula1 = body.match(
+      new RegExp(`<${NS}formula1>([\\s\\S]*?)<\\/${NS}formula1>`, "i"),
+    )?.[1];
+    const formula2 = body.match(
+      new RegExp(`<${NS}formula2>([\\s\\S]*?)<\\/${NS}formula2>`, "i"),
+    )?.[1];
     const promptTitle = attr(attributes, "promptTitle");
     const prompt = attr(attributes, "prompt");
     const errorTitle = attr(attributes, "errorTitle");
@@ -359,7 +393,10 @@ function parseImages(
   text: (part: string) => string,
   bytesOf: (part: string) => Uint8Array | undefined,
 ): WorkbookImageDiagnostic[] {
-  const drawingRelId = attr(worksheetXml.match(/<drawing\b[^>]*\/?\s*>/i)?.[0] ?? "", "r:id");
+  const drawingRelId = attr(
+    worksheetXml.match(new RegExp(`<${NS}drawing\\b[^>]*\\/?\\s*>`, "i"))?.[0] ?? "",
+    "r:id",
+  );
   const drawingRelationship = drawingRelId ? sheetRels.get(drawingRelId) : undefined;
   if (!drawingRelationship) return [];
   const drawingXml = text(drawingRelationship.target);
@@ -409,7 +446,10 @@ function parseShapes(
   sheetRels: ReturnType<typeof relationships>,
   text: (part: string) => string,
 ): WorkbookShapeDiagnostic[] {
-  const drawingRelId = attr(worksheetXml.match(/<drawing\b[^>]*\/?\s*>/i)?.[0] ?? "", "r:id");
+  const drawingRelId = attr(
+    worksheetXml.match(new RegExp(`<${NS}drawing\\b[^>]*\\/?\\s*>`, "i"))?.[0] ?? "",
+    "r:id",
+  );
   const drawingRelationship = drawingRelId ? sheetRels.get(drawingRelId) : undefined;
   if (!drawingRelationship) return [];
   const drawingXml = text(drawingRelationship.target);
@@ -452,7 +492,10 @@ function parseCharts(
   sheetRels: ReturnType<typeof relationships>,
   text: (part: string) => string,
 ): WorkbookChartDiagnostic[] {
-  const drawingRelId = attr(worksheetXml.match(/<drawing\b[^>]*\/?\s*>/i)?.[0] ?? "", "r:id");
+  const drawingRelId = attr(
+    worksheetXml.match(new RegExp(`<${NS}drawing\\b[^>]*\\/?\\s*>`, "i"))?.[0] ?? "",
+    "r:id",
+  );
   const drawingRelationship = drawingRelId ? sheetRels.get(drawingRelId) : undefined;
   if (!drawingRelationship) return [];
   const drawingXml = text(drawingRelationship.target);
@@ -489,20 +532,28 @@ function parseCharts(
 // cabeçalho, não a cor de negócio que motivou este recurso (ver seção 79 do
 // CURRENT_STATE_AUDIT.md).
 function parseFillRgbByFillId(stylesXml: string): (string | undefined)[] {
-  const fillsBody = stylesXml.match(/<fills\b[^>]*>([\s\S]*?)<\/fills>/i)?.[1] ?? "";
-  return [...fillsBody.matchAll(/<fill>([\s\S]*?)<\/fill>/gi)].map((match) => {
-    const pattern = match[1]!.match(/<patternFill\b[^>]*>([\s\S]*?)<\/patternFill>/i)?.[1] ?? "";
-    if (!/patternType="solid"/.test(match[1]!)) return undefined;
-    const fgColor = pattern.match(/<fgColor\b[^>]*\/?\s*>/i)?.[0] ?? "";
-    const argb = attr(fgColor, "rgb");
-    // ARGB de 8 dígitos hex; os 2 primeiros são o canal alfa, descartado.
-    return argb && /^[0-9a-fA-F]{8}$/.test(argb) ? `#${argb.slice(2).toUpperCase()}` : undefined;
-  });
+  const fillsBody =
+    stylesXml.match(new RegExp(`<${NS}fills\\b[^>]*>([\\s\\S]*?)<\\/${NS}fills>`, "i"))?.[1] ?? "";
+  return [...fillsBody.matchAll(new RegExp(`<${NS}fill>([\\s\\S]*?)<\\/${NS}fill>`, "gi"))].map(
+    (match) => {
+      const pattern =
+        match[1]!.match(
+          new RegExp(`<${NS}patternFill\\b[^>]*>([\\s\\S]*?)<\\/${NS}patternFill>`, "i"),
+        )?.[1] ?? "";
+      if (!/patternType="solid"/.test(match[1]!)) return undefined;
+      const fgColor = pattern.match(new RegExp(`<${NS}fgColor\\b[^>]*\\/?\\s*>`, "i"))?.[0] ?? "";
+      const argb = attr(fgColor, "rgb");
+      // ARGB de 8 dígitos hex; os 2 primeiros são o canal alfa, descartado.
+      return argb && /^[0-9a-fA-F]{8}$/.test(argb) ? `#${argb.slice(2).toUpperCase()}` : undefined;
+    },
+  );
 }
 
 function parseFillIdByCellXf(stylesXml: string): number[] {
-  const xfsBody = stylesXml.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/i)?.[1] ?? "";
-  return [...xfsBody.matchAll(/<xf\b[^>]*\/?\s*>/gi)].map((match) =>
+  const xfsBody =
+    stylesXml.match(new RegExp(`<${NS}cellXfs\\b[^>]*>([\\s\\S]*?)<\\/${NS}cellXfs>`, "i"))?.[1] ??
+    "";
+  return [...xfsBody.matchAll(new RegExp(`<${NS}xf\\b[^>]*\\/?\\s*>`, "gi"))].map((match) =>
     Number(attr(match[0], "fillId") ?? 0),
   );
 }
@@ -515,7 +566,9 @@ function parseCellFills(
   colorOf: (styleIndex: number) => string | undefined,
 ): WorkbookCellFillDiagnostic[] {
   const fills: WorkbookCellFillDiagnostic[] = [];
-  for (const match of worksheetXml.matchAll(/<c\b([^>]*)\/>|<c\b([^>]*)>([\s\S]*?)<\/c>/gi)) {
+  for (const match of worksheetXml.matchAll(
+    new RegExp(`<${NS}c\\b([^>]*)\\/>|<${NS}c\\b([^>]*)>([\\s\\S]*?)<\\/${NS}c>`, "gi"),
+  )) {
     if (fills.length >= MAX_CELL_FILLS_PER_SHEET) break;
     const attributes = match[1] ?? match[2] ?? "";
     const address = attr(attributes, "r");
@@ -528,17 +581,21 @@ function parseCellFills(
 }
 
 function parseTable(xml: string): StructuredTableDiagnostic {
-  const root = xml.match(/<table\b[^>]*>/i)?.[0] ?? "";
+  const root = xml.match(new RegExp(`<${NS}table\\b[^>]*>`, "i"))?.[0] ?? "";
   const columns: string[] = [];
   const calculatedColumns: string[] = [];
   for (const match of xml.matchAll(
-    /<tableColumn\b([^>]*)\/>|<tableColumn\b([^>]*)>([\s\S]*?)<\/tableColumn>/gi,
+    new RegExp(
+      `<${NS}tableColumn\\b([^>]*)\\/>|<${NS}tableColumn\\b([^>]*)>([\\s\\S]*?)<\\/${NS}tableColumn>`,
+      "gi",
+    ),
   )) {
     const attributes = match[1] ?? match[2] ?? "";
     const body = match[3] ?? "";
     const name = decodeXml(attr(attributes, "name") ?? "Coluna");
     columns.push(name);
-    if (/<calculatedColumnFormula\b/i.test(body)) calculatedColumns.push(name);
+    if (new RegExp(`<${NS}calculatedColumnFormula\\b`, "i").test(body))
+      calculatedColumns.push(name);
   }
   return {
     name: decodeXml(attr(root, "displayName") ?? attr(root, "name") ?? "Tabela"),
@@ -549,8 +606,8 @@ function parseTable(xml: string): StructuredTableDiagnostic {
 }
 
 function parsePivot(xml: string): PivotTableDiagnostic {
-  const root = xml.match(/<pivotTableDefinition\b[^>]*>/i)?.[0] ?? "";
-  const location = xml.match(/<location\b[^>]*>/i)?.[0] ?? "";
+  const root = xml.match(new RegExp(`<${NS}pivotTableDefinition\\b[^>]*>`, "i"))?.[0] ?? "";
+  const location = xml.match(new RegExp(`<${NS}location\\b[^>]*>`, "i"))?.[0] ?? "";
   return {
     name: decodeXml(attr(root, "name") ?? "Tabela dinâmica"),
     range: attr(location, "ref"),
@@ -624,7 +681,8 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
   const workbookXml = text("xl/workbook.xml");
   const workbookRels = relationships(text("xl/_rels/workbook.xml.rels"), "xl");
   const result = new Map<string, AdvancedSheetMetadata>();
-  const sheetNames = [...workbookXml.matchAll(/<sheet\b[^>]*\/?\s*>/gi)].map((match) =>
+  const sheetTagRe = () => new RegExp(`<${NS}sheet\\b[^>]*\\/?\\s*>`, "gi");
+  const sheetNames = [...workbookXml.matchAll(sheetTagRe())].map((match) =>
     decodeXml(attr(match[0], "name") ?? ""),
   );
   const definedNames = parseDefinedNames(workbookXml, sheetNames);
@@ -638,7 +696,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
     return fillId === undefined ? undefined : fillRgbByFillId[fillId];
   };
 
-  for (const sheet of workbookXml.matchAll(/<sheet\b[^>]*\/?\s*>/gi)) {
+  for (const sheet of workbookXml.matchAll(sheetTagRe())) {
     const name = attr(sheet[0], "name");
     const relationshipId = attr(sheet[0], "r:id");
     const worksheetPart = relationshipId ? workbookRels.get(relationshipId)?.target : null;
@@ -650,7 +708,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
     const structuredTables: StructuredTableDiagnostic[] = [];
     const pivotTables: PivotTableDiagnostic[] = [];
     const autoFilterRange = attr(
-      worksheetXml.match(/<autoFilter\b[^>]*\/?\s*>/i)?.[0] ?? "",
+      worksheetXml.match(new RegExp(`<${NS}autoFilter\\b[^>]*\\/?\\s*>`, "i"))?.[0] ?? "",
       "ref",
     );
     const hyperlinks = parseHyperlinks(worksheetXml, sheetRels);
@@ -665,13 +723,13 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
     const comments = commentsRelationship ? parseComments(text(commentsRelationship.target)) : [];
 
     for (const tablePart of worksheetXml.matchAll(
-      /<tablePart\b[^>]*r:id="([^"]+)"[^>]*\/?\s*>/gi,
+      new RegExp(`<${NS}tablePart\\b[^>]*r:id="([^"]+)"[^>]*\\/?\\s*>`, "gi"),
     )) {
       const relationship = sheetRels.get(tablePart[1]!);
       if (relationship) structuredTables.push(parseTable(text(relationship.target)));
     }
     for (const pivotPart of worksheetXml.matchAll(
-      /<pivotTableDefinition\b[^>]*r:id="([^"]+)"[^>]*\/?\s*>/gi,
+      new RegExp(`<${NS}pivotTableDefinition\\b[^>]*r:id="([^"]+)"[^>]*\\/?\\s*>`, "gi"),
     )) {
       const relationship = sheetRels.get(pivotPart[1]!);
       if (relationship) pivotTables.push(parsePivot(text(relationship.target)));

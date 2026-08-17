@@ -4455,3 +4455,20 @@ genérica adjacente/não-adjacente), `npx tsc --noEmit` sem erros, `npm
 run build` e `npm run performance:check` aprovados (385,2 → 385,3 KiB,
 variação desprezível), e verificação ao vivo contra o arquivo real
 para os três itens corrigidos.
+
+## 83. Usuário trouxe corpus sintético de 6 planilhas próprias: bug real de dois estágios no inventário avançado OOXML (namespace prefixada + Target absoluto)
+
+Usuário gerou 6 planilhas `.xlsx` sintéticas próprias (`01_indicadores_operacionais` a `06_serie_temporal_larga`, tituladas "Corpus 0N" no próprio conteúdo, sem dado privado), cobrindo indicadores, fórmulas/datas, matriz HACCP com mesclagem+cor, múltiplas regiões, validações+hyperlinks e série temporal larga. Não geradas por Excel/openpyxl/exceljs — um script próprio do usuário, que serializa OOXML de um jeito incomum mas espec-válido: a namespace principal do spreadsheetML vinculada a um prefixo explícito (`<x:dataValidation>` em vez de `<dataValidation>`), e o `Target` dos relacionamentos do workbook usando caminho absoluto a partir da raiz do pacote (`Target="/xl/worksheets/sheet1.xml"`, válido pelo padrão OPC) em vez de relativo à pasta `xl`.
+
+Uma varredura rápida (`readWorkbookBytes` sobre as 6 planilhas, fora do vitest normal) mostrou `cellFills: 0`, `hyperlinks: 0`, `dataValidations: 0` em **todas**, mesmo no arquivo 03 (mesclagem+cor confirmada por inspeção direta do XML bruto) e no 05 (2 `<dataValidation>` reais no XML). Investigação encontrou dois bugs silenciosos combinados em `workbook-metadata.ts`:
+
+1. Toda regex do arquivo (`parseHyperlinks`, `parseDataValidations`, `parseCellFills`, `parseComments`, `parseDefinedNames`, `parseExternalLinks`, `parseTable`, `parsePivot`, tags `sheet`/`autoFilter`/`tablePart`/`pivotTableDefinition`/`drawing` em `inspectWorkbookFeatures`) casava elementos sem tolerar um prefixo de namespace opcional.
+2. `normalizePart()` sempre combinava `Target` com a pasta base (`xl`) mesmo quando `Target` já era absoluto — produzindo um caminho de ZIP inexistente (`xl/xl/worksheets/sheet1.xml`) que resolvia pra XML vazio.
+
+O segundo bug sozinho já bastava pra zerar tudo (a parte do worksheet nunca era encontrada), mas os dois precisavam de correção — reproduzido isoladamente com `inspectWorkbookFeatures` chamado direto sobre bytes crus antes de identificar a causa raiz real (o path de Target, não só a regex).
+
+Corrigido com um fragmento de regex tolerante a prefixo (`NS = "(?:[A-Za-z_][\\w.-]*:)?"`) aplicado só às regras da namespace principal do spreadsheetML — não às namespaces de desenho/gráfico (`xdr:`/`a:`/`c:`), que já são sempre prefixadas por convenção mesmo em arquivos do Excel, e sem evidência de quebra nesta rodada. `.rels` (`Relationship`) usa outra namespace (`package/2006/relationships`), sem prefixo neste corpus, não tocado.
+
+Verificado ao vivo: aba real "Matriz de Risco" (arquivo 03) foi de "0 células com cor de preenchimento" pra "**30 célula(s) com cor de preenchimento original detectada(s)**" no painel de revisão. `npx vitest run` (533 passou, 1 pulado — 1 teste novo com pacote OOXML mínimo prefixado+Target absoluto), `npx tsc --noEmit`, `npm run build` e `npm run performance:check` aprovados. PR [#131](https://github.com/olive644/oliqualidade/pull/131), branch `fix/ooxml-namespace-prefix-tolerance`.
+
+Nesta mesma sessão, também implementado (branch separada `feat/color-group-labels`, PR [#130](https://github.com/olive644/oliqualidade/pull/130), aguardando merge — não documentado nesta seção pra evitar o conflito de append-only já registrado em [[#Armadilhas de ambiente conhecidas]] entre branches simultâneas tocando este arquivo): `resolveColorGroupLabels` (`cell-fill-provenance.ts`) infere rótulo de agrupamento visual quando uma banda de linhas compartilha cor de preenchimento sem mesclagem real (investigação "Anexo III" da seção anterior a esta) — só exibição no widget Tabela, nunca escreve em `rows`.
