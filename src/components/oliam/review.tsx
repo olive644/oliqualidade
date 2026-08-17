@@ -13,6 +13,7 @@ import {
   Info,
   Link as LinkIcon,
   ListChecks,
+  Palette,
   PenTool,
   ShieldAlert,
   Sparkles,
@@ -738,6 +739,41 @@ export function Review(p: {
                     {chart.anchor ?? "posição não determinada"} · {chart.type}
                   </span>
                   <span className="break-words">{chart.title ?? "sem título"}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {active?.diagnostics?.cellFills.length ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <Palette className="size-4 text-primary" />
+                Cor de preenchimento original
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {active.diagnostics.cellFills.length}
+              </span>
+            </summary>
+            <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              Só cor sólida com RGB direto é lida; sombreamento por cor de tema do Excel não é
+              resolvido. Ainda não é usada para colorir nenhum widget — inventário por enquanto.
+            </p>
+            <ul className="grid max-h-64 gap-2 overflow-y-auto border-t border-border p-3 sm:grid-cols-3">
+              {active.diagnostics.cellFills.slice(0, 200).map((fill, index) => (
+                <li
+                  key={`${fill.address}-${index}`}
+                  className="flex items-center gap-2 rounded-xl bg-muted/25 px-3 py-2 text-xs leading-relaxed"
+                >
+                  <span
+                    className="size-3.5 shrink-0 rounded-full border border-border"
+                    style={{ backgroundColor: fill.color }}
+                    aria-hidden="true"
+                  />
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {fill.address}
+                  </span>
+                  <span className="font-mono text-[10px]">{fill.color}</span>
                 </li>
               ))}
             </ul>

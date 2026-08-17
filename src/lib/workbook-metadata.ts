@@ -32,6 +32,8 @@ export type AdvancedSheetMetadata = {
   shapes: WorkbookShapeDiagnostic[];
   /** Gráficos nativos do Excel (não os que o app gera a partir dos dados importados). */
   charts: WorkbookChartDiagnostic[];
+  /** Cor de preenchimento sólido por célula, só quando resolvida por RGB direto (ver `parseCellFills`). */
+  cellFills: WorkbookCellFillDiagnostic[];
 };
 
 export type WorkbookCellComment = {
@@ -114,6 +116,12 @@ export type WorkbookChartDiagnostic = {
   title: string | null;
   /** Célula de ancoragem (canto superior esquerdo), ou `null` se não for possível determinar. */
   anchor: string | null;
+};
+
+export type WorkbookCellFillDiagnostic = {
+  address: string;
+  /** Cor em `#RRGGBB`, resolvida do canal RGB direto do XML (o alfa do ARGB de 8 dígitos é descartado). */
+  color: string;
 };
 
 export type WorksheetWithAdvancedMetadata = XLSX.WorkSheet & {
@@ -472,6 +480,53 @@ function parseCharts(
   return charts;
 }
 
+// Só cor RGB direta (`<fgColor rgb="FFRRGGBB">`) é resolvida. Cor de tema
+// (`theme="N"`) e paleta indexada legada (`indexed="N"`) não são resolvidas —
+// exigiriam ler `xl/theme/theme1.xml` (mapeamento de índice de tema para RGB
+// não é 1:1 óbvio com a ordem de `<clrScheme>`) ou embutir a paleta fixa de
+// 64 cores do Excel, e o risco de resolver errado silenciosamente pesa mais
+// que o ganho aqui: cor de tema é tipicamente sombreamento decorativo de
+// cabeçalho, não a cor de negócio que motivou este recurso (ver seção 79 do
+// CURRENT_STATE_AUDIT.md).
+function parseFillRgbByFillId(stylesXml: string): (string | undefined)[] {
+  const fillsBody = stylesXml.match(/<fills\b[^>]*>([\s\S]*?)<\/fills>/i)?.[1] ?? "";
+  return [...fillsBody.matchAll(/<fill>([\s\S]*?)<\/fill>/gi)].map((match) => {
+    const pattern = match[1]!.match(/<patternFill\b[^>]*>([\s\S]*?)<\/patternFill>/i)?.[1] ?? "";
+    if (!/patternType="solid"/.test(match[1]!)) return undefined;
+    const fgColor = pattern.match(/<fgColor\b[^>]*\/?\s*>/i)?.[0] ?? "";
+    const argb = attr(fgColor, "rgb");
+    // ARGB de 8 dígitos hex; os 2 primeiros são o canal alfa, descartado.
+    return argb && /^[0-9a-fA-F]{8}$/.test(argb) ? `#${argb.slice(2).toUpperCase()}` : undefined;
+  });
+}
+
+function parseFillIdByCellXf(stylesXml: string): number[] {
+  const xfsBody = stylesXml.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/i)?.[1] ?? "";
+  return [...xfsBody.matchAll(/<xf\b[^>]*\/?\s*>/gi)].map((match) =>
+    Number(attr(match[0], "fillId") ?? 0),
+  );
+}
+
+/** Protege contra planilhas com milhares de células coloridas de propósito. */
+const MAX_CELL_FILLS_PER_SHEET = 2_000;
+
+function parseCellFills(
+  worksheetXml: string,
+  colorOf: (styleIndex: number) => string | undefined,
+): WorkbookCellFillDiagnostic[] {
+  const fills: WorkbookCellFillDiagnostic[] = [];
+  for (const match of worksheetXml.matchAll(/<c\b([^>]*)\/>|<c\b([^>]*)>([\s\S]*?)<\/c>/gi)) {
+    if (fills.length >= MAX_CELL_FILLS_PER_SHEET) break;
+    const attributes = match[1] ?? match[2] ?? "";
+    const address = attr(attributes, "r");
+    const styleIndex = attr(attributes, "s");
+    if (!address || styleIndex === null) continue;
+    const color = colorOf(Number(styleIndex));
+    if (color) fills.push({ address, color });
+  }
+  return fills;
+}
+
 function parseTable(xml: string): StructuredTableDiagnostic {
   const root = xml.match(/<table\b[^>]*>/i)?.[0] ?? "";
   const columns: string[] = [];
@@ -515,6 +570,13 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
   const definedNames = parseDefinedNames(workbookXml, sheetNames);
   const externalLinks = parseExternalLinks(workbookXml, workbookRels, text);
   const hasVbaMacros = Boolean(zip["xl/vbaProject.bin"]);
+  const stylesXml = text("xl/styles.xml");
+  const fillRgbByFillId = parseFillRgbByFillId(stylesXml);
+  const fillIdByCellXf = parseFillIdByCellXf(stylesXml);
+  const colorOf = (styleIndex: number) => {
+    const fillId = fillIdByCellXf[styleIndex];
+    return fillId === undefined ? undefined : fillRgbByFillId[fillId];
+  };
 
   for (const sheet of workbookXml.matchAll(/<sheet\b[^>]*\/?\s*>/gi)) {
     const name = attr(sheet[0], "name");
@@ -536,6 +598,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
     const images = parseImages(worksheetXml, sheetRels, text, bytesOf);
     const shapes = parseShapes(worksheetXml, sheetRels, text);
     const charts = parseCharts(worksheetXml, sheetRels, text);
+    const cellFills = parseCellFills(worksheetXml, colorOf);
     const commentsRelationship = [...sheetRels.values()].find((relationship) =>
       relationship.type.toLowerCase().endsWith("/comments"),
     );
@@ -567,6 +630,7 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
       images,
       shapes,
       charts,
+      cellFills,
     });
   }
   return result;

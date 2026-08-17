@@ -55,6 +55,7 @@ describe("import intelligence", () => {
       images: [],
       shapes: [],
       charts: [],
+      cellFills: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.hyperlinks).toEqual([
@@ -81,6 +82,7 @@ describe("import intelligence", () => {
       images: [],
       shapes: [],
       charts: [],
+      cellFills: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.definedNames).toEqual([
@@ -120,6 +122,7 @@ describe("import intelligence", () => {
       images: [],
       shapes: [],
       charts: [],
+      cellFills: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.dataValidations).toEqual([
@@ -155,6 +158,7 @@ describe("import intelligence", () => {
       images: [],
       shapes: [],
       charts: [],
+      cellFills: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.hasVbaMacros).toBe(true);
@@ -179,6 +183,7 @@ describe("import intelligence", () => {
       images: [{ name: "Logo", anchor: "A1", format: "PNG" }],
       shapes: [],
       charts: [],
+      cellFills: [],
     };
     const diagnostics = diagnoseImportedSheet(ws, [{ Item: "Poço", Valor: 5 }]);
     expect(diagnostics.images).toEqual([{ name: "Logo", anchor: "A1", format: "PNG" }]);

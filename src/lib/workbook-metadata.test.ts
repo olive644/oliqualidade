@@ -19,7 +19,7 @@ function advancedWorkbookPackage() {
     ),
     "xl/worksheets/sheet2.xml": xml('<worksheet xmlns:r="r"/>'),
     "xl/worksheets/sheet1.xml": xml(
-      '<worksheet xmlns:r="r"><autoFilter ref="A1:C5"/><dataValidations count="1"><dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="B2:B10" promptTitle="Selecione o nível" prompt="Escolha uma das opções da lista"><formula1>"Baixo,Médio,Alto"</formula1></dataValidation></dataValidations><hyperlinks><hyperlink ref="A2" r:id="rIdLink" tooltip="Abrir &amp; revisar"/><hyperlink ref="B2" location="Resumo!A1"/></hyperlinks><tableParts><tablePart r:id="rIdTable"/></tableParts><pivotTableDefinition r:id="rIdPivot"/><drawing r:id="rIdDrawing"/></worksheet>',
+      '<worksheet xmlns:r="r"><autoFilter ref="A1:C5"/><dataValidations count="1"><dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="B2:B10" promptTitle="Selecione o nível" prompt="Escolha uma das opções da lista"><formula1>"Baixo,Médio,Alto"</formula1></dataValidation></dataValidations><hyperlinks><hyperlink ref="A2" r:id="rIdLink" tooltip="Abrir &amp; revisar"/><hyperlink ref="B2" location="Resumo!A1"/></hyperlinks><sheetData><row r="1"><c r="C1" s="1"><v>3</v></c><c r="D1" s="2"><v>6</v></c></row></sheetData><tableParts><tablePart r:id="rIdTable"/></tableParts><pivotTableDefinition r:id="rIdPivot"/><drawing r:id="rIdDrawing"/></worksheet>',
     ),
     "xl/worksheets/_rels/sheet1.xml.rels": xml(
       '<Relationships><Relationship Id="rIdTable" Type="table" Target="../tables/table1.xml"/><Relationship Id="rIdPivot" Type="pivotTable" Target="../pivotTables/pivotTable1.xml"/><Relationship Id="rIdLink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/revisao?a=1&amp;b=2" TargetMode="External"/><Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/><Relationship Id="rIdDrawing" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>',
@@ -47,6 +47,9 @@ function advancedWorkbookPackage() {
       '<comments><authors><author>Ana &amp; João</author></authors><commentList><comment ref="C2" authorId="0"><text><r><t>Conferir </t></r><r><t>total</t></r></text></comment></commentList></comments>',
     ),
     "xl/vbaProject.bin": new Uint8Array([1, 2, 3]),
+    "xl/styles.xml": xml(
+      '<styleSheet><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor theme="0" tint="-0.15"/><bgColor indexed="64"/></patternFill></fill></fills><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="1" borderId="0" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/></cellXfs></styleSheet>',
+    ),
   });
 }
 
@@ -93,6 +96,8 @@ describe("metadados avançados de XLSX", () => {
       { name: "Nota", anchor: "A11", text: "Revisar totais antes de enviar" },
     ]);
     expect(metadata?.charts).toEqual([{ type: "bar", title: "Tendência mensal", anchor: "E1" }]);
+    // D1 tem cor de tema (fillId 2): não resolvida, fica de fora.
+    expect(metadata?.cellFills).toEqual([{ address: "C1", color: "#FF0000" }]);
   });
 
   it("detecta ausência de macros VBA quando xl/vbaProject.bin não está no pacote", () => {

@@ -4105,3 +4105,100 @@ painel local dele e indicar o que ajustar) foi resolvido fora desta
 sessão — usuário confirmou diretamente, sem pedir nenhuma mudança de
 código aqui. Removido do backlog em `SECOND_BRAIN.md`; nenhum arquivo
 de código foi tocado por esta entrada.
+
+## 79. Diagnosticado o widget "Matriz" mal configurado do usuário; inventário novo de cor de preenchimento de célula (metade 1 de 2)
+
+Usuário trouxe 3 capturas de tela: um widget "Matriz de Coluna 2 ×
+Coluna 6" no painel dele com números sem sentido (0/1/2/3 cruzando
+categorias erradas), e duas capturas do Excel original ("Definição das
+Zonas de Contato" com legenda colorida ZONA 1-4, e a aba "Matriz de
+Perigo" com uma coluna "Criticidade do Contato" colorida vermelho/
+amarelo/verde). Pedido: ler a aba 100% fiel e usar/criar widget que
+interprete melhor os dados.
+
+### Diagnóstico completo do widget mal configurado
+
+Investigação célula a célula (arquivo real, `readWorkbookBytes` +
+inspeção direta do XML) confirmou que a aba real por trás do widget do
+usuário é "Requisitos de Monitoramento" (não "Matriz de Perigo" — são
+abas diferentes; a matriz 3×3 pequena de critério vive em
+"Requisitos", a tabela grande de 168 linhas por tipo de superfície é
+"Matriz de Perigo"). Achados, todos confirmados contra `dimension
+ref="A1:X30"` e `<mergeCell ref="F29:G30"/>` do XML bruto de
+`sheet10.xml`:
+
+- Os valores da matriz de critério (3,6,9 / 2,4,6 / 1,2,3) estão
+  100% corretos e completos — nenhuma perda de dado.
+- O rótulo do eixo de linhas não tem cabeçalho de célula: o nome real
+  ("PERIGO — Proximidade com Alimentos") é uma forma de texto flutuante
+  (já inventariada pela seção 76, âncora A25), não um valor de célula.
+  Por isso a coluna virou o nome genérico "Coluna 2".
+- "Coluna 6"/"Coluna 7" (o texto "Adaptada de FSSC 22000" que o
+  usuário cruzou no widget) são uma célula de rodapé mesclada
+  (`F29:G30`) que fisicamente compartilha linha com a última linha da
+  matriz — dado real, lido corretamente, mas que não pertence à
+  matriz.
+- A Probabilidade (Baixa/Média/Alta) está em **3 colunas separadas**
+  (formato largo), não numa única coluna categórica. Por isso nenhuma
+  configuração do widget "Matriz" (que cruza duas colunas categóricas)
+  consegue representar essa tabela corretamente — ela já é uma matriz
+  pré-pivotada, não dado transacional para cruzar. O widget correto
+  pra essa estrutura, sem nenhuma mudança de código, é "Tabela" com as
+  4 colunas reais (renomeando "Coluna 2" e excluindo "Coluna 6"/"Coluna
+  7" no painel de Colunas).
+
+Nenhuma mudança em `structural-model.ts`/`import.ts` foi feita: o caso
+é idiossincrático (uma célula de anotação mesclada compartilhando
+linha com uma tabela sem cabeçalho de eixo), e mexer na heurística
+geral de detecção de coluna/cabeçalho por causa de um único arquivo
+vai contra a disciplina do projeto de só mudar isso com evidência de
+múltiplos arquivos reais.
+
+### Inventário novo: cor de preenchimento de célula (só a leitura, ainda não ligada a widget)
+
+Usuário pediu explicitamente a leitura de cor pra reproduzir as
+zonas coloridas do Excel. `parseFillRgbByFillId`/`parseFillIdByCellXf`/
+`parseCellFills` (`workbook-metadata.ts`) resolvem `xl/styles.xml`
+(`<fills>` → `<cellXfs>`) e cruzam com o atributo `s` de cada `<c>` do
+XML da aba. Verificado contra o arquivo real: as cores resolvidas
+batem exatamente com o cálculo manual feito a partir do XML bruto —
+`fillId 8/21/22` = amarelo `#FFFF00`/vermelho `#FF0000`/verde
+`#00B050`, reproduzindo célula a célula a mesma coloração da matriz de
+critério (linha Alto: 3=amarelo, 6=vermelho, 9=vermelho; Médio:
+2=verde, 4=amarelo, 6=vermelho; Baixo: 1=verde, 2=verde, 3=amarelo) e
+153 células reais na coluna "Criticidade do Contato" de "Matriz de
+Perigo".
+
+Escopo deliberadamente restrito a cor RGB direta
+(`<fgColor rgb="FFRRGGBB">`). Cor de tema (`theme="N"`) e paleta
+indexada legada (`indexed="N"`) não são resolvidas — accessar o mapeamento
+correto de índice de tema pra RGB não é trivial (a ordem de
+`<clrScheme>` no XML não é a mesma ordem usada pelos índices de estilo
+de célula) e o risco de resolver uma cor errada silenciosamente pesa
+mais que o ganho: no arquivo real, cor de tema aparece só em
+sombreamento decorativo de cabeçalho (`fillId 25/26`), nunca na cor de
+negócio que motivou o pedido.
+
+Painel novo `<details>` em `review.tsx` ("Cor de preenchimento
+original"), mesmo padrão dos demais, com uma bolinha colorida por
+célula — só inventário, deixa explícito que ainda não colore nenhum
+widget.
+
+**Pausa deliberada antes da metade 2 (ligar a cor a um widget)**: a
+única forma existente de rastrear um `Row` final até sua origem é
+`sourceRowIndexOf` (`data-review.ts`) — dá o índice da linha original,
+não o endereço completo (linha+coluna). Reconstruir o endereço exato
+de uma célula depois de todas as transformações já aplicadas (colunas
+mescladas viram uma coluna de grupo, colunas excluídas, renomeadas,
+região deslocada por corte de área independente) é uma peça de
+plumbing própria, não uma extensão trivial do que já existe. Dado que
+os dados de origem são uma matriz de risco de segurança alimentar
+(HACCP), errar essa correspondência e colorir a célula errada seria
+pior do que não colorir nenhuma — decisão de não seguir sem confirmar
+o escopo real com o usuário primeiro.
+
+Verificado com `npx vitest run` (518 passou, 1 pulado), `npx tsc
+--noEmit` sem erros, `npm run build` e `npm run performance:check`
+aprovados (maior chunk genérico foi de 375,8 para 383,1 KiB — ainda
+dentro da margem de ~450 KiB), e verificação ao vivo contra o arquivo
+real confirmando as cores acima.
