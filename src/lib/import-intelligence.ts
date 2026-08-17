@@ -9,6 +9,7 @@ import type {
   DataValidationDiagnostic,
   PivotTableDiagnostic,
   StructuredTableDiagnostic,
+  WorkbookCellFillDiagnostic,
   WorkbookCellHyperlink,
   WorkbookChartDiagnostic,
   WorkbookDefinedName,
@@ -121,6 +122,8 @@ export type ImportDiagnostics = {
   shapes: WorkbookShapeDiagnostic[];
   /** Gráficos nativos do Excel (construídos no próprio arquivo, não os que o app gera a partir dos dados). */
   charts: WorkbookChartDiagnostic[];
+  /** Cor de preenchimento sólido por célula, só RGB direto resolvido (ver `parseCellFills`). */
+  cellFills: WorkbookCellFillDiagnostic[];
   calculatedColumns: string[];
   autofilterRange: string | null;
   formulaExamples: string[];
@@ -485,6 +488,7 @@ function sheetMeta(ws: XLSX.WorkSheet) {
     images: advanced?.images ?? [],
     shapes: advanced?.shapes ?? [],
     charts: advanced?.charts ?? [],
+    cellFills: advanced?.cellFills ?? [],
     calculatedColumns,
     autofilterRange: ws["!autofilter"]?.ref ?? null,
     formulaExamples,
@@ -759,6 +763,10 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     warnings.push(`${meta.shapes.length} forma(s) nativa(s) do Excel com texto detectada(s)`);
   if (meta.charts.length)
     warnings.push(`${meta.charts.length} gráfico(s) nativo(s) do Excel detectado(s)`);
+  if (meta.cellFills.length)
+    warnings.push(
+      `${meta.cellFills.length} célula(s) com cor de preenchimento original detectada(s)`,
+    );
   if (meta.formulaExamples.length)
     transformations.push(
       `exemplos de fórmulas preservados: ${meta.formulaExamples.slice(0, 3).join(" | ")}`,
