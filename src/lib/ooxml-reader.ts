@@ -68,6 +68,11 @@ function xmlText(value: string): string {
       .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
       .replace(/&#(\d+);/g, (_, decimal: string) => String.fromCodePoint(parseInt(decimal, 10)))
       .replace(/&amp;/g, "&")
+      // Texto de célula com quebra de linha (`xml:space="preserve"`) às vezes
+      // guarda `\r\n` literal no XML; o SheetJS normaliza para `\n` na
+      // leitura. Sem isso, o mesmo texto diverge entre os dois leitores só
+      // por causa do fim de linha, gerando falso positivo de fidelidade.
+      .replace(/\r\n?/g, "\n")
   );
 }
 
