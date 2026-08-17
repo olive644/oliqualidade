@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
 import { preferredSheetIndex, sheetsWithData, sheetToRows } from "@/lib/import";
+import type { WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
 
 const sheet = (aoa: (string | number | null)[][]) => XLSX.utils.aoa_to_sheet(aoa);
 
@@ -1232,6 +1233,123 @@ describe("sheetsWithData", () => {
       { Material: "Água", Frequência: "Mensal", Análise: "Coliformes" },
     ]);
     expect(options.every((option) => option.warning?.includes("empilhadas"))).toBe(true);
+  });
+
+  it("propaga metadados avançados também na divisão por título de seção (quadros empilhados que se encostam)", () => {
+    const ws = sheet([
+      ["Bebidas:"],
+      ["Produto", "Quantidade", "Análise"],
+      ["Suco", 1, "Bolores"],
+      ["Refrigerante", 2, "Leveduras"],
+      ["Água Potável:"],
+      ["Material", "Frequência", "Análise"],
+      ["Água", "Diário", "Cloro"],
+      ["Água", "Mensal", "Coliformes"],
+    ]) as WorksheetWithAdvancedMetadata;
+    ws["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [{ address: "C7", target: "https://exemplo.com/cloro-secao" }],
+      definedNames: [],
+      externalLinks: [],
+      dataValidations: [],
+      hasVbaMacros: false,
+      images: [],
+      shapes: [],
+      charts: [],
+      cellFills: [],
+    };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Critérios");
+
+    const options = sheetsWithData(wb);
+
+    expect(options.map((option) => option.name)).toEqual([
+      "Critérios · Bebidas:",
+      "Critérios · Água Potável:",
+    ]);
+    expect(options[0]?.diagnostics?.hyperlinks).toEqual([]);
+    expect(options[1]?.diagnostics?.hyperlinks).toHaveLength(1);
+    expect(options[1]?.diagnostics?.hyperlinks?.[0]?.target).toBe(
+      "https://exemplo.com/cloro-secao",
+    );
+  });
+
+  it("propaga metadados avançados (!oliAdvanced) só pra região que contém a âncora, com endereço remapeado", () => {
+    const ws = sheet([
+      ["Cliente", "Valor"],
+      ["Ana", 10],
+      ["Beto", 20],
+      ["Caio", 30],
+      [],
+      ["Produto", "Quantidade", "Unidade"],
+      ["Cloro", 2, "kg"],
+      ["Resina", 3, "kg"],
+      ["Filme", 4, "m"],
+    ]) as WorksheetWithAdvancedMetadata;
+    ws["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [{ address: "A7", target: "https://exemplo.com/cloro" }],
+      definedNames: [],
+      externalLinks: [],
+      dataValidations: [],
+      hasVbaMacros: false,
+      images: [],
+      shapes: [],
+      charts: [],
+      cellFills: [],
+    };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dados");
+
+    const options = sheetsWithData(wb);
+
+    expect(options.map((option) => option.name)).toEqual(["Dados · Região 1", "Dados · Região 2"]);
+    expect(options[0]?.diagnostics?.hyperlinks).toEqual([]);
+    expect(options[1]?.diagnostics?.hyperlinks).toEqual([
+      { address: "A2", target: "https://exemplo.com/cloro" },
+    ]);
+  });
+
+  it("descarta metadados avançados cuja âncora cai fora de todas as regiões detectadas, em vez de atribuir à região errada", () => {
+    const ws = sheet([
+      ["Cliente", "Valor"],
+      ["Ana", 10],
+      ["Beto", 20],
+      ["Caio", 30],
+      [],
+      ["Produto", "Quantidade", "Unidade"],
+      ["Cloro", 2, "kg"],
+      ["Resina", 3, "kg"],
+      ["Filme", 4, "m"],
+    ]) as WorksheetWithAdvancedMetadata;
+    ws["!oliAdvanced"] = {
+      structuredTables: [],
+      pivotTables: [],
+      autoFilterRange: null,
+      comments: [],
+      hyperlinks: [{ address: "Z50", target: "https://exemplo.com/orfao" }],
+      definedNames: [],
+      externalLinks: [],
+      dataValidations: [],
+      hasVbaMacros: false,
+      images: [],
+      shapes: [],
+      charts: [],
+      cellFills: [],
+    };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dados");
+
+    const options = sheetsWithData(wb);
+
+    expect(options[0]?.diagnostics?.hyperlinks).toEqual([]);
+    expect(options[1]?.diagnostics?.hyperlinks).toEqual([]);
   });
 
   it("preserva o período dos grupos laterais ao separar seções trimestrais", () => {

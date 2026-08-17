@@ -2,7 +2,12 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import { diagnoseImportedSheet } from "@/lib/import-intelligence";
-import { attachWorkbookFeatures, inspectWorkbookFeatures } from "@/lib/workbook-metadata";
+import {
+  attachWorkbookFeatures,
+  inspectWorkbookFeatures,
+  sliceAdvancedMetadata,
+  type AdvancedSheetMetadata,
+} from "@/lib/workbook-metadata";
 
 const xml = (value: string) => strToU8(value);
 
@@ -217,5 +222,72 @@ describe("metadados avançados de XLSX", () => {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([["Valor"], [10]]), "Dados");
     expect(attachWorkbookFeatures(workbook, new Uint8Array([1, 2, 3]))).toBe(workbook);
     expect(workbook.Sheets["Dados"]?.["A2"]?.v).toBe(10);
+  });
+});
+
+describe("sliceAdvancedMetadata", () => {
+  const base: AdvancedSheetMetadata = {
+    structuredTables: [{ name: "T", range: "A1:A1", columns: [], calculatedColumns: [] }],
+    pivotTables: [{ name: "P", range: "A1:A1" }],
+    autoFilterRange: "A1:C5",
+    comments: [{ address: "B3", text: "nota" }],
+    hyperlinks: [{ address: "B3", target: "https://exemplo.com" }],
+    definedNames: [{ name: "Nome", refersTo: "Dados!$A$1", scope: null }],
+    externalLinks: [{ target: "https://externo.com" }],
+    dataValidations: [{ range: "B2:B10", type: "list", allowBlank: true }],
+    hasVbaMacros: true,
+    images: [{ name: "Logo", anchor: "B3", format: "PNG" }],
+    shapes: [{ name: "Nota", anchor: "B3", text: "texto" }],
+    charts: [{ type: "bar", title: null, anchor: "B3" }],
+    cellFills: [{ address: "B3", color: "#FF0000" }],
+  };
+
+  it("remapeia todo item com âncora dentro do intervalo e preserva o que é do workbook inteiro", () => {
+    // Simula uma região que exclui a linha 1 (remap devolve null pra qualquer
+    // endereço na linha 1) e desloca uma linha pra cima.
+    const remap = (address: string) => {
+      if (address.startsWith("B1")) return null;
+      const row = Number(address.slice(1));
+      return `${address[0]}${row - 1}`;
+    };
+    const sliced = sliceAdvancedMetadata(base, remap);
+    expect(sliced.comments).toEqual([{ address: "B2", text: "nota" }]);
+    expect(sliced.hyperlinks).toEqual([{ address: "B2", target: "https://exemplo.com" }]);
+    expect(sliced.images).toEqual([{ name: "Logo", anchor: "B2", format: "PNG" }]);
+    expect(sliced.shapes).toEqual([{ name: "Nota", anchor: "B2", text: "texto" }]);
+    expect(sliced.charts).toEqual([{ type: "bar", title: null, anchor: "B2" }]);
+    expect(sliced.cellFills).toEqual([{ address: "B2", color: "#FF0000" }]);
+    // Do workbook inteiro, não de uma célula: passam sem alteração.
+    expect(sliced.definedNames).toBe(base.definedNames);
+    expect(sliced.externalLinks).toBe(base.externalLinks);
+    expect(sliced.hasVbaMacros).toBe(true);
+    // Baseados em intervalo (`range`), não endereço único: saem vazios por segurança.
+    expect(sliced.structuredTables).toEqual([]);
+    expect(sliced.pivotTables).toEqual([]);
+    expect(sliced.dataValidations).toEqual([]);
+    expect(sliced.autoFilterRange).toBeNull();
+  });
+
+  it("descarta (não duplica) formas/imagens/gráficos com âncora desconhecida ao fatiar", () => {
+    const withUnknownAnchor: AdvancedSheetMetadata = {
+      ...base,
+      images: [{ name: "Logo", anchor: null, format: "PNG" }],
+      shapes: [{ name: "Nota", anchor: null, text: "texto" }],
+      charts: [{ type: "bar", title: null, anchor: null }],
+    };
+    const sliced = sliceAdvancedMetadata(withUnknownAnchor, (address) => address);
+    expect(sliced.images).toEqual([]);
+    expect(sliced.shapes).toEqual([]);
+    expect(sliced.charts).toEqual([]);
+  });
+
+  it("um item fora do intervalo (remap devolve null) some, não vaza pra outra região", () => {
+    const sliced = sliceAdvancedMetadata(base, () => null);
+    expect(sliced.comments).toEqual([]);
+    expect(sliced.hyperlinks).toEqual([]);
+    expect(sliced.images).toEqual([]);
+    expect(sliced.shapes).toEqual([]);
+    expect(sliced.charts).toEqual([]);
+    expect(sliced.cellFills).toEqual([]);
   });
 });

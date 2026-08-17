@@ -4,6 +4,7 @@ import { resolveFormulaCell } from "@/lib/formula";
 import { diagnoseImportedSheet, type ImportDiagnostics } from "@/lib/import-intelligence";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 import { scheduleToLong, type LongScheduleRow } from "@/lib/schedule-normalizer";
+import { sliceAdvancedMetadata, type WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
 
 export type SheetImportResult = {
   rows: Row[];
@@ -2019,6 +2020,18 @@ function independentRegionWorksheet(
   );
   if (merges.length) sliced["!merges"] = merges;
   if (ws["!rows"]) sliced["!rows"] = ws["!rows"].map((row) => (row ? { ...row } : row));
+  const advanced = (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"];
+  if (advanced) {
+    (sliced as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = sliceAdvancedMetadata(
+      advanced,
+      (address) => {
+        const cell = XLSX.utils.decode_cell(address);
+        if (cell.r < range.s.r || cell.r > range.e.r || cell.c < range.s.c || cell.c > range.e.c)
+          return null;
+        return XLSX.utils.encode_cell({ r: cell.r - range.s.r, c: cell.c - range.s.c });
+      },
+    );
+  }
   return sliced;
 }
 
@@ -2114,6 +2127,21 @@ function independentSectionWorksheet(
     ];
   });
   if (translatedMerges.length) sliced["!merges"] = translatedMerges;
+  const advanced = (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"];
+  if (advanced) {
+    const sourceStartColumn = used.s.c + section.startColumn - 1;
+    const sourceEndColumn = used.s.c + section.endColumn - 1;
+    (sliced as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = sliceAdvancedMetadata(
+      advanced,
+      (address) => {
+        const cell = XLSX.utils.decode_cell(address);
+        const destinationRow = sourceToDestination.get(cell.r);
+        if (destinationRow === undefined || cell.c < sourceStartColumn || cell.c > sourceEndColumn)
+          return null;
+        return XLSX.utils.encode_cell({ r: destinationRow, c: cell.c - sourceStartColumn });
+      },
+    );
+  }
   return sliced;
 }
 

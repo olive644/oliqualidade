@@ -557,6 +557,66 @@ function parsePivot(xml: string): PivotTableDiagnostic {
   };
 }
 
+/**
+ * Filtra e remapeia os metadados avançados com âncora em uma célula (`address`
+ * ou `anchor`) quando uma aba é dividida em regiões/seções independentes
+ * (`independentRegionWorksheet`/`independentSectionWorksheet` em `import.ts`).
+ * `remap` decide se um endereço original pertence à região e devolve o
+ * endereço já traduzido pras coordenadas do worksheet fatiado; `null` remove
+ * o item.
+ *
+ * Deliberadamente conservador: `dataValidations`, `structuredTables` e
+ * `pivotTables` usam intervalos (`range`), não um único endereço — fatiar um
+ * intervalo corretamente é mais arriscado que vale a pena aqui, então saem
+ * vazios em vez de arriscar mostrar um intervalo errado. `definedNames`/
+ * `externalLinks`/`hasVbaMacros` são do workbook inteiro, não de uma célula:
+ * passam sem alteração.
+ */
+export function sliceAdvancedMetadata(
+  advanced: AdvancedSheetMetadata,
+  remap: (address: string) => string | null,
+): AdvancedSheetMetadata {
+  return {
+    structuredTables: [],
+    pivotTables: [],
+    autoFilterRange: null,
+    dataValidations: [],
+    comments: advanced.comments.flatMap((comment) => {
+      const address = remap(comment.address);
+      return address ? [{ ...comment, address }] : [];
+    }),
+    hyperlinks: advanced.hyperlinks.flatMap((link) => {
+      const address = remap(link.address);
+      return address ? [{ ...link, address }] : [];
+    }),
+    // Âncora desconhecida (`anchor: null`, raro — só quando `xdr:from` não pôde
+    // ser interpretado) não vira "presente em toda região": sem saber a posição
+    // real, duplicar em todas as sub-regiões é pior que não mostrar em nenhuma.
+    images: advanced.images.flatMap((image) => {
+      if (!image.anchor) return [];
+      const anchor = remap(image.anchor);
+      return anchor ? [{ ...image, anchor }] : [];
+    }),
+    shapes: advanced.shapes.flatMap((shape) => {
+      if (!shape.anchor) return [];
+      const anchor = remap(shape.anchor);
+      return anchor ? [{ ...shape, anchor }] : [];
+    }),
+    charts: advanced.charts.flatMap((chart) => {
+      if (!chart.anchor) return [];
+      const anchor = remap(chart.anchor);
+      return anchor ? [{ ...chart, anchor }] : [];
+    }),
+    cellFills: advanced.cellFills.flatMap((fill) => {
+      const address = remap(fill.address);
+      return address ? [{ ...fill, address }] : [];
+    }),
+    definedNames: advanced.definedNames,
+    externalLinks: advanced.externalLinks,
+    hasVbaMacros: advanced.hasVbaMacros,
+  };
+}
+
 export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlArchive) {
   const zip = isOoxmlArchive(data) ? data : unzipOoxmlArchive(data);
   const text = (part: string) => (zip[part] ? strFromU8(zip[part]!) : "");

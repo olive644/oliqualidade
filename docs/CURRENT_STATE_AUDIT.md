@@ -4281,3 +4281,63 @@ linha pulada, grade truncada, rótulo ambíguo, dados ausentes), `npx
 tsc --noEmit` sem erros, `npm run build` e `npm run performance:check`
 aprovados (maior chunk genérico foi de 383,1 para 384,0 KiB —
 variação desprezível).
+
+## 81. Item 2b do backlog: propaga `!oliAdvanced` através da divisão de regiões/seções independentes
+
+Ao contrário do problema de proveniência de coluna da seção 80 (que
+exigiria tocar ~15 estágios de transformação por string no núcleo de
+toda importação), este é mais tratável: `independentRegionWorksheet` e
+`independentSectionWorksheet` (`import.ts`) já calculam os limites
+exatos de linha/coluna de cada região/seção antes de fatiar o
+worksheet — só faltava filtrar e remapear os metadados com âncora
+dentro desses limites, sem mexer na lógica de corte em si.
+
+`sliceAdvancedMetadata` (`workbook-metadata.ts`), função pura nova:
+recebe o `AdvancedSheetMetadata` original e uma função `remap(address)
+=> address | null` (decide se um endereço pertence à região e devolve
+o endereço já traduzido pras coordenadas do worksheet fatiado, ou
+`null` se estiver fora). Chamada logo depois que `sliced` é montado
+nas duas funções de corte, com um `remap` calculado a partir dos
+mesmos limites (`range` em `independentRegionWorksheet`;
+`sourceToDestination`/`sourceStartColumn`/`sourceEndColumn` em
+`independentSectionWorksheet`, já existentes ali pra traduzir
+mesclagens).
+
+Escopo deliberadamente restrito aos campos com âncora de célula única
+(hyperlinks, comentários, imagens, formas, gráficos, cor de
+preenchimento). `dataValidations`/`structuredTables`/`pivotTables` usam
+intervalo (`range`), não um único endereço — fatiar um intervalo
+corretamente é mais arriscado do que vale a pena aqui, então saem
+vazios em vez de arriscar mostrar um intervalo errado (mesma lógica já
+usada pra cor de tema na seção 79: incerteza vira ausência, não
+suposição). `definedNames`/`externalLinks`/`hasVbaMacros` são do
+workbook inteiro, passam sem alteração. Formas/imagens/gráficos com
+âncora desconhecida (`anchor: null`, raro) são descartados ao fatiar
+em vez de duplicados em toda sub-região — sem saber a posição real,
+mostrar em todo lugar seria pior que não mostrar em lugar nenhum.
+
+Testado nos dois caminhos de divisão (`sheetsWithData`, via fixture
+sintética): caso positivo (hyperlink dentro do intervalo da região 2,
+remapeado de `A7` pra `A2`) e caso negativo (endereço órfão fora de
+toda região detectada, some das duas em vez de vazar pra alguma) para
+`independentRegionWorksheet`; caso positivo análogo pra
+`independentSectionWorksheet` (divisão por título de seção). Mais 3
+testes unitários diretos de `sliceAdvancedMetadata`
+(`workbook-metadata.test.ts`): remapeamento completo, âncora
+desconhecida descartada, tudo fora do intervalo some.
+
+Verificado contra o arquivo real: a forma de texto (âncora `I24`) da
+aba "Anexo III - Critérios de aceit." — o caso citado como exemplo na
+seção 79 — continua ausente das 4 sub-abas divididas, mas agora por um
+motivo correto e confirmado (a âncora cai fora dos limites das 4
+regiões detectadas geometricamente), não mais por ausência total de
+propagação. Nenhuma prova positiva com este arquivo específico (nenhum
+recurso ancorado dele cai dentro de uma região dividida por acaso) —
+a prova positiva vem das fixtures sintéticas acima, com endereço exato
+conferido à mão.
+
+Verificado com `npx vitest run` (529 passou, 1 pulado — 6 testes
+novos), `npx tsc --noEmit` sem erros, nenhuma regressão nos 523 testes
+pré-existentes (inclusive os de corpus real), `npm run build` e `npm
+run performance:check` aprovados (maior chunk genérico foi de 384,0
+para 385,2 KiB — variação desprezível).
