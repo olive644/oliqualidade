@@ -166,3 +166,18 @@ formato, hoje 0/5). XLTX e XLTM seguem sem nenhuma medição. Nenhum dos
 três teve a allowlist de candidato (`VITE_WASM_CANDIDATE_FORMATS`)
 alterada; XLSX continua sendo o único formato liberado para materializar
 saída Rust.
+
+`npm run corpus:sanitize` passou a aceitar `.xltx` como entrada (além de
+`.xlsx`), mas a saída sanitizada de um `.xltx` sempre grava um `.xlsx` de
+verdade (limite do `XLSX.write` do SheetJS instalado, ver
+`docs/WASM_CORPUS_SANITIZATION.md`) — então isso não preenche o gate XLTX,
+só amplia as fontes aceitas pro gate XLSX já existente. Usuário trouxe 2
+arquivos `.xltx` reais (`FRS-QA-435-Suape Recebimento de Resinas` e `Anexo
+FRS-QA-028-Suape`); ao sanitizar, as métricas resultantes (abas, células,
+strings/números/datas sanitizados) bateram exatamente com
+`sanitized-001.xlsx`/`sanitized-002.xlsx` já presentes no corpus — mesma
+regra de duplicata usada na seção 82 do `CURRENT_STATE_AUDIT.md`: são o
+mesmo conteúdo de origem (provavelmente exportado como `.xlsx` numa sessão
+anterior e como `.xltx` nesta), não contam como fonte nova. XLTX/XLTM
+continuam em 0/5, sem nenhum arquivo real disponível que ainda não esteja
+no corpus.

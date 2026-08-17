@@ -7,9 +7,17 @@ do Git por meio do `.gitignore`.
 
 ## Garantias e limites
 
-O sanitizador aceita somente `.xlsx`. Arquivos com macros (`.xlsm` ou `.xltm`)
+O sanitizador aceita `.xlsx` e `.xltx`. Arquivos com macros (`.xlsm` ou `.xltm`)
 fazem a execu&ccedil;&atilde;o falhar antes de qualquer sa&iacute;da ser criada. A origem nunca &eacute;
 alterada e o destino precisa estar vazio.
+
+A sa&iacute;da sanitizada de um `.xltx` de origem sempre grava um `.xlsx` de
+verdade &mdash; o SheetJS instalado neste projeto s&oacute; sabe escrever
+`bookType` `xlsx`/`xlsm` (`XLSX.write` lan&ccedil;a `Unrecognized bookType |xltx|`
+pra qualquer outro valor), ent&atilde;o o Content-Types interno nunca declara
+"template". Isso preserva fielmente o conte&uacute;do real pra teste de paridade
+TS&times;Rust, mas esse `.xlsx` sanitizado **n&atilde;o conta como fonte `.xltx`** no
+gate de promo&ccedil;&atilde;o (ver `docs/WASM_PROMOTION_CRITERIA.md`).
 
 Em cada workbook, o processo:
 

@@ -52,11 +52,25 @@ if (!inputArgument || !outputArgument) {
     const macroFiles = sourceFiles.filter((file) =>
       [".xlsm", ".xltm"].includes(extname(file).toLowerCase()),
     );
-    const candidates = sourceFiles.filter((file) => extname(file).toLowerCase() === ".xlsx");
+    // .xltx (modelo do Excel) e aceito alem de .xlsx: mesma estrutura
+    // ZIP/OOXML sem macro, e o SheetJS instalado so sabe ESCREVER
+    // bookType xlsx/xlsm (XLSX.write lanca "Unrecognized bookType |xltx|"
+    // pra qualquer outro valor) — entao a saida sanitizada de um .xltx de
+    // origem sempre sai como .xlsx de verdade, nunca preservando o
+    // Content-Types de template. Isso e aceitavel pro proposito deste
+    // corpus (paridade de leitura TS x Rust sobre o CONTEUDO real), mas
+    // esse .xlsx sanitizado nao conta como fonte .xltx no gate de
+    // promocao (ver docs/WASM_PROMOTION_CRITERIA.md, secao "Outros
+    // formatos OOXML").
+    const candidates = sourceFiles.filter((file) =>
+      [".xlsx", ".xltx"].includes(extname(file).toLowerCase()),
+    );
     if (macroFiles.length > 0) {
       fail("A origem contem arquivo(s) com macros. Remova-os antes de sanitizar este corpus.");
     } else if (candidates.length === 0) {
-      fail("Nenhum arquivo XLSX foi encontrado. Formatos com macros sao recusados nesta etapa.");
+      fail(
+        "Nenhum arquivo XLSX/XLTX foi encontrado. Formatos com macros sao recusados nesta etapa.",
+      );
     } else {
       mkdirSync(outputRoot, { recursive: true });
       const cases = [];
