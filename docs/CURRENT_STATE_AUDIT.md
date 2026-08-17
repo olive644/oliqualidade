@@ -4202,3 +4202,82 @@ Verificado com `npx vitest run` (518 passou, 1 pulado), `npx tsc
 aprovados (maior chunk genérico foi de 375,8 para 383,1 KiB — ainda
 dentro da margem de ~450 KiB), e verificação ao vivo contra o arquivo
 real confirmando as cores acima.
+
+## 80. Metade 2: cor de preenchimento original ligada ao widget Tabela, via rastreamento de endereço restrito a abas simples
+
+Continuação direta da seção 79. Investigação de `sheetToRows`
+(`import.ts`, ~2.500 linhas) confirmou que hoje não existe nenhum
+conceito de "índice de coluna original" sobrevivendo até `Column`/
+`Row` — o cabeçalho vira a chave do objeto e passa por ~15 estágios de
+transformação por string (remoção de coluna fantasma, mesclagem de
+coluna redundante, corte de rodapé, renomeação de duplicata). Rastrear
+proveniência de coluna através de tudo isso tocaria dezenas de pontos
+do núcleo de toda importação do app — risco desproporcional pro
+ganho. Apresentado ao usuário com essa avaliação revisada; decisão:
+restringir a abas simples, sem tocar `import.ts`.
+
+### `resolveSourceCellFills` (`cell-fill-provenance.ts`)
+
+Função pura e deliberadamente conservadora, calculada uma vez em
+`confirmReview()`/`buildImportedSheets()` (`routes/index.tsx`, mesmo
+ponto onde `sourceNotes`/`sourceImages` já saltam de diagnóstico
+transiente da revisão para `SheetData` persistente):
+
+1. Casa o rótulo de cada `Column` final com o texto literal da linha
+   de cabeçalho na `SourceGrid` (`diagnostics.header.row`) — só aceita
+   quando bate com exatamente uma célula do cabeçalho.
+2. Assume que os dados seguem o cabeçalho sequencialmente, célula por
+   célula, sem lacuna — `rowIndex` final vira `header.row + rowIndex`
+   no endereço absoluto da aba.
+3. Recusa completamente (devolve `[]`) quando qualquer sinal indicar
+   que essa suposição sequencial pode estar errada: linhas ocultas/em
+   branco/de rodapé/de cabeçalho repetido descartadas
+   (`audit.hiddenRowsIgnored` etc. > 0), ou `SourceGrid` truncado
+   (`truncatedRows`/`truncatedColumns`). Nunca associa uma cor a uma
+   célula sem ter certeza de qual célula é essa — a origem real dessa
+   sessão é uma matriz de risco de segurança alimentar (HACCP), e
+   colorir errado seria pior que não colorir.
+
+O resultado (`{rowIndex, columnKey, color}[]`) é o que persiste em
+`SheetData.sourceCellFills` — leve, resolvido uma vez, sem carregar
+`SourceGrid`/`ImportAudit` inteiros pro modelo permanente do painel.
+
+### Consumo no widget Tabela
+
+`DataTable` (`data-table-widget.tsx`) ganhou a prop opcional
+`sourceCellFills`; usa `sourceRowIndexOf(row)` (já existente,
+mecanismo que já alimenta o histórico de auditoria) combinado com
+`column.key` pra buscar a cor. Quando não há regra explícita de
+formatação condicional na coluna (`conditionalStyle` retorna `null`),
+a cor original do Excel é aplicada como fundo da célula — regra
+explícita do usuário sempre tem prioridade. Aplicado tanto na tabela
+virtualizada quanto na tabela de prévia usada na exportação/PDF, pelo
+mesmo motivo.
+
+### Verificação ao vivo (a prova que importava de verdade aqui)
+
+Arquivo real, dev server local, widget "Tabela" adicionado à aba
+"Requisitos de Monitoramento" pelo dropdown "Widget" (clique sintético
+completo `pointerdown`+`pointerup`+`click` no gatilho, mesmo problema
+de sempre com `DropdownMenuTrigger` do Radix). Cor de fundo lida
+diretamente do DOM renderizado, célula por célula:
+
+- Linha "Alto (3)": 3 → amarelo `rgb(255,255,0)`, 6 → vermelho
+  `rgb(255,0,0)`, 9 → vermelho.
+- Linha "Médio (2)": 2 → verde `rgb(0,176,80)`, 4 → amarelo, 6 →
+  vermelho.
+- Linha "Baixo (1)": 1 → verde, 2 → verde, 3 → amarelo.
+
+Reproduz exatamente a matriz de critério do Excel original (mesmas
+cores confirmadas manualmente no XML bruto na seção 79). A aba "Matriz
+de Perigo" (168 linhas, 153 células coloridas) foi verificada só no
+nível do resolvedor (mesma função, mesmos dados já confirmados na
+seção 79) — não repetida na UI por completo nesta sessão, dado que o
+caminho de renderização é idêntico ao já provado para "Requisitos".
+
+Verificado com `npx vitest run` (523 passou, 1 pulado; 5 testes novos
+em `cell-fill-provenance.test.ts` cobrindo os gates de segurança —
+linha pulada, grade truncada, rótulo ambíguo, dados ausentes), `npx
+tsc --noEmit` sem erros, `npm run build` e `npm run performance:check`
+aprovados (maior chunk genérico foi de 383,1 para 384,0 KiB —
+variação desprezível).

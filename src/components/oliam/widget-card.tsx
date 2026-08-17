@@ -119,6 +119,7 @@ import {
 } from "@/lib/spreadsheet-intelligence";
 import { parseEditedValue, suggestCorrection, type AuditEntry } from "@/lib/data-review";
 import type { FolderMonitorView } from "@/lib/folder-monitor";
+import type { SourceCellFill } from "@/lib/cell-fill-provenance";
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { AnimatedNumber } from "./animated-number";
 import {
@@ -164,6 +165,7 @@ export function WidgetCard({
   numericCols,
   groupableCols,
   sourceImages,
+  sourceCellFills,
   interpolated,
   sort,
   setSort,
@@ -201,6 +203,7 @@ export function WidgetCard({
   numericCols: Column[];
   groupableCols: Column[];
   sourceImages: WorkbookImageDiagnostic[];
+  sourceCellFills: SourceCellFill[];
   interpolated: Set<string>;
   sort: { key: string; dir: "asc" | "desc" } | null;
   setSort: (s: { key: string; dir: "asc" | "desc" } | null) => void;
@@ -3491,6 +3494,7 @@ export function WidgetCard({
         interpolated={interpolated}
         focusedCell={focusedCell}
         onEditCell={onEditCell}
+        sourceCellFills={sourceCellFills}
       />
     </article>
   );
