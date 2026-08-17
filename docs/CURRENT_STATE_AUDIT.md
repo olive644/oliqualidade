@@ -4341,3 +4341,117 @@ novos), `npx tsc --noEmit` sem erros, nenhuma regressão nos 523 testes
 pré-existentes (inclusive os de corpus real), `npm run build` e `npm
 run performance:check` aprovados (maior chunk genérico foi de 384,0
 para 385,2 KiB — variação desprezível).
+
+## 82. Usuário trouxe o mesmo arquivo real de novo: 3 bugs reais corrigidos, 1 investigado sem defeito, item de corpus com achado de duplicata
+
+Usuário pediu, numa mensagem só: adicionar o arquivo ao corpus, corrigir
+"Matriz de Perigo triplicando colunas", investigar "Anexo III meio
+bugado", corrigir um painel de pizza cortando informação em largura
+1/3, e corrigir "Requisitos de Monitoramento" (bloco de fora + coluna
+com informação errada) — visando "leitura 100% universal" desse
+arquivo. Sem selo/badge literal no app para essa frase; entendido como
+"essa leitura precisa ficar correta", não como pedido de UI nova.
+
+### Corpus: arquivo já estava sanitizado numa sessão anterior
+
+`npm run corpus:sanitize` rodado sobre o arquivo produziu um caso cujas
+métricas (11 abas, 10.289 células, 1.931 textos sanitizados, 4
+hyperlinks removidos, 20 comentários removidos) batem exatamente com
+`sanitized-003.xlsx`, já presente em `test-fixtures/sanitized-real/`
+de sessão anterior. Não mesclado como duplicata (regra do projeto:
+"duplicatas... não contam" pro gate de promoção). Corpus continua com
+6 fontes reais únicas, acima do mínimo de 5.
+
+### Bug real corrigido: preenchimento de mesclagem triplicando registros ("Matriz de Perigo")
+
+Investigação do XML bruto (`sheet9.xml`) mostrou que colunas B, C e D
+(não só A) também estão mescladas verticalmente em blocos de 3 linhas
+idênticos — mas as linhas 2 e 3 de cada bloco são 100% vazias no
+arquivo original, sem nenhum dado independente. O preenchimento de
+mesclagem (`sheetToRows`, `import.ts`) preenchia essas linhas mesmo
+assim, triplicando cada registro (168 linhas em vez de 56).
+
+Corrigido: uma linha só recebe preenchimento de mesclagem em colunas
+adicionais quando já tinha **algum** valor digitado de forma
+independente antes de qualquer preenchimento (`originalFilledCount`,
+métrica que já existia pra outro propósito). Uma linha 100% vazia
+antes do preenchimento é só o efeito visual da mesclagem esticando a
+altura da linha de origem, não um registro novo — cai no filtro já
+existente de linha em branco (`blankRowsIgnored`) em vez de virar 3
+linhas idênticas. O caso legítimo continua intacto (item mesclado
+cobrindo linhas de fornecedores concorrentes com preço/fornecedor
+diferentes por linha — essas linhas têm dado independente, nunca são
+puladas).
+
+Verificado com o arquivo real: "Matriz de Perigo" caiu de 168 para 56
+linhas (1 por superfície, `blankRowsIgnored: 112` no audit). Efeito
+colateral positivo confirmado ao vivo: "FRS QA BR 405 Brasil" também
+caiu de 249 para 177 células "de mesclagem vertical" no aviso de
+importação — o mesmo bug afetava outras áreas do arquivo.
+
+### Investigado sem defeito: Anexo III
+
+As 4 sub-tabelas (Bebidas, Produtos alimentícios, Água Potável, Objeto
+de Análise) foram lidas célula a célula — dados corretos e completos,
+sem duplicação nem lixo. O usuário trouxe print do Excel original
+mostrando "Bebidas lácteas/Iogurtes" com fundo colorido cobrindo 3
+linhas, esperando ver o rótulo repetido nas 3. Investigação do XML
+(`sheet4.xml`, dimension `A1:K54`) confirmou: **não existe mesclagem
+de célula na coluna A** para esse grupo — só `F4:F6`/`G4:G6`/`I4:I6`
+estão mescladas. O agrupamento visual vem de cor de preenchimento, não
+de célula mesclada. Sem mesclagem, não há valor de origem pra
+reconstruir — o app está correto ao mostrar `null` nas linhas de
+continuação. Inferir agrupamento a partir de banda de cor (sem
+mesclagem real) seria um recurso novo especulativo, não uma correção;
+não implementado.
+
+### Bug real corrigido: painel de comparação/tendência cortando texto em widget estreito
+
+`SeriesComparisonPanel` e `TrendSummaryPanel` (`widget-support.tsx`)
+usavam `sm:grid-cols-[...]` — uma media query de **viewport** (ativa
+a partir de 640px de largura de tela) — pra decidir o layout de um
+painel que vive dentro de um card de largura variável (1/3, 2/3, cheio
+da grade de widgets). Numa tela desktop qualquer, a viewport já passa
+de 640px mesmo com o widget em 1/3 (bem mais estreito que 640px), então
+o grid de colunas fixas sempre tentava caber ~29rem de larguras
+mínimas num espaço de ~230px — cortando texto ("VALOR DE...",
+"DIFEREN...").
+
+Corrigido trocando `grid` + media query por `flex flex-wrap`: o layout
+agora reflui de acordo com a largura real do container (o card do
+widget), nunca da viewport. Verificado ao vivo: painel de comparação
+numa pizza real em ~231px de largura, `scrollWidth === clientWidth`
+(sem overflow), todo o texto (`DIFERENÇA PARA...`, `VALOR DE...`)
+presente e legível via `innerText`.
+
+### Bug real corrigido (parcial): coluna genérica redundante em "Requisitos de Monitoramento"
+
+Retomando o achado da seção 79: a célula de rodapé mesclada
+horizontalmente (`F29:G30`, "Adaptada de FSSC 22000") gera duas
+colunas sem cabeçalho ("Coluna 6"/"Coluna 7") com o mesmo valor. A
+lógica de remoção de coluna redundante já existente (`import.ts`)
+detecta duas colunas com o mesmo valor em toda linha, mas **excluía
+deliberadamente nomes genéricos "Coluna N"** da comparação — proteção
+contra falso positivo (duas colunas sem nome, coincidentemente iguais,
+sem relação real).
+
+Refinado: nomes genéricos só ficam de fora da comparação quando **não
+são vizinhas diretas** no cabeçalho. Duas colunas "Coluna N" adjacentes
+com valores idênticos em toda linha quase certamente vêm de uma
+mesclagem horizontal transbordando pra coluna seguinte — coincidência
+deixa de ser plausível. A proteção original continua valendo pra
+colunas genéricas não-adjacentes (novo teste de regressão confirma).
+
+Resultado parcial, não 100%: "Coluna 7" (a duplicata exata) some
+automaticamente agora. "Coluna 6" (a cópia única e canônica da nota)
+continua aparecendo — não há evidência suficiente (tabela de só 3
+linhas, 1/3 preenchida) pra generalizar uma regra de remoção sem
+arriscar apagar dado esparso legítimo em outro arquivo real. Usuário
+pode excluir essa coluna manualmente no painel de Colunas.
+
+Verificado com `npx vitest run` (532 passou, 1 pulado — 4 testes
+novos: 2 para o preenchimento de mesclagem, 2 para o dedup de coluna
+genérica adjacente/não-adjacente), `npx tsc --noEmit` sem erros, `npm
+run build` e `npm run performance:check` aprovados (385,2 → 385,3 KiB,
+variação desprezível), e verificação ao vivo contra o arquivo real
+para os três itens corrigidos.

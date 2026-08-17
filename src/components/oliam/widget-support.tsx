@@ -740,8 +740,15 @@ export function SeriesComparisonPanel({
   filterLabel: string;
 }) {
   return (
-    <div className="oliam-series-comparison-row grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(8rem,1.4fr)_repeat(3,minmax(7rem,0.7fr))_auto] sm:items-center">
-      <div className="min-w-0">
+    // flex-wrap (não grid-cols fixo por breakpoint de viewport): a largura
+    // real disponível aqui é a do card do widget (pode ser 1/3 da tela),
+    // não a da janela — um grid com colunas mínimas fixas ativado por
+    // `sm:` (media query de viewport) cortava texto em vez de quebrar
+    // linha, porque a viewport podia estar "sm" mesmo com o widget
+    // estreito. flex-wrap reflui de acordo com o espaço que o próprio
+    // card tem, seja qual for a largura da tela.
+    <div className="oliam-series-comparison-row flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
+      <div className="min-w-32 flex-[2] basis-40">
         <p className="truncate text-sm font-semibold" title={selected.name}>
           {selected.name}
         </p>
@@ -754,7 +761,7 @@ export function SeriesComparisonPanel({
             : " · não há outra categoria para comparar."}
         </p>
       </div>
-      <div>
+      <div className="min-w-28 flex-1 basis-28">
         <p
           className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
           title={`Valor de ${selected.name}`}
@@ -765,7 +772,7 @@ export function SeriesComparisonPanel({
           {fmt(selected.total, kind)}
         </p>
       </div>
-      <div>
+      <div className="min-w-28 flex-1 basis-28">
         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Participação</p>
         <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
           {comparison?.share !== null && comparison?.share !== undefined
@@ -776,7 +783,7 @@ export function SeriesComparisonPanel({
             : "—"}
         </p>
       </div>
-      <div>
+      <div className="min-w-28 flex-1 basis-28">
         <p
           className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
           title={
@@ -826,8 +833,10 @@ export function SeriesComparisonPanel({
 export function TrendSummaryPanel({ summary, kind }: { summary: TrendSummary; kind: Kind }) {
   const positive = summary.change >= 0;
   return (
-    <div className="oliam-trend-summary-row grid gap-3 border-t border-border bg-muted/10 px-4 py-3 sm:grid-cols-[minmax(8rem,1.3fr)_repeat(3,minmax(6rem,0.8fr))] sm:items-center">
-      <div className="min-w-0">
+    // Mesmo motivo do SeriesComparisonPanel logo acima: flex-wrap reflui
+    // pela largura real do card do widget, não pela viewport.
+    <div className="oliam-trend-summary-row flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
+      <div className="min-w-32 flex-[1.6] basis-40">
         <p
           className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
           title={`${summary.first.name} até ${summary.last.name}`}
@@ -850,7 +859,7 @@ export function TrendSummaryPanel({ summary, kind }: { summary: TrendSummary; ki
             : ""}
         </p>
       </div>
-      <div>
+      <div className="min-w-24 flex-1 basis-24">
         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
           Média · {summary.pointCount} períodos
         </p>
@@ -858,7 +867,7 @@ export function TrendSummaryPanel({ summary, kind }: { summary: TrendSummary; ki
           {fmt(summary.average, kind)}
         </p>
       </div>
-      <div className="min-w-0">
+      <div className="min-w-24 flex-1 basis-24">
         <p
           className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
           title={`Mínimo em ${summary.min.name}`}
@@ -869,7 +878,7 @@ export function TrendSummaryPanel({ summary, kind }: { summary: TrendSummary; ki
           {fmt(summary.min.total, kind)}
         </p>
       </div>
-      <div className="min-w-0">
+      <div className="min-w-24 flex-1 basis-24">
         <p
           className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"
           title={`Máximo em ${summary.max.name}`}
