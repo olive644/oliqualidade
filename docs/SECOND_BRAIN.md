@@ -304,10 +304,6 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
 3. **Corpus real sanitizado** `#pendente` — XLSX/XLSM precisam de mais
    arquivos; XLTX/XLTM não têm nenhum. Bloqueado em arquivos reais do
    usuário; parar e perguntar antes de tentar sintetizar substitutos.
-4. **Painel real do usuário com widgets configurados com a coluna "Foto"
-   vazia** `#pendente` — bloqueado desde sessões anteriores; precisa que o
-   usuário abra o painel local (IndexedDB dele) e diga quais widgets
-   ajustar.
 5. **Núcleo restante de `Dashboard`** (~1.500-2.000 linhas, pipeline de
    dados + grade de widgets) — deliberadamente fora do escopo da série de
    extração já fechada (ver [[#Estado conhecido]]); precisaria de

@@ -4096,3 +4096,12 @@ passou, 1 pulado — o pulado é uma fixture privada diferente, não
 relacionada), `npx tsc --noEmit` sem erros, `npm run build` e `npm run
 performance:check` aprovados, sem mudança de tamanho de bundle
 (`ooxml-reader.ts` não é código de rota, é parte do worker de leitura).
+
+## 78. Item 4 do backlog priorizado fechado por confirmação direta do usuário
+
+"Painel real do usuário com widgets configurados com a coluna 'Foto'
+vazia" (bloqueado desde sessões anteriores, pendia do usuário abrir o
+painel local dele e indicar o que ajustar) foi resolvido fora desta
+sessão — usuário confirmou diretamente, sem pedir nenhuma mudança de
+código aqui. Removido do backlog em `SECOND_BRAIN.md`; nenhum arquivo
+de código foi tocado por esta entrada.
