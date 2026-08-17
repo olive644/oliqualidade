@@ -4553,3 +4553,63 @@ caso degenerado sem evidência de que vale o risco.
 para o filtro de `sheetsWithData`, 1 em `real-upload-validation.test.ts`
 para a aba "Tendência 2" real), `npx tsc --noEmit`, `npm run build` e `npm
 run performance:check` aprovados.
+
+## 86. Usuário trouxe modelos `.xltx` reais em cima do mesmo corpus: cabeçalho hierárquico virava registro fantasma em planilha sem dado
+
+Usuário trouxe 5 modelos `.xltx` (mesmo tema do corpus sintético da seção
+83, agora salvos como modelo genuinamente vazio — cabeçalho + fórmulas de
+limite, sem nenhuma linha preenchida). Não contam pro gate de promoção
+Rust/WASM (ainda precisa de dado real de negócio, não modelo em branco
+sintético), mas serviram de bateria de regressão de novo e encontraram um
+bug real, **pré-existente** (não introduzido nesta sessão): já afetava o
+arquivo `03_matriz_haccp_mesclagens_cores.xlsx` da seção 83, só não tinha
+sido notado porque a verificação daquela sessão focou em cor de célula, não
+em nomes de coluna.
+
+Causa raiz: `findHeaderRowIndex` (`import.ts`) só reconhece uma linha de
+título mesclada como "banner" (e portanto a exclui de virar cabeçalho)
+quando `originalFilledCount === 1` — ou seja, só a célula de origem da
+mesclagem tem valor, como o Excel de verdade sempre serializa. Geradores de
+OOXML fora do Excel (scripts próprios, inclusive o do usuário) costumam
+escrever o mesmo texto em **toda** célula do intervalo mesclado. Sem
+reconhecer isso como banner, a linha de título virava o cabeçalho da
+tabela (nomes de coluna genéricos "Título_N"), e o cabeçalho hierárquico
+real (2 linhas: grupo + subcoluna) vazava como duas linhas de "dado"
+fantasma.
+
+Corrigido com uma segunda checagem em `bannerRows`: aceita também uma
+mesclagem que cobre a largura inteira da linha E cujas células preenchidas
+têm todas o mesmo texto — condição que só pode acontecer nesse padrão de
+"texto repetido pelo gerador", nunca num cabeçalho real com colunas
+coincidentemente batizadas igual (que não cobre a largura inteira sozinho
+com valor idêntico em toda coluna).
+
+Corrigido também um segundo problema, encontrado ao testar o modelo
+genuinamente vazio: `findHierarchicalHeaderEnd` só estende o cabeçalho pra
+incluir a camada folha (subcolunas) quando há evidência de dado numérico/
+data abaixo — sinal que nunca existe num modelo sem nenhuma linha
+preenchida. Adicionado um sinal estrutural alternativo: quando a camada
+atual já tem mesclagem horizontal real (evidência de estrutura, não
+estatística) e **não há dado nenhum em lugar nenhum abaixo**, estender é
+seguro — não existe registro real que a extensão possa engolir por engano.
+
+Efeito colateral positivo do segundo fix: um modelo genuinamente vazio
+(cabeçalho hierárquico + zero linhas de dado) agora retorna corretamente 0
+linhas (nada pra importar), em vez de "importar" as próprias linhas de
+cabeçalho como se fossem registros.
+
+Achado relacionado, não corrigido nesta sessão: o modelo "04" (duas
+tabelas independentes lado a lado) tem um padrão de mesclagem parcial
+diferente — dois grupos de título mesclados na mesma linha (não um único
+banner de largura inteira) — que o fix acima não cobre, e a separação
+automática de regiões (`detectIndependentSections`/
+`regionsAreSafeToSplit`) também exige evidência de dado que um modelo vazio
+não tem. Registrado como pendência separada; não é o mesmo mecanismo do
+cabeçalho hierárquico de uma tabela só, exigiria investigação própria.
+
+Verificado ao vivo com o modelo real "01_template_indicadores_operacionais.xltx":
+colunas corretas ("Data","Turno","Setor","Lote","Medição","Limite","Resultado","Situação"),
+nenhum nome genérico. `npx vitest run` (543 passou, 1 pulado — 2 testes
+novos: banner com texto repetido + cabeçalho hierárquico sem dado não
+fabrica registro fantasma), `npx tsc --noEmit`, `npm run build` e `npm run
+performance:check` aprovados.

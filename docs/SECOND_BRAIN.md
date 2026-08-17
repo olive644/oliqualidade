@@ -199,6 +199,8 @@ audit inteiro.
 | Widget Tabela colorido com a cor original do Excel, em abas simples (sem linha pulada entre cabeçalho e dado) | `resolveSourceCellFills` (`cell-fill-provenance.ts`), calculado em `confirmReview`/`buildImportedSheets` (`routes/index.tsx`); `SheetData.sourceCellFills`; consumido em `DataTable` (`data-table-widget.tsx`, prioridade menor que `conditionalStyle` explícito) | `cell-fill-provenance.test.ts` (gates de segurança) + verificação ao vivo reproduzindo as cores do Excel original — ver [[CURRENT_STATE_AUDIT#80. Metade 2: cor de preenchimento original ligada ao widget Tabela, via rastreamento de endereço restrito a abas simples]] |
 | Tolerância a namespace OOXML prefixada (`<x:dataValidation>`) e `Target` de relacionamento absoluto (`/xl/worksheets/sheet1.xml`) no inventário avançado | fragmento `NS` (`workbook-metadata.ts`, tolera prefixo opcional em toda regra da namespace principal do spreadsheetML) + `normalizePart` (usa `Target` direto quando começa com `/`, sem combinar com a pasta base) | `workbook-metadata.test.ts` (pacote OOXML mínimo prefixado+Target absoluto) — ver [[CURRENT_STATE_AUDIT#83. Usuário trouxe corpus sintético de 6 planilhas próprias: bug real de dois estágios no inventário avançado OOXML (namespace prefixada + Target absoluto)]] |
 | Aba sem linha de dado (só gráficos/formas/imagens nativos do Excel) virar opção de importação e persistir o inventário no painel final | `hasVisualOnlyContent`/filtro em `sheetsWithData` (`import.ts`) + filtro espelhado em `prepare()` (`routes/index.tsx`); `SheetData.sourceCharts`/`sourceShapes`; `SourceVisualsPanel` (mesmo padrão de `SourceNotesPanel`) | `import.test.ts` (`sheetsWithData`) + `real-upload-validation.test.ts` (aba real "Tendência 2", 14 gráficos) — ver [[CURRENT_STATE_AUDIT#85. Abas só com gráficos/formas/imagens nativos (sem linha de dado tabular) agora são importáveis]] |
+| Banner de título mesclado reconhecido mesmo quando o gerador repete o texto em toda célula da mesclagem (não só na célula de origem, como o Excel real serializa) | `bannerRows` em `sheetToRows` (`import.ts`) — segunda checagem além de `originalFilledCount === 1`: mesclagem de largura inteira com todas as células preenchidas iguais | `import.test.ts` — ver [[CURRENT_STATE_AUDIT#86. Usuário trouxe modelos .xltx reais em cima do mesmo corpus: cabeçalho hierárquico virava registro fantasma em planilha sem dado]] |
+| Cabeçalho hierárquico (grupo + subcoluna) estende pra segunda camada mesmo sem nenhuma linha de dado abaixo (modelo `.xltx`/`.xltm` vazio) | `findHierarchicalHeaderEnd` (`import.ts`) — sinal estrutural alternativo: mesclagem horizontal real na camada atual + zero dado em qualquer lugar abaixo | `import.test.ts` — mesma seção 86 |
 
 ## Regras de produto que não podem regredir
 
@@ -333,6 +335,14 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    widgets) continua deliberadamente não extraído — é pipeline funcional,
    não mutação de estado, sem candidato natural a hook. Ver
    [[CURRENT_STATE_AUDIT#84. Extraído \`useSheetMutations\`: os 7 mutadores de dados que sobravam soltos em \`Dashboard\`]].
+6. **Separação de regiões independentes falha em modelo vazio com título
+   de seção mesclado parcialmente** `#pendente` — `detectIndependentSections`/
+   `regionsAreSafeToSplit` (`import.ts`) também exigem evidência de dado
+   pra confirmar a divisão, que um modelo `.xltx` genuinamente vazio não
+   tem; diferente do banner de largura inteira corrigido na seção 86 (dois
+   grupos mesclados parcialmente na mesma linha, um por região). Sem
+   evidência de quão comum é esse padrão em arquivo real — não tentado.
+   Ver [[CURRENT_STATE_AUDIT#86. Usuário trouxe modelos .xltx reais em cima do mesmo corpus: cabeçalho hierárquico virava registro fantasma em planilha sem dado]].
 
 ## Comandos operacionais
 

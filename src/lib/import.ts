@@ -625,8 +625,22 @@ function findHierarchicalHeaderEnd(
     });
     const textualDataBelow =
       (aoa[end + 2] ?? []).filter((value) => value !== null && value !== "").length >= 2;
+    // Um modelo (.xltx/.xltm) genuinamente vazio nunca tem nenhuma das
+    // evidências de dado acima — não existe dado nenhum na planilha pra
+    // comparar. Sem essa saída, a camada folha do cabeçalho (ex.:
+    // "Probabilidade"/"Severidade" sob "Avaliação") virava a primeira
+    // "linha de dado" fantasma. Como a camada atual só chega até aqui com
+    // mesclagem horizontal real (evidência estrutural, não estatística) e
+    // não há dado nenhum abaixo pra confundir com cabeçalho, estender é
+    // seguro: não há registro real que essa extensão possa engolir.
+    const noDataAnywhereBelow = aoa
+      .slice(end + 2)
+      .every((row) => row.every((value) => value === null || value === ""));
     const dataEvidence =
-      numericDataEvidence || nextHasGroupedMerges || (nextHasHeaderVocabulary && textualDataBelow);
+      numericDataEvidence ||
+      nextHasGroupedMerges ||
+      (nextHasHeaderVocabulary && textualDataBelow) ||
+      (horizontal.length > 0 && noDataAnywhereBelow);
     if (!dataEvidence) break;
 
     end++;
@@ -1413,8 +1427,27 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   });
   const bannerRows = new Set<number>();
   for (const m of merges) {
-    if (m.e.c > m.s.c && m.s.r === m.e.r && originalFilledCount.get(m.s.r) === 1) {
+    if (!(m.e.c > m.s.c && m.s.r === m.e.r)) continue;
+    if (originalFilledCount.get(m.s.r) === 1) {
       bannerRows.add(m.s.r);
+      continue;
+    }
+    // Alguns geradores de OOXML fora do Excel escrevem o mesmo texto em
+    // toda célula do intervalo mesclado, em vez de só na célula de origem
+    // (única forma que o Excel de verdade serializa uma mesclagem) — sem
+    // esta segunda checagem, um título espalhado assim escapava da
+    // detecção acima (`originalFilledCount === 1` falha porque a linha
+    // "parece" ter várias células preenchidas) e virava cabeçalho da
+    // tabela. Só aceito quando a mesclagem cobre a largura inteira da
+    // linha E todas as células preenchidas têm o mesmo texto — um
+    // cabeçalho real com duas colunas coincidentemente batizadas igual (o
+    // caso que a checagem original protege) nunca cobre a largura inteira
+    // sozinho com um valor idêntico em todas as colunas.
+    if (m.s.c === 0 && m.e.c >= width - 1) {
+      const row = (aoa[m.s.r] ?? []) as (string | number | null)[];
+      const filled = row.filter((c) => c !== null && c !== "");
+      const distinct = new Set(filled.map((c) => String(c).trim()));
+      if (filled.length > 1 && distinct.size === 1) bannerRows.add(m.s.r);
     }
   }
 
