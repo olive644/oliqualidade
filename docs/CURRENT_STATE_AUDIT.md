@@ -5666,3 +5666,67 @@ listener.
 eslint` nos 2 arquivos tocados (só ruído de CRLF pré-existente,
 confirmado com o contorno Prettier CRLF-safe), `npm run build` e `npx
 playwright test` (E2E) aprovados.
+
+## 103. Dependabot, CodeQL e gate de auditoria de dependências na CI
+
+Próximo item da lista de segurança de infraestrutura registrada no
+backlog (item 9 do SECOND_BRAIN): "rate limit distribuído, proteção na
+borda, npm audit+scan de segredos+Dependabot/Renovate+CodeQL na CI,
+política de dados de IA mais visível, smoke test mais completo".
+Escolhidos os três itens mecânicos sem decisão de produto pendente
+(rate limit distribuído exige escolher um provedor de infraestrutura —
+Redis/Upstash — fora do escopo sem essa decisão do usuário).
+
+**Implementado**:
+- `.github/dependabot.yml` — atualizações semanais agrupadas
+  (minor/patch) pra `npm` (raiz), `cargo`
+  (`rust/oli-ooxml-core`) e `github-actions`.
+- `.github/workflows/codeql.yml` — análise CodeQL em push/PR pra
+  `main` + semanal (cron). Só `javascript-typescript` e `actions` —
+  Rust não tem suporte oficial no CodeQL (lista de linguagens
+  suportadas na documentação oficial não inclui Rust).
+- Novo job `dependency-audit` em `application.yml` — `npm audit
+  --audit-level=high`, bloqueante de verdade (roda em toda PR e push
+  pra `main`, mesmo padrão dos outros jobs).
+
+**Decisão sobre o threshold**: `--audit-level=high`, não `moderate`
+nem sem threshold. O projeto já tem 2 vulnerabilidades `moderate`
+pré-existentes (pacote `uuid` via `exceljs`) descobertas ao rodar
+`npm audit` local antes de decidir o threshold — `exceljs` é
+dependência direta e usada de verdade
+(`workbook-metadata.ts`/`workbook-verifier.ts`, parte do padrão de
+múltiplos leitores pra verificação cruzada), a correção exigiria
+`npm audit fix --force` com downgrade de major version (`exceljs@3.4.0`,
+mais antigo que o `4.4.0` atual) — não é algo pra forçar às cegas numa
+sessão sobre CI, e bloquear a CI nisso sem correção disponível de
+verdade só geraria um checkbox vermelho permanente sem ação possível
+(motivo já registrado antes na regra "não reduza testes/critérios pra
+forçar verde" — aqui o oposto: não crie um gate que nunca pode ficar
+verde de forma legítima). `high`/`critical` continuam bloqueando de
+verdade; `moderate`/`low` ficam de fora do gate automatizado,
+revisáveis com `npm audit` local sem `--audit-level` quando precisar
+do quadro completo.
+
+**Bug real pego antes de commitar**: a primeira tentativa de inserir o
+job `dependency-audit` no meio do arquivo, via `Edit`, apagou sem
+querer as duas linhas de cabeçalho do job `security-smoke` já existente
+logo depois (`security-smoke:` + `name: ...`), deixando `runs-on`/
+`timeout-minutes` órfãos sob o job novo — YAML sintaticamente inválido,
+teria quebrado a CI inteira. Descoberto validando com `js-yaml`
+(`node -e "yaml.load(...)"`, listando as chaves de `jobs` esperadas)
+antes do commit, não confiando só em leitura visual do diff.
+
+`npm audit --audit-level=high` confirmado limpo localmente (exit 0, as
+2 vulnerabilidades pré-existentes ficam abaixo do threshold). `npx
+vitest run` (567 passou, 1 pulado), `npx tsc --noEmit`, `npx prettier
+--check` nos 3 arquivos (`.yml`) aprovados. Não é possível rodar
+CodeQL/Dependabot localmente — verificação real fica pra quando a PR
+for aberta no GitHub.
+
+**Pendente, mesma seção do backlog do usuário, não abandonado**: rate
+limit distribuído (Redis/Upstash), proteção na borda pro
+`/api/gemini/*`, política de dados de IA mais visível por dashboard,
+smoke test cobrindo `Permissions-Policy`/`Cross-Origin-Opener-Policy`/
+cache/métodos inesperados. Scan de segredos (ex.: gitleaks/
+trufflehog na CI) também não foi adicionado nesta seção — considerar
+como próximo item da mesma frente.

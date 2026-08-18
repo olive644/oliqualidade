@@ -453,12 +453,19 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    - UX de erro: diagnóstico de importação baixável, "tentar modo
      compatível", comparação visual encontrado×importado, progresso real
      por etapa.
-   - Segurança: rate limit distribuído (Redis/Upstash) pro chat/análise,
-     proteção na borda pro `/api/gemini/*`, `npm audit`+scan de
-     segredos+Dependabot/Renovate+CodeQL na CI, política de dados de IA
-     mais visível por dashboard, smoke test cobrindo
-     `Permissions-Policy`/`Cross-Origin-Opener-Policy`/cache/métodos
-     inesperados.
+   - Segurança: ~~`npm audit`+Dependabot+CodeQL na CI~~ **Feito** —
+     `.github/dependabot.yml` (npm/cargo/github-actions, semanal),
+     `.github/workflows/codeql.yml` (javascript-typescript + actions,
+     Rust sem suporte oficial), job `dependency-audit` bloqueante em
+     `application.yml` (`--audit-level=high`, moderate/low de fora do
+     gate de propósito — 2 achados moderate pré-existentes em `exceljs`
+     sem correção sem breaking change). Ver
+     [[CURRENT_STATE_AUDIT#103. Dependabot, CodeQL e gate de auditoria de dependências na CI]].
+     **Pendente, mesma frente**: scan de segredos (gitleaks/trufflehog),
+     rate limit distribuído (Redis/Upstash) pro chat/análise, proteção
+     na borda pro `/api/gemini/*`, política de dados de IA mais visível
+     por dashboard, smoke test cobrindo `Permissions-Policy`/
+     `Cross-Origin-Opener-Policy`/cache/métodos inesperados.
    - Produto: testes unitários por widget extraído nas seções 94/95,
      testes visuais de screenshot pra gráfico/PDF, benchmark real de
      importação (10k/100k/500k linhas), virtualização de tabela em
