@@ -5730,3 +5730,41 @@ smoke test cobrindo `Permissions-Policy`/`Cross-Origin-Opener-Policy`/
 cache/métodos inesperados. Scan de segredos (ex.: gitleaks/
 trufflehog na CI) também não foi adicionado nesta seção — considerar
 como próximo item da mesma frente.
+
+## 104. Scan de segredos: recurso nativo do GitHub habilitado (não precisou de gitleaks/trufflehog na CI)
+
+Próximo item natural da seção 103 (scan de segredos, deixado como
+pendência ali). Antes de adicionar `gitleaks`/`trufflehog` como
+workflow de CI (a solução assumida na seção anterior), verificado via
+`gh api repos/olive644/oliqualidade` se o GitHub já oferecia algo
+nativo — descoberto que sim: **secret scanning e push protection são
+gratuitos e automáticos em repositórios públicos**, e o repositório
+tinha acabado de virar público (decisão do usuário, motivada pela
+necessidade de habilitar CodeQL na seção 103 — GitHub Advanced Security
+para repositório privado não existe em conta pessoal Free/Pro, só em
+planos Enterprise).
+
+**Estado confirmado via API** (`security_and_analysis` do repositório):
+`secret_scanning` e `secret_scanning_push_protection` já vinham
+`enabled` sozinhos ao tornar o repo público — nada pra fazer no código.
+Achado de bônus, também via API: **Dependabot Alerts**
+(`vulnerability-alerts`, a base que gera os avisos de dependência
+vulnerável que a seção 103 assumia já vir junto do `dependabot.yml`, mas
+é uma configuração separada) estava **desabilitado**. Confirmado com o
+usuário antes de mudar (é configuração de conta/repositório, categoria
+que exige permissão explícita) e habilitado via `gh api -X PUT
+repos/.../vulnerability-alerts` (204, sem corpo) + `gh api -X PATCH
+repos/... -f
+security_and_analysis[dependabot_security_updates][status]=enabled`
+(PRs automáticos de correção quando uma dependência tem CVE conhecido —
+complementa o `dependabot.yml` da seção 103, que só cobria atualização
+de rotina por cronograma, não vulnerabilidade específica).
+
+Nenhum código novo, nenhuma PR — mudança de configuração do
+repositório via API, fora do escopo de `git`. Registrado aqui pra não
+duplicar o achado numa sessão futura.
+
+**Pendente, mesma frente**: rate limit distribuído (Redis/Upstash),
+proteção na borda pro `/api/gemini/*`, política de dados de IA mais
+visível por dashboard, smoke test cobrindo `Permissions-Policy`/
+`Cross-Origin-Opener-Policy`/cache/métodos inesperados.
