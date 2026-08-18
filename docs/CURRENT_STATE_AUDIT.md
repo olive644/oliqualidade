@@ -5118,3 +5118,79 @@ já estarem no tamanho certo ou já extraídos. O padrão desta seção
 `widget-support.tsx` quando genuinamente duplicado, verificação
 end-to-end no navegador antes de considerar pronto) deve se repetir nas
 próximas fatias.
+
+Mesclada como [PR #142](https://github.com/olive644/oliqualidade/pull/142)
+depois de todos os checks de CI passarem e autorização explícita do
+usuário. Main avançou de `50eb6c5` para `7967844`.
+
+## 95. Divisão de `widget-card.tsx` concluída: os 9 branches restantes extraídos, arquivo cai de 3543 para 738 linhas (-79%)
+
+Usuário pediu pra prosseguir com o restante do backlog item 8. Seguido o
+mesmo padrão da seção 94 (componente autocontido por tipo, chrome
+genuinamente duplicado extraído pra arquivo compartilhado, verificação
+`tsc`+`eslint`+`vitest`+`build`+E2E+navegador real a cada extração — sem
+acumular mudanças não verificadas).
+
+**Extraídos, em ordem de complexidade crescente**:
+
+- `exception-panel-widget-body.tsx` (maior branch não-gráfico, ~410
+  linhas) — os 4 `useState` de revisão de exceção
+  (`exceptionView`/`editingException`/`correctionValue`/`correctionReason`)
+  confirmados usados só ali (`grep` antes de mover) e movidos pra dentro
+  do componente, não mais em `WidgetCard`. Achado no caminho: o export
+  CSV usava `` `﻿${csv}` `` (BOM via escape Unicode) — o editor
+  desta sessão insistia em converter a sequência `﻿` digitada em
+  bytes num caractere BOM literal ao gravar o arquivo (mesmo problema
+  reapareceu em várias tentativas de `Edit`/`Write`); contornado
+  escrevendo um token de texto comum primeiro (`node -e` com
+  `String.fromCharCode`) e só depois substituindo pelo texto
+  `﻿` literal — resultado final confirmado byte a byte
+  (`JSON.stringify` do trecho) antes de seguir.
+- `schedule-heatmap-widget-body.tsx` (~580 linhas).
+- `metric-widget-body.tsx` (`metric` + `metric-trend`, inclui sparkline
+  Recharts).
+- `chart-widget-body.tsx` (`bar`/`pie`/`line`/`area`, ~780 linhas — o
+  maior de todos). Os 3 `useState` de interação
+  (`activePieIndex`/`selectedPieIndex`/`activeBarIndex`) confirmados
+  usados só ali e movidos pra dentro do componente.
+
+**Novo hook compartilhado, achado durante a extração do `metric-trend`**:
+o sparkline do metric-trend usa exatamente a mesma lógica de rolagem
+horizontal por arrasto (`chartScrollRef`/`handleChartScrollPointerDown`/
+`ChartScrollButtons`) que o bloco de gráficos principal — extraído pra
+`use-chart-horizontal-scroll.tsx` (precisa ser `.tsx`, não `.ts`, por
+conter JSX no botão de rolagem — pego pelo `tsc` na primeira tentativa)
+e usado tanto por `metric-widget-body.tsx` quanto por
+`chart-widget-body.tsx`, além do que sobrou em `WidgetCard` antes desta
+lógica também sair de lá.
+
+**Verificação de risco proporcional ao tamanho da mudança**: como
+`chart-widget-body.tsx` é o branch mais complexo (interação de
+clique/hover em barra e pizza, cross-filter, tooltips), a verificação em
+navegador real foi além do check visual — clique programático via
+`dispatchEvent` num setor real do gráfico de pizza e numa barra real do
+gráfico de barras (calculando a posição via `getBoundingClientRect()`,
+não só chamando o handler React diretamente), confirmando em ambos os
+casos: contagem de linhas visíveis muda corretamente (12→4), chip
+"Filtrado por X" aparece, remover o chip volta a 12→12, zero erro novo
+no console. Essa é a mesma verificação de duas direções já usada na
+seção 94 para `ranking`, agora estendida pro caminho de interação mais
+complexo do arquivo inteiro.
+
+`npx vitest run` (555 passou, 1 pulado — sem teste novo nesta fatia, mas
+nada quebrou), `npx tsc --noEmit` limpo depois de cada extração
+individual, `npx eslint --fix` sem erro real restante (só avisos
+pré-existentes de fast-refresh em `widget-support.tsx`), `npm run build`
++ `npm run performance:check` aprovados, `npx playwright test` (E2E
+completo) aprovado contra dev server real depois da fatia inteira.
+
+**Resultado líquido**: `widget-card.tsx` foi de 3543 linhas/151 KB
+(início da seção 94) para **738 linhas** — redução de 79% no arquivo
+inteiro ao longo das duas seções. Todos os 14 tipos de widget originais
+agora vivem em arquivo próprio (`*-widget-body.tsx`) ou já delegavam
+antes pra componente lazy (`OperationalWidgetBody`, `MapWidgetBody`);
+`WidgetCard` ficou reduzido a um dispatcher por `w.type` + chrome
+compartilhado (`dragProps`, `sizeControls`) + os dois branches pequenos
+que nunca precisaram de extração (`folder-files`, `image`, ~15-40
+linhas cada). Item 8 do backlog fechado — não há mais pendência de
+divisão registrada.

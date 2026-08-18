@@ -1,0 +1,869 @@
+import { useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Label,
+  LabelList,
+  Line,
+  LineChart,
+  Pie,
+  PieChart as RPieChart,
+  ResponsiveContainer,
+  Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { Activity, BarChart3, PieChart as PieIcon, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  kinds,
+  numericKinds,
+  type ChartDataMode,
+  type Column,
+  type FilterRule,
+  type Kind,
+  type Row,
+  type Widget,
+} from "@/lib/types";
+import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
+import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/format";
+import {
+  aggregationLabels,
+  barChartPresentation,
+  chartSeries,
+  collapsePieSeries,
+  limitChartSeriesForRendering,
+  pieComparisonFor,
+  pieRoundnessFor,
+  relevantAggregationOps,
+  semanticAggregationOps,
+  sortAllBarCategories,
+  timeSeriesChartPresentation,
+  toggleClickFilter,
+  trendSummaryFor,
+  type AggregationOp,
+} from "@/lib/data-pipeline";
+import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
+import {
+  AxisTick,
+  BarTooltip,
+  CalculationButton,
+  ChartDot,
+  ChartReadingGuide,
+  compactAxisValue,
+  FieldDropSlot,
+  FilterChip,
+  PieLegend,
+  SeriesComparisonPanel,
+  TrendSummaryPanel,
+  truncateLabel,
+  WidgetHead,
+  type ChartDotProps,
+  type WidgetDragProps,
+} from "./widget-support";
+import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
+
+export function ChartWidgetBody({
+  widget: w,
+  data,
+  columns,
+  numericCols,
+  groupableCols,
+  semanticProfiles,
+  filters,
+  setFilters,
+  onConfigure,
+  dragProps,
+  sizeControls,
+  animationDelay,
+}: {
+  widget: Widget;
+  data: Row[];
+  columns: Column[];
+  numericCols: Column[];
+  groupableCols: Column[];
+  semanticProfiles: ColumnSemanticProfile[];
+  filters: FilterRule[];
+  setFilters: (filters: FilterRule[]) => void;
+  onConfigure: (patch: Partial<Widget>) => void;
+  dragProps: WidgetDragProps;
+  sizeControls: React.ReactNode;
+  animationDelay: number;
+}) {
+  // Cross-filter padronizado: clicar em um valor filtra por aquela coluna
+  // sem descartar filtros de outras colunas (ex: clicar num mapa e numa
+  // linha do tempo ao mesmo tempo); clicar de novo no mesmo valor remove o
+  // filtro.
+  const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
+  const [selectedPieIndex, setSelectedPieIndex] = useState<number | null>(null);
+  const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
+  const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
+    useChartHorizontalScroll();
+  const handleGroupClick = (groupKey: string, value: string) => {
+    setFilters(toggleClickFilter(filters, groupKey, value));
+  };
+
+  const groupCol =
+    w.type === "line"
+      ? columns.find((c) => c.key === w.groupKey && c.kind === "date")
+      : columns.find((c) => c.key === w.groupKey);
+  const requestedOp = w.op ?? "sum";
+  const configuredValueCol = columns.find((c) => c.key === w.valueKey);
+  const valueCol =
+    (configuredValueCol &&
+    (requestedOp === "count" || numericKinds.includes(configuredValueCol.kind))
+      ? configuredValueCol
+      : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
+  const relevantOps =
+    groupCol && valueCol
+      ? semanticAggregationOps(
+          relevantAggregationOps(data, groupCol.key, valueCol.key),
+          valueCol,
+          semanticProfiles.find((profile) => profile.key === valueCol.key),
+        )
+      : (Object.keys(aggregationLabels) as AggregationOp[]);
+  const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
+    ? (w.op ?? "sum")
+    : (relevantOps[0] ?? "sum");
+  const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
+  const title =
+    dataMode === "raw" && op !== "count"
+      ? `${valueCol?.label ?? "Valores"} por linha de ${groupCol?.label ?? "categoria"}`
+      : op === "count"
+        ? w.type === "pie"
+          ? `Distribuição de registros por ${groupCol?.label ?? ""}`
+          : `Contagem de registros por ${groupCol?.label ?? ""}`
+        : w.type === "line"
+          ? `Evolução de ${valueCol?.label ?? ""}`
+          : w.type === "area"
+            ? `Evolução de ${valueCol?.label ?? ""} (área)`
+            : w.type === "pie"
+              ? "Distribuição"
+              : `${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`;
+  const icon =
+    w.type === "line" ? (
+      <TrendingUp className="size-3.5 shrink-0 text-muted-foreground" />
+    ) : w.type === "area" ? (
+      <Activity className="size-3.5 shrink-0 text-muted-foreground" />
+    ) : w.type === "pie" ? (
+      <PieIcon className="size-3.5 shrink-0 text-muted-foreground" />
+    ) : (
+      <BarChart3 className="size-3.5 shrink-0 text-muted-foreground" />
+    );
+  const groupOptions = w.type === "line" ? columns.filter((c) => c.kind === "date") : groupableCols;
+  const grouped =
+    groupCol && valueCol
+      ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode).map((g) => ({
+          name: g.name,
+          total: g.total,
+          ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
+        }))
+      : [];
+  const completeSeries =
+    w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
+      ? sortChronologically(grouped)
+      : grouped;
+  const orderedSeries =
+    w.type === "bar" && dataMode !== "raw" ? sortAllBarCategories(completeSeries) : completeSeries;
+  const renderableSeries =
+    w.type === "pie"
+      ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
+      : limitChartSeriesForRendering(orderedSeries);
+  const series = renderableSeries.items;
+  const seriesColor = valueCol
+    ? (conditionalColor(series.at(-1)?.total ?? null, valueCol.kind, valueCol.conditionalFormat) ??
+      "var(--primary)")
+    : "var(--primary)";
+  const barSeries = series;
+  const barPresentation = barChartPresentation(barSeries.length);
+  const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
+  const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
+  const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
+  const displayedPieIndex = activePieIndex ?? selectedPieIndex;
+  const largestPieIndex = pieSeries.reduce(
+    (largest, entry, index, entries) =>
+      largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
+        ? index
+        : largest,
+    -1,
+  );
+  // A leitura detalhada fica visível desde o início usando a maior fatia;
+  // hover/clique apenas troca o foco. O gráfico continua sem escurecer as
+  // demais fatias enquanto nenhuma seleção explícita foi feita.
+  const summaryPieIndex = displayedPieIndex ?? (largestPieIndex >= 0 ? largestPieIndex : null);
+  const selectedPie = summaryPieIndex !== null ? pieSeries[summaryPieIndex] : null;
+  const selectedPieComparison =
+    summaryPieIndex !== null ? pieComparisonFor(pieSeries, summaryPieIndex) : null;
+  // Mesma leitura guiada do pizza, mas sem estado de "seleção" própria: o
+  // clique na barra já filtra diretamente (comportamento existente,
+  // preservado), então aqui só o hover troca o destaque, com a maior
+  // categoria como padrão quando nada está sob o mouse.
+  const largestBarIndex = barSeries.reduce(
+    (largest, entry, index, entries) =>
+      largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
+        ? index
+        : largest,
+    -1,
+  );
+  const summaryBarIndex = activeBarIndex ?? (largestBarIndex >= 0 ? largestBarIndex : null);
+  const selectedBar = summaryBarIndex !== null ? barSeries[summaryBarIndex] : null;
+  const selectedBarComparison =
+    summaryBarIndex !== null ? pieComparisonFor(barSeries, summaryBarIndex) : null;
+  // Só mostra resumo de tendência quando a série é de fato cronológica —
+  // mesma condição usada acima para decidir se `completeSeries` é ordenada
+  // por `sortChronologically`. Área agrupada por uma coluna não temporal
+  // não tem "início/fim" com sentido de tempo, é uma comparação categórica.
+  const trendSummary =
+    w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
+      ? trendSummaryFor(series)
+      : null;
+  const pieLegendItems = pieSeries.map((entry, i) => ({
+    ...entry,
+    color:
+      conditionalColor(entry.total, valueCol?.kind ?? "number", valueCol?.conditionalFormat) ??
+      palette[i % palette.length] ??
+      "var(--primary)",
+  }));
+  const { cornerRadius: pieCornerRadius, paddingAngle: piePaddingAngle } =
+    pieRoundnessFor(pieSeries);
+  const insufficient = w.type === "line" ? series.length < 2 : series.length < 1;
+
+  return (
+    <article
+      className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+      style={{ animationDelay: `${animationDelay}ms` }}
+    >
+      <WidgetHead title={title} icon={icon} {...dragProps} />
+      <div
+        className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+        data-export-controls
+      >
+        <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
+        <FieldDropSlot
+          accepts={w.type === "line" ? (["date"] as Kind[]) : groupableKinds}
+          onDropColumn={(key) => onConfigure({ groupKey: key })}
+        >
+          <label className="flex max-w-56 items-center gap-1 rounded-lg border border-border bg-card pl-1.5 text-[10px] text-muted-foreground">
+            <span className="font-mono font-bold text-foreground">X</span>
+            <select
+              aria-label="Coluna do eixo X"
+              className="oliam-select h-7 min-w-0 max-w-48 border-0 bg-transparent px-1.5 shadow-none"
+              value={groupCol?.key ?? ""}
+              onChange={(e) => onConfigure({ groupKey: e.target.value })}
+            >
+              {!groupCol && <option value="">Selecione…</option>}
+              {groupOptions.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </FieldDropSlot>
+        <FieldDropSlot
+          accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
+          onDropColumn={(key) => onConfigure({ valueKey: key })}
+        >
+          <label className="flex max-w-56 items-center gap-1 rounded-lg border border-border bg-card pl-1.5 text-[10px] text-muted-foreground">
+            <span className="font-mono font-bold text-foreground">Y</span>
+            <select
+              aria-label={op === "count" ? "Coluna usada para contar" : "Métrica do eixo Y"}
+              className="oliam-select h-7 min-w-0 max-w-48 border-0 bg-transparent px-1.5 shadow-none"
+              value={valueCol?.key ?? ""}
+              onChange={(e) => onConfigure({ valueKey: e.target.value })}
+            >
+              {!valueCol && <option value="">Selecione…</option>}
+              {(op === "count" ? columns : numericCols).map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </FieldDropSlot>
+        <CalculationButton
+          mode={dataMode}
+          operation={op}
+          operations={relevantOps}
+          metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
+          group={groupCol?.label}
+          allowRaw
+          onRaw={() => onConfigure({ dataMode: "raw" })}
+          onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
+        />
+      </div>
+      {sizeControls}
+      {groupCol && valueCol && (
+        <ChartReadingGuide
+          group={groupCol.label}
+          metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+          mode={dataMode}
+          operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+        />
+      )}
+      {renderableSeries.omitted > 0 && (
+        <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
+          Prévia otimizada: {renderableSeries.items.length.toLocaleString("pt-BR")} de{" "}
+          {renderableSeries.total.toLocaleString("pt-BR")} pontos, distribuídos por toda a série. Os
+          dados completos e sem amostragem permanecem na tabela detalhada.
+        </p>
+      )}
+      {insufficient || !groupCol || !valueCol ? (
+        <p className="p-6 text-center text-xs text-muted-foreground">
+          {!groupCol || !valueCol
+            ? "Escolha uma coluna de agrupamento e uma numérica para este widget."
+            : "Dados insuficientes para este gráfico."}
+        </p>
+      ) : w.type === "bar" ? (
+        <>
+          <div className="relative">
+            <div
+              ref={barPresentation.scrollable ? chartScrollRef : undefined}
+              className={cn(
+                "h-64 overflow-x-auto overflow-y-hidden p-4",
+                barPresentation.scrollable && "oliam-chart-drag-scroll",
+              )}
+              onPointerDown={barPresentation.scrollable ? handleChartScrollPointerDown : undefined}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: barPresentation.scrollable ? barPresentation.contentWidth : "100%",
+                  minWidth: "100%",
+                }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={barSeries}
+                    margin={{ top: 20, right: 12, left: 4, bottom: 18 }}
+                    barCategoryGap={barSeries.length > 10 ? "34%" : "18%"}
+                  >
+                    <defs>
+                      <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
+                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.55} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      vertical={false}
+                      horizontal
+                      stroke="var(--border)"
+                      strokeOpacity={0.6}
+                    />
+                    <XAxis
+                      type="category"
+                      dataKey="name"
+                      tick={(props) => <AxisTick {...props} />}
+                      tickLine={false}
+                      axisLine={{ stroke: "var(--border)" }}
+                      interval={0}
+                    />
+                    <YAxis
+                      type="number"
+                      tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={52}
+                      tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
+                    />
+                    <ChartTooltip
+                      cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
+                      content={(props) => (
+                        <BarTooltip
+                          active={props.active}
+                          payload={
+                            props.payload as {
+                              value?: number;
+                              payload?: { sourceRow?: number };
+                            }[]
+                          }
+                          label={props.label as string}
+                          series={barSeries}
+                          kind={valueCol.kind}
+                          mode={dataMode}
+                        />
+                      )}
+                    />
+                    <Bar
+                      dataKey="total"
+                      fill={`url(#bar-grad-${w.id})`}
+                      radius={[6, 6, 0, 0]}
+                      maxBarSize={72}
+                      onClick={(_, i) => {
+                        // O payload que o Recharts entrega ao onClick de uma
+                        // <Bar> com <Cell> filhas não confiavelmente carrega
+                        // `.name` (varia por versão/estrutura interna) — o
+                        // índice, sim, sempre corresponde à posição em
+                        // barSeries (mesmo array usado para renderizar as
+                        // Cell logo abaixo). Buscar o nome ali, em vez de
+                        // confiar no payload, é o mesmo padrão já usado com
+                        // sucesso no <Pie> (onClick={(_, index) => ...}).
+                        const entry = barSeries[i];
+                        if (entry) handleGroupClick(groupCol.key, entry.name);
+                      }}
+                      onMouseEnter={(_, i) => setActiveBarIndex(i)}
+                      onMouseLeave={() => setActiveBarIndex(null)}
+                      cursor="pointer"
+                      // O hover chama setActiveBarIndex, que re-renderiza o
+                      // widget e recalcula barSeries com identidade nova a
+                      // cada passagem do mouse. Sem isso, o Recharts trata
+                      // a nova referência como "dado mudou", reinicia a
+                      // animação de entrada da barra e recalcula o eixo Y
+                      // no processo — piscando os números do eixo a cada
+                      // hover. Mesmo ajuste já usado no sparkline (metric-widget-body.tsx)
+                      // para o mesmo tipo de problema.
+                      isAnimationActive={false}
+                    >
+                      {barSeries.map((entry, entryIndex) => (
+                        <Cell
+                          key={`${entry.name}-${entry.sourceRow ?? entryIndex}`}
+                          fill={
+                            conditionalColor(
+                              entry.total,
+                              valueCol.kind,
+                              valueCol.conditionalFormat,
+                            ) ?? `url(#bar-grad-${w.id})`
+                          }
+                          opacity={
+                            activeBarIndex === null || activeBarIndex === entryIndex ? 1 : 0.45
+                          }
+                          style={{ transition: "opacity 150ms ease" }}
+                        />
+                      ))}
+                      <LabelList
+                        dataKey="total"
+                        position="top"
+                        fontSize={10}
+                        fill="var(--muted-foreground)"
+                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            {barPresentation.scrollable && <ChartScrollButtons label="gráfico de barras" />}
+          </div>
+          {barPresentation.scrollable && (
+            <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+              {barSeries.length.toLocaleString("pt-BR")} categorias · use as setas, arraste ou role
+              para os lados para ver todas
+            </p>
+          )}
+          <p className="sr-only">
+            Tabela alternativa ao gráfico de barras:{" "}
+            {barSeries.map((g) => `${g.name}, ${g.total}`).join("; ")}.
+          </p>
+          {selectedBar && (
+            <SeriesComparisonPanel
+              selected={selectedBar}
+              comparison={selectedBarComparison}
+              kind={valueCol.kind}
+              filterLabel="Filtrar por esta categoria"
+              onFilter={() => handleGroupClick(groupCol.key, selectedBar.name)}
+            />
+          )}
+        </>
+      ) : w.type === "pie" ? (
+        <>
+          <div
+            className={cn(
+              "grid min-w-0 items-center gap-3 p-4",
+              w.span > 1 && "md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,0.9fr)]",
+            )}
+          >
+            <div className="h-52 min-w-0 overflow-visible">
+              <ResponsiveContainer width="100%" height="100%">
+                <RPieChart margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
+                  <ChartTooltip
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      fontSize: 12,
+                      padding: "8px 12px",
+                      boxShadow:
+                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+                    }}
+                    labelStyle={{
+                      color: "var(--popover-foreground)",
+                      fontWeight: 600,
+                      marginBottom: 2,
+                    }}
+                    itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                    formatter={(
+                      v: number,
+                      _name: string,
+                      entry: { payload?: { count?: number } },
+                    ) => {
+                      const formatted = fmt(v, valueCol.kind) ?? String(v);
+                      const share = pieTotal
+                        ? (v / pieTotal).toLocaleString("pt-BR", {
+                            style: "percent",
+                            maximumFractionDigits: 1,
+                          })
+                        : "participação indisponível";
+                      const count = entry?.payload?.count;
+                      return [
+                        formatted,
+                        count
+                          ? `${share} do total · ${count.toLocaleString("pt-BR")} categorias agrupadas`
+                          : `${share} do total`,
+                      ];
+                    }}
+                  />
+                  <Pie
+                    data={pieSeries}
+                    dataKey="total"
+                    nameKey="name"
+                    innerRadius="48%"
+                    outerRadius="76%"
+                    paddingAngle={piePaddingAngle}
+                    cornerRadius={pieCornerRadius}
+                    minAngle={4}
+                    stroke="var(--card)"
+                    strokeWidth={3}
+                    onClick={(_, index) => {
+                      // Mesmo padrão de clique-para-filtrar já usado em
+                      // barra/linha/área/ranking/mapa: clicar filtra na
+                      // hora, sem precisar de um botão extra. "Outros" é um
+                      // agrupador sintético (não existe como valor real na
+                      // planilha), então só seleciona para exibir a
+                      // comparação, sem tentar filtrar por ele.
+                      setSelectedPieIndex(index);
+                      const entry = pieSeries[index];
+                      if (entry && entry.name !== "Outros") {
+                        handleGroupClick(groupCol.key, entry.name);
+                      }
+                    }}
+                    onMouseEnter={(_, i) => setActivePieIndex(i)}
+                    onMouseLeave={() => setActivePieIndex(null)}
+                    cursor="pointer"
+                    animationDuration={500}
+                  >
+                    {pieSeries.map((entry, i) => (
+                      <Cell
+                        key={`${entry.name}-${"sourceRow" in entry ? (entry.sourceRow ?? i) : i}`}
+                        fill={pieLegendItems[i]?.color}
+                        opacity={displayedPieIndex === null || displayedPieIndex === i ? 1 : 0.45}
+                        stroke={displayedPieIndex === i ? "var(--foreground)" : "var(--card)"}
+                        strokeWidth={displayedPieIndex === i ? 2 : 3}
+                        style={{ transition: "opacity 150ms ease, stroke 150ms ease" }}
+                      />
+                    ))}
+                    <Label
+                      position="center"
+                      content={({ viewBox }) => {
+                        const box = viewBox as { cx?: number; cy?: number } | undefined;
+                        if (box?.cx === undefined || box?.cy === undefined) return null;
+                        const active =
+                          displayedPieIndex !== null ? pieSeries[displayedPieIndex] : null;
+                        const label = active ? truncateLabel(active.name, 12) : "Total";
+                        const value = fmt(active ? active.total : pieTotal, valueCol.kind) ?? "–";
+                        return (
+                          <g style={{ pointerEvents: "none" }}>
+                            <text
+                              x={box.cx}
+                              y={box.cy}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                            >
+                              <tspan
+                                x={box.cx}
+                                dy="-0.35em"
+                                fontFamily="var(--font-display)"
+                                fontSize={17}
+                                fontWeight={800}
+                                fill="var(--foreground)"
+                              >
+                                {value}
+                              </tspan>
+                              <tspan
+                                x={box.cx}
+                                dy="1.4em"
+                                fontSize={10}
+                                fill="var(--muted-foreground)"
+                              >
+                                {label}
+                              </tspan>
+                              {active && pieTotal > 0 && (
+                                <tspan
+                                  x={box.cx}
+                                  dy="1.35em"
+                                  fontSize={9}
+                                  fill="var(--muted-foreground)"
+                                >
+                                  {(active.total / pieTotal).toLocaleString("pt-BR", {
+                                    style: "percent",
+                                    maximumFractionDigits: 1,
+                                  })}{" "}
+                                  do total
+                                </tspan>
+                              )}
+                            </text>
+                          </g>
+                        );
+                      }}
+                    />
+                  </Pie>
+                </RPieChart>
+              </ResponsiveContainer>
+            </div>
+            <PieLegend
+              items={pieLegendItems}
+              kind={valueCol.kind}
+              activeIndex={displayedPieIndex}
+              onHoverIndex={setActivePieIndex}
+              onSelectIndex={(i) => {
+                setSelectedPieIndex(i);
+                const entry = pieSeries[i];
+                if (entry && entry.name !== "Outros") {
+                  handleGroupClick(groupCol.key, entry.name);
+                }
+              }}
+            />
+          </div>
+          {selectedPie && (
+            <SeriesComparisonPanel
+              selected={selectedPie}
+              comparison={selectedPieComparison}
+              kind={valueCol.kind}
+              filterLabel="Filtrar por esta fatia"
+              onFilter={
+                selectedPie.name !== "Outros"
+                  ? () => handleGroupClick(groupCol.key, selectedPie.name)
+                  : undefined
+              }
+            />
+          )}
+          <p className="sr-only">
+            Tabela alternativa à pizza:{" "}
+            {pieSeries
+              .map((g) =>
+                "count" in g && g.count
+                  ? `${g.name} (${g.count} categorias agrupadas), ${g.total}`
+                  : `${g.name}, ${g.total}`,
+              )
+              .join("; ")}
+            .
+          </p>
+        </>
+      ) : w.type === "area" ? (
+        <>
+          <div className="relative">
+            <div
+              ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
+              className={cn(
+                "h-56 overflow-x-auto overflow-y-hidden p-4",
+                timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
+              )}
+              onPointerDown={
+                timeSeriesPresentation.scrollable ? handleChartScrollPointerDown : undefined
+              }
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: timeSeriesPresentation.scrollable
+                    ? timeSeriesPresentation.contentWidth
+                    : "100%",
+                  minWidth: "100%",
+                }}
+              >
+                <ResponsiveContainer>
+                  <AreaChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
+                    <defs>
+                      <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
+                        <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} interval={0} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      width={52}
+                      tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
+                    />
+                    <ChartTooltip
+                      contentStyle={{
+                        background: "var(--popover)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        fontSize: 12,
+                        padding: "8px 12px",
+                        boxShadow:
+                          "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+                      }}
+                      labelStyle={{
+                        color: "var(--popover-foreground)",
+                        fontWeight: 600,
+                        marginBottom: 2,
+                      }}
+                      itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                      formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="total"
+                      stroke={seriesColor}
+                      strokeWidth={2}
+                      fill={`url(#area-${w.id})`}
+                      dot={(dotProps: ChartDotProps) => {
+                        const { key, ...rest } = dotProps as ChartDotProps & {
+                          key?: string | number;
+                        };
+                        return (
+                          <ChartDot
+                            key={key}
+                            {...rest}
+                            r={3}
+                            groupCol={groupCol}
+                            valueCol={valueCol}
+                            onSelect={handleGroupClick}
+                          />
+                        );
+                      }}
+                      activeDot={(dotProps: ChartDotProps) => {
+                        const { key, ...rest } = dotProps as ChartDotProps & {
+                          key?: string | number;
+                        };
+                        return (
+                          <ChartDot
+                            key={key}
+                            {...rest}
+                            r={5}
+                            groupCol={groupCol}
+                            valueCol={valueCol}
+                            onSelect={handleGroupClick}
+                          />
+                        );
+                      }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            {timeSeriesPresentation.scrollable && <ChartScrollButtons label="gráfico de área" />}
+          </div>
+          {timeSeriesPresentation.scrollable && (
+            <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+              {series.length.toLocaleString("pt-BR")} períodos · use as setas, arraste ou role para
+              os lados
+            </p>
+          )}
+          <p className="sr-only">
+            Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
+          </p>
+          {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
+        </>
+      ) : (
+        <>
+          <div className="relative">
+            <div
+              ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
+              className={cn(
+                "h-56 overflow-x-auto overflow-y-hidden p-4",
+                timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
+              )}
+              onPointerDown={
+                timeSeriesPresentation.scrollable ? handleChartScrollPointerDown : undefined
+              }
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: timeSeriesPresentation.scrollable
+                    ? timeSeriesPresentation.contentWidth
+                    : "100%",
+                  minWidth: "100%",
+                }}
+              >
+                <ResponsiveContainer>
+                  <LineChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
+                    <CartesianGrid vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} interval={0} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      width={52}
+                      tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
+                    />
+                    <ChartTooltip
+                      contentStyle={{
+                        background: "var(--popover)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        fontSize: 12,
+                        padding: "8px 12px",
+                        boxShadow:
+                          "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+                      }}
+                      labelStyle={{
+                        color: "var(--popover-foreground)",
+                        fontWeight: 600,
+                        marginBottom: 2,
+                      }}
+                      itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                      formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="total"
+                      stroke={seriesColor}
+                      strokeWidth={2}
+                      dot={(dotProps: ChartDotProps) => {
+                        const { key, ...rest } = dotProps as ChartDotProps & {
+                          key?: string | number;
+                        };
+                        return (
+                          <ChartDot
+                            key={key}
+                            {...rest}
+                            r={3}
+                            groupCol={groupCol}
+                            valueCol={valueCol}
+                            onSelect={handleGroupClick}
+                          />
+                        );
+                      }}
+                      activeDot={(dotProps: ChartDotProps) => {
+                        const { key, ...rest } = dotProps as ChartDotProps & {
+                          key?: string | number;
+                        };
+                        return (
+                          <ChartDot
+                            key={key}
+                            {...rest}
+                            r={5}
+                            groupCol={groupCol}
+                            valueCol={valueCol}
+                            onSelect={handleGroupClick}
+                          />
+                        );
+                      }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            {timeSeriesPresentation.scrollable && <ChartScrollButtons label="linha do tempo" />}
+          </div>
+          {timeSeriesPresentation.scrollable && (
+            <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+              {series.length.toLocaleString("pt-BR")} períodos · use as setas, arraste ou role para
+              os lados
+            </p>
+          )}
+          <p className="sr-only">
+            Tabela alternativa à evolução: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
+          </p>
+          {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
+        </>
+      )}
+    </article>
+  );
+}
