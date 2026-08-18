@@ -135,7 +135,10 @@ for (const entry of manifest.cases ?? []) {
       (name) =>
         name.Name === "_xlnm._FilterDatabase" &&
         typeof name.Ref === "string" &&
-        /^'SHEET_\d{3}'!\$?[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+$/.test(name.Ref),
+        // O SheetJS só cita o nome da aba entre aspas simples quando o
+        // identificador exige (espaços, caracteres especiais); "SHEET_NNN"
+        // nunca exige, então a referência sai sem aspas na escrita real.
+        /^'?SHEET_\d{3}'?!\$?[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+$/.test(name.Ref),
     ),
     `${entry.file}: nome definido do usuario sobreviveu.`,
     failures,
