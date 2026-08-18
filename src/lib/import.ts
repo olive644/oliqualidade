@@ -38,6 +38,16 @@ export type ImportAudit = {
   regionsKeptTogether?: number;
 };
 
+/**
+ * Percentual de células não vazias da origem que sobreviveram até a tabela
+ * importada. Sem células de origem, considera 100% (nada a preservar).
+ */
+export function auditFidelityPercent(audit: ImportAudit): number {
+  if (audit.sourceNonEmptyCells <= 0) return 100;
+  const preserved = Math.min(audit.outputNonEmptyCells, audit.sourceNonEmptyCells);
+  return Math.round((preserved / audit.sourceNonEmptyCells) * 100);
+}
+
 export type SourceGrid = {
   startRow: number;
   startColumn: number;

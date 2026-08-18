@@ -7,6 +7,7 @@ import {
   Columns3,
   ExternalLink,
   FileText,
+  Gauge,
   GitMerge,
   GripVertical,
   Image as ImageIcon,
@@ -23,9 +24,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fmt } from "@/lib/format";
 import { kinds, type Column, type Kind, type Row } from "@/lib/types";
-import { buildSheetConfidenceMatrix } from "@/lib/import-intelligence";
+import { buildSheetConfidenceMatrix, confidenceLevelFor } from "@/lib/import-intelligence";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
-import type { SourceGrid, ImportAudit } from "@/lib/import";
+import { auditFidelityPercent, type SourceGrid, type ImportAudit } from "@/lib/import";
 import {
   adaptImportProfile,
   applyImportSelection,
@@ -778,6 +779,100 @@ export function Review(p: {
                 </li>
               ))}
             </ul>
+          </details>
+        ) : null}
+        {active?.audit ? (
+          <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
+              <span className="inline-flex items-center gap-2">
+                <Gauge className="size-4 text-primary" />
+                Relatório de fidelidade da importação
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                <ConfidenceDot level={confidenceLevelFor(auditFidelityPercent(active.audit))} />
+                {auditFidelityPercent(active.audit)}%
+              </span>
+            </summary>
+            <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              Percentual de células não vazias da planilha original que chegaram até a tabela
+              importada, e o que foi ajustado no caminho.
+            </p>
+            <dl className="grid gap-x-4 gap-y-2 border-t border-border p-3 text-xs sm:grid-cols-2">
+              <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                <dt className="text-muted-foreground">Células na origem</dt>
+                <dd className="font-mono">{active.audit.sourceNonEmptyCells}</dd>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                <dt className="text-muted-foreground">Células na tabela importada</dt>
+                <dd className="font-mono">{active.audit.outputNonEmptyCells}</dd>
+              </div>
+              {active.audit.formulaCellsRecovered > 0 ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Fórmulas recalculadas/recuperadas</dt>
+                  <dd className="font-mono">{active.audit.formulaCellsRecovered}</dd>
+                </div>
+              ) : null}
+              {active.audit.mergedCellsExpanded > 0 ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Células mescladas expandidas</dt>
+                  <dd className="font-mono">{active.audit.mergedCellsExpanded}</dd>
+                </div>
+              ) : null}
+              {active.audit.numericCellsConverted > 0 ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Valores convertidos para número</dt>
+                  <dd className="font-mono">{active.audit.numericCellsConverted}</dd>
+                </div>
+              ) : null}
+              {active.audit.rowsAboveHeaderIgnored > 0 ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Linhas acima do cabeçalho ignoradas</dt>
+                  <dd className="font-mono">{active.audit.rowsAboveHeaderIgnored}</dd>
+                </div>
+              ) : null}
+              {active.audit.hiddenRowsIgnored > 0 ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Linhas ocultas ignoradas</dt>
+                  <dd className="font-mono">{active.audit.hiddenRowsIgnored}</dd>
+                </div>
+              ) : null}
+              {active.audit.blankRowsIgnored > 0 ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Linhas em branco ignoradas</dt>
+                  <dd className="font-mono">{active.audit.blankRowsIgnored}</dd>
+                </div>
+              ) : null}
+              {active.audit.trailingRowsIgnored > 0 ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Linhas finais ignoradas</dt>
+                  <dd className="font-mono">{active.audit.trailingRowsIgnored}</dd>
+                </div>
+              ) : null}
+              {active.audit.columnsIgnored > 0 ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Colunas ignoradas</dt>
+                  <dd className="font-mono">{active.audit.columnsIgnored}</dd>
+                </div>
+              ) : null}
+              {active.audit.repeatedHeaderRowsIgnored ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Cabeçalhos repetidos ignorados</dt>
+                  <dd className="font-mono">{active.audit.repeatedHeaderRowsIgnored}</dd>
+                </div>
+              ) : null}
+              {active.audit.notesPreserved ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Notas preservadas</dt>
+                  <dd className="font-mono">{active.audit.notesPreserved}</dd>
+                </div>
+              ) : null}
+              {active.audit.regionsKeptTogether ? (
+                <div className="flex items-center justify-between rounded-xl bg-muted/25 px-3 py-2">
+                  <dt className="text-muted-foreground">Regiões mantidas juntas por segurança</dt>
+                  <dd className="font-mono">{active.audit.regionsKeptTogether}</dd>
+                </div>
+              ) : null}
+            </dl>
           </details>
         ) : null}
         {active?.diagnostics?.tableRegions && active.diagnostics.tableRegions.length > 1 && (

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
-import { preferredSheetIndex, sheetsWithData, sheetToRows } from "@/lib/import";
+import {
+  auditFidelityPercent,
+  preferredSheetIndex,
+  sheetsWithData,
+  sheetToRows,
+  type ImportAudit,
+} from "@/lib/import";
 import type { WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
 
 const sheet = (aoa: (string | number | null)[][]) => XLSX.utils.aoa_to_sheet(aoa);
@@ -1766,5 +1772,39 @@ describe("preferredSheetIndex", () => {
       { name: "Também vazia", rows: [], warning: null },
     ];
     expect(preferredSheetIndex(sheets)).toBe(0);
+  });
+});
+
+describe("auditFidelityPercent", () => {
+  const baseAudit: ImportAudit = {
+    sourceNonEmptyCells: 100,
+    outputNonEmptyCells: 100,
+    formulaCellsRecovered: 0,
+    mergedCellsExpanded: 0,
+    numericCellsConverted: 0,
+    rowsAboveHeaderIgnored: 0,
+    hiddenRowsIgnored: 0,
+    blankRowsIgnored: 0,
+    trailingRowsIgnored: 0,
+    columnsIgnored: 0,
+  };
+
+  it("retorna 100 quando todas as células da origem sobrevivem", () => {
+    expect(auditFidelityPercent(baseAudit)).toBe(100);
+  });
+
+  it("calcula o percentual arredondado quando parte das células é perdida", () => {
+    expect(auditFidelityPercent({ ...baseAudit, outputNonEmptyCells: 90 })).toBe(90);
+    expect(auditFidelityPercent({ ...baseAudit, outputNonEmptyCells: 67 })).toBe(67);
+  });
+
+  it("nunca passa de 100 mesmo se output superar a origem (célula recuperada de fórmula, por exemplo)", () => {
+    expect(auditFidelityPercent({ ...baseAudit, outputNonEmptyCells: 120 })).toBe(100);
+  });
+
+  it("considera 100 quando não havia nenhuma célula de origem a preservar", () => {
+    expect(
+      auditFidelityPercent({ ...baseAudit, sourceNonEmptyCells: 0, outputNonEmptyCells: 0 }),
+    ).toBe(100);
   });
 });
