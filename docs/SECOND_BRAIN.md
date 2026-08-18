@@ -160,7 +160,8 @@ audit inteiro.
 | Sanitização local de corpus real (para preencher o gate de promoção Rust/WASM por formato) | `scripts/workbook-sanitizer.mjs` (`sanitizeWorkbookBytes`, aceita `bookType` `xlsx`/`xlsm`/`xltx`/`xltm` — os dois últimos via patch pontual no `[Content_Types].xml` depois do `XLSX.write`, `TEMPLATE_CONTENT_TYPE_PATCH`), `scripts/sanitize-workbook-corpus.mjs` (CLI, `bookType` = extensão de origem) | `src/lib/workbook-sanitizer.test.ts` |
 | Cabeçalhos, blocos e regiões                | `import.ts`, `structural-model.ts`                                    | `import.test.ts`                             |
 | Tipos, fórmulas e semântica                 | `format.ts`, `formula.ts`, `spreadsheet-intelligence.ts`              | teste dedicado                               |
-| Widget novo ou recomendação                 | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `components/oliam/widget-card.tsx`, `components/oliam/widget-support.tsx` | widgets + auto-dashboard                     |
+| Widget novo ou recomendação                 | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `components/oliam/widget-card.tsx` (dispatcher por `w.type`), `components/oliam/widget-support.tsx` (chrome/hooks compartilhados: `WidgetHead`, `EmptyWidget`, `FilterChip`, `WidgetDragProps`) | widgets + auto-dashboard                     |
+| Corpo de um tipo específico de widget (ranking, insights, avaliação, comparador de versões, tabela dinâmica/matriz) | `components/oliam/{ranking,insights,rating,version-compare,pivot}-widget-body.tsx` — cada um autocontido (`<article>`+`WidgetHead` próprios), chamado por `WidgetCard` | verificação manual no navegador (sem teste unitário ainda) |
 | Coluna vazia entrando/saindo de métrica ou dimensão automática | `classifyDashboardColumn` (`auto-dashboard.ts`), `nums`/`fillRatio` em `createWidget`/`buildDefaultWidgets` (`widgets.ts`) | `auto-dashboard.test.ts`, `widgets.test.ts` |
 | Painel de leitura guiada de categoria em destaque (comparação vs. maior outra categoria) | `pieComparisonFor` (`data-pipeline.ts`), `SeriesComparisonPanel` (`components/oliam/widget-support.tsx`) — genérico sobre `{name, total}[]`, usado hoje por pizza e barra | `data-pipeline.test.ts` (a função) + verificação manual do widget |
 | Resumo de tendência (início→fim, mínimo, máximo, média) para séries temporais | `trendSummaryFor` (`data-pipeline.ts`), `TrendSummaryPanel` (`components/oliam/widget-support.tsx`) — usado por linha e área agrupada por data | `data-pipeline.test.ts` (a função) + verificação manual do widget |
@@ -373,6 +374,24 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    pós-hidratação) e suíte E2E completa. `security-smoke.mjs` (roda na
    CI) fortalecido pra falhar se `script-src` não tiver nonce ou ainda
    tiver `'unsafe-inline'`. Ver [[CURRENT_STATE_AUDIT#93. Item 7 do backlog implementado: script-src do CSP agora usa nonce por requisição, sem unsafe-inline]].
+8. **Divisão de `widget-card.tsx`** `#pendente` — arquivo era uma função
+   única de ~3543 linhas/151 KB com 14 branches de tipo de widget, zero
+   `useMemo`/`useCallback` e zero teste. Primeira fatia: 5 tipos
+   autocontidos extraídos (`version-compare-widget-body.tsx`,
+   `pivot-widget-body.tsx`, `ranking-widget-body.tsx`,
+   `insights-widget-body.tsx`, `rating-widget-body.tsx`), mais
+   `EmptyWidget`/`FilterChip` movidos pra `widget-support.tsx`
+   (deduplicação real, não só realocação — `FilterChip` era closure
+   implícita, virou componente com props explícitas). Arquivo caiu de
+   3543 para 2760 linhas. Faltam 9 branches: `exception-panel`
+   (~376 linhas), `schedule-heatmap` (~577 linhas), `metric`/`metric-trend`,
+   e o maior de todos, `bar`/`pie`/`line`/`area` (~780 linhas,
+   compartilha estado `activePieIndex`/`selectedPieIndex`/`activeBarIndex`
+   só entre si). Repetir o mesmo padrão: componente autocontido por
+   tipo (chrome próprio + `<article>`, não só o miolo), extrair chrome
+   genuinamente duplicado pra `widget-support.tsx`, verificar com
+   `tsc`+`eslint`+E2E+navegador real a cada fatia (sem teste unitário
+   pré-existente pra confiar). Ver [[CURRENT_STATE_AUDIT#94. Primeira fatia da divisão de widget-card.tsx (151 KB, ~3543 linhas numa função só): 5 tipos de widget extraídos, 783 linhas removidas]].
 
 ## Comandos operacionais
 

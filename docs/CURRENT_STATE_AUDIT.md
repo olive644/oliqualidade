@@ -5019,3 +5019,102 @@ anuncia mais `'unsafe-inline'` em nenhuma resposta do servidor,
 reduzindo de verdade a superfície de XSS que a seção 92 apontou como
 mitigada só parcialmente (o componente morto foi removido, mas o CSP
 continuava permitindo qualquer script inline até esta seção).
+
+## 94. Primeira fatia da divisão de `widget-card.tsx` (151 KB, ~3543 linhas numa função só): 5 tipos de widget extraídos, 783 linhas removidas
+
+Usuário apontou `widget-card.tsx` como o próximo candidato forte a
+divisão — muito acima dos demais componentes em tamanho, concentrando
+boa parte da complexidade visual e de regras dos widgets. Pediu
+repartição em subcomponentes/hooks e mais testes focados.
+
+**Descoberta que mudou o formato da divisão**: o arquivo não é uma
+coleção de componentes — é uma função única (`WidgetCard`) de ~3350
+linhas com 14 branches `if (w.type === ...)` sequenciais, zero
+`useMemo`/`useCallback`/`useEffect` (tudo recomputado por render, mesmo
+dentro de cada branch) e **zero teste** cobrindo o arquivo inteiro.
+Mapeado a fundo (via subagente Explore) antes de tocar em qualquer
+linha: props, estado, handlers, estrutura de renderização por tipo,
+chrome compartilhado (`<article>` + `WidgetHead` + `dragProps` +
+`sizeControls`, quase idêntico em toda branch) e concerns cruzados
+(resolução de campo/agregação duplicada quase literalmente 4x; clique-
+para-filtrar duplicado em 6+ branches).
+
+**Decisão de escopo**: dado o risco real (componente de renderização
+crítico, usado em produção, sem nenhuma rede de segurança de teste
+unitário) e o tamanho do arquivo, dividir tudo de uma vez num único
+diff enorme e não-revisável seria irresponsável. Entregue em fatia
+pequena, completa e verificada — 5 dos 14 tipos de widget extraídos
+nesta sessão (os mais autocontidos, sem compartilhar estado com o bloco
+de gráficos barra/pizza/linha/área), com os 9 restantes explicitamente
+registrados como próxima fatia, não abandonados.
+
+**Extraído para arquivos próprios** (`src/components/oliam/`, mesmo
+padrão já usado por `map-widget-body.tsx`/`operational-widget-body.tsx`):
+`version-compare-widget-body.tsx`, `pivot-widget-body.tsx` (pivot-table
++ matrix-heatmap), `ranking-widget-body.tsx`, `insights-widget-body.tsx`,
+`rating-widget-body.tsx`. Cada um é um substituto completo e autocontido
+do branch original inteiro (inclusive o próprio `<article>` + `WidgetHead`,
+não só o conteúdo interno) — decisão tomada depois de descobrir que
+alguns branches (pivot-table/matrix-heatmap) intercalam chrome genérico
+(`sizeControls`) com toolbar específica do tipo, então dividir a
+responsabilidade entre pai e filho no meio do branch criava ambiguidade
+de quem renderiza o quê; um componente autocontido por tipo é mais
+simples e sem essa ambiguidade.
+
+**Deduplicação real, não só realocação de código** (correção de
+oportunidade encontrada durante a extração, não pedida à parte):
+`EmptyWidget` movido pra `widget-support.tsx` (evita import circular,
+já que múltiplos corpos extraídos precisam dele); `FilterChip` — antes
+uma closure local em `WidgetCard` capturando `filters`/`setFilters` do
+escopo, recriada implicitamente a cada render — virou componente
+exportado em `widget-support.tsx` recebendo `filters`/`setFilters`
+como props explícitas, elimina a necessidade de threadear a closure
+como prop através de cada arquivo extraído; novo tipo `WidgetDragProps`
+exportado pra parar de repetir a mesma união de 12 props opcionais em
+`WidgetHead`/`EmptyWidget`/cada corpo extraído.
+
+**Prova de que o comportamento não mudou** (sem teste unitário
+pré-existente pra confiar, verificação teve que ser mais pesada que o
+normal): `npx tsc --noEmit` limpo depois de cada extração individual
+(pego cedo, nunca acumulado); `npx eslint --fix` confirmando zero import
+não utilizado sobrando nos arquivos originais depois de remover cada
+branch; `npm run build` com bundle confirmado sem regressão de tamanho
+(`npm run performance:check` aprovado); `npx playwright test` (E2E
+completo) aprovado contra dev server real; **verificação manual no
+navegador** do dashboard de demonstração real (`vendas_2026.xlsx`,
+12 linhas) — `RANKING POR UNIDADE` renderizado com dado computado
+correto (Linha A 391, Linha B 386, Linha C 278), clique-pra-filtrar
+testado nas duas direções (clicar na barra do ranking filtra 12→4
+linhas e atualiza KPIs; clicar no chip "Filtrado por: Linha A" remove o
+filtro e volta a 12→12), zero erro novo no console (só um aviso de
+hidratação pré-existente e não relacionado, sobre o texto do botão de
+modo privado, causado por estado de sessão anterior no localStorage).
+Essa verificação ponta-a-ponta era especialmente importante aqui porque
+a extração do `FilterChip` mudou sua assinatura (de closure implícita
+pra props explícitas) e trocou `handleGroupClick` por uma chamada
+direta a `toggleClickFilter` — mudança mecânica, mas exatamente o tipo
+de refactor que um teste automatizado não cobria e só verificação real
+prova.
+
+**Resultado líquido**: `widget-card.tsx` caiu de 3543 para 2760 linhas
+(-783 linhas, -22%). `npx vitest run` (555 passou, 1 pulado, sem
+mudança de contagem — nenhum teste novo foi pedido nesta fatia, mas
+nenhum teste existente quebrou), `npx tsc --noEmit`, `npx eslint --fix`
++ Prettier CRLF-safe em todos os 7 arquivos tocados, `npm run build` e
+`npm run performance:check` aprovados.
+
+**Pendência explícita, não implementada** (próxima fatia natural): os
+9 branches restantes — `exception-panel` (maior branch não-gráfico,
+~376 linhas, autocontido), `schedule-heatmap` (~577 linhas, autocontido),
+`metric`/`metric-trend` (inclui sparkline Recharts inline), e o maior de
+todos, `bar`/`pie`/`line`/`area` (~780 linhas, compartilha
+`activePieIndex`/`selectedPieIndex`/`activeBarIndex` só entre si — pode
+virar um único arquivo autocontido levando esse estado junto). Os
+branches já delegados a componentes lazy (`attendance-overview` etc. →
+`OperationalWidgetBody`, `map` → `MapWidgetBody`) e os branches
+pequenos (`folder-files`, `image`, ~15-40 linhas) não foram tocados por
+já estarem no tamanho certo ou já extraídos. O padrão desta seção
+(componente autocontido por tipo, chrome compartilhado extraído pra
+`widget-support.tsx` quando genuinamente duplicado, verificação
+end-to-end no navegador antes de considerar pronto) deve se repetir nas
+próximas fatias.

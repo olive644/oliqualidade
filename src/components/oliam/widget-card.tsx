@@ -122,8 +122,15 @@ import type { FolderMonitorView } from "@/lib/folder-monitor";
 import type { ColorGroupLabel, SourceCellFill } from "@/lib/cell-fill-provenance";
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { AnimatedNumber } from "./animated-number";
+import { InsightsWidgetBody } from "./insights-widget-body";
+import { PivotWidgetBody } from "./pivot-widget-body";
+import { RankingWidgetBody } from "./ranking-widget-body";
+import { RatingWidgetBody } from "./rating-widget-body";
+import { VersionCompareWidgetBody } from "./version-compare-widget-body";
 import {
+  EmptyWidget,
   FieldDropSlot,
+  FilterChip,
   WidgetHead,
   widgetSizeLabels,
   widgetSpanLabels,
@@ -336,26 +343,6 @@ export function WidgetCard({
       </Button>
     </div>
   );
-  // Indicador "filtrado por X" exibido no cabeçalho de controles do widget
-  // quando a coluna de agrupamento dele tem um filtro simples ativo,
-  // sincronizado com a barra de filtros do topo (mesmo estado, sheet.filters).
-  const activeGroupFilter = (groupKey: string | undefined) =>
-    groupKey ? filters.find((f) => f.key === groupKey && !f.min && !f.max) : undefined;
-  const FilterChip = ({ groupKey }: { groupKey: string | undefined }) => {
-    const active = activeGroupFilter(groupKey);
-    if (!active || !groupKey) return null;
-    return (
-      <button
-        type="button"
-        className="flex items-center gap-1 rounded-full border border-primary/40 bg-tint px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-primary"
-        onClick={() => setFilters(filters.filter((f) => f.key !== groupKey))}
-        aria-label={`Remover filtro: filtrado por ${active.value}`}
-      >
-        Filtrado por: {active.value}
-        <X className="size-3" />
-      </button>
-    );
-  };
   const dragProps = {
     draggable: true,
     onDragStart: (e: React.DragEvent) => {
@@ -902,347 +889,30 @@ export function WidgetCard({
   }
 
   if (w.type === "version-compare") {
-    const stats = versionDiff
-      ? [
-          ["Adicionadas", versionDiff.added, "text-emerald-700 dark:text-emerald-300"],
-          ["Alteradas", versionDiff.changed, "text-amber-700 dark:text-amber-300"],
-          ["Removidas", versionDiff.removed, "text-destructive"],
-        ]
-      : [];
     return (
-      <article
-        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
-        style={{ animationDelay: `${animationDelay}ms` }}
-      >
-        <WidgetHead
-          title={w.title || "Comparador de versões"}
-          icon={<GitMerge className="size-3.5 text-primary" />}
-          {...dragProps}
-        />
-        {sizeControls}
-        {!versionDiff ? (
-          <p className="p-6 text-center text-xs text-muted-foreground">
-            Reimporte esta aba para criar uma base de comparação.
-          </p>
-        ) : (
-          <div className="p-4">
-            <div className="grid grid-cols-3 gap-2">
-              {stats.map(([label, value, className]) => (
-                <div
-                  key={String(label)}
-                  className="rounded-xl border border-border bg-muted/10 p-3"
-                >
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    {label}
-                  </p>
-                  <p className={cn("mt-1 font-mono text-2xl font-bold", className)}>{value}</p>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Método:{" "}
-              {versionDiff.comparisonMethod === "key"
-                ? "chave estável"
-                : versionDiff.comparisonMethod === "position"
-                  ? "posição das linhas"
-                  : versionDiff.comparisonMethod === "shared-values"
-                    ? "valores compartilhados"
-                    : "incompatível"}
-              .{versionDiff.reason ? ` ${versionDiff.reason}` : ""}
-            </p>
-            {(versionDiff.addedColumns.length > 0 || versionDiff.removedColumns.length > 0) && (
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-                {versionDiff.addedColumns.map((column) => (
-                  <span
-                    key={`add-${column}`}
-                    className="rounded-full bg-emerald-500/12 px-2 py-1 text-emerald-700 dark:text-emerald-300"
-                  >
-                    + {column}
-                  </span>
-                ))}
-                {versionDiff.removedColumns.map((column) => (
-                  <span
-                    key={`remove-${column}`}
-                    className="rounded-full bg-destructive/12 px-2 py-1 text-destructive"
-                  >
-                    − {column}
-                  </span>
-                ))}
-              </div>
-            )}
-            {versionDiff.cellChanges.length > 0 && (
-              <div className="mt-4 overflow-auto rounded-xl border border-border">
-                <div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-2">
-                  <p className="text-xs font-semibold">Alterações célula a célula</p>
-                  <span className="text-[11px] text-muted-foreground">
-                    {versionDiff.cellChanges.length} exibidas
-                  </span>
-                </div>
-                <table className="w-full min-w-[36rem] text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-border text-muted-foreground">
-                      <th className="px-3 py-2">Linha / chave</th>
-                      <th className="px-3 py-2">Coluna</th>
-                      <th className="px-3 py-2">Anterior</th>
-                      <th className="px-3 py-2">Atual</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {versionDiff.cellChanges.slice(0, 100).map((change, index) => (
-                      <tr
-                        key={`${change.row}-${change.column}-${index}`}
-                        className="border-b border-border/60 last:border-0"
-                      >
-                        <td
-                          className="max-w-48 truncate px-3 py-2 font-mono text-[11px]"
-                          title={change.identity}
-                        >
-                          {change.identity || `linha ${change.row}`}
-                        </td>
-                        <td className="px-3 py-2 font-medium">{change.column}</td>
-                        <td
-                          className="max-w-56 truncate px-3 py-2 text-destructive line-through"
-                          title={String(change.before ?? "")}
-                        >
-                          {String(change.before ?? "vazio")}
-                        </td>
-                        <td
-                          className="max-w-56 truncate px-3 py-2 text-emerald-700 dark:text-emerald-300"
-                          title={String(change.after ?? "")}
-                        >
-                          {String(change.after ?? "vazio")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-      </article>
+      <VersionCompareWidgetBody
+        widget={w}
+        versionDiff={versionDiff}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
     );
   }
 
   if (w.type === "pivot-table" || w.type === "matrix-heatmap") {
-    const rowDimension =
-      groupableCols.find((column) => column.key === w.groupKey) ?? groupableCols[0];
-    const columnDimension =
-      groupableCols.find(
-        (column) => column.key === w.columnKey && column.key !== rowDimension?.key,
-      ) ?? groupableCols.find((column) => column.key !== rowDimension?.key);
-    const metric = numericCols.find((column) => column.key === w.valueKey) ?? numericCols[0];
-    const metricProfile = semanticProfiles.find((profile) => profile.key === metric?.key);
-    const pivotOps: AggregationOp[] = metric
-      ? semanticAggregationOps(["sum", "avg", "count", "min", "max"], metric, metricProfile)
-      : ["count"];
-    const requestedPivotOp: AggregationOp = w.op ?? (metric ? "sum" : "count");
-    const pivotOp = (
-      pivotOps.includes(requestedPivotOp) ? requestedPivotOp : (pivotOps[0] ?? "count")
-    ) as "sum" | "avg" | "count" | "min" | "max";
-    if (!rowDimension || !columnDimension) {
-      return (
-        <EmptyWidget
-          {...dragProps}
-          title={w.type === "pivot-table" ? "Tabela dinâmica" : "Matriz de cruzamento"}
-          span={w.span}
-          size={w.size}
-          type={w.type}
-          animationDelay={animationDelay}
-          message="São necessárias duas colunas categóricas ou de data."
-        />
-      );
-    }
-    const matrix = buildPivotMatrix(
-      data,
-      rowDimension.key,
-      columnDimension.key,
-      metric?.key,
-      pivotOp,
-      semanticProfiles.find((profile) => profile.key === metric?.key)?.unit,
-    );
-    const visibleRows = matrix.rows.slice(0, 30);
-    const visibleColumns = matrix.columns.slice(0, 24);
-    const max = Math.max(1, ...matrix.values.flat().map(Math.abs));
-    const metricKind = metric?.kind ?? "number";
     return (
-      <article
-        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
-        style={{ animationDelay: `${animationDelay}ms` }}
-      >
-        <WidgetHead
-          title={
-            w.title ||
-            `${w.type === "pivot-table" ? "Tabela dinâmica" : "Matriz de cruzamento"} · ${metric ? `${aggregationLabels[pivotOp]} de ${metric.label}` : "contagem de registros"}`
-          }
-          icon={<Columns3 className="size-3.5 text-primary" />}
-          {...dragProps}
-        />
-        <div
-          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-          data-export-controls
-        >
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Linhas
-            <select
-              className="oliam-select h-7 max-w-40"
-              value={rowDimension.key}
-              onChange={(event) => onConfigure({ groupKey: event.target.value })}
-            >
-              {groupableCols.map((column) => (
-                <option key={column.key} value={column.key}>
-                  {column.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Colunas
-            <select
-              className="oliam-select h-7 max-w-40"
-              value={columnDimension.key}
-              onChange={(event) => onConfigure({ columnKey: event.target.value })}
-            >
-              {groupableCols
-                .filter((column) => column.key !== rowDimension.key)
-                .map((column) => (
-                  <option key={column.key} value={column.key}>
-                    {column.label}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Valor
-            <select
-              className="oliam-select h-7 max-w-40"
-              value={metric?.key ?? ""}
-              onChange={(event) =>
-                onConfigure({
-                  valueKey: event.target.value,
-                  op: event.target.value ? "sum" : "count",
-                })
-              }
-            >
-              <option value="">Contar registros</option>
-              {numericCols.map((column) => (
-                <option key={column.key} value={column.key}>
-                  {column.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <CalculationButton
-            operation={pivotOp}
-            operations={pivotOps}
-            metric={metric?.label ?? "registros"}
-            group={`${rowDimension.label} × ${columnDimension.label}`}
-            onOperation={(operation) => onConfigure({ op: operation })}
-          />
-        </div>
-        {sizeControls}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border bg-card px-4 py-3 text-xs">
-          <span>
-            <strong>Métrica:</strong> {metric ? metric.label : "Quantidade de registros"}
-          </span>
-          <span>
-            <strong>Cálculo:</strong> {aggregationLabels[pivotOp]}
-          </span>
-          <span>
-            <strong>Total geral:</strong>{" "}
-            <span className="font-mono font-semibold tabular-nums">
-              {fmt(matrix.grandTotal, metricKind)}
-            </span>
-          </span>
-          <span className="text-muted-foreground">
-            Cada célula cruza {rowDimension.label} com {columnDimension.label}.
-          </span>
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <Calculator className="size-3" /> Toque para mudar o cálculo
-          </span>
-        </div>
-        <div className="max-h-[32rem] overflow-auto p-3">
-          <table className="w-max min-w-full border-separate border-spacing-1 text-xs">
-            <thead>
-              <tr>
-                <th className="sticky left-0 top-0 z-20 min-w-40 rounded-lg bg-card px-3 py-2 text-left shadow-[1px_1px_0_var(--border)]">
-                  {rowDimension.label}
-                </th>
-                {visibleColumns.map((label) => (
-                  <th
-                    key={label}
-                    className="sticky top-0 z-10 min-w-24 rounded-lg bg-card px-2 py-2 text-center shadow-[0_1px_0_var(--border)]"
-                  >
-                    {label}
-                  </th>
-                ))}
-                {w.type === "pivot-table" && (
-                  <th className="sticky right-0 top-0 z-20 rounded-lg bg-muted px-3 py-2">Total</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((rowLabel, rowIndex) => (
-                <tr key={rowLabel}>
-                  <th className="sticky left-0 z-10 max-w-64 rounded-lg bg-card px-3 py-2 text-left font-medium shadow-[1px_0_0_var(--border)]">
-                    {rowLabel}
-                  </th>
-                  {visibleColumns.map((columnLabel, columnIndex) => {
-                    const value = matrix.values[rowIndex]?.[columnIndex] ?? 0;
-                    const intensity = Math.max(8, Math.round((Math.abs(value) / max) * 72));
-                    return (
-                      <td
-                        key={columnLabel}
-                        className="rounded-lg px-3 py-2 text-right font-mono"
-                        style={
-                          w.type === "matrix-heatmap"
-                            ? {
-                                background: `color-mix(in srgb, var(--primary) ${intensity}%, transparent)`,
-                              }
-                            : undefined
-                        }
-                      >
-                        {fmt(value, metricKind)}
-                      </td>
-                    );
-                  })}
-                  {w.type === "pivot-table" && (
-                    <td className="sticky right-0 rounded-lg bg-muted px-3 py-2 text-right font-mono font-semibold">
-                      {fmt(matrix.rowTotals[rowIndex] ?? 0, metricKind)}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-            {w.type === "pivot-table" && (
-              <tfoot>
-                <tr>
-                  <th className="sticky bottom-0 left-0 z-20 rounded-lg bg-muted px-3 py-2 text-left">
-                    Total
-                  </th>
-                  {visibleColumns.map((label, index) => (
-                    <td
-                      key={label}
-                      className="sticky bottom-0 rounded-lg bg-muted px-3 py-2 text-right font-mono font-semibold"
-                    >
-                      {fmt(matrix.columnTotals[index] ?? 0, metricKind)}
-                    </td>
-                  ))}
-                  <td className="sticky bottom-0 right-0 z-20 rounded-lg bg-primary px-3 py-2 text-right font-mono font-bold text-primary-foreground">
-                    {fmt(matrix.grandTotal, metricKind)}
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-          {(matrix.rows.length > visibleRows.length ||
-            matrix.columns.length > visibleColumns.length) && (
-            <p className="mt-2 text-[10px] text-muted-foreground">
-              Prévia limitada a 30 linhas × 24 colunas; use filtros para reduzir o cruzamento.
-            </p>
-          )}
-        </div>
-      </article>
+      <PivotWidgetBody
+        widget={w}
+        data={data}
+        groupableCols={groupableCols}
+        numericCols={numericCols}
+        semanticProfiles={semanticProfiles}
+        onConfigure={onConfigure}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
     );
   }
 
@@ -2231,7 +1901,7 @@ export function WidgetCard({
           className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
           data-export-controls
         >
-          <FilterChip groupKey={groupCol?.key} />
+          <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
           <FieldDropSlot
             accepts={w.type === "line" ? (["date"] as Kind[]) : groupableKinds}
             onDropColumn={(key) => onConfigure({ groupKey: key })}
@@ -2869,344 +2539,40 @@ export function WidgetCard({
   }
 
   if (w.type === "ranking") {
-    const groupCol = columns.find((c) => c.key === w.groupKey);
-    const requestedOp = w.op ?? "sum";
-    const configuredValueCol = columns.find((c) => c.key === w.valueKey);
-    const valueCol =
-      (configuredValueCol &&
-      (requestedOp === "count" || numericKinds.includes(configuredValueCol.kind))
-        ? configuredValueCol
-        : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
-    const relevantOps =
-      groupCol && valueCol
-        ? semanticAggregationOps(
-            relevantAggregationOps(data, groupCol.key, valueCol.key),
-            valueCol,
-            semanticProfiles.find((profile) => profile.key === valueCol.key),
-          )
-        : (Object.keys(aggregationLabels) as AggregationOp[]);
-    const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
-      ? (w.op ?? "sum")
-      : (relevantOps[0] ?? "sum");
-    const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
-    const topN = w.topN ?? 5;
-    const grouped =
-      groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
-    const ranked = [...grouped].sort((a, b) => b.total - a.total).slice(0, topN);
-    const max = ranked.reduce((m, g) => Math.max(m, Math.abs(g.total)), 0) || 1;
-    const coverage = rankingCoverageFor(ranked, grouped);
     return (
-      <article
-        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
-        style={{ animationDelay: `${animationDelay}ms` }}
-      >
-        <WidgetHead
-          title={
-            op === "count"
-              ? `Top ${topN} · Registros por ${groupCol?.label ?? ""}`
-              : `Top ${topN} · ${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`
-          }
-          icon={<ListOrdered className="size-3.5 shrink-0 text-muted-foreground" />}
-          {...dragProps}
-        />
-        <div
-          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-          data-export-controls
-        >
-          <FilterChip groupKey={groupCol?.key} />
-          <FieldDropSlot
-            accepts={groupableKinds}
-            onDropColumn={(key) => onConfigure({ groupKey: key })}
-          >
-            <select
-              aria-label="Agrupar por"
-              className="oliam-select"
-              value={groupCol?.key ?? ""}
-              onChange={(e) => onConfigure({ groupKey: e.target.value })}
-            >
-              {!groupCol && <option value="">Selecione…</option>}
-              {groupableCols.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </FieldDropSlot>
-          <FieldDropSlot
-            accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
-            onDropColumn={(key) => onConfigure({ valueKey: key })}
-          >
-            <select
-              aria-label={op === "count" ? "Coluna usada para contar" : "Coluna numérica"}
-              className="oliam-select"
-              value={valueCol?.key ?? ""}
-              onChange={(e) => onConfigure({ valueKey: e.target.value })}
-            >
-              {!valueCol && <option value="">Selecione…</option>}
-              {(op === "count" ? columns : numericCols).map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </FieldDropSlot>
-          <CalculationButton
-            mode={dataMode}
-            operation={op}
-            operations={relevantOps}
-            metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
-            group={groupCol?.label}
-            allowRaw
-            onRaw={() => onConfigure({ dataMode: "raw" })}
-            onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
-          />
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Itens
-            <select
-              aria-label="Quantidade de itens no ranking"
-              className="oliam-select h-7"
-              value={topN}
-              onChange={(e) => onConfigure({ topN: Number(e.target.value) })}
-            >
-              {[3, 5, 10].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {sizeControls}
-        {groupCol && valueCol && (
-          <ChartReadingGuide
-            group={groupCol.label}
-            metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
-            mode={dataMode}
-            operation={`${aggregationLabels[op]} por ${groupCol.label}`}
-          />
-        )}
-        {groupCol && valueCol && ranked.length > 0 && coverage.remainingCount > 0 && (
-          <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
-            {coverage.topShare !== null
-              ? `Top ${ranked.length} concentra ${coverage.topShare.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })} do total`
-              : `Top ${ranked.length} mostrado`}{" "}
-            · {coverage.categoryCount.toLocaleString("pt-BR")} categorias no total,{" "}
-            {coverage.remainingCount.toLocaleString("pt-BR")} fora deste ranking.
-          </p>
-        )}
-        {!groupCol || !valueCol || ranked.length === 0 ? (
-          <p className="p-6 text-center text-xs text-muted-foreground">
-            {!groupCol || !valueCol
-              ? "Escolha uma coluna de agrupamento e uma numérica para este widget."
-              : "Dados insuficientes para este ranking."}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2 p-4">
-            {ranked.map((g, i) => (
-              <li key={`${g.name}-${g.sourceRow ?? i}`}>
-                <button
-                  type="button"
-                  className="oliam-ranking-row w-full text-left"
-                  onClick={() => handleGroupClick(groupCol.key, String(g.name))}
-                >
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate">
-                      <span className="font-mono text-muted-foreground">{i + 1}.</span>{" "}
-                      <span
-                        className={cn(g.name === NOT_INFORMED && "italic text-muted-foreground")}
-                      >
-                        {g.name}
-                      </span>
-                    </span>
-                    <span
-                      className="font-mono shrink-0"
-                      style={{
-                        color:
-                          conditionalColor(g.total, valueCol.kind, valueCol.conditionalFormat) ??
-                          undefined,
-                      }}
-                    >
-                      {fmt(g.total, valueCol.kind) ?? "–"}
-                    </span>
-                  </div>
-                  <div className="oliam-ranking-track">
-                    <div
-                      className="oliam-ranking-fill"
-                      style={{
-                        width: `${Math.max(4, (Math.abs(g.total) / max) * 100)}%`,
-                        background:
-                          conditionalColor(g.total, valueCol.kind, valueCol.conditionalFormat) ??
-                          undefined,
-                      }}
-                    />
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </article>
+      <RankingWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
+        groupableCols={groupableCols}
+        semanticProfiles={semanticProfiles}
+        filters={filters}
+        setFilters={setFilters}
+        onConfigure={onConfigure}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
     );
   }
 
   if (w.type === "insights") {
-    const groupCol = columns.find((c) => c.key === w.groupKey);
-    const requestedOp = w.op ?? "sum";
-    const configuredValueCol = columns.find((c) => c.key === w.valueKey);
-    const valueCol =
-      (configuredValueCol &&
-      (requestedOp === "count" || numericKinds.includes(configuredValueCol.kind))
-        ? configuredValueCol
-        : undefined) ?? (requestedOp === "count" ? columns[0] : numericCols[0]);
-    const relevantOps =
-      groupCol && valueCol
-        ? semanticAggregationOps(
-            relevantAggregationOps(data, groupCol.key, valueCol.key),
-            valueCol,
-            semanticProfiles.find((profile) => profile.key === valueCol.key),
-          )
-        : (Object.keys(aggregationLabels) as AggregationOp[]);
-    const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
-      ? (w.op ?? "sum")
-      : (relevantOps[0] ?? "sum");
-    const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
-    const grouped =
-      groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
-    const sorted = [...grouped].sort((a, b) => b.total - a.total);
-    const topComparison = sorted.length ? pieComparisonFor(sorted, 0) : null;
-    const topCoverage = sorted.length ? rankingCoverageFor(sorted.slice(0, 3), sorted) : null;
-    // Sinais de qualidade restritos às duas colunas em uso — a base inteira
-    // já tem seu próprio painel global (ver routes/index.tsx); repetir tudo
-    // aqui seria ruído, não achado novo específico do que este widget mostra.
-    const qualitySignals =
-      groupCol && valueCol ? detectQualitySignals(data, [groupCol, valueCol]) : [];
-    const hasInsights = topComparison || topCoverage || qualitySignals.length > 0;
     return (
-      <article
-        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
-        style={{ animationDelay: `${animationDelay}ms` }}
-      >
-        <WidgetHead
-          title={`Insights · ${op === "count" ? "Registros" : (valueCol?.label ?? "")} por ${groupCol?.label ?? ""}`}
-          icon={<Sparkles className="size-3.5 shrink-0 text-muted-foreground" />}
-          {...dragProps}
-        />
-        <div
-          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-          data-export-controls
-        >
-          <FilterChip groupKey={groupCol?.key} />
-          <FieldDropSlot
-            accepts={groupableKinds}
-            onDropColumn={(key) => onConfigure({ groupKey: key })}
-          >
-            <select
-              aria-label="Agrupar por"
-              className="oliam-select"
-              value={groupCol?.key ?? ""}
-              onChange={(e) => onConfigure({ groupKey: e.target.value })}
-            >
-              {!groupCol && <option value="">Selecione…</option>}
-              {groupableCols.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </FieldDropSlot>
-          <FieldDropSlot
-            accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
-            onDropColumn={(key) => onConfigure({ valueKey: key })}
-          >
-            <select
-              aria-label={op === "count" ? "Coluna usada para contar" : "Coluna numérica"}
-              className="oliam-select"
-              value={valueCol?.key ?? ""}
-              onChange={(e) => onConfigure({ valueKey: e.target.value })}
-            >
-              {!valueCol && <option value="">Selecione…</option>}
-              {(op === "count" ? columns : numericCols).map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </FieldDropSlot>
-          <CalculationButton
-            mode={dataMode}
-            operation={op}
-            operations={relevantOps}
-            metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
-            group={groupCol?.label}
-            allowRaw
-            onRaw={() => onConfigure({ dataMode: "raw" })}
-            onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
-          />
-        </div>
-        {sizeControls}
-        {groupCol && valueCol && (
-          <ChartReadingGuide
-            group={groupCol.label}
-            metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
-            mode={dataMode}
-            operation={`${aggregationLabels[op]} por ${groupCol.label}`}
-          />
-        )}
-        {!groupCol || !valueCol || sorted.length === 0 ? (
-          <p className="p-6 text-center text-xs text-muted-foreground">
-            {!groupCol || !valueCol
-              ? "Escolha uma coluna de agrupamento e uma numérica para este widget."
-              : "Dados insuficientes para gerar insights."}
-          </p>
-        ) : !hasInsights ? (
-          <p className="p-6 text-center text-xs text-muted-foreground">
-            Nenhum achado relevante para esta combinação de colunas.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-3 p-4 text-xs">
-            {topComparison && (
-              <li className="flex items-start gap-2">
-                <TrendingUp className="mt-0.5 size-3.5 shrink-0 text-secondary-accent" />
-                <p>
-                  <strong>{topComparison.selected.name}</strong> lidera com{" "}
-                  {fmt(topComparison.selected.total, valueCol.kind)}
-                  {topComparison.share !== null &&
-                    ` (${topComparison.share.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })} do total)`}
-                  {topComparison.reference &&
-                    topComparison.relativeDifference !== null &&
-                    ` — ${Math.abs(topComparison.relativeDifference).toLocaleString("pt-BR", {
-                      style: "percent",
-                      maximumFractionDigits: 0,
-                    })} à frente de ${topComparison.reference.name}, a segunda colocada.`}
-                </p>
-              </li>
-            )}
-            {topCoverage && topCoverage.topShare !== null && topCoverage.remainingCount > 0 && (
-              <li className="flex items-start gap-2">
-                <ListOrdered className="mt-0.5 size-3.5 shrink-0 text-secondary-accent" />
-                <p>
-                  As {topCoverage.shownCount} maiores categorias concentram{" "}
-                  {topCoverage.topShare.toLocaleString("pt-BR", {
-                    style: "percent",
-                    maximumFractionDigits: 1,
-                  })}{" "}
-                  do total; restam {topCoverage.remainingCount} categoria
-                  {topCoverage.remainingCount > 1 ? "s" : ""} menores.
-                </p>
-              </li>
-            )}
-            {qualitySignals.map((signal, i) => (
-              <li
-                key={`${signal.kind}-${signal.columnKey}-${i}`}
-                className="flex items-start gap-2"
-              >
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                <p>{signal.message}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </article>
+      <InsightsWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
+        groupableCols={groupableCols}
+        semanticProfiles={semanticProfiles}
+        filters={filters}
+        setFilters={setFilters}
+        onConfigure={onConfigure}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
     );
   }
 
@@ -3257,7 +2623,7 @@ export function WidgetCard({
           className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
           data-export-controls
         >
-          <FilterChip groupKey={groupCol?.key} />
+          <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
           <FieldDropSlot
             accepts={groupableKinds}
             onDropColumn={(key) => onConfigure({ groupKey: key })}
@@ -3350,126 +2716,16 @@ export function WidgetCard({
   }
 
   if (w.type === "rating") {
-    const col =
-      columns.find((c) => c.key === w.metricKey && numericKinds.includes(c.kind)) ?? numericCols[0];
-    const scaleMax = w.scaleMax ?? 5;
-    if (!col) {
-      return (
-        <EmptyWidget
-          {...dragProps}
-          title="Avaliação"
-          span={w.span}
-          size={w.size}
-          type={w.type}
-          animationDelay={animationDelay}
-          message="Nenhuma coluna numérica disponível."
-        />
-      );
-    }
-    const values = data
-      .map((r) => parseNumericValue(r[col.key]))
-      .filter((v): v is number => v !== null);
-    const avg = values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
-    const filled = Math.round(avg);
-    const ratingStyle = conditionalStyle(avg, col.kind, col.conditionalFormat);
-    const ratingColor = conditionalColor(avg, col.kind, col.conditionalFormat) ?? "var(--primary)";
-    // Uma média sozinha esconde o quão espalhadas as avaliações estão: 3,0
-    // pode ser tudo em torno de 3 ou metade em 1 e metade em 5. min/max e a
-    // fração abaixo da média dão essa leitura sem precisar de outro widget.
-    const ratingMin = values.length ? Math.min(...values) : null;
-    const ratingMax = values.length ? Math.max(...values) : null;
-    const belowAverage = values.filter((v) => v < avg).length;
-    const belowAverageShare = values.length ? belowAverage / values.length : null;
     return (
-      <article
-        className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
-        style={{ animationDelay: `${animationDelay}ms`, ...(ratingStyle ?? {}) }}
-      >
-        <WidgetHead
-          title={col.label}
-          icon={<Star className="size-3.5 shrink-0 text-muted-foreground" />}
-          {...dragProps}
-        />
-        <div
-          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-          data-export-controls
-        >
-          <FieldDropSlot
-            accepts={numericKinds}
-            onDropColumn={(key) => onConfigure({ metricKey: key })}
-          >
-            <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              Coluna
-              <select
-                aria-label="Coluna da avaliação"
-                className="oliam-select h-7"
-                value={col.key}
-                onChange={(e) => onConfigure({ metricKey: e.target.value })}
-              >
-                {numericCols.map((c) => (
-                  <option key={c.key} value={c.key}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </FieldDropSlot>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            Escala até
-            <select
-              aria-label="Nota máxima da escala"
-              className="oliam-select h-7"
-              value={scaleMax}
-              onChange={(e) => onConfigure({ scaleMax: Number(e.target.value) })}
-            >
-              {[5, 10].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="flex flex-col items-start gap-2 p-5">
-          <p className="font-mono text-3xl" style={{ color: ratingStyle?.color }}>
-            {values.length ? avg.toFixed(1) : "–"}
-            <span className="ml-1 text-sm text-muted-foreground">/ {scaleMax}</span>
-          </p>
-          {scaleMax === 5 ? (
-            <div className="flex gap-1" aria-hidden="true">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  className={cn("size-4", i < filled ? "fill-current" : "text-muted-foreground")}
-                  style={i < filled ? { color: ratingColor } : undefined}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="oliam-ranking-track w-full max-w-40">
-              <div
-                className="oliam-ranking-fill"
-                style={{
-                  width: `${values.length ? Math.min(100, (avg / scaleMax) * 100) : 0}%`,
-                  background: ratingColor,
-                }}
-              />
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground">
-            {values.length
-              ? `${values.length.toLocaleString("pt-BR")} avaliações consideradas`
-              : "Nenhum valor numérico disponível."}
-          </p>
-          {values.length > 1 && ratingMin !== null && ratingMax !== null && (
-            <p className="text-[10px] text-muted-foreground">
-              Variação de {ratingMin.toLocaleString("pt-BR")} a {ratingMax.toLocaleString("pt-BR")}
-              {belowAverageShare !== null &&
-                ` · ${belowAverageShare.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 0 })} das avaliações abaixo da média`}
-            </p>
-          )}
-        </div>
-      </article>
+      <RatingWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
+        onConfigure={onConfigure}
+        dragProps={dragProps}
+        animationDelay={animationDelay}
+      />
     );
   }
 
@@ -3499,45 +2755,6 @@ export function WidgetCard({
         sourceCellFills={sourceCellFills}
         colorGroupLabels={colorGroupLabels}
       />
-    </article>
-  );
-}
-
-export function EmptyWidget({
-  title,
-  span,
-  size,
-  type,
-  animationDelay,
-  message,
-  ...dragProps
-}: {
-  title: string;
-  span: WidgetSpan;
-  size: WidgetSize;
-  type: WidgetType;
-  animationDelay: number;
-  message: string;
-  draggable?: boolean;
-  onDragStart?: (e: React.DragEvent) => void;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
-  onRemove?: () => void;
-  onCopy?: () => void;
-  onPaste?: () => void;
-  canPaste?: boolean;
-  onMoveBack?: () => void;
-  onMoveForward?: () => void;
-  disableBack?: boolean;
-  disableForward?: boolean;
-}) {
-  return (
-    <article
-      className={cn("oliam-widget group bg-card", spanClass(span), sizeClass(size, type))}
-      style={{ animationDelay: `${animationDelay}ms` }}
-    >
-      <WidgetHead title={title} {...dragProps} />
-      <p className="p-6 text-center text-xs text-muted-foreground">{message}</p>
     </article>
   );
 }

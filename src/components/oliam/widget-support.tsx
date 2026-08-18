@@ -25,6 +25,7 @@ import {
   Star,
   Trash2,
   TrendingUp,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,12 +42,19 @@ import {
   kinds,
   type Column,
   type ChartDataMode,
+  type FilterRule,
   type Kind,
   type WidgetSize,
   type WidgetSpan,
   type WidgetType,
 } from "@/lib/types";
-import { columnDragType, columnDropAccepted, draggedColumnKind } from "@/lib/widgets";
+import {
+  columnDragType,
+  columnDropAccepted,
+  draggedColumnKind,
+  sizeClass,
+  spanClass,
+} from "@/lib/widgets";
 import type { ScheduleCellState } from "@/lib/schedule-normalizer";
 import { conditionalColor, fmt } from "@/lib/format";
 import {
@@ -121,6 +129,24 @@ export function FieldDropSlot({
   );
 }
 
+/** Props de arrastar/copiar/colar/mover/remover compartilhadas por WidgetHead
+ * e EmptyWidget — construídas uma vez em WidgetCard (`dragProps`) e passadas
+ * intactas para todo componente de corpo de widget extraído. */
+export type WidgetDragProps = {
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onRemove?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
+  canPaste?: boolean;
+  onMoveBack?: () => void;
+  onMoveForward?: () => void;
+  disableBack?: boolean;
+  disableForward?: boolean;
+};
+
 export function WidgetHead({
   title,
   icon,
@@ -136,21 +162,9 @@ export function WidgetHead({
   onMoveForward,
   disableBack,
   disableForward,
-}: {
+}: WidgetDragProps & {
   title: string;
   icon?: React.ReactNode;
-  draggable?: boolean;
-  onDragStart?: (e: React.DragEvent) => void;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
-  onRemove?: () => void;
-  onCopy?: () => void;
-  onPaste?: () => void;
-  canPaste?: boolean;
-  onMoveBack?: () => void;
-  onMoveForward?: () => void;
-  disableBack?: boolean;
-  disableForward?: boolean;
 }) {
   const interactive = !!(onRemove || onCopy || onPaste || onMoveBack || onMoveForward);
   return (
@@ -944,5 +958,72 @@ export function ChartDot({
       style={clickable ? { cursor: "pointer" } : undefined}
       onClick={() => clickable && onSelect(groupCol!.key, String(payload!.name))}
     />
+  );
+}
+
+export function EmptyWidget({
+  title,
+  span,
+  size,
+  type,
+  animationDelay,
+  message,
+  ...dragProps
+}: {
+  title: string;
+  span: WidgetSpan;
+  size: WidgetSize;
+  type: WidgetType;
+  animationDelay: number;
+  message: string;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onRemove?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
+  canPaste?: boolean;
+  onMoveBack?: () => void;
+  onMoveForward?: () => void;
+  disableBack?: boolean;
+  disableForward?: boolean;
+}) {
+  return (
+    <article
+      className={cn("oliam-widget group bg-card", spanClass(span), sizeClass(size, type))}
+      style={{ animationDelay: `${animationDelay}ms` }}
+    >
+      <WidgetHead title={title} {...dragProps} />
+      <p className="p-6 text-center text-xs text-muted-foreground">{message}</p>
+    </article>
+  );
+}
+
+/** Indicador "filtrado por X" exibido no cabeçalho de controles do widget
+ * quando a coluna de agrupamento dele tem um filtro simples ativo,
+ * sincronizado com a barra de filtros do topo (mesmo estado, sheet.filters).
+ * Usado por barra/pizza/linha/área, ranking, insights e mapa. */
+export function FilterChip({
+  groupKey,
+  filters,
+  setFilters,
+}: {
+  groupKey: string | undefined;
+  filters: FilterRule[];
+  setFilters: (filters: FilterRule[]) => void;
+}) {
+  const active = groupKey ? filters.find((f) => f.key === groupKey && !f.min && !f.max) : undefined;
+  if (!active || !groupKey) return null;
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-1 rounded-full border border-primary/40 bg-tint px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-primary"
+      onClick={() => setFilters(filters.filter((f) => f.key !== groupKey))}
+      aria-label={`Remover filtro: filtrado por ${active.value}`}
+    >
+      Filtrado por: {active.value}
+      <X className="size-3" />
+    </button>
   );
 }
