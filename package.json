@@ -70,7 +70,7 @@
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
     "fflate": "^0.8.2",
-    "html2canvas-pro": "^1.5.8",
+    "html2canvas-pro": "^2.3.8",
     "input-otp": "^1.4.2",
     "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
