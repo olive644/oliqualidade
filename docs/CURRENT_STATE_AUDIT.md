@@ -5627,3 +5627,42 @@ decisão de produto do usuário, registrada como pendência explícita
 `npm run wasm:corpus`, `npx vitest run` (567 passou, 1 pulado), `npx
 tsc --noEmit`, `npm run build`, `npx playwright test` (E2E) aprovados
 com o binário reconstruído.
+
+## 102. Ctrl+P exporta o painel como PDF em vez de imprimir
+
+Pedido direto do usuário: "adicione ctrl+P no projeto, pra ter como
+imprimir". O app já tinha exportação de PDF completa (`exportPdf` em
+`use-dashboard-export.ts`, paginada, com assinatura OliQualidade,
+tabelas completas em vez de só o que está visível na tela) via menu
+"Exportar" — o diálogo de impressão nativo do navegador seria
+estritamente pior nesse caso (imprime só o viewport atual renderizado,
+sem paginação real nem os dados completos da tabela detalhada).
+
+**Implementado**: `exportPdfRef` (mesmo padrão já usado por
+`undoRef`/`redoRef` em `routes/index.tsx`) mantém a versão mais recente
+de `exportPdf` acessível dentro do listener de `keydown` com deps
+vazias (`useEffect(() => { exportPdfRef.current = () => void
+exportPdf(); })`, sem array de dependências, roda a cada render).
+Ctrl+P/⌘P intercepta o atalho nativo do navegador (`e.preventDefault()`)
+e chama `exportPdfRef.current()`. Adicionado ao diálogo de atalhos
+(Ctrl+/) pra ficar descobrível.
+
+**Verificação em navegador real, incluindo um alarme falso
+investigado**: Ctrl+P disparado via `dispatchEvent` mostrou o menu
+"Exportar" preso em "Gerando PDF…" por mais de 30 segundos — parecia um
+bug novo. Isolado clicando o item de menu "PDF do painel" original
+(pré-existente, sem nenhuma linha tocada nesta sessão) do mesmo jeito:
+mesmo travamento idêntico. Confirma que é um comportamento pré-existente
+de `html2canvas-pro` (provavelmente lento ou preso capturando este
+painel de demonstração especificamente no navegador automatizado desta
+sessão, não reproduzido nem investigado a fundo por estar fora do
+escopo do pedido) — não uma regressão desta mudança. `document.fonts
+.ready` (suspeito inicial) resolve normalmente, então não é a causa.
+Ctrl+K (paleta de comandos) e Ctrl+/ (atalhos) testados depois,
+funcionando normalmente — sem regressão nos outros atalhos do mesmo
+listener.
+
+`npx vitest run` (567 passou, 1 pulado), `npx tsc --noEmit`, `npx
+eslint` nos 2 arquivos tocados (só ruído de CRLF pré-existente,
+confirmado com o contorno Prettier CRLF-safe), `npm run build` e `npx
+playwright test` (E2E) aprovados.

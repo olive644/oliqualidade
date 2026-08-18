@@ -17,6 +17,7 @@ const SHORTCUTS = [
   },
   { keys: "⌘Z / Ctrl+Z", label: "Desfazer a última alteração no painel" },
   { keys: "⇧⌘Z / Ctrl+Shift+Z", label: "Refazer a alteração desfeita" },
+  { keys: "⌘P / Ctrl+P", label: "Exportar o painel como PDF paginado (em vez de imprimir)" },
   { keys: "Esc", label: "Sair do modo apresentação" },
   { keys: "Enter", label: "Confirmar edição de nome do painel ou de coluna" },
 ];

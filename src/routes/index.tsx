@@ -1222,6 +1222,7 @@ function Dashboard(p: {
   const contentRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
+  const exportPdfRef = useRef<() => void>(() => {});
   const { backgroundReview, analysisProgress, cancelAnalysis } = useBackgroundReviewAnalysis(
     sheet.rows,
     sheet.columns,
@@ -1273,6 +1274,12 @@ function Dashboard(p: {
         e.preventDefault();
         if (e.shiftKey) redoRef.current();
         else undoRef.current();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "p") {
+        // Substitui o diálogo de impressão nativo do navegador pelo PDF
+        // paginado e assinado do próprio painel — o navegador imprimiria só
+        // o que está visível na tela, sem paginação nem os dados completos.
+        e.preventDefault();
+        exportPdfRef.current();
       }
     };
     window.addEventListener("keydown", key);
@@ -1482,6 +1489,9 @@ function Dashboard(p: {
     widgets,
     contentRef,
     onRestore: p.update,
+  });
+  useEffect(() => {
+    exportPdfRef.current = () => void exportPdf();
   });
 
   const commitName = () => {
