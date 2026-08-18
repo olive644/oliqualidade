@@ -38,6 +38,32 @@ jobs:
       - name: Test, typecheck, build and check performance budget
         run: npm run verify
 
+  dependency-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit for high/critical vulnerabilities
+        # Bloqueia em high/critical; moderate/low ficam de fora do gate pra
+        # não travar a CI em achados de baixo risco sem correção disponível
+        # (ex.: dependência transitiva de uma lib direta que só corrige com
+        # major breaking change) — revisar com `npm audit` local sem
+        # --audit-level quando precisar do quadro completo.
+        run: npm audit --audit-level=high
+
   security-smoke:
     name: Security headers and CORS smoke test
     runs-on: ubuntu-latest
