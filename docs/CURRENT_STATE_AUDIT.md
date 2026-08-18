@@ -5768,3 +5768,48 @@ duplicar o achado numa sessão futura.
 proteção na borda pro `/api/gemini/*`, política de dados de IA mais
 visível por dashboard, smoke test cobrindo `Permissions-Policy`/
 `Cross-Origin-Opener-Policy`/cache/métodos inesperados.
+
+## 105. Revisão dos 14 PRs abertos pelo Dependabot: 5 de baixo risco mescladas, TypeScript 7 rejeitado por incompatibilidade real
+
+O Dependabot (habilitado na seção 103) abriu 14 PRs na primeira
+varredura: 4 bumps de GitHub Actions, 1 grupo minor/patch do npm (5
+pacotes) e 9 bumps de major version do npm. Pedido do usuário: revisar
+por ordem de risco, começando pelas de baixo risco.
+
+**Mescladas sem incidente** (Actions, só infraestrutura de CI):
+`actions/checkout` 4→7, `actions/upload-artifact` 4→7,
+`github/codeql-action` 3→4, `actions/setup-node` 4→7.
+
+**Grupo minor/patch do npm** (`@hookform/resolvers`,
+`@tanstack/react-router`, `@tanstack/react-start`,
+`eslint-plugin-react-refresh`, mais um) — achado real antes de
+mesclar: o lockfile que o próprio Dependabot gerou para essa PR estava
+fora de sincronia (`lru-cache@11.5.2` faltando), `npm ci` falhava com
+"package.json e package-lock.json ... are in sync" — mesma armadilha já
+documentada do projeto (resolução de lockfile diverge entre npm local e
+CI). Corrigido rodando `npx npm@10 install` direto no branch da PR do
+Dependabot (`git checkout -b ... origin/dependabot/...`, instalar,
+commitar o lockfile regenerado, `git push` de volta pro branch remoto do
+Dependabot) — CI ficou verde depois, mesclada normalmente. Verificado
+localmente antes: `npm ci` limpo, `npx vitest run`, `npx tsc --noEmit`,
+`npm run build`, `npx playwright test` (E2E, relevante por envolver
+TanStack Router/Start) todos aprovados com as dependências novas.
+
+**TypeScript 5.9.3 → 7.0.2, rejeitado** — pedido do usuário pra começar
+pelas majors por este. TS 7.0 é a reescrita do compilador em Go da
+equipe TypeScript (a numeração pula a 6.x, reservada pra uma release de
+transição só com avisos de depreciação). Testado localmente (`git
+checkout` do branch do Dependabot + `npx npm@10 ci`): falha real de
+peer dependency, não é lockfile — `typescript-eslint@8.67.0` (versão
+atual do projeto) exige `typescript ">=4.8.4 <6.1.0"`, incompatível com
+TS 7 por completo. Não forçado com `--legacy-peer-deps` (mascararia uma
+instalação genuinamente quebrada). Comentado o achado na PR e pedido
+`@dependabot ignore this major version` — Dependabot fechou a PR
+sozinho, para de reabrir a mesma proposta até o ecossistema (pelo menos
+`typescript-eslint`) suportar TS 7 de verdade.
+
+**Ainda pendentes, não revisadas nesta sessão**: `eslint` 9→10,
+`@eslint/js` 9→10, `globals` 15→17 (prováveis dependências entre si e
+com `typescript-eslint`, revisar juntos), `zod` 3→4 (mudança de API
+conhecida, usado em várias validações), `react-day-picker` 9→10,
+`lucide-react` 0.x→1.x, `html2canvas-pro` 1.6→2.3, `@types/node` 22→26.
