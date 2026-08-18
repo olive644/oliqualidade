@@ -4931,3 +4931,91 @@ não entrava em nenhum bundle, por não ser importado).
 removendo `unsafe-inline` depende de o TanStack Start expor nonce de
 hidratação — checar a versão instalada antes de tentar, é mudança mais
 delicada (mexe em toda página) e não foi pedida pra esta sessão.
+
+## 93. Item 7 do backlog implementado: `script-src` do CSP agora usa nonce por requisição, sem `unsafe-inline`
+
+Usuário pediu pra prosseguir com o item 7 registrado na seção 92.
+Investigação confirmou que a versão instalada
+(`@tanstack/react-start@1.168.44`/`@tanstack/react-router@1.170.18`) já
+suporta `router.options.ssr.nonce` de verdade — lido em `Scripts.js`,
+`ScriptOnce.js` e `Asset.js` do pacote (`node_modules/@tanstack/react-router/dist/esm/`).
+O framework tem inclusive seu próprio mecanismo de reconciliação de nonce
+no cliente: renderiza `<meta property="csp-nonce" content="...">` no HTML
+e o bootstrap do cliente lê esse valor via `document.querySelector` pra
+manter `router.options.ssr.nonce` consistente na hidratação — descoberto
+inspecionando o bundle de produção depois do build, não documentação.
+
+**Desafio real**: `src/router.tsx` (`getRouter()`) é o único ponto de
+criação do router, compartilhado entre servidor (chamado fresco a cada
+requisição por `createStartHandler` do `@tanstack/start-server-core`,
+confirmado lendo `createStartHandler.js`) e cliente (hidratação). Um
+nonce por requisição não pode ser passado como parâmetro — `getRouter()`
+não recebe request nenhum, é invocado pelo framework internamente. E o
+valor tem que bater exatamente entre o `<script nonce="...">` renderizado
+e o header `Content-Security-Policy` da resposta, ou o script de
+hidratação quebra e a página inteira fica em branco.
+
+**Solução**: mesmo padrão de `AsyncLocalStorage` já usado e comprovado em
+`error-capture.ts` pra exatamente esse tipo de problema (estado por
+requisição precisando atravessar chamadas internas opacas do framework).
+Novo módulo `src/lib/csp-nonce.ts` (`generateNonce`/`runWithNonce`/
+`currentNonce`, server-only — usa `node:async_hooks`/`node:crypto`).
+`server.ts` gera o nonce uma vez no topo do `fetch()` e envolve toda a
+request com `runWithNonce` (aninhado com `runWithErrorCapture` já
+existente, ambos ASyncLocalStorage independentes, sem conflito), passando
+o mesmo valor explicitamente pras 4 chamadas de `withSecurityHeaders`.
+
+**Risco específico resolvido**: `router.tsx` roda tanto no bundle do
+servidor quanto no bundle do cliente (importado por ambos via convenção
+do framework), mas `csp-nonce.ts` usa `node:async_hooks`/`node:crypto`,
+que quebrariam o bundle do navegador se importados estaticamente. Fix:
+`import()` dinâmico atrás de um guard `import.meta.env.SSR` — o Vite
+substitui esse valor por um literal booleano em tempo de build e o
+Rollup elimina o branch inteiro (import dinâmico incluso) do bundle do
+cliente quando a condição é estaticamente `false`. **Validado, não só
+assumido**: depois do `npm run build`, `grep -rl "async_hooks\|AsyncLocalStorage" .vercel/output/static/**/*.js`
+não retornou nenhum arquivo — o módulo server-only não vaza pro bundle
+do navegador. `http-security.ts` ganhou `buildSecurityHeaders(nonce?)`:
+com nonce, `script-src 'self' 'nonce-<valor>'`; sem nonce (chamada direta
+em teste, por exemplo), cai de volta pra `'unsafe-inline'` — nunca pior
+que o comportamento anterior à mudança.
+
+**Verificação end-to-end** (não só testes unitários, dado o risco de
+quebrar a página inteira): subido `npm run dev` de verdade e inspecionado
+via Browser pane — `<meta property="csp-nonce">` presente com valor não
+vazio; `document.querySelectorAll('script')[0].nonce` (propriedade IDL,
+não `getAttribute` — navegador esconde o atributo de propósito depois
+que o elemento entra no DOM) bate exatamente com o valor da meta tag;
+header `Content-Security-Policy` da resposta real (`curl`) mostra
+`script-src 'self' 'nonce-<valor>'`, sem `'unsafe-inline'`; zero
+violação de CSP no console; clique em "Ativar modo privado" (toggle que
+depende de handler de evento React funcionando pós-hidratação) sem erro
+nenhum. `npx playwright test` (suíte E2E completa) passou contra o
+mesmo dev server.
+
+`scripts/security-smoke.mjs` (rodado na CI a cada PR) só checava
+`frame-ancestors 'none'` de substring solto no CSP — não validava
+`script-src` nenhum. Fortalecido: agora falha se `script-src` não tiver
+`'nonce-...'`, e falha se `script-src` especificamente ainda tiver
+`'unsafe-inline'` (checagem por regex no segmento `script-src`, não a
+string inteira — `style-src` continua com `'unsafe-inline'` de
+propósito, inalterado). Rodado de verdade contra dev server real via
+Bash (não Browser pane — namespaces de rede isolados, ver armadilha #2
+de sessões anteriores) antes de commitar: aprovado.
+
+Testes novos: `src/lib/csp-nonce.test.ts` (geração, isolamento por
+`AsyncLocalStorage` inclusive entre chamadas concorrentes, mesmo padrão
+de teste já usado pro `error-capture.ts`) e `src/lib/http-security.test.ts`
+(CSP com/sem nonce). `npx vitest run` (555 passou, 1 pulado — 6 testes
+novos), `npx tsc --noEmit` (achou e corrigiu um erro real de
+`exactOptionalPropertyTypes` — `ssr: { nonce: undefined }` não é a mesma
+coisa que omitir `ssr` inteiro, com esse flag ligado), `npx eslint --fix`
++ Prettier CRLF-safe nos 7 arquivos tocados, `npm run build` (client
+bundle confirmado limpo) e `npm run performance:check` aprovados.
+
+**Resultado líquido**: o único item conhecido de segurança/privacidade
+registrado no backlog desta sessão está resolvido. CSP `script-src` não
+anuncia mais `'unsafe-inline'` em nenhuma resposta do servidor,
+reduzindo de verdade a superfície de XSS que a seção 92 apontou como
+mitigada só parcialmente (o componente morto foi removido, mas o CSP
+continuava permitindo qualquer script inline até esta seção).

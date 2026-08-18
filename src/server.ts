@@ -5,6 +5,7 @@ import { renderErrorPage } from "./lib/error-page";
 import { handleGeminiChat, handleSmartImportAnalysis } from "./lib/gemini-server";
 import { withSecurityHeaders } from "./lib/http-security";
 import { withChatSession } from "./lib/chat-session";
+import { generateNonce, runWithNonce } from "./lib/csp-nonce";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -53,35 +54,43 @@ export default {
     const sessionSecret = environment["OLI_SESSION_SECRET"] ?? process.env["OLI_SESSION_SECRET"];
     const chatAuthToken = environment["OLI_CHAT_AUTH_TOKEN"] ?? process.env["OLI_CHAT_AUTH_TOKEN"];
     const geminiApiKey = environment["GEMINI_API_KEY"] ?? process.env["GEMINI_API_KEY"];
-    return runWithErrorCapture(
-      [sessionSecret, chatAuthToken, geminiApiKey],
-      async (): Promise<Response> => {
-        try {
-          if (new URL(request.url).pathname === "/api/gemini/chat") {
-            return withSecurityHeaders(await handleGeminiChat(request, environment));
+    const nonce = generateNonce();
+    return runWithNonce(nonce, () =>
+      runWithErrorCapture(
+        [sessionSecret, chatAuthToken, geminiApiKey],
+        async (): Promise<Response> => {
+          try {
+            if (new URL(request.url).pathname === "/api/gemini/chat") {
+              return withSecurityHeaders(await handleGeminiChat(request, environment), nonce);
+            }
+            if (new URL(request.url).pathname === "/api/gemini/import-analysis") {
+              return withSecurityHeaders(
+                await handleSmartImportAnalysis(request, environment),
+                nonce,
+              );
+            }
+            const handler = await getServerEntry();
+            const response = await handler.fetch(request, env, ctx);
+            return withSecurityHeaders(
+              await withChatSession(
+                await normalizeCatastrophicSsrResponse(response),
+                request,
+                sessionSecret,
+              ),
+              nonce,
+            );
+          } catch (error) {
+            console.error(error);
+            return withSecurityHeaders(
+              new Response(renderErrorPage(), {
+                status: 500,
+                headers: { "content-type": "text/html; charset=utf-8" },
+              }),
+              nonce,
+            );
           }
-          if (new URL(request.url).pathname === "/api/gemini/import-analysis") {
-            return withSecurityHeaders(await handleSmartImportAnalysis(request, environment));
-          }
-          const handler = await getServerEntry();
-          const response = await handler.fetch(request, env, ctx);
-          return withSecurityHeaders(
-            await withChatSession(
-              await normalizeCatastrophicSsrResponse(response),
-              request,
-              sessionSecret,
-            ),
-          );
-        } catch (error) {
-          console.error(error);
-          return withSecurityHeaders(
-            new Response(renderErrorPage(), {
-              status: 500,
-              headers: { "content-type": "text/html; charset=utf-8" },
-            }),
-          );
-        }
-      },
+        },
+      ),
     );
   },
 };
