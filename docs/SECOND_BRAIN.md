@@ -283,12 +283,17 @@ validade integral, fidelidade mínima de 90% e 21 notas preservadas (20 comentá
 de célula + 1 bloco textual de observações).
 
 Cobertura de corpus por formato (gate do Reading Engine v2, ver
-[[#Estado conhecido]]): XLSX fechado (12 fontes reais, gate 5/5). XLSM
-saiu de 0/5 pra **3/5** depois que o usuário trouxe planilhas reais de
-calibração/qualidade — ainda insuficiente, faltam 2. XLTX/XLTM ainda não
-têm nenhum corpus real nativo (só o corpus *derivado* da PR #147, que
+[[#Estado conhecido]]): **XLSX fechado com zero divergência** (12
+fontes reais, gate 5/5, `eligible: true` — elegibilidade técnica, não
+promoção automática, decisão de produto continua em aberto). XLSM
+saiu de 0/5 pra **3/5 com zero divergência** depois que o usuário trouxe
+planilhas reais de calibração/qualidade e os dois bugs reais de
+paridade encontrados (decimais + formato de data) foram corrigidos —
+ainda insuficiente em volume, faltam 2 fontes. XLTX/XLTM ainda não têm
+nenhum corpus real nativo (só o corpus *derivado* da PR #147, que
 deliberadamente não conta pro gate). Ver
-[[CURRENT_STATE_AUDIT#100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado]].
+[[CURRENT_STATE_AUDIT#100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado]]
+e [[CURRENT_STATE_AUDIT#101. Parser genérico de formato de data no leitor Rust (achado 3 da seção 100, backlog item 3b)]].
 #pendente
 
 ## Backlog priorizado
@@ -347,16 +352,15 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    tentar sintetizar substitutos. Ver [[CURRENT_STATE_AUDIT#90. Corrigido bloqueio estrutural do gate XLSM: sanitizador recusava .xlsm/.xltm por política, não por lacuna real]],
    [[CURRENT_STATE_AUDIT#91. Corrigido o segundo bloqueio "permanente": XLTX/XLTM agora preservam o Content-Type de modelo de verdade, não viram .xlsx/.xlsm disfarçado]]
    e [[CURRENT_STATE_AUDIT#100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado]].
-3b. **Bug real de formato de data customizado no leitor Rust**
-   `#pendente` — achado ao ampliar o corpus na seção 100: código de
-   formato de data customizado da célula (`mm/yy`, `mmm-yy`, `dd/mm/yy`
-   etc.) é ignorado pelo Rust, que sempre mostra ISO `AAAA-MM-DD`
-   genérico independente do formato real. `excel_date.rs` só cobre os
-   formatos de data *builtin* do Excel, não customizados — comum em
-   planilhas reais de cronograma/calibração. Não investigado a fundo
-   nem corrigido; escopo maior que os dois bugs de decimais já
-   corrigidos na mesma seção, precisa de sessão própria. Ver
-   [[CURRENT_STATE_AUDIT#100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado]].
+3b. ~~Bug real de formato de data customizado no leitor Rust~~
+   **Corrigido** — `excel_date.rs` ganhou um parser genérico de
+   verdade (tokeniza y/m/d/h/s, resolve mês-vs-minuto pela regra do
+   Excel, descarta prefixo de localidade/cor) em vez de mais entradas
+   na tabela fixa. Corpus real (xlsx + xlsm) foi de 6 arquivos
+   divergentes pra **zero**; gate XLSX ficou `eligible: true` pela
+   primeira vez (elegibilidade técnica, não promoção — decisão de
+   produto continua em aberto). Ver
+   [[CURRENT_STATE_AUDIT#101. Parser genérico de formato de data no leitor Rust (achado 3 da seção 100, backlog item 3b)]].
 5. ~~Núcleo restante de `Dashboard`~~ **Parcialmente resolvido** —
    investigação concluiu que um `useReducer` genérico não compensa (13
    `useState` de UI são independentes; reducer só trocaria forma sem ganho
