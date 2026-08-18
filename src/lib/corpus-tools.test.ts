@@ -111,10 +111,9 @@ describe("ferramentas de corpus derivado real", () => {
     ]);
     expect(sanitize.status, sanitize.stderr).toBe(0);
 
-    const sanitizedBook = XLSX.read(
-      readFileSync(join(filterSanitized, "sanitized-001.xlsx")),
-      { type: "buffer" },
-    );
+    const sanitizedBook = XLSX.read(readFileSync(join(filterSanitized, "sanitized-001.xlsx")), {
+      type: "buffer",
+    });
     const filterDatabase = sanitizedBook.Workbook?.Names?.[0];
     expect(filterDatabase?.Name).toBe("_xlnm._FilterDatabase");
     expect(filterDatabase?.Ref).not.toMatch(/^'/);
