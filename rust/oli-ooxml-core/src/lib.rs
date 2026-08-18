@@ -1237,7 +1237,7 @@ fn format_number_with_code(value: f64, number_format: &str) -> String {
     };
     if let Some(decimals) = fixed_decimal_places(base) {
         let scaled = if is_percent { value * 100.0 } else { value };
-        let formatted = format!("{scaled:.decimals$}");
+        let formatted = format_fixed_decimals(scaled, decimals);
         return if is_percent {
             format!("{formatted}%")
         } else {
@@ -1245,6 +1245,32 @@ fn format_number_with_code(value: f64, number_format: &str) -> String {
         };
     }
     format_general_number(value)
+}
+
+/// Arredonda pra exibição com uma quantidade fixa de casas decimais do
+/// mesmo jeito que o Excel/SheetJS: escala pelo número de decimais,
+/// arredonda pro inteiro mais próximo (metade sempre pra cima em módulo,
+/// não o "round half to even" do IEEE 754 puro) e desfaz a escala antes de
+/// formatar. Achado real ao sanitizar planilhas do usuário: formatar o
+/// valor binário exato direto com `format!("{value:.decimals$}")` diverge
+/// do Excel/TypeScript perto do meio do último dígito — ex. 654055.45 com
+/// formato "0.0" é armazenado como 654055.44999999995343387127 em f64, e
+/// `format!("{:.1}")` nesse valor exato arredonda pra baixo (654055.4);
+/// mas 654055.45 escalado por 10 já cai exatamente em 6540554.5 em f64
+/// (sem ruído), e arredondar esse valor pra cima antes de desescalar bate
+/// com o que o Excel e o SheetJS mostram (654055.5).
+fn format_fixed_decimals(value: f64, decimals: usize) -> String {
+    if !value.is_finite() {
+        return format!("{value:.decimals$}");
+    }
+    let factor = 10f64.powi(decimals as i32);
+    let scaled = value * factor;
+    let rounded = if scaled >= 0.0 {
+        (scaled + 0.5).floor()
+    } else {
+        (scaled - 0.5).ceil()
+    };
+    format!("{:.decimals$}", rounded / factor)
 }
 
 /// "0" -> Some(0), "0.0" -> Some(1), "0.00" -> Some(2), "0.000" -> Some(3),
@@ -1617,5 +1643,24 @@ mod unit_tests {
         assert_eq!(fixed_decimal_places("General"), None);
         assert_eq!(fixed_decimal_places("0."), None);
         assert_eq!(fixed_decimal_places(""), None);
+    }
+
+    #[test]
+    fn display_cell_value_rounds_like_excel_near_the_last_digit() {
+        // Achado real ao sanitizar planilhas do usuário: 654055.45 é
+        // armazenado como 654055.44999999995343387127 em f64 (ruído binário
+        // inevitável, não é bug de parsing). `format!("{:.1}")` direto
+        // nesse valor exato arredonda pra baixo (654055.4, "round half to
+        // even" do IEEE 754 sobre o valor binário verdadeiro), mas o Excel
+        // e o SheetJS mostram "654055.5" porque escalam antes de
+        // arredondar (654055.45*10 = 6540554.5 exato em f64, sem ruído).
+        let value = CellValue::Number(654_055.45);
+        assert_eq!(display_cell_value(Some(&value), "0.0"), "654055.5");
+    }
+
+    #[test]
+    fn format_fixed_decimals_rounds_negative_numbers_away_from_zero() {
+        assert_eq!(format_fixed_decimals(-654_055.45, 1), "-654055.5");
+        assert_eq!(format_fixed_decimals(-91.6, 0), "-92");
     }
 }
