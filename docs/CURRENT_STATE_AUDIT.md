@@ -5552,3 +5552,78 @@ um bug maior que os dois já corrigidos aqui, merece sessão própria.
 
 `npx vitest run`, `npx tsc --noEmit`, `npm run build`, `npx playwright
 test` aprovados em todas as etapas intermediárias e no estado final.
+
+## 101. Parser genérico de formato de data no leitor Rust (achado 3 da seção 100, backlog item 3b)
+
+Usuário pediu explicitamente pra corrigir o achado 3 registrado na
+seção anterior, depois de perguntar por que não tinha sido corrigido
+junto — resposta: escopo bem maior que os dois bugs de decimal
+(generalizar uma regra simples vs. escrever um parser de verdade),
+risco de introduzir um bug novo se feito às pressas no fim de uma
+sessão já longa. Usuário concordou em prosseguir numa etapa separada,
+depois de mesclar as duas PRs pendentes primeiro.
+
+**Causa raiz**: `format_excel_date` (`excel_date.rs`) era um `match`
+sobre ~15 strings de formato de data exatas e fixas (`"m/d/yy"`,
+`"mmm-yy"` etc.) — qualquer código fora dessa lista caía num fallback
+ISO genérico, mesmo quando havia um caso "core" equivalente já
+suportado. Formatos reais das planilhas do usuário que expunham o bug:
+`"mm/yy"` (nem estava na tabela), `"d/m/yy"` (sem preenchimento de
+zero), e sobretudo formatos com prefixo de localidade/cor do Excel como
+`"[$-416]mmm\-yy;@"` — o prefixo `[$-416]` e a seção de texto `;@`
+impediam o match exato mesmo com `"mmm-yy"` central já presente na
+tabela.
+
+**Implementado**: um parser de verdade, não mais entradas na tabela
+fixa (que só empurraria o mesmo problema pro próximo formato de
+localidade não previsto):
+- `first_format_section` corta na primeira seção do código
+  (`;positivo;negativo;zero;texto`), ignorando `;` dentro de
+  aspas/colchetes.
+- `tokenize_date_format` separa o código em tokens de y/m/d/h/s
+  (contando repetição de letra, ex. "mm" → 2) e literais (aspas, escape
+  `\X`, separadores); descarta grupos `[...]` inteiros (localidade/cor/
+  condição) e `_X`/`*X` (espaçamento visual do Excel, sem efeito
+  textual).
+- `resolve_month_minute` resolve a ambiguidade clássica "m" mês-vs-
+  minuto pela mesma regra do Excel: é minuto só quando o token
+  significativo mais próximo antes é hora, ou o mais próximo depois é
+  segundo; senão é mês.
+- `render_date_token` renderiza cada token: ano 2/4 dígitos, mês
+  número/zero-padded/abreviado/nome completo, dia idem + nome do dia da
+  semana via algoritmo de Sakamoto (`day_of_week`, independente do
+  serial Excel), hora 12/24h conforme presença de am/pm, am/pm curto
+  ("A"/"P") vs. longo ("AM"/"PM").
+
+A tabela fixa original continua intacta com prioridade — o parser
+genérico só roda no fallback, sem risco de regressão nos formatos já
+testados.
+
+**Verificação sem compilação local**: o sandbox desta sessão não linka
+nem `cargo check` (falha nos build scripts das dependências antes de
+alcançar o crate — não é erro do código novo, testado isoladamente:
+falha idêntica rodando `cargo check` num crate vazio). Antes de
+commitar, revisão manual completa traçando à mão cada um dos 6 testes
+novos contra a implementação (tokens gerados, resolução mês/minuto,
+render final) — só depois disso o código foi commitado e enviado pra
+CI. `cargo fmt --check` aprovado localmente.
+
+**Resultado real via `gh workflow run wasm-build.yml`** (Ubuntu, build
++ `cargo test` de verdade): 21 testes unitários passando (15 → 21, os 6
+novos desta seção), 0 falhas — confirma que a revisão manual bateu
+certo com o compilador de verdade. Binário `.wasm` reconstruído e
+reverificado contra o corpus real: **zero divergência em xlsx** (12
+fontes reais, gate 5/5 fechado, `eligible: true` pela primeira vez) e
+**zero divergência em xlsm** (3 fontes reais, ainda 3/5 só por volume,
+não mais por qualidade de leitura). Os 4 arquivos que divergiam na
+seção 100 (o `.xlsx` restante + os 3 `.xlsm`) foram todos corrigidos.
+
+**Elegibilidade técnica não é promoção**: `eligible: true` no gate XLSX
+é uma métrica calculada, não uma ação — não promove o Rust/WASM pra
+leitor primário fora de shadow mode sozinho. Isso continua sendo
+decisão de produto do usuário, registrada como pendência explícita
+(não tomada nesta sessão).
+
+`npm run wasm:corpus`, `npx vitest run` (567 passou, 1 pulado), `npx
+tsc --noEmit`, `npm run build`, `npx playwright test` (E2E) aprovados
+com o binário reconstruído.
