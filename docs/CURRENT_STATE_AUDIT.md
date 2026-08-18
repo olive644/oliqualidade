@@ -5439,3 +5439,116 @@ verdade nesta seção — não era só ruído de CRLF desta vez, `--write`
 aplicado e reconferido), `npm run build` + `npm run
 performance:check`, `npx playwright test` (E2E completo, incluindo o
 ajuste acima) aprovados.
+
+## 100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado
+
+Pedido do usuário: "tente usar essas planilhas pra fortalecer o corpus",
+anexando 12 arquivos reais do Windows Downloads (6 `.xlsx`, 3 `.xls`, 3
+`.xlsm`). Contexto imediato: a sessão tinha acabado de revisar a PR #147
+(corpus XLTX *derivado*, que deliberadamente não conta pro gate nativo —
+ver `docs/WASM_CORPUS_SANITIZATION.md`), então esta era a primeira leva
+de arquivo real desde então visando o gate nativo de verdade.
+
+**Preparo**: os 12 arquivos copiados via PowerShell (não Bash `cp`, por
+causa de acentos nos nomes originais) pra `test-fixtures/private/
+downloads-batch` com nomes ASCII simples, gitignorado. Os 3 `.xls`
+(formato binário OLE2 antigo) foram ignorados automaticamente pelo
+sanitizador — fora do escopo OOXML do Reading Engine v2, não é lacuna
+nova. `corpus:sanitize` processou os 9 restantes (6 `.xlsx` + 3 `.xlsm`)
+com salt gerado localmente (`crypto.randomBytes`, nunca commitado).
+
+**Achado 1 — falso positivo no validador** (corrigido, PR
+[#149](https://github.com/olive644/oliqualidade/pull/149)):
+`corpus:validate` (adicionado na PR #147) reprovou 6 dos 9 arquivos com
+"nome definido do usuário sobreviveu". Investigação: não é vazamento de
+privacidade — o sanitizador sempre zera `Workbook.Names`;
+`_xlnm._FilterDatabase` é reconstruído pelo próprio SheetJS a partir do
+`!autofilter` da aba, sem nome de usuário nenhum. O bug era a regex do
+validador exigir aspas simples ao redor do nome da aba
+(`'SHEET_001'!...`), mas o SheetJS só cita quando o identificador exige
+(espaços, caracteres especiais) — `SHEET_NNN` nunca exige, sai sem
+aspas. Nunca tinha sido exercitado com um arquivo real com autofiltro
+antes. Regex corrigida pra aspas opcionais; teste de regressão em
+`corpus-tools.test.ts` reproduz o cenário exato (aba com `!autofilter`).
+Depois da correção: `corpus:validate` aprovou os 9 arquivos, 62.653
+células, paridade estrutural e privacidade confirmadas.
+
+**Mesclado no corpus real**: os 9 arquivos validados foram renumerados
+(`sanitized-007` a `sanitized-015`, continuando a sequência dos 6
+`.xlsx` já existentes) e mesclados em `test-fixtures/sanitized-real/
+manifest.local.json`. Distribuição final: 12 `.xlsx` (gate já fechado
+desde antes, 6/5), **3 `.xlsm` reais e distintos — gate sai de 0/5 pra
+3/5**, ainda insuficiente pros 5 mínimos mas progresso real pela
+primeira vez nesse formato.
+
+**Achado 2 — bug real de paridade Rust/TypeScript, dois estágios**
+(corrigido, PR
+[#150](https://github.com/olive644/oliqualidade/pull/150)):
+`npm run wasm:corpus` contra o corpus ampliado mostrou 6 dos 9 arquivos
+novos divergindo entre o leitor Rust/WASM e o TypeScript — nenhum
+arquivo do corpus antigo divergia, então era garantidamente um sintoma
+novo, não ruído pré-existente. Isolado com um script de debug ad-hoc
+(`__debug-diverge.mjs`, temporário, não commitado) que compara célula a
+célula os dois motores e imprime só as diferenças.
+
+- *Estágio 1*: `display_cell_value` (Rust) só reconhecia 4 códigos de
+  formato fixo (`"0"`, `"0.00"`, `"0%"`, `"0.00%"`) — qualquer outra
+  contagem de decimais fixos (`"0.0"`, `"0.000"` etc., comuns em
+  planilhas de calibração/medição) caía em `format_general_number`
+  ("General", corta zeros à direita) em vez de completar as casas
+  decimais do formato. O valor bruto (`rawValue`) sempre foi idêntico
+  nos dois motores — só a string de exibição divergia (ex.: `"406981"`
+  em vez de `"406981.0"`). `fixed_decimal_places` generaliza pra
+  qualquer quantidade de zeros depois do ponto, mantendo os 4 casos
+  antigos intactos.
+- *Estágio 2* (achado só depois de reverificar o corpus real com o
+  estágio 1 já corrigido — ainda sobravam divergências menores): mesmo
+  com o formato certo identificado, `format!("{value:.decimals}")`
+  direto no `f64` exato diverge do Excel/SheetJS perto do meio do
+  último dígito. Exemplo real: `654055.45` é armazenado como
+  `654055.44999999995343387127` em f64 (ruído binário inevitável, não é
+  bug de parsing) — formatar esse valor exato com 1 decimal arredonda
+  pra baixo (`654055.4`, round-half-to-even do IEEE 754 sobre o binário
+  verdadeiro), mas `654055.45 * 10 = 6540554.5` cai exato em f64 (sem
+  ruído), e arredondar esse valor escalado pra cima antes de desescalar
+  bate com o que o Excel e o SheetJS mostram (`654055.5`).
+  `format_fixed_decimals` replica o algoritmo de escala→arredonda→
+  desescala do Excel/SheetJS em vez de formatar o valor exato direto.
+
+**Rebuild real do `.wasm`, não só do código Rust**: como
+`cargo build`/`wasm-pack` não funcionam neste sandbox Windows (ver
+armadilha #4 do handoff), cada uma das duas correções precisou de
+`gh workflow run wasm-build.yml --ref <branch>` (build real no Ubuntu,
+`cargo test` de verdade — 15 testes unitários, incluindo os novos desta
+seção) seguido de `gh run download` do artefato e substituição manual
+de `src/wasm/oli-ooxml-core/oli_ooxml_core_bg.wasm`. Sem esse passo, os
+testes JS (`wasm-shadow-corpus.test.ts`) continuariam rodando contra o
+binário antigo e nenhuma correção teria efeito observável fora dos
+testes unitários Rust isolados.
+
+**Resultado final verificado contra o corpus real** (não só testes
+unitários sintéticos): xlsx caiu de 3 pra 1 arquivo divergente (114 → 32
+células); xlsm sem mudança (26 células — causa raiz diferente, ver
+achado 3). `npm run wasm:corpus`, `npx vitest run` (566 passou, 1
+pulado), `npx tsc --noEmit`, `npm run build`, `npx playwright test`
+aprovados com o binário reconstruído.
+
+**Achado 3 — bug real de formato de data customizado, NÃO corrigido
+nesta sessão** (registrado pro usuário decidir prioridade): as
+divergências restantes (o 1 `.xlsx` que sobrou + os 3 `.xlsm` inteiros)
+são todas a mesma causa raiz, diferente da anterior — código de formato
+de **data** customizado da célula (`mm/yy`, `mmm-yy`, `dd/mm/yy` etc.)
+sendo ignorado pelo Rust, que sempre mostra ISO `AAAA-MM-DD` genérico
+independente do formato real da célula (ex.: célula formatada `mmm-yy`
+com valor real `2032-01-15` deveria mostrar `"Jan-32"`, Rust mostra
+`"2032-01-15"`). Mesmo padrão do achado 2 (valor bruto idêntico, só
+exibição diverge), mas escopo bem maior — a lógica de data do Rust
+(`excel_date.rs`) só cobre os formatos de data *builtin* do Excel (IDs
+14-22/45-47 em `builtin_number_format`), não formatos de data
+*customizados* arbitrários registrados em `styles.xml`, que são comuns
+em planilhas reais de cronograma/calibração. Não investigado a fundo
+nem corrigido — acabou de ser descoberto ao final desta sessão, é claramente
+um bug maior que os dois já corrigidos aqui, merece sessão própria.
+
+`npx vitest run`, `npx tsc --noEmit`, `npm run build`, `npx playwright
+test` aprovados em todas as etapas intermediárias e no estado final.

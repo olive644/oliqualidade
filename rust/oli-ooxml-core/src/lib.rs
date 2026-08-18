@@ -1216,14 +1216,75 @@ fn display_cell_value(value: Option<&CellValue>, number_format: &str) -> String 
     match value {
         Some(CellValue::String(value)) => value.clone(),
         Some(CellValue::Boolean(value)) => value.to_string(),
-        Some(CellValue::Number(value)) if number_format == "0" => format!("{value:.0}"),
-        Some(CellValue::Number(value)) if number_format == "0.00" => format!("{value:.2}"),
-        Some(CellValue::Number(value)) if number_format == "0%" => format!("{:.0}%", value * 100.0),
-        Some(CellValue::Number(value)) if number_format == "0.00%" => {
-            format!("{:.2}%", value * 100.0)
-        }
-        Some(CellValue::Number(value)) => format_general_number(*value),
+        Some(CellValue::Number(value)) => format_number_with_code(*value, number_format),
         None => String::new(),
+    }
+}
+
+/// Formatos de decimais fixos, numéricos ("0", "0.00", "0.000", ...) ou
+/// percentuais ("0%", "0.00%", "0.000%", ...), com qualquer quantidade de
+/// zeros depois do ponto. Achado ao sanitizar planilhas reais do usuário:
+/// a versão anterior só reconhecia "0"/"0.00"/"0%"/"0.00%" (4 casos fixos)
+/// e tratava qualquer outra contagem de zeros (ex.: "0.0", "0.000") como
+/// "General" — perdendo o preenchimento de zeros à direita que o Excel e o
+/// leitor TypeScript mostram para esses formatos. Qualquer código que não
+/// seja puramente decimais fixos (separador de milhar, cor condicional,
+/// texto literal etc.) continua caindo em `format_general_number`.
+fn format_number_with_code(value: f64, number_format: &str) -> String {
+    let (base, is_percent) = match number_format.strip_suffix('%') {
+        Some(base) => (base, true),
+        None => (number_format, false),
+    };
+    if let Some(decimals) = fixed_decimal_places(base) {
+        let scaled = if is_percent { value * 100.0 } else { value };
+        let formatted = format_fixed_decimals(scaled, decimals);
+        return if is_percent {
+            format!("{formatted}%")
+        } else {
+            formatted
+        };
+    }
+    format_general_number(value)
+}
+
+/// Arredonda pra exibição com uma quantidade fixa de casas decimais do
+/// mesmo jeito que o Excel/SheetJS: escala pelo número de decimais,
+/// arredonda pro inteiro mais próximo (metade sempre pra cima em módulo,
+/// não o "round half to even" do IEEE 754 puro) e desfaz a escala antes de
+/// formatar. Achado real ao sanitizar planilhas do usuário: formatar o
+/// valor binário exato direto com `format!("{value:.decimals$}")` diverge
+/// do Excel/TypeScript perto do meio do último dígito — ex. 654055.45 com
+/// formato "0.0" é armazenado como 654055.44999999995343387127 em f64, e
+/// `format!("{:.1}")` nesse valor exato arredonda pra baixo (654055.4);
+/// mas 654055.45 escalado por 10 já cai exatamente em 6540554.5 em f64
+/// (sem ruído), e arredondar esse valor pra cima antes de desescalar bate
+/// com o que o Excel e o SheetJS mostram (654055.5).
+fn format_fixed_decimals(value: f64, decimals: usize) -> String {
+    if !value.is_finite() {
+        return format!("{value:.decimals$}");
+    }
+    let factor = 10f64.powi(decimals as i32);
+    let scaled = value * factor;
+    let rounded = if scaled >= 0.0 {
+        (scaled + 0.5).floor()
+    } else {
+        (scaled - 0.5).ceil()
+    };
+    format!("{:.decimals$}", rounded / factor)
+}
+
+/// "0" -> Some(0), "0.0" -> Some(1), "0.00" -> Some(2), "0.000" -> Some(3),
+/// e assim por diante. Qualquer outra coisa (sem prefixo "0", zeros
+/// intercalados com outro caractere, código vazio depois do ponto) -> None.
+fn fixed_decimal_places(code: &str) -> Option<usize> {
+    if code == "0" {
+        return Some(0);
+    }
+    let decimals = code.strip_prefix("0.")?;
+    if !decimals.is_empty() && decimals.bytes().all(|b| b == b'0') {
+        Some(decimals.len())
+    } else {
+        None
     }
 }
 
@@ -1542,5 +1603,64 @@ mod unit_tests {
     fn display_cell_value_uses_general_formatting_for_unformatted_numbers() {
         let value = CellValue::Number(111.03999999999999);
         assert_eq!(display_cell_value(Some(&value), "General"), "111.04");
+    }
+
+    #[test]
+    fn display_cell_value_respects_fixed_decimal_formats_of_any_length() {
+        // Achado real ao sanitizar planilhas do usuário: só "0"/"0.00" eram
+        // tratados como decimais fixos; "0.0"/"0.000" caíam em "General" e
+        // perdiam o preenchimento de zeros à direita (ex.: "406981" em vez
+        // de "406981.0", "550923.24" em vez de "550923.240").
+        let value = CellValue::Number(406_981.0);
+        assert_eq!(display_cell_value(Some(&value), "0.0"), "406981.0");
+        let value = CellValue::Number(550_923.24);
+        assert_eq!(display_cell_value(Some(&value), "0.000"), "550923.240");
+        let value = CellValue::Number(904_404.74);
+        assert_eq!(display_cell_value(Some(&value), "0.0"), "904404.7");
+    }
+
+    #[test]
+    fn display_cell_value_keeps_previous_fixed_format_behavior() {
+        let value = CellValue::Number(91.6);
+        assert_eq!(display_cell_value(Some(&value), "0"), "92");
+        let value = CellValue::Number(91.6);
+        assert_eq!(display_cell_value(Some(&value), "0.00"), "91.60");
+        let value = CellValue::Number(0.5);
+        assert_eq!(display_cell_value(Some(&value), "0%"), "50%");
+        let value = CellValue::Number(0.5);
+        assert_eq!(display_cell_value(Some(&value), "0.00%"), "50.00%");
+    }
+
+    #[test]
+    fn display_cell_value_percent_respects_any_decimal_count() {
+        let value = CellValue::Number(0.12345);
+        assert_eq!(display_cell_value(Some(&value), "0.000%"), "12.345%");
+    }
+
+    #[test]
+    fn fixed_decimal_places_rejects_non_fixed_codes() {
+        assert_eq!(fixed_decimal_places("#,##0.00"), None);
+        assert_eq!(fixed_decimal_places("General"), None);
+        assert_eq!(fixed_decimal_places("0."), None);
+        assert_eq!(fixed_decimal_places(""), None);
+    }
+
+    #[test]
+    fn display_cell_value_rounds_like_excel_near_the_last_digit() {
+        // Achado real ao sanitizar planilhas do usuário: 654055.45 é
+        // armazenado como 654055.44999999995343387127 em f64 (ruído binário
+        // inevitável, não é bug de parsing). `format!("{:.1}")` direto
+        // nesse valor exato arredonda pra baixo (654055.4, "round half to
+        // even" do IEEE 754 sobre o valor binário verdadeiro), mas o Excel
+        // e o SheetJS mostram "654055.5" porque escalam antes de
+        // arredondar (654055.45*10 = 6540554.5 exato em f64, sem ruído).
+        let value = CellValue::Number(654_055.45);
+        assert_eq!(display_cell_value(Some(&value), "0.0"), "654055.5");
+    }
+
+    #[test]
+    fn format_fixed_decimals_rounds_negative_numbers_away_from_zero() {
+        assert_eq!(format_fixed_decimals(-654_055.45, 1), "-654055.5");
+        assert_eq!(format_fixed_decimals(-91.6, 0), "-92");
     }
 }

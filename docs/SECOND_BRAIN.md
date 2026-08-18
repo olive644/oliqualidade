@@ -283,9 +283,12 @@ validade integral, fidelidade mínima de 90% e 21 notas preservadas (20 comentá
 de célula + 1 bloco textual de observações).
 
 Cobertura de corpus por formato (gate do Reading Engine v2, ver
-[[#Estado conhecido]]): XLSX/XLSM têm fixtures reais mas o gate pede cinco
-fontes reais sanitizadas e únicas por formato antes de promover o leitor
-Rust/WASM fora de shadow mode; XLTX/XLTM ainda não têm nenhum corpus real.
+[[#Estado conhecido]]): XLSX fechado (12 fontes reais, gate 5/5). XLSM
+saiu de 0/5 pra **3/5** depois que o usuário trouxe planilhas reais de
+calibração/qualidade — ainda insuficiente, faltam 2. XLTX/XLTM ainda não
+têm nenhum corpus real nativo (só o corpus *derivado* da PR #147, que
+deliberadamente não conta pro gate). Ver
+[[CURRENT_STATE_AUDIT#100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado]].
 #pendente
 
 ## Backlog priorizado
@@ -326,20 +329,34 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    Verificado com arquivo real: aba "Tendência 2" do FRS-QA-BR-405 (14
    gráficos, 0 linhas) só aparece depois desta correção. Ver
    [[CURRENT_STATE_AUDIT#85. Abas só com gráficos/formas/imagens nativos (sem linha de dado tabular) agora são importáveis]].
-3. **Corpus real sanitizado** `#pendente` — XLSX tem 6 fontes (acima do
-   mínimo de 5, gate fechado). XLSM, XLTX e XLTM: os dois bloqueios
+3. **Corpus real sanitizado** `#pendente` — XLSX tem 12 fontes (acima do
+   mínimo de 5, gate fechado). XLSM: 3/5, ainda insuficiente mas com
+   progresso real depois que o usuário trouxe 3 planilhas `.xlsm` reais
+   de calibração/qualidade — faltam 2. XLTX/XLTM: os dois bloqueios
    estruturais do sanitizador que existiam foram corrigidos (seções 90 e
    91) — `.xlsm`/`.xltx`/`.xltm` já são aceitos como entrada, e a saída
    preserva o formato real (inclusive Content-Type de modelo pra
    `.xltx`/`.xltm`, via patch pontual no `[Content_Types].xml` depois do
    `XLSX.write`, já que o SheetJS instalado só sabe escrever `bookType`
-   `xlsx`/`xlsm`). Os três gates continuam em 0/5 só por falta de arquivo
-   real do usuário — mesmo tipo de lacuna que XLSX já fechou, não mais
-   recusa estrutural. Os arquivos `.xltx` reais trazidos até agora eram
-   duplicata exata de fontes já no corpus. Bloqueado em arquivo real do
+   `xlsx`/`xlsm`). Os dois gates continuam em 0/5 só por falta de arquivo
+   real nativo do usuário — o corpus *derivado* da PR #147 (XLTX gerado a
+   partir de XLSX reais, só trocando Content-Type) deliberadamente não
+   conta pro gate, por decisão de produto (ver
+   `docs/WASM_CORPUS_SANITIZATION.md`). Bloqueado em arquivo real do
    usuário que ainda não esteja coberto; parar e perguntar antes de
-   tentar sintetizar substitutos. Ver [[CURRENT_STATE_AUDIT#90. Corrigido bloqueio estrutural do gate XLSM: sanitizador recusava .xlsm/.xltm por política, não por lacuna real]]
-   e [[CURRENT_STATE_AUDIT#91. Corrigido o segundo bloqueio "permanente": XLTX/XLTM agora preservam o Content-Type de modelo de verdade, não viram .xlsx/.xlsm disfarçado]].
+   tentar sintetizar substitutos. Ver [[CURRENT_STATE_AUDIT#90. Corrigido bloqueio estrutural do gate XLSM: sanitizador recusava .xlsm/.xltm por política, não por lacuna real]],
+   [[CURRENT_STATE_AUDIT#91. Corrigido o segundo bloqueio "permanente": XLTX/XLTM agora preservam o Content-Type de modelo de verdade, não viram .xlsx/.xlsm disfarçado]]
+   e [[CURRENT_STATE_AUDIT#100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado]].
+3b. **Bug real de formato de data customizado no leitor Rust**
+   `#pendente` — achado ao ampliar o corpus na seção 100: código de
+   formato de data customizado da célula (`mm/yy`, `mmm-yy`, `dd/mm/yy`
+   etc.) é ignorado pelo Rust, que sempre mostra ISO `AAAA-MM-DD`
+   genérico independente do formato real. `excel_date.rs` só cobre os
+   formatos de data *builtin* do Excel, não customizados — comum em
+   planilhas reais de cronograma/calibração. Não investigado a fundo
+   nem corrigido; escopo maior que os dois bugs de decimais já
+   corrigidos na mesma seção, precisa de sessão própria. Ver
+   [[CURRENT_STATE_AUDIT#100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado]].
 5. ~~Núcleo restante de `Dashboard`~~ **Parcialmente resolvido** —
    investigação concluiu que um `useReducer` genérico não compensa (13
    `useState` de UI são independentes; reducer só trocaria forma sem ganho
