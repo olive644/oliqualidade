@@ -461,11 +461,20 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
      gate de propósito — 2 achados moderate pré-existentes em `exceljs`
      sem correção sem breaking change). Ver
      [[CURRENT_STATE_AUDIT#103. Dependabot, CodeQL e gate de auditoria de dependências na CI]].
-     **Pendente, mesma frente**: scan de segredos (gitleaks/trufflehog),
-     rate limit distribuído (Redis/Upstash) pro chat/análise, proteção
-     na borda pro `/api/gemini/*`, política de dados de IA mais visível
-     por dashboard, smoke test cobrindo `Permissions-Policy`/
-     `Cross-Origin-Opener-Policy`/cache/métodos inesperados.
+     ~~Scan de segredos~~ **Feito, sem código** — repositório virou
+     público (decisão do usuário, pra viabilizar CodeQL — GHAS em repo
+     privado não existe em conta pessoal); secret scanning + push
+     protection já vêm `enabled` de graça em repo público, confirmado
+     via API, nada pra fazer no código. Achado de bônus: Dependabot
+     Alerts (`vulnerability-alerts`) estava desabilitado, separado do
+     `dependabot.yml`; habilitado via API com confirmação do usuário
+     (configuração de repositório). Ver
+     [[CURRENT_STATE_AUDIT#104. Scan de segredos: recurso nativo do GitHub habilitado (não precisou de gitleaks/trufflehog na CI)]].
+     **Pendente, mesma frente**: rate limit distribuído (Redis/Upstash)
+     pro chat/análise, proteção na borda pro `/api/gemini/*`, política
+     de dados de IA mais visível por dashboard, smoke test cobrindo
+     `Permissions-Policy`/`Cross-Origin-Opener-Policy`/cache/métodos
+     inesperados.
    - Produto: testes unitários por widget extraído nas seções 94/95,
      testes visuais de screenshot pra gráfico/PDF, benchmark real de
      importação (10k/100k/500k linhas), virtualização de tabela em
