@@ -81,4 +81,51 @@ describe("ferramentas de corpus derivado real", () => {
     expect(validate.status, validate.stderr).toBe(0);
     expect(validate.stdout).toContain("paridade estrutural e privacidade aprovadas");
   });
+
+  it("valida planilha real com autofiltro, cujo _xlnm._FilterDatabase sai sem aspas na aba renomeada", () => {
+    // Achado ao sanitizar planilhas reais do usuário: o SheetJS só cita o
+    // nome da aba entre aspas simples quando o identificador exige (espaços,
+    // caracteres especiais). "SHEET_001" nunca exige, então a referência sai
+    // sem aspas — o validador antigo assumia aspas sempre e reprovava um
+    // arquivo sanitizado corretamente.
+    const filterSource = join(root, "source-filtro");
+    const filterSanitized = join(root, "sanitized-filtro");
+    mkdirSync(filterSource);
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Nome", "Valor"],
+      ["Empresa Confidencial", 123.45],
+    ]);
+    sheet["!autofilter"] = { ref: "A1:B2" };
+    XLSX.utils.book_append_sheet(workbook, sheet, "Dados com filtro");
+    writeFileSync(
+      join(filterSource, "origem.xlsx"),
+      XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }),
+    );
+
+    const sanitize = run("scripts/sanitize-workbook-corpus.mjs", [
+      "--input",
+      filterSource,
+      "--output",
+      filterSanitized,
+    ]);
+    expect(sanitize.status, sanitize.stderr).toBe(0);
+
+    const sanitizedBook = XLSX.read(
+      readFileSync(join(filterSanitized, "sanitized-001.xlsx")),
+      { type: "buffer" },
+    );
+    const filterDatabase = sanitizedBook.Workbook?.Names?.[0];
+    expect(filterDatabase?.Name).toBe("_xlnm._FilterDatabase");
+    expect(filterDatabase?.Ref).not.toMatch(/^'/);
+
+    const validate = run("scripts/validate-sanitized-workbook-corpus.mjs", [
+      "--source",
+      filterSource,
+      "--sanitized",
+      filterSanitized,
+    ]);
+    expect(validate.status, validate.stderr).toBe(0);
+    expect(validate.stdout).toContain("paridade estrutural e privacidade aprovadas");
+  });
 });
