@@ -453,19 +453,24 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    - UX de erro: diagnóstico de importação baixável, "tentar modo
      compatível", comparação visual encontrado×importado, progresso real
      por etapa.
-   - Segurança: ~~`npm audit`+Dependabot+CodeQL na CI~~ **Feito** —
-     `.github/dependabot.yml` (npm/cargo/github-actions, semanal),
-     `.github/workflows/codeql.yml` (javascript-typescript + actions,
-     Rust sem suporte oficial), job `dependency-audit` bloqueante em
-     `application.yml` (`--audit-level=high`, moderate/low de fora do
-     gate de propósito — 2 achados moderate pré-existentes em `exceljs`
-     sem correção sem breaking change). Ver
+   - Segurança: ~~`npm audit`+Dependabot na CI~~ **Feito** —
+     `.github/dependabot.yml` (npm/cargo/github-actions, semanal), job
+     `dependency-audit` bloqueante em `application.yml`
+     (`--audit-level=high`, moderate/low de fora do gate de
+     propósito — 2 achados moderate pré-existentes em `exceljs` sem
+     correção sem breaking change). Ver
      [[CURRENT_STATE_AUDIT#103. Dependabot, CodeQL e gate de auditoria de dependências na CI]].
-     ~~Scan de segredos~~ **Feito, sem código** — repositório virou
-     público (decisão do usuário, pra viabilizar CodeQL — GHAS em repo
-     privado não existe em conta pessoal); secret scanning + push
-     protection já vêm `enabled` de graça em repo público, confirmado
-     via API, nada pra fazer no código. Achado de bônus: Dependabot
+     CodeQL foi tentado (repo virou público só pra isso) mas
+     **revertido**: usuário decidiu voltar o repositório pra privado, e
+     GHAS/code scanning não existe em repo privado de conta pessoal —
+     `.github/workflows/codeql.yml` removido em vez de deixar um check
+     permanentemente quebrado. Ver
+     [[CURRENT_STATE_AUDIT#106. Repositório voltou a ser privado; CodeQL removido (dependência direta da decisão da seção 103)]].
+     ~~Scan de segredos~~ **Revertido junto com a visibilidade** —
+     secret scanning + push protection só existem de graça em repo
+     público; voltaram a `disabled` automaticamente quando o repo
+     ficou privado de novo. Achado de bônus que continua válido:
+     Dependabot
      Alerts (`vulnerability-alerts`) estava desabilitado, separado do
      `dependabot.yml`; habilitado via API com confirmação do usuário
      (configuração de repositório). Ver
