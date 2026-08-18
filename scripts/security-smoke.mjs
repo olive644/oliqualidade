@@ -15,6 +15,11 @@ for (const [header, expected] of Object.entries(required)) {
   const value = response.headers.get(header) ?? "";
   if (!value.includes(expected)) throw new Error(`${header} ausente ou incorreto: ${value}`);
 }
+const csp = response.headers.get("content-security-policy") ?? "";
+if (!/script-src 'self' 'nonce-[^']+'/.test(csp))
+  throw new Error(`script-src sem nonce (deveria vir de router.tsx via lib/csp-nonce): ${csp}`);
+if (csp.includes("'unsafe-inline'") && csp.match(/script-src[^;]*'unsafe-inline'/))
+  throw new Error(`script-src ainda tem 'unsafe-inline': ${csp}`);
 const cookie = response.headers.get("set-cookie") ?? "";
 if (process.env.OLI_EXPECT_CHAT_SESSION === "1") {
   for (const expected of ["oli_chat_session=", "HttpOnly", "SameSite=Strict"])

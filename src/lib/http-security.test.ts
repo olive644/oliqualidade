@@ -8,6 +8,21 @@ describe("HTTP security", () => {
     expect(response.headers.get("content-security-policy")).toContain("object-src 'none'");
   });
 
+  it("sem nonce, cai de volta pra 'unsafe-inline' no script-src", () => {
+    const response = withSecurityHeaders(new Response("ok"));
+    const csp = response.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+  });
+
+  it("com nonce, script-src usa o nonce em vez de 'unsafe-inline'", () => {
+    const response = withSecurityHeaders(new Response("ok"), "abc123==");
+    const csp = response.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("script-src 'self' 'nonce-abc123=='");
+    // style-src continua com 'unsafe-inline' (não afetado pelo nonce) —
+    // só o script-src deve deixar de anunciar 'unsafe-inline'.
+    expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
+  });
+
   it("rejeita corpo acima do limite mesmo sem Content-Length", async () => {
     const request = new Request("https://oli.test/api", {
       method: "POST",

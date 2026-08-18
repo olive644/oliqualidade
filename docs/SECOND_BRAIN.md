@@ -360,14 +360,19 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    `noDataAnywhere` das seções 86/87) não teve nenhum efeito observável em
    nenhum cenário testado — revertida por falta de benefício demonstrável.
    Ver [[CURRENT_STATE_AUDIT#89. Item 6 do backlog investigado: já estava resolvido como efeito colateral das seções 86/87]].
-7. **Apertar `script-src` do CSP removendo `unsafe-inline`** `#pendente` —
-   `http-security.ts` documenta o motivo: TanStack Start injeta estado
-   inicial de hidratação inline no HTML, sem expor nonce ainda. Checar se a
-   versão instalada já suporta nonce antes de tentar; mudança mais delicada
-   que o normal porque mexe no CSP de toda página, não só um componente.
-   Achado durante auditoria de segurança/privacidade pedida pelo usuário,
-   não implementado (usuário priorizou remover o componente morto da seção
-   92 primeiro). Ver [[CURRENT_STATE_AUDIT#92. Auditoria de segurança/privacidade a pedido do usuário: removido componente shadcn/ui morto com dangerouslySetInnerHTML]].
+7. ~~Apertar `script-src` do CSP removendo `unsafe-inline`~~ **Corrigido**
+   — a versão instalada do TanStack Start já suportava `ssr.nonce` de
+   verdade. Nonce gerado uma vez por requisição em `server.ts`
+   (`lib/csp-nonce.ts`, `AsyncLocalStorage`, mesmo padrão de
+   `error-capture.ts`), propagado até `router.tsx` (`getRouter()`,
+   compartilhado servidor/cliente — módulo server-only carregado só via
+   `import()` dinâmico atrás de `import.meta.env.SSR`, confirmado sem
+   vazamento no bundle do cliente depois do build) e até o header CSP
+   (`buildSecurityHeaders(nonce)`). Verificado end-to-end com dev server
+   real (meta tag, header, zero violação de CSP, clique funcional
+   pós-hidratação) e suíte E2E completa. `security-smoke.mjs` (roda na
+   CI) fortalecido pra falhar se `script-src` não tiver nonce ou ainda
+   tiver `'unsafe-inline'`. Ver [[CURRENT_STATE_AUDIT#93. Item 7 do backlog implementado: script-src do CSP agora usa nonce por requisição, sem unsafe-inline]].
 
 ## Comandos operacionais
 
