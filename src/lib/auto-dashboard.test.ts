@@ -25,6 +25,7 @@ const diagnostic = (
   label: key,
   kind,
   confidence: 0.95,
+  level: "alta",
   filled: 12,
   missing: 0,
   unique: 6,

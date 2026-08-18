@@ -5194,3 +5194,97 @@ compartilhado (`dragProps`, `sizeControls`) + os dois branches pequenos
 que nunca precisaram de extração (`folder-files`, `image`, ~15-40
 linhas cada). Item 8 do backlog fechado — não há mais pendência de
 divisão registrada.
+
+Mesclada como [PR #143](https://github.com/olive644/oliqualidade/pull/143)
+depois de todos os checks de CI passarem e autorização explícita do
+usuário. Main avançou de `7967844` para `e24e07d`.
+
+## 96. Confiança por coluna na revisão de importação (badge alta/média/baixa + motivo)
+
+Usuário trouxe uma lista extensa de prioridades ("Prioridade alta —
+fazer agora") cobrindo confiabilidade de importação, UX de erro,
+segurança de infraestrutura e produto/arquitetura. Perguntado por onde
+começar; escolhida a pontuação de confiança por aba/coluna — primeiro
+item da seção de maior prioridade e alicerce dos outros itens da mesma
+seção (modo de revisão e relatório de fidelidade dependem de ter um
+sinal de confiança pra mostrar).
+
+**Investigação prévia (subagente Explore) antes de desenhar qualquer
+coisa**: a infraestrutura de confiança já existia em grande parte —
+`buildSheetConfidenceMatrix` (nível por aba, alta/média/baixa + motivos)
+já existe e já é renderizado como tooltip nas abas da revisão;
+`ColumnDiagnostic` (por coluna) já tinha `confidence` (certeza de
+detecção de tipo, 0-1) e `warnings: string[]` computados, mas **nunca
+renderizados em lugar nenhum** — o gap real não era "calcular confiança
+por coluna", era "faltava o nível de 3 categorias e a UI pra mostrar o
+que já existia". `ImportAudit` (mesclagens expandidas, fórmulas
+recuperadas, linhas em branco ignoradas etc.) também já é computado mas
+nunca chega à tela — mapeado como gap real, não corrigido nesta seção
+(vide "pendência" abaixo).
+
+**Implementado**: `confidenceLevelFor(score): "alta"|"média"|"baixa"`
+extraído como função pura em `import-intelligence.ts` (mesmos limiares
+85/60 que `buildSheetConfidenceMatrix` já usava, agora nomeados e
+reaproveitados, não mais duplicados). Novo tipo `ConfidenceLevel`
+compartilhado; `SheetConfidenceLevel` passa a ser
+`ConfidenceLevel | "sem diagnóstico"`. `ColumnDiagnostic` ganhou o campo
+`level`, computado como a média de `confidence*100` e `qualityScore`
+(as duas métricas medem coisas diferentes — o quão bem o padrão bate vs.
+o quão uniforme é o preenchido — e só correspondem a "alta" quando as
+duas concordam), com uma regra adicional: qualquer `warnings.length > 0`
+impede `"alta"` mesmo que o score combinado cruze o limiar — não faz
+sentido mostrar "alta confiança" ao lado de um motivo de dúvida listado
+na mesma coluna.
+
+Novo componente compartilhado `confidence-dot.tsx` (`ConfidenceDot`) —
+ponto colorido emerald/amber/rose, mesmo mapeamento de cor que já era
+usado inline nas abas da revisão; refatorado para reaproveitar em vez de
+duplicar. Renderizado por coluna em `import-workbench.tsx`, no cabeçalho
+clicável da "Bancada de importação" (mesmo botão que já alterna
+incluir/ignorar coluna), com `title` mostrando
+`` `Confiança ${level} — ${warnings.join("; ")}` `` — mesmo padrão de
+tooltip já usado pelas abas.
+
+Testes novos em `import-intelligence.test.ts`: limiares de
+`confidenceLevelFor`; coluna limpa e consistente → alta; coluna com
+aviso explícito nunca mostra alta mesmo com score combinado alto (prova
+direta da regra de demoção); coluna com representações misturadas e
+muita ausência → baixa (fixture ajustada depois de uma primeira tentativa
+com só 1 valor preenchido não gerar inconsistência suficiente — corrigido
+usando múltiplos valores de família de representação diferente, incluindo
+erros de fórmula do Excel, antes de aceitar o teste).
+
+**Verificação além de testes unitários**: como sempre nesta sessão para
+mudanças de UI, verificado em navegador real — upload de um CSV
+sintético com uma coluna limpa e duas colunas com 40% de valores
+ausentes confirmou exatamente o comportamento esperado:
+`Produto → "Confiança alta"` (ponto verde), `Valor`/`Comentario` →
+`"Confiança média — muitos valores ausentes"` (ponto âmbar). Achado no
+caminho: o fluxo de demonstração (`Ver demonstração`) não passa pelo
+pipeline real de diagnóstico (`prepare()` em `routes/index.tsx` injeta
+`Row[]` prontos sem chamar `diagnoseImportedSheet`), então não serviu
+pra verificar — precisou de upload real (via simulação de
+`input.files`/evento `change`, que funcionou embora o retorno síncrono
+imediato do script tenha mostrado incorretamente "0 arquivos" — o
+upload processou de verdade um instante depois).
+
+Também flagrado (não corrigido, `spawn_task` registrado pro usuário
+decidir): um erro real e reproduzível de corrida de hidratação SSR
+("Hydration failed... modo privado") apareceu em toda verificação de
+navegador desta sessão inteira, incluindo as anteriores — fora de
+escopo desta seção, mas confirmado como bug real, não ruído.
+
+`npx vitest run` (559 passou, 1 pulado — 4 testes novos), `npx tsc
+--noEmit`, `npx eslint --fix` nos 7 arquivos tocados + Prettier
+CRLF-safe, `npm run build` + `npm run performance:check`, e
+`npx playwright test` (E2E completo) aprovados.
+
+**Pendência explícita, não implementada**: `ImportAudit` (mesclagens
+expandidas, fórmulas recuperadas, linhas ignoradas etc.) continua
+computado e nunca renderizado — próximo passo natural pra "mostrando
+exatamente o motivo" a nível de aba, complementando o nível de coluna
+implementado aqui. O restante da lista trazida pelo usuário (modo de
+revisão pré-importação, regras de importação salvas por modelo,
+relatório de fidelidade por aba, identificação de arquivo por conteúdo,
+limite de área inflada, rate limit distribuído, SAST na CI, etc.)
+permanece registrado como próximas prioridades, não abandonado.

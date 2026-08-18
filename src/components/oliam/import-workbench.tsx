@@ -7,6 +7,7 @@ import type { Column, Row } from "@/lib/types";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
 import type { SourceGrid, ImportAudit } from "@/lib/import";
 import { buildSheetHealth, defaultSelection, type ImportSelection } from "@/lib/import-workbench";
+import { ConfidenceDot } from "./confidence-dot";
 
 export function ImportWorkbench({
   rows,
@@ -315,25 +316,38 @@ export function ImportWorkbench({
                   <thead className="sticky top-0 z-10">
                     <tr>
                       <th className="border border-blue-300 bg-blue-600 px-2 py-2 text-white">#</th>
-                      {previewColumns.map((column) => (
-                        <th
-                          key={column.key}
-                          className={cn(
-                            "border px-3 py-2 text-left text-white",
-                            ignored.has(column.key)
-                              ? "border-slate-400 bg-slate-500"
-                              : "border-blue-300 bg-blue-600",
-                          )}
-                        >
-                          <button
-                            type="button"
-                            className="w-full text-left"
-                            onClick={() => toggleColumn(column.key)}
+                      {previewColumns.map((column) => {
+                        const diagnostic = columnDiagnostic(column.key);
+                        return (
+                          <th
+                            key={column.key}
+                            className={cn(
+                              "border px-3 py-2 text-left text-white",
+                              ignored.has(column.key)
+                                ? "border-slate-400 bg-slate-500"
+                                : "border-blue-300 bg-blue-600",
+                            )}
                           >
-                            {column.label}
-                          </button>
-                        </th>
-                      ))}
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-1.5 text-left"
+                              onClick={() => toggleColumn(column.key)}
+                              title={
+                                diagnostic
+                                  ? `Confiança ${diagnostic.level}${
+                                      diagnostic.warnings.length
+                                        ? ` — ${diagnostic.warnings.join("; ")}`
+                                        : ""
+                                    }`
+                                  : undefined
+                              }
+                            >
+                              {diagnostic && <ConfidenceDot level={diagnostic.level} />}
+                              <span className="truncate">{column.label}</span>
+                            </button>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>

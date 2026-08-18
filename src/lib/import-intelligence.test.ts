@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import {
   buildSheetConfidenceMatrix,
+  confidenceLevelFor,
   diagnoseImportedSheet,
   getFormulaSummary,
   normalizeImportedValue,
@@ -549,5 +550,98 @@ describe("matriz de confiança por aba", () => {
     const matrix = buildSheetConfidenceMatrix([{ name: "Vendas", diagnostics }]);
 
     expect(matrix[0]!.readerDivergenceCount).toBe(1);
+  });
+});
+
+describe("confidenceLevelFor", () => {
+  it("usa os mesmos limiares (85/60) reaproveitados pela matriz de confiança por aba", () => {
+    expect(confidenceLevelFor(100)).toBe("alta");
+    expect(confidenceLevelFor(85)).toBe("alta");
+    expect(confidenceLevelFor(84)).toBe("média");
+    expect(confidenceLevelFor(60)).toBe("média");
+    expect(confidenceLevelFor(59)).toBe("baixa");
+    expect(confidenceLevelFor(0)).toBe("baixa");
+  });
+});
+
+describe("confiança por coluna (ColumnDiagnostic.level)", () => {
+  it("classifica uma coluna limpa e consistente como alta", () => {
+    const ws = sheet([
+      ["Produto", "Valor"],
+      ["Bolo", 42],
+      ["Torta", 18],
+      ["Pudim", 30],
+      ["Brigadeiro", 12],
+      ["Cocada", 25],
+    ]);
+    const diagnostics = diagnoseImportedSheet(ws, [
+      { Produto: "Bolo", Valor: 42 },
+      { Produto: "Torta", Valor: 18 },
+      { Produto: "Pudim", Valor: 30 },
+      { Produto: "Brigadeiro", Valor: 12 },
+      { Produto: "Cocada", Valor: 25 },
+    ]);
+    const valor = diagnostics.columns.find((c) => c.key === "Valor");
+    expect(valor?.warnings).toEqual([]);
+    expect(valor?.level).toBe("alta");
+  });
+
+  it("nunca mostra alta quando a coluna tem um aviso explícito, mesmo com score combinado alto", () => {
+    // 8 linhas, 2 preenchidas com texto uniforme e 6 ausentes (>20% de
+    // faltantes) — dispara "muitos valores ausentes" mesmo com as duas
+    // linhas preenchidas sendo perfeitamente consistentes entre si
+    // (qualityScore 100), o que sozinho já classificaria como alta.
+    const ws = sheet([
+      ["Observacao"],
+      ["Conferido"],
+      ["Conferido"],
+      [null],
+      [null],
+      [null],
+      [null],
+      [null],
+      [null],
+    ]);
+    const rows = [
+      { Observacao: "Conferido" },
+      { Observacao: "Conferido" },
+      { Observacao: null },
+      { Observacao: null },
+      { Observacao: null },
+      { Observacao: null },
+      { Observacao: null },
+      { Observacao: null },
+    ];
+    const diagnostics = diagnoseImportedSheet(ws, rows);
+    const observacao = diagnostics.columns.find((c) => c.key === "Observacao");
+    expect(observacao?.warnings).toContain("muitos valores ausentes");
+    expect(observacao?.level).not.toBe("alta");
+  });
+
+  it("classifica uma coluna com representações misturadas e muita ausência como baixa", () => {
+    const ws = sheet([
+      ["X"],
+      ["#N/A"],
+      ["1,5"],
+      ["dois"],
+      ["#REF!"],
+      [null],
+      [null],
+      [null],
+      ["3"],
+    ]);
+    const rows = [
+      { X: "#N/A" },
+      { X: "1,5" },
+      { X: "dois" },
+      { X: "#REF!" },
+      { X: null },
+      { X: null },
+      { X: null },
+      { X: "3" },
+    ];
+    const diagnostics = diagnoseImportedSheet(ws, rows);
+    const x = diagnostics.columns.find((c) => c.key === "X");
+    expect(x?.level).toBe("baixa");
   });
 });
