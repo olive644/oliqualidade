@@ -161,7 +161,8 @@ audit inteiro.
 | Cabeçalhos, blocos e regiões                | `import.ts`, `structural-model.ts`                                    | `import.test.ts`                             |
 | Tipos, fórmulas e semântica                 | `format.ts`, `formula.ts`, `spreadsheet-intelligence.ts`              | teste dedicado                               |
 | Widget novo ou recomendação                 | `types.ts`, `widgets.ts`, `auto-dashboard.ts`, `components/oliam/widget-card.tsx` (dispatcher por `w.type`), `components/oliam/widget-support.tsx` (chrome/hooks compartilhados: `WidgetHead`, `EmptyWidget`, `FilterChip`, `WidgetDragProps`) | widgets + auto-dashboard                     |
-| Corpo de um tipo específico de widget (ranking, insights, avaliação, comparador de versões, tabela dinâmica/matriz) | `components/oliam/{ranking,insights,rating,version-compare,pivot}-widget-body.tsx` — cada um autocontido (`<article>`+`WidgetHead` próprios), chamado por `WidgetCard` | verificação manual no navegador (sem teste unitário ainda) |
+| Corpo de um tipo específico de widget (todos os 14 tipos originais, exceto os que já delegavam pra componente lazy) | `components/oliam/{ranking,insights,rating,version-compare,pivot,exception-panel,schedule-heatmap,metric,chart}-widget-body.tsx` — cada um autocontido (`<article>`+`WidgetHead` próprios), chamado por `WidgetCard`; `chart-widget-body.tsx` cobre `bar`/`pie`/`line`/`area` juntos (compartilham estado de interação) | verificação manual no navegador (sem teste unitário ainda) |
+| Rolagem horizontal por arrasto num gráfico (sparkline ou gráfico principal) | `components/oliam/use-chart-horizontal-scroll.tsx` — hook compartilhado, precisa ser `.tsx` (contém JSX do botão) | verificação manual no navegador |
 | Coluna vazia entrando/saindo de métrica ou dimensão automática | `classifyDashboardColumn` (`auto-dashboard.ts`), `nums`/`fillRatio` em `createWidget`/`buildDefaultWidgets` (`widgets.ts`) | `auto-dashboard.test.ts`, `widgets.test.ts` |
 | Painel de leitura guiada de categoria em destaque (comparação vs. maior outra categoria) | `pieComparisonFor` (`data-pipeline.ts`), `SeriesComparisonPanel` (`components/oliam/widget-support.tsx`) — genérico sobre `{name, total}[]`, usado hoje por pizza e barra | `data-pipeline.test.ts` (a função) + verificação manual do widget |
 | Resumo de tendência (início→fim, mínimo, máximo, média) para séries temporais | `trendSummaryFor` (`data-pipeline.ts`), `TrendSummaryPanel` (`components/oliam/widget-support.tsx`) — usado por linha e área agrupada por data | `data-pipeline.test.ts` (a função) + verificação manual do widget |
@@ -374,24 +375,28 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    pós-hidratação) e suíte E2E completa. `security-smoke.mjs` (roda na
    CI) fortalecido pra falhar se `script-src` não tiver nonce ou ainda
    tiver `'unsafe-inline'`. Ver [[CURRENT_STATE_AUDIT#93. Item 7 do backlog implementado: script-src do CSP agora usa nonce por requisição, sem unsafe-inline]].
-8. **Divisão de `widget-card.tsx`** `#pendente` — arquivo era uma função
-   única de ~3543 linhas/151 KB com 14 branches de tipo de widget, zero
-   `useMemo`/`useCallback` e zero teste. Primeira fatia: 5 tipos
-   autocontidos extraídos (`version-compare-widget-body.tsx`,
+8. ~~Divisão de `widget-card.tsx`~~ **Concluída** — arquivo era uma
+   função única de ~3543 linhas/151 KB com 14 branches de tipo de
+   widget, zero `useMemo`/`useCallback` e zero teste. Todos os tipos
+   extraídos em duas fatias: `version-compare-widget-body.tsx`,
    `pivot-widget-body.tsx`, `ranking-widget-body.tsx`,
-   `insights-widget-body.tsx`, `rating-widget-body.tsx`), mais
-   `EmptyWidget`/`FilterChip` movidos pra `widget-support.tsx`
-   (deduplicação real, não só realocação — `FilterChip` era closure
-   implícita, virou componente com props explícitas). Arquivo caiu de
-   3543 para 2760 linhas. Faltam 9 branches: `exception-panel`
-   (~376 linhas), `schedule-heatmap` (~577 linhas), `metric`/`metric-trend`,
-   e o maior de todos, `bar`/`pie`/`line`/`area` (~780 linhas,
-   compartilha estado `activePieIndex`/`selectedPieIndex`/`activeBarIndex`
-   só entre si). Repetir o mesmo padrão: componente autocontido por
-   tipo (chrome próprio + `<article>`, não só o miolo), extrair chrome
-   genuinamente duplicado pra `widget-support.tsx`, verificar com
-   `tsc`+`eslint`+E2E+navegador real a cada fatia (sem teste unitário
-   pré-existente pra confiar). Ver [[CURRENT_STATE_AUDIT#94. Primeira fatia da divisão de widget-card.tsx (151 KB, ~3543 linhas numa função só): 5 tipos de widget extraídos, 783 linhas removidas]].
+   `insights-widget-body.tsx`, `rating-widget-body.tsx`,
+   `exception-panel-widget-body.tsx`, `schedule-heatmap-widget-body.tsx`,
+   `metric-widget-body.tsx`, `chart-widget-body.tsx` (`bar`/`pie`/`line`/
+   `area`, o maior). `EmptyWidget`/`FilterChip` movidos pra
+   `widget-support.tsx` (deduplicação real — `FilterChip` era closure
+   implícita, virou componente com props explícitas); novo hook
+   `use-chart-horizontal-scroll.tsx` compartilhado entre o sparkline do
+   metric-trend e o bloco de gráficos principal (mesma lógica de
+   arrastar-pra-rolar, achada duplicada durante a extração). `WidgetCard`
+   caiu de 3543 para **738 linhas** (-79%) — ficou só um dispatcher por
+   `w.type` + chrome compartilhado + os 2 branches pequenos que nunca
+   precisaram de extração. Cada extração verificada com
+   `tsc`+`eslint`+`vitest`+`build`+E2E+navegador real (clique
+   programático em barra/pizza confirmando cross-filter nas duas
+   direções) antes de seguir pra próxima — sem teste unitário
+   pré-existente pra confiar. Ver [[CURRENT_STATE_AUDIT#94. Primeira fatia da divisão de widget-card.tsx (151 KB, ~3543 linhas numa função só): 5 tipos de widget extraídos, 783 linhas removidas]]
+   e [[CURRENT_STATE_AUDIT#95. Divisão de widget-card.tsx concluída: os 9 branches restantes extraídos, arquivo cai de 3543 para 738 linhas (-79%)]].
 
 ## Comandos operacionais
 
