@@ -120,4 +120,28 @@ describe("gate de promoção do shadow WASM", () => {
     expect(assessments["xlsx"]?.eligible).toBe(true);
     expect(assessments["xlsm"]?.eligible).toBe(true);
   });
+
+  it("mede derivados de fontes reais sem usá-los para liberar o gate nativo", () => {
+    const observations = Array.from({ length: 5 }, (_, index) => ({
+      ...matched(20 + index),
+      source: "sanitized-derived-real" as const,
+      corpusId: `derived-${index}`,
+    }));
+    const assessment = assessWasmPromotion(observations, {
+      ...permissiveCriteria,
+      minimumWorkbooks: 5,
+      minimumComparedCells: 250,
+      minimumSanitizedRealWorkbooks: 5,
+    });
+
+    expect(assessment).toMatchObject({
+      eligible: false,
+      sanitizedRealWorkbooks: 0,
+      derivedRealWorkbooks: 5,
+      divergentWorkbooks: 0,
+    });
+    expect(assessment.reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining("corpus real sanitizado insuficiente")]),
+    );
+  });
 });

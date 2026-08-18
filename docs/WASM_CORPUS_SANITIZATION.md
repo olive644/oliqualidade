@@ -75,3 +75,31 @@ Para manter o destino fora do reposit&oacute;rio, defina
 
 Use uma pasta de destino nova para repetir o processo. O comando n&atilde;o apaga nem
 sobrescreve arquivos existentes.
+
+## Valida&ccedil;&atilde;o com modelos derivados de fontes reais
+
+Quando ainda n&atilde;o h&aacute; cinco modelos XLTX nativos independentes, &eacute; poss&iacute;vel
+exercitar o caminho completo do formato com c&oacute;pias derivadas de arquivos XLSX
+reais. A deriva&ccedil;&atilde;o altera somente o Content-Type do workbook e grava nomes
+neutros, hashes e a rela&ccedil;&atilde;o com a fonte em `derivation.local.json`:
+
+```powershell
+npm run corpus:derive-templates -- --input "C:\planilhas-xlsx" --output "C:\corpus-xltx-derivado"
+$env:OLI_CORPUS_SANITIZE_SALT = "uma-chave-local-com-pelo-menos-16-caracteres"
+npm run corpus:sanitize -- --input "C:\corpus-xltx-derivado" --output "C:\corpus-xltx-sanitizado"
+npm run corpus:validate -- --source "C:\corpus-xltx-derivado" --sanitized "C:\corpus-xltx-sanitizado"
+$env:OLI_SANITIZED_CORPUS_DIR = "C:\corpus-xltx-sanitizado"
+npm run wasm:corpus
+Remove-Item Env:OLI_SANITIZED_CORPUS_DIR
+Remove-Item Env:OLI_CORPUS_SANITIZE_SALT
+```
+
+O sanitizador reconhece `derivation.local.json` e marca esses casos como
+`sanitized-derived-real`. Eles contam para volume, paridade, estruturas e
+lat&ecirc;ncia, mas **n&atilde;o contam como fontes reais nativas no gate de promo&ccedil;&atilde;o**.
+Essa separa&ccedil;&atilde;o permite encontrar bugs no leitor sem transformar cinco c&oacute;pias
+do mesmo tipo de origem em evid&ecirc;ncia falsa de diversidade real.
+
+`corpus:validate` tamb&eacute;m confere a integridade do manifesto, o Content-Type,
+a pseudonimiza&ccedil;&atilde;o de textos, a remo&ccedil;&atilde;o de links/coment&aacute;rios/VBA e a
+paridade de c&eacute;lulas, f&oacute;rmulas, mesclagens, linhas ocultas e colunas ocultas.

@@ -49,6 +49,25 @@ if (!inputArgument || !outputArgument) {
     fail("A pasta de destino deve estar vazia para impedir sobrescritas acidentais.");
   } else {
     const sourceFiles = filesBelow(inputRoot);
+    const derivationManifestPath = join(inputRoot, "derivation.local.json");
+    let derivationByFile = new Map();
+    if (existsSync(derivationManifestPath)) {
+      const derivationManifest = JSON.parse(readFileSync(derivationManifestPath, "utf8"));
+      if (
+        !Array.isArray(derivationManifest.cases) ||
+        derivationManifest.cases.some(
+          (entry) =>
+            !entry ||
+            typeof entry.file !== "string" ||
+            entry.source !== "derived-real" ||
+            typeof entry.parentSha256 !== "string" ||
+            !/^[a-f0-9]{64}$/.test(entry.parentSha256) ||
+            typeof entry.transformation !== "string",
+        )
+      )
+        throw new Error("derivation.local.json invalido.");
+      derivationByFile = new Map(derivationManifest.cases.map((entry) => [entry.file, entry]));
+    }
     // .xlsx/.xlsm/.xltx/.xltm sao todos aceitos. sanitizeWorkbookBytes grava
     // a saida preservando o formato real da origem — inclusive .xltx/.xltm
     // (modelo do Excel): o SheetJS instalado so sabe ESCREVER bookType
@@ -95,13 +114,18 @@ if (!inputArgument || !outputArgument) {
         const bookType = bookTypeByExtension[extname(sourcePath).toLowerCase()];
         const file = `sanitized-${String(cases.length + 1).padStart(3, "0")}.${bookType}`;
         const sanitized = sanitizeWorkbookBytes(sourceBytes, { salt, workbookId: id, bookType });
+        const relativeSource = relative(inputRoot, sourcePath).split(sep).join("/");
+        const derivation = derivationByFile.get(relativeSource);
         writeFileSync(join(outputRoot, file), sanitized.bytes, { flag: "wx" });
         cases.push({
           id,
           file,
           format: bookType,
-          source: "sanitized-real",
-          features: ["local-sanitized"],
+          source: derivation ? "sanitized-derived-real" : "sanitized-real",
+          features: derivation
+            ? ["local-sanitized", "derived-real", derivation.transformation]
+            : ["local-sanitized"],
+          ...(derivation?.parentSha256 ? { parentSha256: derivation.parentSha256 } : {}),
           sha256: sha256(sanitized.bytes),
           ...sanitized.summary,
         });
