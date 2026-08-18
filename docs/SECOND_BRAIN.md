@@ -205,6 +205,7 @@ audit inteiro.
 | Banner de título mesclado reconhecido mesmo quando o gerador repete o texto em toda célula da mesclagem (não só na célula de origem, como o Excel real serializa) | `bannerRows` em `sheetToRows` (`import.ts`) — segunda checagem além de `originalFilledCount === 1`: mesclagem de largura inteira com todas as células preenchidas iguais | `import.test.ts` — ver [[CURRENT_STATE_AUDIT#86. Usuário trouxe modelos .xltx reais em cima do mesmo corpus: cabeçalho hierárquico virava registro fantasma em planilha sem dado]] |
 | Cabeçalho hierárquico (grupo + subcoluna) estende pra segunda camada mesmo sem nenhuma linha de dado abaixo (modelo `.xltx`/`.xltm` vazio), inclusive quando a linha pai mistura colunas simples com colunas agrupadas | `findHierarchicalHeaderEnd` (`import.ts`) — sinal estrutural `noDataAnywhereBelowForLayer`: mesclagem horizontal real na camada atual + zero dado em qualquer lugar abaixo, reaproveitado nas duas travas da função | `import.test.ts` — ver seções 86 e [[CURRENT_STATE_AUDIT#87. Usuário trouxe mais 5 modelos .xltx reais (06-10): cabeçalho misto e data fantasma "31/12/1899"]] |
 | Célula de fórmula não calculada (`t="s"`, `v=""`) com formato de data não vira data fantasma "31/12/1899" | `normalizeRawRow` (`import.ts`) — checa o tipo original da célula (`sourceCell.t === "s"`) antes de tentar formatar como data, não depois (SheetJS 0.20 sintetiza `new Date(0)` a partir de string vazia + formato numérico de data) | `import.test.ts` — mesma seção 87 |
+| Relatório de fidelidade por aba (percentual + detalhamento de ajustes na revisão) | `auditFidelityPercent` (`import.ts`, opera sobre `ImportAudit`); painel `<details>` em `review.tsx` (reaproveita `confidenceLevelFor`/`ConfidenceDot` já usados pela confiança por coluna) | `import.test.ts` (`describe("auditFidelityPercent")`) + verificação manual com upload real — ver [[CURRENT_STATE_AUDIT#98. Relatório de fidelidade por aba na revisão de importação (item pendente da seção 96, backlog item 9)]] |
 
 ## Regras de produto que não podem regredir
 
@@ -405,11 +406,14 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    tooltip com motivo exato), reaproveitando infraestrutura que já
    existia mas nunca era mostrada (`ColumnDiagnostic.confidence`/
    `.warnings`). Ver [[CURRENT_STATE_AUDIT#96. Confiança por coluna na revisão de importação (badge alta/média/baixa + motivo)]].
+   ~~Relatório de fidelidade por aba usando `ImportAudit`~~ **Feito** —
+   painel novo em `review.tsx` mostra percentual de fidelidade
+   (`auditFidelityPercent`, `import.ts`) + detalhamento de mesclagens
+   expandidas, fórmulas recuperadas, conversões numéricas e linhas/
+   colunas ignoradas, reaproveitando `confidenceLevelFor`/`ConfidenceDot`
+   já usados pela confiança por coluna. Verificado com upload real de
+   CSV sintético. Ver [[CURRENT_STATE_AUDIT#98. Relatório de fidelidade por aba na revisão de importação (item pendente da seção 96, backlog item 9)]].
    **Pendente, registrado nesta mesma seção do usuário, não abandonado**:
-   - Relatório de fidelidade por aba usando `ImportAudit` (mesclagens
-     expandidas, fórmulas recuperadas, linhas ignoradas etc.) — já
-     computado, nunca renderizado; próximo passo natural desta mesma
-     frente.
    - Modo de revisão pré-importação mais guiado (confirmar cabeçalho/
      intervalo/tipos antes de importar).
    - Regras de importação reutilizáveis por modelo de planilha.
