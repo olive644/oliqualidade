@@ -277,7 +277,12 @@ export function OliAm({ routeId }: { routeId?: string }) {
     >(),
   );
   const [folderMonitors, setFolderMonitors] = useState<Record<string, FolderMonitorView>>({});
-  const [privateMode, setPrivateModeState] = useState(() => isPrivateMode());
+  // Falso na renderização do servidor (sem localStorage); sincronizado com o
+  // valor real só depois que o React conecta no cliente, para não divergir
+  // do HTML do servidor quando o usuário já tinha ativado o modo privado
+  // numa sessão anterior (bug real de hidratação encontrado em produção).
+  const [privateMode, setPrivateModeState] = useState(false);
+  useEffect(() => setPrivateModeState(isPrivateMode()), []);
 
   const togglePrivateMode = async () => {
     const next = !privateMode;
