@@ -103,7 +103,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.5.4",
     "exceljs": "^4.4.0",
-    "globals": "^15.15.0",
+    "globals": "^17.11.0",
     "nitro": "3.0.260603-beta",
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
