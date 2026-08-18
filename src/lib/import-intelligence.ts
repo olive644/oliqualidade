@@ -47,11 +47,17 @@ export type DetectedFieldKind =
   | "url"
   | "id";
 
+/** Classificação em 3 níveis usada tanto para aba quanto para coluna, sempre
+ * a partir de um score 0-100 — ver `confidenceLevelFor`. */
+export type ConfidenceLevel = "alta" | "média" | "baixa";
+
 export type ColumnDiagnostic = {
   key: string;
   label: string;
   kind: DetectedFieldKind;
   confidence: number;
+  /** Nível legível derivado de `confidence`/`qualityScore` — ver `confidenceLevelFor`. */
+  level: ConfidenceLevel;
   filled: number;
   missing: number;
   unique: number;
@@ -61,6 +67,16 @@ export type ColumnDiagnostic = {
   warnings: string[];
   qualityScore: number;
 };
+
+/**
+ * Limiares únicos para "alta"/"média"/"baixa", reaproveitados por
+ * `buildSheetConfidenceMatrix` (nível da aba) e por `ColumnDiagnostic.level`
+ * (nível da coluna) — mesmo corte em ambos os lugares, para o usuário nunca
+ * ver "alta" numa aba e "baixa" numa coluna representando o mesmo score.
+ */
+export function confidenceLevelFor(score: number): ConfidenceLevel {
+  return score >= 85 ? "alta" : score >= 60 ? "média" : "baixa";
+}
 
 export type TableRegionDiagnostic = {
   startRow: number;
@@ -146,7 +162,7 @@ export type ImportDiagnostics = {
   header: { row: number; confidence: number };
 };
 
-export type SheetConfidenceLevel = "alta" | "média" | "baixa" | "sem diagnóstico";
+export type SheetConfidenceLevel = ConfidenceLevel | "sem diagnóstico";
 
 export type SheetConfidenceEntry = {
   name: string;
@@ -177,12 +193,10 @@ export function buildSheetConfidenceMatrix(
         readerDivergenceCount: 0,
       };
     }
-    const level: SheetConfidenceLevel =
-      diagnostics.confidence >= 85 ? "alta" : diagnostics.confidence >= 60 ? "média" : "baixa";
     return {
       name: sheet.name,
       confidence: diagnostics.confidence,
-      level,
+      level: confidenceLevelFor(diagnostics.confidence),
       reasons: diagnostics.confidenceReasons,
       readerDivergenceCount: diagnostics.readerDivergences?.length ?? 0,
     };
@@ -681,11 +695,24 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
     );
     if (filledValues.length >= 5 && representationConsistency < 0.9)
       warnings.push("representações de valor misturadas");
+    // Combina certeza de detecção de tipo (confidence) com consistência dos
+    // valores presentes (qualityScore) em partes iguais — as duas medem
+    // coisas diferentes (o quão bem o padrão bate vs. o quão uniforme é o
+    // que foi preenchido) e uma coluna só merece "alta" quando ambas
+    // concordam. Qualquer aviso explícito (muitos ausentes, valor único
+    // dominante, representações misturadas) já é motivo suficiente pra não
+    // mostrar "alta", mesmo que o score combinado cruze o limiar — o
+    // usuário vê o aviso do lado do selo, não faz sentido dizer "alta
+    // confiança" e listar um motivo de dúvida na mesma coluna.
+    const columnScore = Math.round(confidence * 100 * 0.5 + qualityScore * 0.5);
+    const rawLevel = confidenceLevelFor(columnScore);
+    const level: ConfidenceLevel = warnings.length && rawLevel === "alta" ? "média" : rawLevel;
     return {
       key,
       label: key.replaceAll("_", " "),
       kind,
       confidence: Math.round(confidence * 100) / 100,
+      level,
       filled: filledValues.length,
       missing,
       unique: uniqueValues.size,

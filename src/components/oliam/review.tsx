@@ -41,6 +41,7 @@ import {
   type SmartImportSuggestion,
 } from "@/lib/smart-import";
 import { analyzeImportWithAi, markSmartImportAutoAnalysis } from "@/lib/smart-import-client";
+import { ConfidenceDot } from "./confidence-dot";
 import { Mark } from "./mark";
 import { OliLoader } from "./oli-loader";
 import { ImportWorkbench } from "./import-workbench";
@@ -963,19 +964,10 @@ export function Review(p: {
                       : "border-transparent bg-transparent text-muted-foreground hover:bg-accent",
                   )}
                 >
-                  {sheetConfidence?.confidence != null && (
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "mr-1.5 inline-block size-1.5 rounded-full align-middle",
-                        sheetConfidence.level === "alta"
-                          ? "bg-emerald-500"
-                          : sheetConfidence.level === "média"
-                            ? "bg-amber-500"
-                            : "bg-rose-500",
-                      )}
-                    />
-                  )}
+                  {sheetConfidence?.confidence != null &&
+                    sheetConfidence.level !== "sem diagnóstico" && (
+                      <ConfidenceDot level={sheetConfidence.level} className="mr-1.5" />
+                    )}
                   {s.name}
                   <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
                     {s.rows.length}

@@ -397,6 +397,45 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    direções) antes de seguir pra próxima — sem teste unitário
    pré-existente pra confiar. Ver [[CURRENT_STATE_AUDIT#94. Primeira fatia da divisão de widget-card.tsx (151 KB, ~3543 linhas numa função só): 5 tipos de widget extraídos, 783 linhas removidas]]
    e [[CURRENT_STATE_AUDIT#95. Divisão de widget-card.tsx concluída: os 9 branches restantes extraídos, arquivo cai de 3543 para 738 linhas (-79%)]].
+9. **Confiança por coluna na revisão** ~~parcial~~ — usuário trouxe lista
+   extensa ("Prioridade alta — fazer agora") cobrindo confiabilidade de
+   importação, UX de erro, segurança de infraestrutura e produto/
+   arquitetura; escolhido começar pelo primeiro item. **Feito**: badge
+   alta/média/baixa por coluna na Bancada de importação (ponto colorido +
+   tooltip com motivo exato), reaproveitando infraestrutura que já
+   existia mas nunca era mostrada (`ColumnDiagnostic.confidence`/
+   `.warnings`). Ver [[CURRENT_STATE_AUDIT#96. Confiança por coluna na revisão de importação (badge alta/média/baixa + motivo)]].
+   **Pendente, registrado nesta mesma seção do usuário, não abandonado**:
+   - Relatório de fidelidade por aba usando `ImportAudit` (mesclagens
+     expandidas, fórmulas recuperadas, linhas ignoradas etc.) — já
+     computado, nunca renderizado; próximo passo natural desta mesma
+     frente.
+   - Modo de revisão pré-importação mais guiado (confirmar cabeçalho/
+     intervalo/tipos antes de importar).
+   - Regras de importação reutilizáveis por modelo de planilha.
+   - Identificação de arquivo por conteúdo real (não só extensão) +
+     limite de área declarada desproporcional à célula preenchida.
+   - Remapeamento seguro de cores de tema/validações/tabelas
+     estruturadas/pivot tables ao dividir abas em regiões (hoje
+     descartado de forma conservadora).
+   - UX de erro: diagnóstico de importação baixável, "tentar modo
+     compatível", comparação visual encontrado×importado, progresso real
+     por etapa.
+   - Segurança: rate limit distribuído (Redis/Upstash) pro chat/análise,
+     proteção na borda pro `/api/gemini/*`, `npm audit`+scan de
+     segredos+Dependabot/Renovate+CodeQL na CI, política de dados de IA
+     mais visível por dashboard, smoke test cobrindo
+     `Permissions-Policy`/`Cross-Origin-Opener-Policy`/cache/métodos
+     inesperados.
+   - Produto: testes unitários por widget extraído nas seções 94/95,
+     testes visuais de screenshot pra gráfico/PDF, benchmark real de
+     importação (10k/100k/500k linhas), virtualização de tabela em
+     exportações grandes, versionamento de dashboard com
+     antes/depois via pasta monitorada, templates prontos por área
+     (Qualidade, Produção, Ocorrências, Vendas, Logística, Auditoria).
+   - Corpus: usuário concordou explicitamente em não promover Rust/WASM
+     além de shadow/candidato enquanto o corpus real não for sanitizado
+     — decisão já registrada, ver item 3 do backlog.
 
 ## Comandos operacionais
 
