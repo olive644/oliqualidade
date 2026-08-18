@@ -4879,5 +4879,55 @@ corpus. XLSM/XLTX/XLTM continuam em 0/5 no gate de promoção — dependem
 só de arquivo real chegando, mesmo tipo de lacuna que XLSX já fechou
 (6/5). `npx vitest run` (549 passou, 1 pulado — 2 testes novos desta
 seção), `npx tsc --noEmit`, `npx eslint --fix` nos 4 arquivos tocados e
-checagem CRLF-safe do Prettier aprovados. Branch não mesclada — pendente
-de autorização do usuário.
+checagem CRLF-safe do Prettier aprovados.
+
+Mesclada como [PR #139](https://github.com/olive644/oliqualidade/pull/139)
+depois de todos os checks de CI passarem e autorização explícita do
+usuário. Main avançou de `859dac8` para `9c8e27f`.
+
+## 92. Auditoria de segurança/privacidade a pedido do usuário: removido componente shadcn/ui morto com `dangerouslySetInnerHTML`
+
+Usuário pediu pra priorizar segurança/privacidade enquanto o gate XLSM/
+XLTX/XLTM espera arquivo real. Investigação (não um scanner genérico, leitura
+direta do código): CSP self-hosted sem wildcard em `script-src`/`style-src`,
+`object-src 'none'`, `frame-ancestors 'none'` (`http-security.ts`); cookies
+de sessão `HttpOnly`/`SameSite=Strict`; checagem de origem em rotas de API
+(`isSameOriginBrowserRequest`); construção do payload enviado ao Gemini já
+filtra CPF/CNPJ/email/telefone por regex de nome de coluna E de valor,
+zera exemplos de coluna sensível, tem filtro anti prompt-injection, e
+**revalida no servidor** em vez de confiar no `sensitive` calculado pelo
+client (`smart-import.ts`, `validateSmartImportInput`); modo privacidade
+grava em `sessionStorage` em vez de `localStorage` (`storage.ts`); `npm
+audit --production` sem vulnerabilidades. Postura geral já madura.
+
+Dois achados concretos, não teóricos, reportados ao usuário:
+
+1. **Código morto com sink de HTML/CSS não escapado**:
+   `src/components/ui/chart.tsx` (`ChartContainer`/`ChartStyle`, boilerplate
+   do shadcn/ui) interpolava `key`/`color` de um `ChartConfig` direto dentro
+   de um `<style dangerouslySetInnerHTML>` sem escapar. Confirmado por busca
+   de importação (`from "@/components/ui/chart"` e variantes) que **nenhum
+   widget real usa esse arquivo** — todo o app importa `recharts` direto em
+   `widget-card.tsx`. Não é explorável hoje (nada alimenta esse componente
+   com dado do usuário), mas é uma armadilha: se algum dia alguém religar o
+   componente com nomes de categoria/série vindos de planilha (dado não
+   confiável por definição, é o propósito do app), vira injeção de HTML via
+   quebra do `<style>` sem nenhum aviso.
+2. **`script-src 'self' 'unsafe-inline'` no CSP**: tradeoff já documentado
+   no próprio código (`http-security.ts:10-12`) como temporário até o
+   TanStack Start expor nonce pra hidratação. Registrado como pendência,
+   não implementado nesta sessão (usuário priorizou o item 1).
+
+**Correção aplicada** (item 1, branch `remove-unused-chart-component`,
+sem merge ainda): arquivo `src/components/ui/chart.tsx` deletado por
+inteiro — confirmado sem nenhuma importação em lugar nenhum do `src/` e
+sem teste próprio cobrindo-o, então não há caminho de compatibilidade a
+preservar. `npx tsc --noEmit`, `npx vitest run` (549 passou, 1 pulado,
+sem mudança de contagem — nenhum teste dependia do arquivo), `npm run
+build` e `npm run performance:check` aprovados sem regressão (arquivo já
+não entrava em nenhum bundle, por não ser importado).
+
+**Pendência registrada, não implementada**: apertar `script-src` do CSP
+removendo `unsafe-inline` depende de o TanStack Start expor nonce de
+hidratação — checar a versão instalada antes de tentar, é mudança mais
+delicada (mexe em toda página) e não foi pedida pra esta sessão.
