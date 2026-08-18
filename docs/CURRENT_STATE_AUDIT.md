@@ -5288,3 +5288,45 @@ revisão pré-importação, regras de importação salvas por modelo,
 relatório de fidelidade por aba, identificação de arquivo por conteúdo,
 limite de área inflada, rate limit distribuído, SAST na CI, etc.)
 permanece registrado como próximas prioridades, não abandonado.
+
+## 97. Corrigido o bug real de hidratação SSR sinalizado na seção 96 ("Hydration failed... modo privado")
+
+Usuário escolheu investigar este achado (flagrado como `spawn_task` na
+sessão anterior, seção 96) em vez de seguir a lista de prioridades.
+
+**Causa raiz**: `const [privateMode, setPrivateModeState] = useState(()
+=> isPrivateMode())` em `routes/index.tsx` chamava `isPrivateMode()`
+(`storage.ts`, lê `localStorage.getItem(PRIVACY_MODE_KEY)`) direto no
+inicializador do estado, executado tanto no servidor quanto na primeira
+renderização do cliente. No servidor `localStorage` não existe, então o
+resultado é sempre `false`; no cliente, se o usuário já tinha ativado o
+modo privado numa sessão anterior (persistido em `localStorage`, não é
+efêmero), o resultado é `true` — os dois HTML divergem no texto do botão
+("Ativar modo privado" vs. "Modo privado ligado"), e o React lança
+`Hydration failed` de forma consistente, sempre que o flag já estava
+setado.
+
+**Correção**: mesmo padrão já usado para `hydrated` (ver seção 74/75) —
+estado inicial fixo em `false` (igual ao servidor), sincronizado com o
+valor real de `isPrivateMode()` via `useEffect(() =>
+setPrivateModeState(isPrivateMode()), [])`, que só roda no cliente após
+a montagem, quando o React já reconciliou a árvore hidratada.
+
+**Verificação em navegador real** (não só unitária, por ser bug de
+SSR/hidratação): `localStorage.setItem("oliam-private-mode", "1")` antes
+do carregamento, depois recarga limpa. Sem a correção, reproduzido de
+forma consistente (`Hydration failed because the server rendered text
+...Ativar modo privado`); com a correção, 3 recargas consecutivas sem
+nenhum erro, e o botão mostra corretamente "Modo privado ligado" depois
+da hidratação (efeito observado, não só ausência de erro). Achado
+lateral registrado mas não corrigido nesta seção (fora do escopo do
+sintoma relatado, mesma classe de bug): `sidebar` em `routes/index.tsx`
+também usa `useState(() => typeof window === "undefined" ? true :
+window.matchMedia(...).matches)`, que pode divergir do mesmo jeito
+dependendo da largura da viewport — não reproduzido nem confirmado como
+sintoma real, só sinalizado por semelhança estrutural.
+
+`npx vitest run` (559 passou, 1 pulado, sem teste novo — é um bug de
+timing de hidratação, não de lógica pura, e já há verificação de
+navegador real cobrindo o cenário), `npx tsc --noEmit`, `npm run build`,
+`npx playwright test` (E2E completo) aprovados.

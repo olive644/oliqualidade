@@ -436,6 +436,19 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    - Corpus: usuário concordou explicitamente em não promover Rust/WASM
      além de shadow/candidato enquanto o corpus real não for sanitizado
      — decisão já registrada, ver item 3 do backlog.
+10. ~~Bug real de hidratação SSR flagrado na sessão anterior ("Hydration
+    failed... modo privado")~~ **Corrigido** — usuário escolheu
+    investigar este achado em vez de seguir a lista de prioridades acima.
+    Causa: `useState(() => isPrivateMode())` lia `localStorage` já no
+    inicializador do estado (servidor sempre `false`, cliente `true` se
+    o usuário já tinha ativado antes — divergência real, não falso
+    positivo). Corrigido com o mesmo padrão de `hydrated` (estado inicial
+    fixo, sincronizado via `useEffect` após montar). Reproduzido e
+    confirmado corrigido no navegador real. Achado lateral da mesma
+    classe, não corrigido (sem sintoma reproduzido): `sidebar` também usa
+    `useState(() => typeof window === "undefined" ? true :
+    window.matchMedia(...).matches)`. Ver
+    [[CURRENT_STATE_AUDIT#97. Corrigido o bug real de hidratação SSR sinalizado na seção 96 ("Hydration failed... modo privado")]].
 
 ## Comandos operacionais
 
