@@ -66,7 +66,14 @@ export function Review(p: {
   confirm: () => void;
   importWarning: string | null;
 }) {
-  const [lowConfidenceConfirmed, setLowConfidenceConfirmed] = useState(false);
+  const [headerChecked, setHeaderChecked] = useState(false);
+  const [rangeChecked, setRangeChecked] = useState(false);
+  const [typesChecked, setTypesChecked] = useState(false);
+  useEffect(() => {
+    setHeaderChecked(false);
+    setRangeChecked(false);
+    setTypesChecked(false);
+  }, [p.activeIndex]);
   const active = p.sheets[p.activeIndex] ?? p.sheets[0];
   const rows = useMemo(() => active?.rows ?? [], [active]);
   const columns = useMemo(() => active?.columns ?? [], [active?.columns]);
@@ -951,24 +958,74 @@ export function Review(p: {
             </div>
           </div>
         ) : null}
-        {needsConfirmation && (
-          <label className="mb-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 accent-primary"
-              checked={lowConfidenceConfirmed}
-              onChange={(event) => setLowConfidenceConfirmed(event.target.checked)}
-            />
-            <span>
-              <strong className="font-medium">Confirmar leitura ambígua</strong>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                Revise o cabeçalho, as regiões detectadas e a prévia abaixo. O relatório só será
-                criado depois da sua confirmação para evitar uma interpretação silenciosamente
-                incorreta.
+        <div className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+            <ListChecks className="size-4 text-primary" />
+            Confirme antes de gerar o relatório
+          </div>
+          <div className="grid gap-2">
+            <label
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm",
+                needsConfirmation
+                  ? "border-amber-500/30 bg-amber-500/5"
+                  : "border-border bg-muted/25",
+              )}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-primary"
+                checked={headerChecked}
+                onChange={(event) => setHeaderChecked(event.target.checked)}
+              />
+              <span>
+                <strong className="font-medium">Cabeçalho</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {active?.diagnostics
+                    ? `Detectado na linha ${active.diagnostics.header.row}, com ${Math.round(active.diagnostics.header.confidence * 100)}% de confiança.`
+                    : "Confirme que a primeira linha da tabela abaixo é o cabeçalho correto."}{" "}
+                  Se estiver errado, corrija em "Selecionar na grade original", na Bancada de
+                  importação abaixo.
+                  {needsConfirmation
+                    ? " Confiança baixa nesta leitura — revise com atenção antes de confirmar."
+                    : ""}
+                </span>
               </span>
-            </span>
-          </label>
-        )}
+            </label>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/25 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-primary"
+                checked={rangeChecked}
+                onChange={(event) => setRangeChecked(event.target.checked)}
+              />
+              <span>
+                <strong className="font-medium">Intervalo de linhas</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Linhas {selection.startRow} a {selection.endRow} de {rows.length} no total. Ajuste
+                  em "Primeira linha"/"Última linha", na Bancada de importação abaixo, e clique em
+                  "Aplicar seleção" antes de confirmar.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/25 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-primary"
+                checked={typesChecked}
+                onChange={(event) => setTypesChecked(event.target.checked)}
+              />
+              <span>
+                <strong className="font-medium">Tipos das colunas</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {columns.length} coluna(s) com tipo definido (Número, Moeda, Texto, Data...).
+                  Revise a tabela "Coluna / Tipo e formato / Amostra" abaixo e corrija o que estiver
+                  errado.
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
         {active?.diagnostics?.columns.some((c) => c.sensitive) && (
           <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
@@ -1155,7 +1212,7 @@ export function Review(p: {
           <Button
             className="px-6 shadow-sm"
             onClick={p.confirm}
-            disabled={needsConfirmation && !lowConfidenceConfirmed}
+            disabled={!headerChecked || !rangeChecked || !typesChecked}
           >
             Gerar relatório
           </Button>
