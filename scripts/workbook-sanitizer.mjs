@@ -183,7 +183,11 @@ export function sanitizeWorkbookBytes(input, options) {
     if (!worksheet) continue;
     for (const [address, cell] of Object.entries(worksheet)) {
       if (address.startsWith("!")) continue;
-      cells += 1;
+      // O SheetJS materializa também células vazias que existem apenas para
+      // carregar estilo. Na escrita elas são descartadas, então contá-las aqui
+      // inflava o manifesto em relação às células realmente comparáveis no
+      // corpus sanitizado. Fórmulas sem cache continuam sendo células reais.
+      if (cell.v != null || typeof cell.f === "string") cells += 1;
       sanitizeCell(
         cell,
         `${workbookId}:${originalName}:${address}:${String(cell.v ?? "")}`,

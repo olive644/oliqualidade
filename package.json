@@ -17,6 +17,8 @@
     "test:fixture": "node scripts/generate-problematic-fixture.mjs",
     "test:corpus:generate": "node scripts/generate-workbook-corpus.mjs",
     "corpus:sanitize": "node scripts/sanitize-workbook-corpus.mjs",
+    "corpus:derive-templates": "node scripts/derive-real-templates.mjs",
+    "corpus:validate": "node scripts/validate-sanitized-workbook-corpus.mjs",
     "test:security-smoke": "node scripts/security-smoke.mjs",
     "test:e2e": "playwright test",
     "graph:build": "node scripts/build-code-graph.mjs",

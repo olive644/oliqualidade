@@ -183,6 +183,26 @@ describe("sanitizador local de corpus", () => {
     ).toThrow(/bookType de saida nao suportado/);
   });
 
+  it("conta no manifesto apenas células que sobrevivem à escrita", () => {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([["Cabeçalho"], [42]]);
+    sheet["C20"] = { t: "z", s: { fill: { patternType: "solid", fgColor: { rgb: "FF00FF00" } } } };
+    sheet["!ref"] = "A1:C20";
+    XLSX.utils.book_append_sheet(workbook, sheet, "Dados");
+
+    const result = sanitizeWorkbookBytes(
+      XLSX.write(workbook, { type: "buffer", bookType: "xlsx", cellStyles: true }),
+      { salt: "chave-local-de-teste-123" },
+    );
+    const reread = XLSX.read(result.bytes, { type: "buffer", cellStyles: true });
+    const survivingCells = Object.keys(reread.Sheets["SHEET_001"]!).filter(
+      (address) => !address.startsWith("!"),
+    );
+
+    expect(result.summary.cells).toBe(2);
+    expect(survivingCells).toHaveLength(2);
+  });
+
   it("neutraliza fórmulas com referências externas", () => {
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([[1]]);

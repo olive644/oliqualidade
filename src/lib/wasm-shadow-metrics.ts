@@ -5,7 +5,7 @@ import {
 
 export type WasmCorpusObservation = {
   format: string;
-  source: "synthetic" | "sanitized-real";
+  source: "synthetic" | "sanitized-real" | "sanitized-derived-real";
   corpusId?: string;
   status: WasmShadowStatus;
   schemaVersion: string | null;
@@ -48,6 +48,7 @@ export type WasmPromotionAssessment = {
   divergentWorkbooks: number;
   failedWorkbooks: number;
   sanitizedRealWorkbooks: number;
+  derivedRealWorkbooks: number;
   duplicateSanitizedRealWorkbooks: number;
   unidentifiedSanitizedRealWorkbooks: number;
   comparedCells: number;
@@ -88,6 +89,12 @@ export function assessWasmPromotion(
   ).length;
   const failedWorkbooks = measured.filter((item) => item.status === "failed").length;
   const sanitizedRealObservations = measured.filter((item) => item.source === "sanitized-real");
+  const derivedRealWorkbooks = new Set(
+    measured
+      .filter((item) => item.source === "sanitized-derived-real")
+      .map((item) => item.corpusId?.trim())
+      .filter((id): id is string => !!id),
+  ).size;
   const sanitizedRealIds = new Set(
     sanitizedRealObservations
       .map((item) => item.corpusId?.trim())
@@ -154,6 +161,7 @@ export function assessWasmPromotion(
     divergentWorkbooks,
     failedWorkbooks,
     sanitizedRealWorkbooks,
+    derivedRealWorkbooks,
     duplicateSanitizedRealWorkbooks,
     unidentifiedSanitizedRealWorkbooks,
     comparedCells,

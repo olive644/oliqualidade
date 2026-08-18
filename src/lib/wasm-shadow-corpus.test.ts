@@ -163,7 +163,7 @@ describe.skipIf(!existsSync(generatedManifestPath))(
         ) as GeneratedManifest;
         expect(sanitizedManifest.schemaVersion).toBe("1.0.0");
         for (const testCase of sanitizedManifest.cases) {
-          expect(testCase.source).toBe("sanitized-real");
+          expect(["sanitized-real", "sanitized-derived-real"]).toContain(testCase.source);
           const result = await readWorkbookBytesWithEngine(
             readFileSync(join(sanitizedRoot, testCase.file)),
             testCase.file,
@@ -188,7 +188,14 @@ describe.skipIf(!existsSync(generatedManifestPath))(
         expect(assessment.sanitizedRealWorkbooks).toBe(0);
         expect(assessment.eligible).toBe(false);
       } else {
-        expect(assessment.sanitizedRealWorkbooks).toBe(sanitizedManifest.cases.length);
+        const nativeRealCases = sanitizedManifest.cases.filter(
+          (testCase) => testCase.source === "sanitized-real",
+        );
+        const derivedRealCases = sanitizedManifest.cases.filter(
+          (testCase) => testCase.source === "sanitized-derived-real",
+        );
+        expect(assessment.sanitizedRealWorkbooks).toBe(nativeRealCases.length);
+        expect(assessment.derivedRealWorkbooks).toBe(derivedRealCases.length);
         expect(byFormat["xlsx"]?.measuredWorkbooks).toBe(25 + sanitizedManifest.cases.length);
       }
 
