@@ -225,6 +225,7 @@ export function RankingWidgetBody({
                       background:
                         conditionalColor(g.total, valueCol.kind, valueCol.conditionalFormat) ??
                         undefined,
+                      animationDelay: `${150 + Math.min(i, 10) * 45}ms`,
                     }}
                   />
                 </div>
