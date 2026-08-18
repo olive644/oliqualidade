@@ -196,7 +196,16 @@ describe.skipIf(!existsSync(generatedManifestPath))(
         );
         expect(assessment.sanitizedRealWorkbooks).toBe(nativeRealCases.length);
         expect(assessment.derivedRealWorkbooks).toBe(derivedRealCases.length);
-        expect(byFormat["xlsx"]?.measuredWorkbooks).toBe(25 + sanitizedManifest.cases.length);
+        // O corpus real sanitizado pode misturar formatos (xlsx e xlsm, por
+        // exemplo) — cada `measuredWorkbooks` por formato só soma os casos
+        // daquele formato específico, não o total do manifesto.
+        const sanitizedByFormat = new Map<string, number>();
+        for (const testCase of sanitizedManifest.cases) {
+          sanitizedByFormat.set(testCase.format, (sanitizedByFormat.get(testCase.format) ?? 0) + 1);
+        }
+        for (const [format, count] of sanitizedByFormat) {
+          expect(byFormat[format]?.measuredWorkbooks).toBe(25 + count);
+        }
       }
 
       mkdirSync("test-results", { recursive: true });
