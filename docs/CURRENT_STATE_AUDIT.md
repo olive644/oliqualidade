@@ -5380,3 +5380,62 @@ maior que a origem, 100% quando não há célula de origem a preservar.
 pré-existente, confirmado com o contorno Prettier CRLF-safe), `npm run
 build` + `npm run performance:check`, `npx playwright test` (E2E
 completo) aprovados.
+
+## 99. Confirmação de cabeçalho/intervalo/tipos obrigatória antes de gerar o relatório (backlog item 9, "modo de revisão pré-importação mais guiado")
+
+Próximo item da lista de prioridades do usuário. **Investigação prévia
+(subagente Explore) antes de desenhar qualquer coisa**: toda a
+infraestrutura de detecção/ajuste já existia — cabeçalho detectado e
+mostrado (`review.tsx`), intervalo editável (`import-workbench.tsx`,
+campos "Primeira linha"/"Última linha"), tipos por coluna sempre
+visíveis e editáveis (tabela "Coluna / Tipo e formato / Amostra"). O gap
+real não era falta de recurso, era a confirmação ser **opcional e
+condicional**: `needsConfirmation` só ativava com confiança baixa
+(`confidence < 70`, `header.confidence < 0.7` ou múltiplas regiões);
+numa importação "normal" o usuário podia clicar direto em "Gerar
+relatório" sem nunca olhar cabeçalho, intervalo ou tipos. Pior: se
+abrisse a Bancada de importação, editasse "Primeira linha"/"Última
+linha" mas esquecesse de clicar "Aplicar seleção", a alteração era
+descartada em silêncio — o botão final não depende de `apply()` ter
+rodado, só lê `active.rows`/`active.columns` do estado do sheet.
+
+**Decisão de produto explícita**: como isso muda o comportamento de toda
+importação (não é bug, é UX nova), perguntado ao usuário o formato antes
+de implementar — 3 opções apresentadas (1 checkbox sempre visível, 3
+checks granulares, resumo sem bloqueio). Escolhido: **3 checks
+granulares**.
+
+**Implementado**: o checkbox único genérico ("Confirmar leitura
+ambígua", só aparecia com confiança baixa) foi substituído por 3
+checkboxes sempre visíveis e independentes — Cabeçalho, Intervalo de
+linhas, Tipos das colunas — cada um com o valor atual ao vivo (linha do
+cabeçalho + confiança; `selection.startRow`–`selection.endRow` de
+`rows.length`; contagem de colunas) e apontando onde corrigir na Bancada
+de importação abaixo. Quando `needsConfirmation` ainda é `true` (mesmos
+limiares de antes), o card do cabeçalho ganha destaque âmbar e um aviso
+extra — a distinção de confiança baixa não foi perdida, só deixou de ser
+o único gate. `disabled={!headerChecked || !rangeChecked ||
+!typesChecked}` no botão "Gerar relatório"; estado reseta ao trocar de
+aba (`useEffect` em `p.activeIndex`, mesmo padrão das outras
+reinicializações por aba nesta tela).
+
+**Verificação em navegador real** com upload de CSV sintético: botão
+desabilitado com 0/3 marcados, continua desabilitado com 2/3 (testado
+via estado real dos checkboxes, não só leitura visual), habilita só com
+os 3 marcados, e o clique em "Gerar relatório" avança normalmente até o
+painel (`Oli.Qualidade, painel`), sem erro de console.
+
+**Efeito colateral encontrado e corrigido**: o teste E2E existente
+(`demo-dashboard.spec.ts`) clicava direto em "Gerar relatório" depois do
+fluxo "Ver demonstração" — que também passa pela revisão real, não só
+pelo atalho de diagnóstico. Ajustado para marcar os 3 checkboxes
+(`getByRole("checkbox", { name: ... })` por nome acessível de cada
+label) antes do clique.
+
+`npx vitest run` (563 passou, 1 pulado — nenhum teste novo de lógica
+pura, é um gate de UI coberto por E2E real), `npx tsc --noEmit`, `npx
+eslint` nos 2 arquivos tocados (Prettier reformatou `review.tsx` de
+verdade nesta seção — não era só ruído de CRLF desta vez, `--write`
+aplicado e reconferido), `npm run build` + `npm run
+performance:check`, `npx playwright test` (E2E completo, incluindo o
+ajuste acima) aprovados.
