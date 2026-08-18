@@ -5813,3 +5813,33 @@ sozinho, para de reabrir a mesma proposta até o ecossistema (pelo menos
 com `typescript-eslint`, revisar juntos), `zod` 3→4 (mudança de API
 conhecida, usado em várias validações), `react-day-picker` 9→10,
 `lucide-react` 0.x→1.x, `html2canvas-pro` 1.6→2.3, `@types/node` 22→26.
+
+## 106. Repositório voltou a ser privado; CodeQL removido (dependência direta da decisão da seção 103)
+
+Decisão do usuário: reverter a visibilidade pública que tinha sido
+adotada só pra viabilizar o CodeQL na seção 103. Consequência técnica
+avisada antes de agir: CodeQL/code scanning num repositório privado
+não existe em conta pessoal Free/Pro (só Enterprise) — voltar a ficar
+privado faria o workflow `codeql.yml` voltar a falhar em toda PR, do
+mesmo jeito que a investigação da seção 103 encontrou originalmente.
+
+Confirmado com o usuário qual dos três caminhos seguir (manter
+público, deixar falhando, ou remover) antes de agir — mudança de
+visibilidade de repositório é categoria que exige permissão explícita.
+Escolhido remover o workflow.
+
+**Feito**:
+- `gh api -X PATCH repos/olive644/oliqualidade -f private=true` —
+  repositório privado de novo.
+- `.github/workflows/codeql.yml` removido (`git rm`) — não faz sentido
+  manter um workflow que nunca vai conseguir ficar verde nesta conta.
+- `secret_scanning`/`secret_scanning_push_protection` voltam
+  automaticamente pra `disabled` (só existem de graça em repo público,
+  confirmado via API) — perda esperada, já avisada na seção 104 como
+  consequência implícita de qualquer reversão futura de visibilidade.
+  `dependabot_security_updates` continua `enabled` (não depende de
+  visibilidade).
+
+Dependabot e o gate `dependency-audit` (`npm audit --audit-level=high`)
+continuam funcionando normalmente em repositório privado — nenhum dos
+dois depende de GHAS.
