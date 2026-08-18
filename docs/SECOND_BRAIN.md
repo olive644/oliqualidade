@@ -206,6 +206,7 @@ audit inteiro.
 | Cabeçalho hierárquico (grupo + subcoluna) estende pra segunda camada mesmo sem nenhuma linha de dado abaixo (modelo `.xltx`/`.xltm` vazio), inclusive quando a linha pai mistura colunas simples com colunas agrupadas | `findHierarchicalHeaderEnd` (`import.ts`) — sinal estrutural `noDataAnywhereBelowForLayer`: mesclagem horizontal real na camada atual + zero dado em qualquer lugar abaixo, reaproveitado nas duas travas da função | `import.test.ts` — ver seções 86 e [[CURRENT_STATE_AUDIT#87. Usuário trouxe mais 5 modelos .xltx reais (06-10): cabeçalho misto e data fantasma "31/12/1899"]] |
 | Célula de fórmula não calculada (`t="s"`, `v=""`) com formato de data não vira data fantasma "31/12/1899" | `normalizeRawRow` (`import.ts`) — checa o tipo original da célula (`sourceCell.t === "s"`) antes de tentar formatar como data, não depois (SheetJS 0.20 sintetiza `new Date(0)` a partir de string vazia + formato numérico de data) | `import.test.ts` — mesma seção 87 |
 | Relatório de fidelidade por aba (percentual + detalhamento de ajustes na revisão) | `auditFidelityPercent` (`import.ts`, opera sobre `ImportAudit`); painel `<details>` em `review.tsx` (reaproveita `confidenceLevelFor`/`ConfidenceDot` já usados pela confiança por coluna) | `import.test.ts` (`describe("auditFidelityPercent")`) + verificação manual com upload real — ver [[CURRENT_STATE_AUDIT#98. Relatório de fidelidade por aba na revisão de importação (item pendente da seção 96, backlog item 9)]] |
+| Checklist de confirmação obrigatória (cabeçalho/intervalo/tipos) antes de "Gerar relatório" | `headerChecked`/`rangeChecked`/`typesChecked` (`review.tsx`, reseta por `useEffect` em `p.activeIndex`); botão final `disabled` pelos 3 juntos | verificação manual (0/3, 2/3, 3/3) + `e2e/demo-dashboard.spec.ts` (marca os 3 antes de clicar) — ver [[CURRENT_STATE_AUDIT#99. Confirmação de cabeçalho/intervalo/tipos obrigatória antes de gerar o relatório (backlog item 9, "modo de revisão pré-importação mais guiado")]] |
 
 ## Regras de produto que não podem regredir
 
@@ -413,9 +414,14 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    colunas ignoradas, reaproveitando `confidenceLevelFor`/`ConfidenceDot`
    já usados pela confiança por coluna. Verificado com upload real de
    CSV sintético. Ver [[CURRENT_STATE_AUDIT#98. Relatório de fidelidade por aba na revisão de importação (item pendente da seção 96, backlog item 9)]].
+   ~~Modo de revisão pré-importação mais guiado~~ **Feito** — 3
+   checkboxes sempre visíveis e independentes (cabeçalho, intervalo,
+   tipos) substituem o checkbox único que só aparecia com confiança
+   baixa; "Gerar relatório" só habilita com os 3 marcados. Formato
+   escolhido pelo usuário entre 3 opções apresentadas (era decisão de
+   produto, muda comportamento de toda importação). Ver
+   [[CURRENT_STATE_AUDIT#99. Confirmação de cabeçalho/intervalo/tipos obrigatória antes de gerar o relatório (backlog item 9, "modo de revisão pré-importação mais guiado")]].
    **Pendente, registrado nesta mesma seção do usuário, não abandonado**:
-   - Modo de revisão pré-importação mais guiado (confirmar cabeçalho/
-     intervalo/tipos antes de importar).
    - Regras de importação reutilizáveis por modelo de planilha.
    - Identificação de arquivo por conteúdo real (não só extensão) +
      limite de área declarada desproporcional à célula preenchida.

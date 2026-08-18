@@ -23,6 +23,12 @@ test("carrega dados de demonstração e chega a um painel com widgets", async ({
 
   await expect(page.getByText("Confirme como cada coluna deve ser lida")).toBeVisible();
 
+  // O checklist de confirmação (cabeçalho/intervalo/tipos) é obrigatório antes
+  // de gerar o relatório em toda importação — ver seção 99 do CURRENT_STATE_AUDIT.md.
+  await page.getByRole("checkbox", { name: /cabeçalho/i }).check();
+  await page.getByRole("checkbox", { name: /intervalo de linhas/i }).check();
+  await page.getByRole("checkbox", { name: /tipos das colunas/i }).check();
+
   await page.getByRole("button", { name: /gerar relatório/i }).click();
 
   await expect(page.getByRole("button", { name: /adicionar widget|widget/i }).first()).toBeVisible({
