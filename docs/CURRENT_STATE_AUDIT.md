@@ -5330,3 +5330,53 @@ sintoma real, só sinalizado por semelhança estrutural.
 timing de hidratação, não de lógica pura, e já há verificação de
 navegador real cobrindo o cenário), `npx tsc --noEmit`, `npm run build`,
 `npx playwright test` (E2E completo) aprovados.
+
+## 98. Relatório de fidelidade por aba na revisão de importação (item pendente da seção 96, backlog item 9)
+
+Próximo item natural da frente "confiabilidade de importação", já
+registrado como pendência explícita na seção 96: `ImportAudit`
+(mesclagens expandidas, fórmulas recuperadas, linhas em branco/ocultas/
+finais ignoradas, colunas ignoradas, conversões numéricas, cabeçalhos
+repetidos ignorados, regiões mantidas juntas) já era computado por
+`sheetToRows` (`import.ts`) e chegava até `reviewSheets` em
+`routes/index.tsx`, mas só era consumido internamente por
+`resolveSourceCellFills` — nunca chegava à UI nem sobrevivia além da
+revisão (não entra em `SheetData`, por decisão de escopo já implícita:
+é um relatório da importação, não um dado do painel).
+
+**Implementado**: `auditFidelityPercent(audit): number` (`import.ts`,
+função pura) — percentual de células não vazias da origem que
+sobreviveram até a tabela importada (`outputNonEmptyCells` sobre
+`sourceNonEmptyCells`, arredondado, nunca passa de 100 mesmo se uma
+fórmula recuperada fizer o output superar a origem). Reaproveita
+`confidenceLevelFor` (limiares 85/60 já usados pela seção 96) pro
+`ConfidenceDot` do painel, mesmo mapeamento de cor em toda a revisão.
+
+Painel `<details>` novo em `review.tsx`, mesmo padrão visual dos outros
+inventários da revisão (hyperlinks, nomes definidos, cor de
+preenchimento etc.): badge com percentual + ponto de confiança no
+resumo, e dentro uma lista de rótulo→valor pra cada campo do
+`ImportAudit`, condicionada a `> 0` pra não poluir uma importação limpa
+com zeros (só "células na origem"/"células na tabela importada" sempre
+aparecem, o resto é condicional).
+
+**Verificação em navegador real** (não só unitária, por envolver upload
+e pipeline de diagnóstico real — mesma ressalva da seção 96: "Ver
+demonstração" não passa por `diagnoseImportedSheet`/`sheetToRows` de
+verdade): CSV sintético com uma linha em branco no meio e uma coluna
+numérica salva como texto (`R$ 10,00` etc.) via simulação de
+`input.files`/evento `change`. Painel mostrou exatamente 12 células na
+origem (cabeçalho + 9 células de dado), 9 na tabela importada (cabeçalho
+não conta como célula de dado no output), 3 conversões numéricas, 1
+linha em branco ignorada — 75% de fidelidade, aritmética conferida à
+mão antes de aceitar o resultado.
+
+4 testes novos em `import.test.ts` (`auditFidelityPercent`): fidelidade
+total, perda parcial arredondada, nunca ultrapassa 100% mesmo com output
+maior que a origem, 100% quando não há célula de origem a preservar.
+
+`npx vitest run` (563 passou, 1 pulado — 4 testes novos), `npx tsc
+--noEmit`, `npx eslint` nos 3 arquivos tocados (só ruído de CRLF
+pré-existente, confirmado com o contorno Prettier CRLF-safe), `npm run
+build` + `npm run performance:check`, `npx playwright test` (E2E
+completo) aprovados.
