@@ -64,6 +64,35 @@ jobs:
         # --audit-level quando precisar do quadro completo.
         run: npm audit --audit-level=high
 
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          # Histórico completo: gitleaks escaneia commits, não só o
+          # working tree — um checkout raso (padrão em pull_request)
+          # só veria o commit de merge.
+          fetch-depth: 0
+
+      - name: Download gitleaks
+        # Repo é privado de conta pessoal: o secret scanning nativo do
+        # GitHub (GHAS) só é gratuito em repositório público (ver seção
+        # 104 do audit). gitleaks é MIT, roda o binário direto sem
+        # depender da gitleaks-action oficial (que exige licença paga
+        # para uso em organização) — mesmo binário testado localmente
+        # antes desta mudança, histórico completo sem achados.
+        run: |
+          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
+      - name: Scan for leaked secrets
+        run: ./gitleaks detect --source . --redact -v
+
   security-smoke:
     name: Security headers and CORS smoke test
     runs-on: ubuntu-latest
