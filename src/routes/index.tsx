@@ -1938,7 +1938,7 @@ function Dashboard(p: {
                           </p>
                         </TooltipContent>
                       </Tooltip>
-                  ))}
+                    ))}
                 </div>
               </TooltipProvider>
             </DropdownMenuContent>
