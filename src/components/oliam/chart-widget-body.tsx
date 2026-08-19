@@ -629,12 +629,7 @@ export function ChartWidgetBody({
                         stroke={displayedPieIndex === i ? "var(--foreground)" : "var(--card)"}
                         strokeWidth={displayedPieIndex === i ? 2 : 3}
                         style={{
-                          filter:
-                            displayedPieIndex === null || displayedPieIndex === i
-                              ? "none"
-                              : "grayscale(65%)",
-                          transition:
-                            "opacity 220ms ease, stroke 220ms ease, filter 220ms ease",
+                          transition: "opacity 220ms ease, stroke 220ms ease",
                         }}
                       />
                     ))}
