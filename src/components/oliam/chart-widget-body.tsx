@@ -10,6 +10,7 @@ import {
   LabelList,
   Line,
   LineChart,
+  ReferenceLine,
   Pie,
   PieChart as RPieChart,
   ResponsiveContainer,
@@ -365,6 +366,10 @@ export function ChartWidgetBody({
                     />
                     <YAxis
                       type="number"
+                      domain={[
+                        (dataMin: number) => Math.min(0, dataMin),
+                        (dataMax: number) => Math.max(0, dataMax),
+                      ]}
                       tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                       tickLine={false}
                       axisLine={false}
@@ -409,7 +414,7 @@ export function ChartWidgetBody({
                     <Bar
                       dataKey="total"
                       fill={`url(#bar-grad-${w.id})`}
-                      radius={[6, 6, 0, 0]}
+                      radius={6}
                       maxBarSize={72}
                       onClick={(_, i) => {
                         // O payload que o Recharts entrega ao onClick de uma
@@ -450,13 +455,12 @@ export function ChartWidgetBody({
                           opacity={
                             activeBarIndex === null || activeBarIndex === entryIndex ? 1 : 0.45
                           }
-                          stroke={activeBarIndex === entryIndex ? "var(--foreground)" : "none"}
-                          strokeWidth={activeBarIndex === entryIndex ? 2 : 0}
+                          stroke={activeBarIndex === entryIndex ? "var(--primary)" : "none"}
+                          strokeWidth={activeBarIndex === entryIndex ? 1 : 0}
                           style={
                             {
                               "--oliam-bar-delay": `${Math.min(entryIndex, 14) * 42}ms`,
-                              transform:
-                                activeBarIndex === entryIndex ? "scale(1.045, 1.08)" : "scale(1)",
+                              filter: activeBarIndex === entryIndex ? "brightness(1.08)" : "none",
                             } as CSSProperties
                           }
                         />
@@ -469,6 +473,12 @@ export function ChartWidgetBody({
                         formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                       />
                     </Bar>
+                    <ReferenceLine
+                      y={0}
+                      stroke="var(--foreground)"
+                      strokeOpacity={0.28}
+                      strokeWidth={1}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
