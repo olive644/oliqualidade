@@ -119,16 +119,10 @@ export function RadarWidgetBody({
     const previous = i > 0 ? Math.min(all[i - 1]!, grouped.length) : -1;
     return effective !== previous;
   });
-  // A leitura detalhada fica visível desde o início usando a maior
-  // categoria; hover apenas troca o foco — mesmo padrão do pizza.
-  const largestAxisIndex = axes.reduce(
-    (largest, entry, index, entries) =>
-      largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
-        ? index
-        : largest,
-    -1,
-  );
-  const summaryAxisIndex = activeAxisIndex ?? (largestAxisIndex >= 0 ? largestAxisIndex : null);
+  // Assim como na pizza, o detalhe pertence ao ponto inspecionado. Não
+  // deixamos uma categoria fixa parecendo uma tendência permanente quando
+  // o usuário não está sobre nenhum eixo.
+  const summaryAxisIndex = activeAxisIndex;
   const selectedAxis = summaryAxisIndex !== null ? axes[summaryAxisIndex] : null;
   const selectedAxisComparison =
     summaryAxisIndex !== null ? pieComparisonFor(axes, summaryAxisIndex) : null;
@@ -243,6 +237,21 @@ export function RadarWidgetBody({
                   if (!active || !payload?.length) return null;
                   const entry = payload[0]?.payload as { name: string; total: number } | undefined;
                   if (!entry) return null;
+                  const entryIndex = axes.findIndex((axis) => axis.name === entry.name);
+                  const comparison = entryIndex >= 0 ? pieComparisonFor(axes, entryIndex) : null;
+                  const relativeLabel =
+                    comparison?.reference && comparison.relativeDifference !== null
+                      ? `${Math.abs(comparison.relativeDifference * 100).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                        })}% ${
+                          comparison.relativeDifference > 0
+                            ? "acima"
+                            : comparison.relativeDifference < 0
+                              ? "abaixo"
+                              : "no mesmo nível"
+                        } de ${comparison.reference.name}`
+                      : null;
                   return (
                     <div
                       style={{
@@ -267,6 +276,30 @@ export function RadarWidgetBody({
                       <span style={{ color: "var(--popover-foreground)" }}>
                         {fmt(entry.total, valueCol.kind) ?? entry.total}
                       </span>
+                      {comparison?.share !== null && comparison?.share !== undefined && (
+                        <div
+                          style={{
+                            color: "var(--muted-foreground)",
+                            marginTop: 4,
+                          }}
+                        >
+                          {(comparison.share * 100).toLocaleString("pt-BR", {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })}
+                          % do total
+                        </div>
+                      )}
+                      {relativeLabel && (
+                        <div
+                          style={{
+                            color: "var(--muted-foreground)",
+                            marginTop: 2,
+                          }}
+                        >
+                          {relativeLabel}
+                        </div>
+                      )}
                     </div>
                   );
                 }}
@@ -292,30 +325,53 @@ export function RadarWidgetBody({
                     return <g />;
                   }
                   const isActive = activeAxisIndex === index;
+                  const entry = axes[index];
                   return (
-                    <circle
+                    <g
                       key={`axis-dot-${index}`}
-                      className="oliam-chart-radar-dot"
-                      cx={cx}
-                      cy={cy}
-                      r={isActive ? 7 : 4}
-                      fill="var(--primary)"
-                      stroke="var(--card)"
-                      strokeWidth={2}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={
+                        entry
+                          ? `Inspecionar ${entry.name}: ${fmt(entry.total, valueCol.kind) ?? entry.total}`
+                          : "Inspecionar ponto do radar"
+                      }
                       style={
                         {
                           "--oliam-radar-delay": `${Math.min(index, 12) * 48}ms`,
-                          transition: "r 280ms cubic-bezier(0.16, 1, 0.3, 1)",
                           cursor: "pointer",
+                          outline: "none",
                         } as CSSProperties
                       }
                       onMouseEnter={() => setActiveAxisIndex(index)}
                       onMouseLeave={() => setActiveAxisIndex(null)}
+                      onFocus={() => setActiveAxisIndex(index)}
+                      onBlur={() => setActiveAxisIndex(null)}
                       onClick={() => {
-                        const entry = axes[index];
                         if (entry && groupCol) handleGroupClick(groupCol.key, String(entry.name));
                       }}
-                    />
+                      onKeyDown={(event) => {
+                        if ((event.key === "Enter" || event.key === " ") && entry && groupCol) {
+                          event.preventDefault();
+                          handleGroupClick(groupCol.key, String(entry.name));
+                        }
+                      }}
+                    >
+                      <circle cx={cx} cy={cy} r={16} fill="transparent" stroke="transparent" />
+                      <circle
+                        className="oliam-chart-radar-dot"
+                        cx={cx}
+                        cy={cy}
+                        r={isActive ? 9 : 6}
+                        fill="var(--primary)"
+                        stroke={isActive ? "var(--primary-foreground)" : "var(--card)"}
+                        strokeWidth={isActive ? 3 : 2}
+                        pointerEvents="none"
+                        style={{
+                          transition: "r 280ms cubic-bezier(0.16, 1, 0.3, 1)",
+                        }}
+                      />
+                    </g>
                   );
                 }}
               />
@@ -324,10 +380,7 @@ export function RadarWidgetBody({
         </div>
       )}
       {selectedAxis && (
-        <div
-          key={`${w.id}-radar-detail-${selectedAxis.name}`}
-          className="oliam-chart-detail-swap"
-        >
+        <div key={`${w.id}-radar-detail-${selectedAxis.name}`} className="oliam-chart-detail-swap">
           <SeriesComparisonPanel
             selected={selectedAxis}
             comparison={selectedAxisComparison}
