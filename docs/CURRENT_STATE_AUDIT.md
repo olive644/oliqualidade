@@ -6136,3 +6136,37 @@ tocados (só avisos pré-existentes de `react-refresh/only-export-components`,
 não relacionados), `npm run build` + `npm run performance:check`
 (recharts-vendor subiu de ~407 pra ~418 KiB pelo `RadarChart` novo,
 orçamento continua aprovado) aprovados.
+
+## 111. Bug real reportado pelo usuário: eixos duplicados no widget Radar (herdou modo "linha a linha" do padrão de ranking/barra)
+
+Usuário reportou (com screenshot) que um widget Radar recém-criado
+mostrava eixos repetidos ("Manhã" 3x, "Tarde" 2x, "Noite" 3x") e nenhum
+polígono visível — agrupando por "Turno" (só 3 valores possíveis) e
+agregando "Amostras".
+
+**Causa raiz**: `dataMode` em `radar-widget-body.tsx` foi copiado
+verbatim do padrão de `ranking-widget-body.tsx` (seção 110):
+`w.dataMode ?? (op === "count" ? "aggregate" : "raw")`. Pra
+ranking/barra, modo "linha a linha" (raw) faz sentido — cada linha vira
+uma marca própria, mesmo repetindo o nome da categoria. Pra radar,
+não: o eixo do polígono é posicional (`PolarAngleAxis`), uma posição
+por categoria — em modo raw, cada LINHA da planilha virava um eixo
+separado, e linhas com o mesmo valor de categoria (o caso normal, já
+que "Turno" só tem 3 valores possíveis pra várias linhas) geravam eixos
+com o mesmo rótulo em posições diferentes do círculo, sem nenhum
+agregado real — o polígono resultante era degenerado/sem sentido.
+
+**Correção**: radar agora sempre usa `dataMode: "aggregate"`
+(constante, ignora `w.dataMode`) — nunca oferece nem herda modo raw.
+Removido também `allowRaw`/`onRaw` do `CalculationButton` do radar (a
+opção de trocar pra "linha a linha" nem aparece mais na UI). Widgets
+radar já salvos com `dataMode: "raw"` de sessões anteriores se
+autocorrigem no próximo render, sem precisar de migração — o campo é
+simplesmente ignorado agora.
+
+Verificado ao vivo reproduzindo o cenário exato do usuário (Turno com
+valores repetidos + Amostras numérica): eixos agora mostram
+`["Tarde", "Manha", "Noite"]` (únicos), polígono renderiza com valores
+reais (`Radar · Média de Amostras por Turno`, operação "média"
+auto-escolhida). `npx vitest run` (572 passou, 1 pulado), `npx tsc
+--noEmit`, `npx eslint` no arquivo tocado aprovados.
