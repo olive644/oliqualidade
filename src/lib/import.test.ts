@@ -10,7 +10,7 @@ import {
 } from "@/lib/import";
 import type { WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
 
-const sheet = (aoa: (string | number | null)[][]) => XLSX.utils.aoa_to_sheet(aoa);
+const sheet = (aoa: (string | number | boolean | null)[][]) => XLSX.utils.aoa_to_sheet(aoa);
 
 // aoa_to_sheet, ao receber um valor Date, grava a célula como número serial
 // com formato de data (t: "n", z: "m/d/yy") — não como célula de data de
