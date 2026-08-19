@@ -1555,18 +1555,16 @@
    A paleta, a geometria final e o layout continuam definidos pelos próprios
    widgets, para que a leitura visual permaneça idêntica ao fim do movimento. */
 .oliam-chart-bar-cell {
-  transform-box: fill-box;
-  transform-origin: center bottom;
   animation: oliam-chart-bar-rise 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   animation-delay: var(--oliam-bar-delay, 0ms);
   transition:
     opacity 220ms ease,
     stroke 220ms ease,
-    transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+    filter 220ms ease;
 }
 
 .oliam-chart-bar-cell:active {
-  transform: scale(0.98, 0.94) !important;
+  filter: brightness(0.96) !important;
 }
 
 .oliam-chart-pie-enter {
@@ -1603,11 +1601,9 @@
 @keyframes oliam-chart-bar-rise {
   from {
     opacity: 0;
-    transform: scaleY(0.04);
   }
   to {
     opacity: 1;
-    transform: scaleY(1);
   }
 }
 
