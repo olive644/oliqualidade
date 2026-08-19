@@ -63,13 +63,14 @@ describe("sheetToRows", () => {
     const result = sheetToRows(ws);
 
     expect(result.rows).toEqual([
-      { Item: "Manipulador", Status: "Planejado", jun: "T", jul: null },
-      { Item: "Manipulador", Status: "Executado", jun: null, jul: null },
+      { Item: "Manipulador", Status: "Planejado", jun: "T" },
+      { Item: "Manipulador", Status: "Executado", jun: null },
     ]);
     expect(result.rows.flatMap(Object.values)).not.toContain("4s");
     expect(result.sourceGrid?.rows[2]).toEqual(["Manipulador antigo", "Planejado", "4s", "4s"]);
     expect(result.audit?.hiddenRowsIgnored).toBe(1);
     expect(result.audit?.blankRowsIgnored).toBe(0);
+    expect(result.audit?.columnsIgnored).toBe(1);
     expect(result.warning).toContain("linha oculta foi preservada");
     expect(result.warning).toContain("ignorada nos registros, métricas e widgets");
   });
@@ -432,21 +433,15 @@ describe("sheetToRows", () => {
       { s: { r: 1, c: 1 }, e: { r: 2, c: 1 } },
     ];
     const { rows, warning } = sheetToRows(ws);
-    expect(Object.keys(rows[0] ?? {})).toEqual([
-      "Categoria",
-      "Item / Ponto",
-      "Situação",
-      "jan",
-      "fev",
-    ]);
+    expect(Object.keys(rows[0] ?? {})).toEqual(["Categoria", "Item / Ponto", "Situação", "jan"]);
     expect(rows[1]).toMatchObject({
       Categoria: "Água",
       "Item / Ponto": "Saída do poço",
       Situação: "Executado",
       jan: null,
-      fev: null,
     });
     expect(warning).toContain("marcadores vazios");
+    expect(warning).toContain('A coluna "Fev"');
   });
 
   it("interrompe a tabela antes de um rodapé institucional longo e mesclado", () => {
@@ -822,6 +817,27 @@ describe("sheetToRows", () => {
     expect(warning).toBeNull();
   });
 
+  it("remove colunas nomeadas sem nenhum valor real e preserva zero e falso", () => {
+    // Derivado de formulários reais do corpus: algumas colunas têm
+    // cabeçalho e formatação até o fim da planilha, mas nunca receberam um
+    // valor. Elas não devem virar centenas de células "Não informado".
+    const ws = sheet([
+      ["Produto", "Observações", "Laudo", "Saldo", "Ativo"],
+      ["Resina A", null, "-", 0, false],
+      ["Resina B", null, "Não informado", 0, false],
+    ]);
+
+    const result = sheetToRows(ws);
+
+    expect(result.rows).toEqual([
+      { Produto: "Resina A", Saldo: 0, Ativo: false },
+      { Produto: "Resina B", Saldo: 0, Ativo: false },
+    ]);
+    expect(result.audit?.columnsIgnored).toBe(2);
+    expect(result.warning).toContain('As colunas "Observações", "Laudo"');
+    expect(result.warning).toContain('em vez de gerar "Não informado"');
+  });
+
   it("descarta automaticamente uma coluna sem nome no cabeçalho e quase vazia (fragmento fora da tabela)", () => {
     // Reproduz o bug relatado: uma coluna extra sem cabeçalho, com texto
     // solto em só uma linha, aparecia como "Coluna N" com dado sem sentido
@@ -996,6 +1012,31 @@ describe("sheetToRows", () => {
       { Núcleo: "Núcleo 2", Data: "2025-03-21", Total: 9 },
     ]);
     expect(warning).toContain("2 blocos de tabela repetidos");
+  });
+
+  it("remove colunas vazias também ao combinar blocos repetidos", () => {
+    const ws = sheet([
+      ["Núcleo 1"],
+      ["Data", "Total", "Observação"],
+      ["2025-03-20", 8, null],
+      ["2025-03-21", 5, null],
+      [],
+      ["Núcleo 2"],
+      ["Data", "Total", "Observação"],
+      ["2025-03-20", 27, null],
+      ["2025-03-21", 9, null],
+    ]);
+
+    const result = sheetToRows(ws);
+
+    expect(result.rows).toEqual([
+      { Núcleo: "Núcleo 1", Data: "2025-03-20", Total: 8 },
+      { Núcleo: "Núcleo 1", Data: "2025-03-21", Total: 5 },
+      { Núcleo: "Núcleo 2", Data: "2025-03-20", Total: 27 },
+      { Núcleo: "Núcleo 2", Data: "2025-03-21", Total: 9 },
+    ]);
+    expect(result.audit?.columnsIgnored).toBe(1);
+    expect(result.warning).toContain('A coluna "Observação"');
   });
 
   it("combina blocos repetidos lado a lado (mesma faixa de linhas, colunas diferentes)", () => {
