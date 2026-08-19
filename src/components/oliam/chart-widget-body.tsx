@@ -18,12 +18,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  Activity,
-  BarChart3,
-  PieChart as PieIcon,
-  TrendingUp,
-} from "lucide-react";
+import { Activity, BarChart3, PieChart as PieIcon, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   kinds,
@@ -36,12 +31,7 @@ import {
   type Widget,
 } from "@/lib/types";
 import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
-import {
-  conditionalColor,
-  fmt,
-  palette,
-  sortChronologically,
-} from "@/lib/format";
+import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/format";
 import {
   aggregationLabels,
   barChartPresentation,
@@ -140,8 +130,7 @@ export function ChartWidgetBody({
   const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
     ? (w.op ?? "sum")
     : (relevantOps[0] ?? "sum");
-  const dataMode: ChartDataMode =
-    w.dataMode ?? (op === "count" ? "aggregate" : "raw");
+  const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
   const title =
     dataMode === "raw" && op !== "count"
       ? `${valueCol?.label ?? "Valores"} por linha de ${groupCol?.label ?? "categoria"}`
@@ -166,51 +155,39 @@ export function ChartWidgetBody({
     ) : (
       <BarChart3 className="size-3.5 shrink-0 text-muted-foreground" />
     );
-  const groupOptions =
-    w.type === "line"
-      ? columns.filter((c) => c.kind === "date")
-      : groupableCols;
+  const groupOptions = w.type === "line" ? columns.filter((c) => c.kind === "date") : groupableCols;
   const grouped =
     groupCol && valueCol
-      ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode).map(
-          (g) => ({
-            name: g.name,
-            total: g.total,
-            ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
-          }),
-        )
+      ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode).map((g) => ({
+          name: g.name,
+          total: g.total,
+          ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
+        }))
       : [];
   const completeSeries =
     w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
       ? sortChronologically(grouped)
       : grouped;
   const orderedSeries =
-    w.type === "bar" && dataMode !== "raw"
-      ? sortAllBarCategories(completeSeries)
-      : completeSeries;
+    w.type === "bar" && dataMode !== "raw" ? sortAllBarCategories(completeSeries) : completeSeries;
   const renderableSeries =
     w.type === "pie"
       ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
       : limitChartSeriesForRendering(orderedSeries);
   const series = renderableSeries.items;
   const seriesColor = valueCol
-    ? (conditionalColor(
-        series.at(-1)?.total ?? null,
-        valueCol.kind,
-        valueCol.conditionalFormat,
-      ) ?? "var(--primary)")
+    ? (conditionalColor(series.at(-1)?.total ?? null, valueCol.kind, valueCol.conditionalFormat) ??
+      "var(--primary)")
     : "var(--primary)";
   const barSeries = series;
   const barPresentation = barChartPresentation(barSeries.length);
   const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
-  const pieSeries =
-    w.type === "pie" ? collapsePieSeries(completeSeries) : series;
+  const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
   const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
   const displayedPieIndex = activePieIndex ?? selectedPieIndex;
   const largestPieIndex = pieSeries.reduce(
     (largest, entry, index, entries) =>
-      largest < 0 ||
-      entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
+      largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
         ? index
         : largest,
     -1,
@@ -218,34 +195,25 @@ export function ChartWidgetBody({
   // A leitura detalhada fica visível desde o início usando a maior fatia;
   // hover/clique apenas troca o foco. O gráfico continua sem escurecer as
   // demais fatias enquanto nenhuma seleção explícita foi feita.
-  const summaryPieIndex =
-    displayedPieIndex ?? (largestPieIndex >= 0 ? largestPieIndex : null);
-  const selectedPie =
-    summaryPieIndex !== null ? pieSeries[summaryPieIndex] : null;
+  const summaryPieIndex = displayedPieIndex ?? (largestPieIndex >= 0 ? largestPieIndex : null);
+  const selectedPie = summaryPieIndex !== null ? pieSeries[summaryPieIndex] : null;
   const selectedPieComparison =
-    summaryPieIndex !== null
-      ? pieComparisonFor(pieSeries, summaryPieIndex)
-      : null;
+    summaryPieIndex !== null ? pieComparisonFor(pieSeries, summaryPieIndex) : null;
   // Mesma leitura guiada do pizza, mas sem estado de "seleção" própria: o
   // clique na barra já filtra diretamente (comportamento existente,
   // preservado), então aqui só o hover troca o destaque, com a maior
   // categoria como padrão quando nada está sob o mouse.
   const largestBarIndex = barSeries.reduce(
     (largest, entry, index, entries) =>
-      largest < 0 ||
-      entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
+      largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
         ? index
         : largest,
     -1,
   );
-  const summaryBarIndex =
-    activeBarIndex ?? (largestBarIndex >= 0 ? largestBarIndex : null);
-  const selectedBar =
-    summaryBarIndex !== null ? barSeries[summaryBarIndex] : null;
+  const summaryBarIndex = activeBarIndex ?? (largestBarIndex >= 0 ? largestBarIndex : null);
+  const selectedBar = summaryBarIndex !== null ? barSeries[summaryBarIndex] : null;
   const selectedBarComparison =
-    summaryBarIndex !== null
-      ? pieComparisonFor(barSeries, summaryBarIndex)
-      : null;
+    summaryBarIndex !== null ? pieComparisonFor(barSeries, summaryBarIndex) : null;
   // Só mostra resumo de tendência quando a série é de fato cronológica —
   // mesma condição usada acima para decidir se `completeSeries` é ordenada
   // por `sortChronologically`. Área agrupada por uma coluna não temporal
@@ -257,26 +225,17 @@ export function ChartWidgetBody({
   const pieLegendItems = pieSeries.map((entry, i) => ({
     ...entry,
     color:
-      conditionalColor(
-        entry.total,
-        valueCol?.kind ?? "number",
-        valueCol?.conditionalFormat,
-      ) ??
+      conditionalColor(entry.total, valueCol?.kind ?? "number", valueCol?.conditionalFormat) ??
       palette[i % palette.length] ??
       "var(--primary)",
   }));
   const { cornerRadius: pieCornerRadius, paddingAngle: piePaddingAngle } =
     pieRoundnessFor(pieSeries);
-  const insufficient =
-    w.type === "line" ? series.length < 2 : series.length < 1;
+  const insufficient = w.type === "line" ? series.length < 2 : series.length < 1;
 
   return (
     <article
-      className={cn(
-        "oliam-widget group bg-card",
-        spanClass(w.span),
-        sizeClass(w.size, w.type),
-      )}
+      className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       <WidgetHead title={title} icon={icon} {...dragProps} />
@@ -284,11 +243,7 @@ export function ChartWidgetBody({
         className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
         data-export-controls
       >
-        <FilterChip
-          groupKey={groupCol?.key}
-          filters={filters}
-          setFilters={setFilters}
-        />
+        <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
         <FieldDropSlot
           accepts={w.type === "line" ? (["date"] as Kind[]) : groupableKinds}
           onDropColumn={(key) => onConfigure({ groupKey: key })}
@@ -311,19 +266,13 @@ export function ChartWidgetBody({
           </label>
         </FieldDropSlot>
         <FieldDropSlot
-          accepts={
-            op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds
-          }
+          accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
           onDropColumn={(key) => onConfigure({ valueKey: key })}
         >
           <label className="flex max-w-56 items-center gap-1 rounded-lg border border-border bg-card pl-1.5 text-[10px] text-muted-foreground">
             <span className="font-mono font-bold text-foreground">Y</span>
             <select
-              aria-label={
-                op === "count"
-                  ? "Coluna usada para contar"
-                  : "Métrica do eixo Y"
-              }
+              aria-label={op === "count" ? "Coluna usada para contar" : "Métrica do eixo Y"}
               className="oliam-select h-7 min-w-0 max-w-48 border-0 bg-transparent px-1.5 shadow-none"
               value={valueCol?.key ?? ""}
               onChange={(e) => onConfigure({ valueKey: e.target.value })}
@@ -341,15 +290,11 @@ export function ChartWidgetBody({
           mode={dataMode}
           operation={op}
           operations={relevantOps}
-          metric={
-            op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")
-          }
+          metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
           group={groupCol?.label}
           allowRaw
           onRaw={() => onConfigure({ dataMode: "raw" })}
-          onOperation={(operation) =>
-            onConfigure({ dataMode: "aggregate", op: operation })
-          }
+          onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
         />
       </div>
       {sizeControls}
@@ -363,11 +308,9 @@ export function ChartWidgetBody({
       )}
       {renderableSeries.omitted > 0 && (
         <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
-          Prévia otimizada:{" "}
-          {renderableSeries.items.length.toLocaleString("pt-BR")} de{" "}
-          {renderableSeries.total.toLocaleString("pt-BR")} pontos, distribuídos
-          por toda a série. Os dados completos e sem amostragem permanecem na
-          tabela detalhada.
+          Prévia otimizada: {renderableSeries.items.length.toLocaleString("pt-BR")} de{" "}
+          {renderableSeries.total.toLocaleString("pt-BR")} pontos, distribuídos por toda a série. Os
+          dados completos e sem amostragem permanecem na tabela detalhada.
         </p>
       )}
       {insufficient || !groupCol || !valueCol ? (
@@ -385,18 +328,12 @@ export function ChartWidgetBody({
                 "h-64 overflow-x-auto overflow-y-hidden p-4",
                 barPresentation.scrollable && "oliam-chart-drag-scroll",
               )}
-              onPointerDown={
-                barPresentation.scrollable
-                  ? handleChartScrollPointerDown
-                  : undefined
-              }
+              onPointerDown={barPresentation.scrollable ? handleChartScrollPointerDown : undefined}
             >
               <div
                 style={{
                   height: "100%",
-                  width: barPresentation.scrollable
-                    ? barPresentation.contentWidth
-                    : "100%",
+                  width: barPresentation.scrollable ? barPresentation.contentWidth : "100%",
                   minWidth: "100%",
                 }}
               >
@@ -407,23 +344,9 @@ export function ChartWidgetBody({
                     barCategoryGap={barSeries.length > 10 ? "34%" : "18%"}
                   >
                     <defs>
-                      <linearGradient
-                        id={`bar-grad-${w.id}`}
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="0%"
-                          stopColor="var(--primary)"
-                          stopOpacity={1}
-                        />
-                        <stop
-                          offset="100%"
-                          stopColor="var(--primary)"
-                          stopOpacity={0.55}
-                        />
+                      <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
+                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.55} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid
@@ -446,9 +369,7 @@ export function ChartWidgetBody({
                       tickLine={false}
                       axisLine={false}
                       width={52}
-                      tickFormatter={(value: number) =>
-                        compactAxisValue(value, valueCol.kind)
-                      }
+                      tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
                     />
                     <ChartTooltip
                       // Sem retângulo de fundo: o Recharts ativaria o
@@ -527,16 +448,9 @@ export function ChartWidgetBody({
                             ) ?? `url(#bar-grad-${w.id})`
                           }
                           opacity={
-                            activeBarIndex === null ||
-                            activeBarIndex === entryIndex
-                              ? 1
-                              : 0.45
+                            activeBarIndex === null || activeBarIndex === entryIndex ? 1 : 0.45
                           }
-                          stroke={
-                            activeBarIndex === entryIndex
-                              ? "var(--foreground)"
-                              : "none"
-                          }
+                          stroke={activeBarIndex === entryIndex ? "var(--foreground)" : "none"}
                           strokeWidth={activeBarIndex === entryIndex ? 2 : 0}
                           style={
                             {
@@ -554,23 +468,19 @@ export function ChartWidgetBody({
                         position="top"
                         fontSize={10}
                         fill="var(--muted-foreground)"
-                        formatter={(v: number) =>
-                          fmt(v, valueCol.kind) ?? String(v)
-                        }
+                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                       />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
-            {barPresentation.scrollable && (
-              <ChartScrollButtons label="gráfico de barras" />
-            )}
+            {barPresentation.scrollable && <ChartScrollButtons label="gráfico de barras" />}
           </div>
           {barPresentation.scrollable && (
             <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-              {barSeries.length.toLocaleString("pt-BR")} categorias · use as
-              setas, arraste ou role para os lados para ver todas
+              {barSeries.length.toLocaleString("pt-BR")} categorias · use as setas, arraste ou role
+              para os lados para ver todas
             </p>
           )}
           <p className="sr-only">
@@ -587,9 +497,7 @@ export function ChartWidgetBody({
                 comparison={selectedBarComparison}
                 kind={valueCol.kind}
                 filterLabel="Filtrar por esta categoria"
-                onFilter={() =>
-                  handleGroupClick(groupCol.key, selectedBar.name)
-                }
+                onFilter={() => handleGroupClick(groupCol.key, selectedBar.name)}
               />
             </div>
           )}
@@ -599,8 +507,7 @@ export function ChartWidgetBody({
           <div
             className={cn(
               "grid min-w-0 items-center gap-3 p-4",
-              w.span > 1 &&
-                "md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,0.9fr)]",
+              w.span > 1 && "md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,0.9fr)]",
             )}
           >
             <div className="oliam-chart-pie-enter h-52 min-w-0 overflow-visible">
@@ -621,10 +528,7 @@ export function ChartWidgetBody({
                       fontWeight: 600,
                       marginBottom: 2,
                     }}
-                    itemStyle={{
-                      color: "var(--popover-foreground)",
-                      padding: 0,
-                    }}
+                    itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
                     formatter={(
                       v: number,
                       _name: string,
@@ -661,9 +565,7 @@ export function ChartWidgetBody({
                     // clique), reaproveitando o mecanismo nativo do
                     // Recharts em vez de um <Cell> extra ou estado novo —
                     // displayedPieIndex já sabe qual fatia está ativa.
-                    {...(displayedPieIndex !== null
-                      ? { activeIndex: displayedPieIndex }
-                      : {})}
+                    {...(displayedPieIndex !== null ? { activeIndex: displayedPieIndex } : {})}
                     activeShape={(rawProps: unknown) => {
                       const p = rawProps as {
                         cx?: number;
@@ -723,21 +625,12 @@ export function ChartWidgetBody({
                       <Cell
                         key={`${entry.name}-${"sourceRow" in entry ? (entry.sourceRow ?? i) : i}`}
                         fill={pieLegendItems[i]?.color}
-                        opacity={
-                          displayedPieIndex === null || displayedPieIndex === i
-                            ? 1
-                            : 0.45
-                        }
-                        stroke={
-                          displayedPieIndex === i
-                            ? "var(--foreground)"
-                            : "var(--card)"
-                        }
+                        opacity={displayedPieIndex === null || displayedPieIndex === i ? 1 : 0.45}
+                        stroke={displayedPieIndex === i ? "var(--foreground)" : "var(--card)"}
                         strokeWidth={displayedPieIndex === i ? 2 : 3}
                         style={{
                           filter:
-                            displayedPieIndex === null ||
-                            displayedPieIndex === i
+                            displayedPieIndex === null || displayedPieIndex === i
                               ? "none"
                               : "grayscale(65%)",
                           transition:
@@ -748,29 +641,15 @@ export function ChartWidgetBody({
                     <Label
                       position="center"
                       content={({ viewBox }) => {
-                        const box = viewBox as
-                          { cx?: number; cy?: number } | undefined;
-                        if (box?.cx === undefined || box?.cy === undefined)
-                          return null;
+                        const box = viewBox as { cx?: number; cy?: number } | undefined;
+                        if (box?.cx === undefined || box?.cy === undefined) return null;
                         const active =
-                          displayedPieIndex !== null
-                            ? pieSeries[displayedPieIndex]
-                            : null;
-                        const label = active
-                          ? truncateLabel(active.name, 12)
-                          : "Total";
-                        const value =
-                          fmt(
-                            active ? active.total : pieTotal,
-                            valueCol.kind,
-                          ) ?? "–";
+                          displayedPieIndex !== null ? pieSeries[displayedPieIndex] : null;
+                        const label = active ? truncateLabel(active.name, 12) : "Total";
+                        const value = fmt(active ? active.total : pieTotal, valueCol.kind) ?? "–";
                         return (
                           <g
-                            key={
-                              active
-                                ? `pie-center-${active.name}`
-                                : "pie-center-total"
-                            }
+                            key={active ? `pie-center-${active.name}` : "pie-center-total"}
                             className="oliam-chart-center-swap"
                             style={{ pointerEvents: "none" }}
                           >
@@ -805,13 +684,10 @@ export function ChartWidgetBody({
                                   fontSize={9}
                                   fill="var(--muted-foreground)"
                                 >
-                                  {(active.total / pieTotal).toLocaleString(
-                                    "pt-BR",
-                                    {
-                                      style: "percent",
-                                      maximumFractionDigits: 1,
-                                    },
-                                  )}{" "}
+                                  {(active.total / pieTotal).toLocaleString("pt-BR", {
+                                    style: "percent",
+                                    maximumFractionDigits: 1,
+                                  })}{" "}
                                   do total
                                 </tspan>
                               )}
@@ -872,17 +748,13 @@ export function ChartWidgetBody({
         <>
           <div className="relative">
             <div
-              ref={
-                timeSeriesPresentation.scrollable ? chartScrollRef : undefined
-              }
+              ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
               className={cn(
                 "h-56 overflow-x-auto overflow-y-hidden p-4",
                 timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
               )}
               onPointerDown={
-                timeSeriesPresentation.scrollable
-                  ? handleChartScrollPointerDown
-                  : undefined
+                timeSeriesPresentation.scrollable ? handleChartScrollPointerDown : undefined
               }
             >
               <div
@@ -895,42 +767,19 @@ export function ChartWidgetBody({
                 }}
               >
                 <ResponsiveContainer>
-                  <AreaChart
-                    data={series}
-                    margin={{ top: 20, right: 12, left: 0, bottom: 14 }}
-                  >
+                  <AreaChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
                     <defs>
-                      <linearGradient
-                        id={`area-${w.id}`}
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="0%"
-                          stopColor={seriesColor}
-                          stopOpacity={0.45}
-                        />
-                        <stop
-                          offset="100%"
-                          stopColor={seriesColor}
-                          stopOpacity={0}
-                        />
+                      <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
+                        <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid vertical={false} stroke="var(--border)" />
-                    <XAxis
-                      dataKey="name"
-                      tick={(props) => <AxisTick {...props} />}
-                      interval={0}
-                    />
+                    <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} interval={0} />
                     <YAxis
                       tick={{ fontSize: 10 }}
                       width={52}
-                      tickFormatter={(v: number) =>
-                        compactAxisValue(v, valueCol.kind)
-                      }
+                      tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
                     />
                     <ChartTooltip
                       contentStyle={{
@@ -947,13 +796,8 @@ export function ChartWidgetBody({
                         fontWeight: 600,
                         marginBottom: 2,
                       }}
-                      itemStyle={{
-                        color: "var(--popover-foreground)",
-                        padding: 0,
-                      }}
-                      formatter={(v: number) =>
-                        fmt(v, valueCol.kind) ?? String(v)
-                      }
+                      itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                      formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                     />
                     <Area
                       type="monotone"
@@ -996,39 +840,30 @@ export function ChartWidgetBody({
                 </ResponsiveContainer>
               </div>
             </div>
-            {timeSeriesPresentation.scrollable && (
-              <ChartScrollButtons label="gráfico de área" />
-            )}
+            {timeSeriesPresentation.scrollable && <ChartScrollButtons label="gráfico de área" />}
           </div>
           {timeSeriesPresentation.scrollable && (
             <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-              {series.length.toLocaleString("pt-BR")} períodos · use as setas,
-              arraste ou role para os lados
+              {series.length.toLocaleString("pt-BR")} períodos · use as setas, arraste ou role para
+              os lados
             </p>
           )}
           <p className="sr-only">
-            Tabela alternativa à área:{" "}
-            {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
+            Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
           </p>
-          {trendSummary && (
-            <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />
-          )}
+          {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
         </>
       ) : (
         <>
           <div className="relative">
             <div
-              ref={
-                timeSeriesPresentation.scrollable ? chartScrollRef : undefined
-              }
+              ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
               className={cn(
                 "h-56 overflow-x-auto overflow-y-hidden p-4",
                 timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
               )}
               onPointerDown={
-                timeSeriesPresentation.scrollable
-                  ? handleChartScrollPointerDown
-                  : undefined
+                timeSeriesPresentation.scrollable ? handleChartScrollPointerDown : undefined
               }
             >
               <div
@@ -1041,22 +876,13 @@ export function ChartWidgetBody({
                 }}
               >
                 <ResponsiveContainer>
-                  <LineChart
-                    data={series}
-                    margin={{ top: 20, right: 12, left: 0, bottom: 14 }}
-                  >
+                  <LineChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
                     <CartesianGrid vertical={false} stroke="var(--border)" />
-                    <XAxis
-                      dataKey="name"
-                      tick={(props) => <AxisTick {...props} />}
-                      interval={0}
-                    />
+                    <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} interval={0} />
                     <YAxis
                       tick={{ fontSize: 10 }}
                       width={52}
-                      tickFormatter={(v: number) =>
-                        compactAxisValue(v, valueCol.kind)
-                      }
+                      tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
                     />
                     <ChartTooltip
                       contentStyle={{
@@ -1073,13 +899,8 @@ export function ChartWidgetBody({
                         fontWeight: 600,
                         marginBottom: 2,
                       }}
-                      itemStyle={{
-                        color: "var(--popover-foreground)",
-                        padding: 0,
-                      }}
-                      formatter={(v: number) =>
-                        fmt(v, valueCol.kind) ?? String(v)
-                      }
+                      itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                      formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
                     />
                     <Line
                       type="monotone"
@@ -1121,23 +942,18 @@ export function ChartWidgetBody({
                 </ResponsiveContainer>
               </div>
             </div>
-            {timeSeriesPresentation.scrollable && (
-              <ChartScrollButtons label="linha do tempo" />
-            )}
+            {timeSeriesPresentation.scrollable && <ChartScrollButtons label="linha do tempo" />}
           </div>
           {timeSeriesPresentation.scrollable && (
             <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-              {series.length.toLocaleString("pt-BR")} períodos · use as setas,
-              arraste ou role para os lados
+              {series.length.toLocaleString("pt-BR")} períodos · use as setas, arraste ou role para
+              os lados
             </p>
           )}
           <p className="sr-only">
-            Tabela alternativa à evolução:{" "}
-            {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
+            Tabela alternativa à evolução: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
           </p>
-          {trendSummary && (
-            <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />
-          )}
+          {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
         </>
       )}
     </article>
