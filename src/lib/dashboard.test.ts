@@ -67,6 +67,46 @@ describe("migrateDashboard", () => {
     expect(migrated.sheets[0]!.name).toBe("Vendas");
   });
 
+  it("migra a linha do tempo legada para gráfico de área", () => {
+    const migrated = migrateDashboard({
+      id: "timeline",
+      name: "Série temporal",
+      sheets: [
+        {
+          name: "Dados",
+          rows: [{ data: "2026-01-01", valor: 10 }],
+          columns: [
+            { key: "data", label: "Data", kind: "date", visible: true, description: "" },
+            { key: "valor", label: "Valor", kind: "number", visible: true, description: "" },
+          ],
+          filters: [],
+          widgets: [
+            {
+              id: "linha-antiga",
+              type: "line",
+              groupKey: "data",
+              valueKey: "valor",
+              op: "sum",
+              span: 3,
+              size: "md",
+            },
+          ],
+        },
+      ],
+      activeSheetIndex: 0,
+      createdAt: 0,
+      updatedAt: 0,
+      pinned: false,
+    });
+
+    expect(migrated.sheets[0]?.widgets?.[0]).toMatchObject({
+      id: "linha-antiga",
+      type: "area",
+      groupKey: "data",
+      valueKey: "valor",
+    });
+  });
+
   it("preserva a última contagem da pasta monitorada", () => {
     const folderMonitor = {
       folderName: "Relatórios",

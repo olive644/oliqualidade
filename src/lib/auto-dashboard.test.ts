@@ -157,7 +157,7 @@ describe("generateAutoDashboardPlan", () => {
     const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
     const types = plan.recommendations.map((item) => item.widgetType);
     expect(types).toContain("metric-trend");
-    expect(types).toContain("line");
+    expect(types).toContain("area");
     expect(types).toContain("bar");
     expect(types).toContain("ranking");
     expect(types).toContain("map");
@@ -210,7 +210,7 @@ describe("generateAutoDashboardPlan", () => {
     const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
     const widgets = buildRecommendedWidgets(plan, columns, rows);
     expect(widgets).toHaveLength(plan.recommendations.length);
-    expect(widgets.find((item) => item.type === "line")?.groupKey).toBe("data_venda");
+    expect(widgets.find((item) => item.type === "area")?.groupKey).toBe("data_venda");
     expect(widgets.every((item) => Boolean(item.title))).toBe(true);
   });
 
@@ -243,7 +243,7 @@ describe("generateAutoDashboardPlan", () => {
     expect(categoryCharts.some((item) => item.widgetType === "bar")).toBe(true);
     expect(categoryCharts.every((item) => item.valueKey === "Código")).toBe(true);
     expect(
-      plan.recommendations.some((item) => item.widgetType === "line" && item.op === "count"),
+      plan.recommendations.some((item) => item.widgetType === "area" && item.op === "count"),
     ).toBe(true);
     expect(plan.recommendations.some((item) => item.kind === "kpi")).toBe(false);
   });

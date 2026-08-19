@@ -119,10 +119,11 @@ export function RadarWidgetBody({
     const previous = i > 0 ? Math.min(all[i - 1]!, grouped.length) : -1;
     return effective !== previous;
   });
-  // Assim como na pizza, o detalhe pertence ao ponto inspecionado. Não
-  // deixamos uma categoria fixa parecendo uma tendência permanente quando
-  // o usuário não está sobre nenhum eixo.
-  const summaryAxisIndex = activeAxisIndex;
+  // Assim como na pizza, a leitura detalhada fica visível desde o início.
+  // O primeiro eixo já é a maior categoria porque `axes` está ordenado por
+  // valor absoluto; hover/foco troca temporariamente o ponto explicado e,
+  // ao sair, o resumo volta para essa referência principal.
+  const summaryAxisIndex = activeAxisIndex ?? (axes.length > 0 ? 0 : null);
   const selectedAxis = summaryAxisIndex !== null ? axes[summaryAxisIndex] : null;
   const selectedAxisComparison =
     summaryAxisIndex !== null ? pieComparisonFor(axes, summaryAxisIndex) : null;

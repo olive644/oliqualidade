@@ -419,9 +419,9 @@ export function createWidget(
 
 /**
  * Gera a grade padrão de widgets para painéis criados antes do modelo de
- * widgets configuráveis existir. Reproduz o layout fixo antigo (3 cartões de
- * métrica + barra + pizza + linha + tabela) para que nada mude visualmente
- * na primeira vez que um painel salvo é reaberto.
+ * widgets configuráveis existir. Mantém o conjunto essencial (3 cartões de
+ * métrica + barra + pizza + área + tabela), sem duplicar a mesma série
+ * temporal em widgets de linha e área.
  */
 export function buildDefaultWidgets(
   columns: Column[],
@@ -472,12 +472,12 @@ export function buildDefaultWidgets(
     });
   }
 
-  const lineGroupKey = dateColFilled?.key ?? pickSequentialIndexColumn(columns, rows)?.key;
-  if (lineGroupKey && primary) {
+  const areaGroupKey = dateColFilled?.key ?? pickSequentialIndexColumn(columns, rows)?.key;
+  if (areaGroupKey && primary) {
     widgets.push({
       id: newWidgetId(),
-      type: "line",
-      groupKey: lineGroupKey,
+      type: "area",
+      groupKey: areaGroupKey,
       valueKey: primary.key,
       op: "sum",
       span: 3,

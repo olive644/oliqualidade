@@ -129,7 +129,19 @@ function refreshAutomaticWidgets(sheet: SheetData): SheetData {
   };
 }
 
+function migrateDeprecatedTimelineWidget(sheet: SheetData): SheetData {
+  const widgets = sheet.widgets ?? [];
+  if (!widgets.some((widget) => widget.type === "line")) return sheet;
+  return {
+    ...sheet,
+    widgets: widgets.map((widget) =>
+      widget.type === "line" ? { ...widget, type: "area" as const } : widget,
+    ),
+  };
+}
+
 function repairInvalidWidgets(sheet: SheetData): SheetData {
+  sheet = migrateDeprecatedTimelineWidget(sheet);
   sheet = refreshAutomaticWidgets(sheet);
   if (!sheet.widgets?.some((widget) => !widgetCompatible(widget, sheet.columns))) return sheet;
   const plan = generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows });

@@ -376,15 +376,18 @@ export function BarTooltip({
         border: "1px solid var(--border)",
         borderRadius: 12,
         fontSize: 12,
+        fontWeight: 400,
         padding: "8px 12px",
         boxShadow: "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
       }}
     >
-      <div style={{ color: "var(--popover-foreground)", fontWeight: 600, marginBottom: 4 }}>
+      <div style={{ color: "var(--popover-foreground)", fontWeight: 500, marginBottom: 4 }}>
         {label}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ color: "var(--popover-foreground)" }}>{fmt(value, kind) ?? value}</span>
+        <span style={{ color: "var(--muted-foreground)", fontWeight: 400 }}>
+          {fmt(value, kind) ?? value}
+        </span>
         {mode === "raw" && payload[0]?.payload?.sourceRow && (
           <span style={{ color: "var(--muted-foreground)", fontSize: 10 }}>
             linha {payload[0].payload.sourceRow} do Excel
@@ -397,7 +400,7 @@ export function BarTooltip({
               alignItems: "center",
               gap: 2,
               fontSize: 11,
-              fontWeight: 700,
+              fontWeight: 600,
               padding: "1px 6px",
               borderRadius: 999,
               color: up ? "var(--chart-2)" : "var(--destructive)",

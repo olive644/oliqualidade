@@ -442,7 +442,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
         id: slug("series-temporal", primaryTime.key, primaryMetric.key),
         kind: "visualization",
         title: `${primaryMetric.label} por ${primaryTime.label}`,
-        widgetType: "line",
+        widgetType: "area",
         groupKey: primaryTime.key,
         valueKey: primaryMetric.key,
         op: "sum",
@@ -450,7 +450,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
         baseConfidence: 96,
         reasons: [
           "Uma coluna temporal e uma métrica foram identificadas.",
-          "Gráficos de linha preservam a ordem e evidenciam evolução no tempo.",
+          "Gráficos de área preservam a ordem e evidenciam evolução no tempo.",
         ],
       }),
     );
@@ -532,7 +532,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
           id: slug("contagem-temporal", primaryTime.key, countKey),
           kind: "visualization",
           title: `Registros por ${primaryTime.label}`,
-          widgetType: "line",
+          widgetType: "area",
           groupKey: primaryTime.key,
           valueKey: countKey,
           op: "count",
