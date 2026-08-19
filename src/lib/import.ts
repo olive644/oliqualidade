@@ -782,6 +782,29 @@ function prettyLabel(key: string): string {
   return key.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 }
 
+function removeColumnsWithoutValues(
+  rows: Row[],
+  headers: string[],
+  preserveHeaders = new Set<string>(),
+) {
+  if (!rows.length) return { rows, headers, emptyColumns: [] as string[] };
+  const emptyColumns = headers.filter(
+    (header) =>
+      !preserveHeaders.has(header) &&
+      !rows.some((row) => row[header] !== null && row[header] !== undefined && row[header] !== ""),
+  );
+  if (!emptyColumns.length) return { rows, headers, emptyColumns };
+
+  const keptHeaders = headers.filter((header) => !emptyColumns.includes(header));
+  return {
+    headers: keptHeaders,
+    emptyColumns,
+    rows: rows.map((row) =>
+      Object.fromEntries(keptHeaders.map((header) => [header, row[header] ?? null])),
+    ),
+  };
+}
+
 // ---------------------------------------------------------------------
 // Blocos repetidos: planilhas onde a mesma mini-tabela (título + cabeçalho
 // + linhas) aparece várias vezes dentro de UMA aba só — lado a lado e/ou
@@ -1686,12 +1709,22 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   ) {
     const { rows: blockRows, blockColumnName } = blocksToRows(blocks);
     const dataHeaders = blocks[0]!.headers;
+    const {
+      rows: blockRowsWithoutEmptyColumns,
+      headers: blockHeadersWithValues,
+      emptyColumns: emptyBlockColumns,
+    } = removeColumnsWithoutValues(blockRows, [blockColumnName, ...dataHeaders]);
+    const dataHeadersWithValues = blockHeadersWithValues.filter(
+      (header) => header !== blockColumnName,
+    );
 
     const nearEmptyColumns =
-      blockRows.length >= 5
-        ? dataHeaders.filter((h) => {
-            const filled = blockRows.filter((r) => r[h] !== null && r[h] !== "").length;
-            return filled / blockRows.length < NEAR_EMPTY_RATIO;
+      blockRowsWithoutEmptyColumns.length >= 5
+        ? dataHeadersWithValues.filter((h) => {
+            const filled = blockRowsWithoutEmptyColumns.filter(
+              (r) => r[h] !== null && r[h] !== "",
+            ).length;
+            return filled / blockRowsWithoutEmptyColumns.length < NEAR_EMPTY_RATIO;
           })
         : [];
 
@@ -1702,6 +1735,12 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
           ", ",
         )}), cada um com seu próprio título e cabeçalho. Foram combinados em uma única tabela, com a coluna "${blockColumnName}" indicando de qual bloco veio cada linha. Confira se a combinação ficou correta.`,
     ];
+    if (emptyBlockColumns.length > 0) {
+      const names = emptyBlockColumns.map((header) => `"${prettyLabel(header)}"`).join(", ");
+      blockMessages.push(
+        `${emptyBlockColumns.length > 1 ? "As colunas" : "A coluna"} ${names} não tinha${emptyBlockColumns.length > 1 ? "m" : ""} nenhum valor escrito nos registros e ${emptyBlockColumns.length > 1 ? "foram removidas" : "foi removida"}, em vez de gerar "Não informado".`,
+      );
+    }
     if (nearEmptyColumns.length > 0) {
       const names = nearEmptyColumns.map((h) => `"${prettyLabel(h)}"`).join(", ");
       blockMessages.push(
@@ -1710,13 +1749,13 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     }
 
     return {
-      rows: blockRows,
+      rows: blockRowsWithoutEmptyColumns,
       warning: importMessage(blockMessages.join(" ")),
-      diagnostics: diagnoseImportedSheet(ws, blockRows),
+      diagnostics: diagnoseImportedSheet(ws, blockRowsWithoutEmptyColumns),
       sourceGrid,
       audit: {
         sourceNonEmptyCells,
-        outputNonEmptyCells: blockRows.reduce(
+        outputNonEmptyCells: blockRowsWithoutEmptyColumns.reduce(
           (sum, row) =>
             sum + Object.values(row).filter((value) => value !== null && value !== "").length,
           0,
@@ -1728,7 +1767,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         hiddenRowsIgnored,
         blankRowsIgnored: 0,
         trailingRowsIgnored: 0,
-        columnsIgnored: 0,
+        columnsIgnored: emptyBlockColumns.length,
       },
       tableMode: "repeated-blocks",
     };
@@ -1904,6 +1943,28 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   }
   if (trailingNotesTrimmed > 0) rows.length -= trailingNotesTrimmed;
 
+  // Cabeçalho, borda e formatação não tornam uma coluna um dado. Se não há
+  // nenhum valor real em nenhuma linha importada, removemos a coluna por
+  // completo para que ela não vire uma faixa inteira de "Não informado".
+  // Zero e `false` continuam sendo valores válidos e são preservados.
+  const headersWithSourceFormulas = new Set(
+    headers.filter((header, index) => {
+      for (let relativeRow = headerRowEnd + 1; relativeRow < sourceAoa.length; relativeRow++) {
+        const address = XLSX.utils.encode_cell({
+          r: range.s.r + relativeRow,
+          c: range.s.c + index,
+        });
+        if (typeof ws[address]?.f === "string") return true;
+      }
+      return false;
+    }),
+  );
+  const {
+    rows: rowsWithoutEmptyColumns,
+    headers: headersWithValues,
+    emptyColumns,
+  } = removeColumnsWithoutValues(rows, headers, headersWithSourceFormulas);
+
   // Colunas sem nenhum texto no cabeçalho E quase sem dados: quase sempre
   // são um fragmento solto capturado só por estar dentro do retângulo de
   // células usadas da planilha (ex: uma anotação de rodapé que sobrou fora
@@ -1911,24 +1972,28 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // não uma coluna real da tabela. Descartamos em vez de expor como
   // "Coluna N" com dado sem sentido. Uma coluna sem nome mas com dados de
   // verdade continua sendo importada normalmente, com um nome genérico.
-  const ghostColumns = headers.filter((h, i) => {
-    if (!headerWasBlank[i]) return false;
-    const filled = rows.filter((r) => r[h] !== null && r[h] !== "").length;
-    // Uma coluna sem cabeçalho e 100% vazia é fantasma mesmo em amostras
-    // curtas. Para colunas apenas quase vazias, mantemos a exigência de ao
-    // menos 5 linhas antes de decidir, evitando apagar dado esparso real.
-    return filled === 0 || (rows.length >= 5 && filled / rows.length < NEAR_EMPTY_RATIO);
+  const ghostColumns = headersWithValues.filter((h) => {
+    const originalIndex = headers.indexOf(h);
+    if (!headerWasBlank[originalIndex]) return false;
+    const filled = rowsWithoutEmptyColumns.filter((r) => r[h] !== null && r[h] !== "").length;
+    // Colunas 100% vazias já foram removidas acima. Para colunas sem nome e
+    // quase vazias, mantemos a exigência de ao menos 5 linhas antes de
+    // decidir, evitando apagar dado esparso real.
+    return (
+      rowsWithoutEmptyColumns.length >= 5 &&
+      filled / rowsWithoutEmptyColumns.length < NEAR_EMPTY_RATIO
+    );
   });
   const headersWithoutGhosts = ghostColumns.length
-    ? headers.filter((h) => !ghostColumns.includes(h))
-    : headers;
+    ? headersWithValues.filter((h) => !ghostColumns.includes(h))
+    : headersWithValues;
   const rowsWithoutGhosts: Row[] = ghostColumns.length
-    ? rows.map((r) => {
+    ? rowsWithoutEmptyColumns.map((r) => {
         const clean: Row = {};
         for (const h of headersWithoutGhosts) clean[h] = r[h] ?? null;
         return clean;
       })
-    : rows;
+    : rowsWithoutEmptyColumns;
 
   // Mesclagens horizontais podem produzir duas colunas com o mesmo rótulo
   // e exatamente os mesmos valores em todas as linhas. A segunda não traz
@@ -2044,6 +2109,12 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       `${renamed} coluna${renamed > 1 ? "s" : ""} com nome repetido no cabeçalho ${renamed > 1 ? "foram" : "foi"} renomeada${renamed > 1 ? "s" : ""} para não perder dados.`,
     );
   }
+  if (emptyColumns.length > 0) {
+    const names = emptyColumns.map((header) => `"${prettyLabel(header)}"`).join(", ");
+    messages.push(
+      `${emptyColumns.length > 1 ? "As colunas" : "A coluna"} ${names} não tinha${emptyColumns.length > 1 ? "m" : ""} nenhum valor escrito nos registros e ${emptyColumns.length > 1 ? "foram removidas" : "foi removida"}, em vez de gerar "Não informado".`,
+    );
+  }
   if (ghostColumns.length > 0) {
     messages.push(
       `${ghostColumns.length > 1 ? "Foram encontradas colunas" : "Foi encontrada uma coluna"} sem nenhum texto no cabeçalho e quase sem dados (provavelmente um fragmento fora da tabela) e ${ghostColumns.length > 1 ? "elas foram removidas" : "ela foi removida"} automaticamente da importação.`,
@@ -2101,7 +2172,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       hiddenRowsIgnored,
       blankRowsIgnored: blankSkipped,
       trailingRowsIgnored: preparedTemplateRowsTrimmed + trailingNotesTrimmed + footerRowsIgnored,
-      columnsIgnored: ghostColumns.length + redundantColumns.length,
+      columnsIgnored: emptyColumns.length + ghostColumns.length + redundantColumns.length,
       notesPreserved: diagnostics.sourceNotes.length,
       repeatedHeaderRowsIgnored: repeatedHeaderRowsSkipped,
     },
