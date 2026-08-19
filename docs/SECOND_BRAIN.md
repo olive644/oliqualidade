@@ -517,20 +517,26 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
     `useState(() => typeof window === "undefined" ? true :
     window.matchMedia(...).matches)`. Ver
     [[CURRENT_STATE_AUDIT#97. Corrigido o bug real de hidratação SSR sinalizado na seção 96 ("Hydration failed... modo privado")]].
-11. **Revisão dos PRs do Dependabot** `#pendente` — 6 mescladas até
+11. **Revisão dos PRs do Dependabot** `#pendente` — 9 mescladas até
     agora: 4 GitHub Actions + 1 grupo minor/patch do npm + `html2canvas-pro`
-    1.6→2.3 (as duas últimas precisaram da mesma correção manual de
-    lockfile fora de sincronia gerado pelo Dependabot). TypeScript 7
-    rejeitado (incompatibilidade real com `typescript-eslint`,
-    Dependabot instruído a não reabrir). Restam pra revisar, um de cada
-    vez, com teste local antes de mesclar: `eslint`+`@eslint/js`+
-    `globals` (major, revisar juntos — prováveis dependências entre si
-    e com `typescript-eslint`), `zod` 3→4 (mudança de API conhecida,
-    usado em várias validações), `react-day-picker` 9→10,
-    `lucide-react` 0.x→1.x, `@types/node` 22→26 (usuário já foi avisado
-    que essa não vale a pena enquanto o runtime for Node 22). Ver
-    [[CURRENT_STATE_AUDIT#105. Revisão dos 14 PRs abertos pelo Dependabot: 5 de baixo risco mescladas, TypeScript 7 rejeitado por incompatibilidade real]]
-    e [[CURRENT_STATE_AUDIT#107. `html2canvas-pro` atualizado (1.6.7 → 2.3.8) e animação de entrada das barras de preenchimento]].
+    1.6→2.3 + `zod` 3→4 + `react-day-picker` 9→10 + `lucide-react`
+    0.x→1.x (as últimas quatro precisaram da mesma correção manual de
+    lockfile fora de sincronia gerado pelo Dependabot; `react-day-picker`
+    também teve um achado real de tipo, `table`→`month_grid`, corrigido
+    junto). TypeScript 7 rejeitado (incompatibilidade real com
+    `typescript-eslint`). Grupo `eslint`+`@eslint/js`+`globals` (10.x)
+    **fechado, não só rejeitado**: `eslint-plugin-react-hooks@5.2.0` não
+    suporta eslint 10 (ERESOLVE), e a versão que resolveria isso
+    (`7.1.1`) faz o lint completo do repo ir de 19,8s pra mais de 10
+    minutos sem terminar — regressão real de performance, não
+    travamento (confirmado com CPU ativa via `Get-Process`), das novas
+    regras "React Compiler" que o `eslint-plugin-react-hooks` passou a
+    incluir por padrão a partir da v6. `@types/node` 22→26 continua
+    aberta sem mesclar (CI roda Node 22 explícito, produção usa
+    `nodejs24.x` — 26 fica à frente dos dois). Ver
+    [[CURRENT_STATE_AUDIT#105. Revisão dos 14 PRs abertos pelo Dependabot: 5 de baixo risco mescladas, TypeScript 7 rejeitado por incompatibilidade real]],
+    [[CURRENT_STATE_AUDIT#107. `html2canvas-pro` atualizado (1.6.7 → 2.3.8) e animação de entrada das barras de preenchimento]]
+    e [[CURRENT_STATE_AUDIT#109. Revisão de mais PRs do Dependabot: zod 4 e react-day-picker 10 mescladas, grupo eslint 10 fechado por regressão real de performance (não incompatibilidade)]].
 12. ~~Animação de entrada das barras de preenchimento~~ **Feito** —
     `@keyframes oliam-fill-in` (scaleX 0→1) em `.oliam-ranking-fill`,
     usado por ranking/avaliação/ranking da sidebar, com atraso
@@ -689,6 +695,7 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 | Coluna genérica "Coluna N" só conta como redundante de outra genérica quando são vizinhas diretas no cabeçalho | nomes genéricos coincidentemente iguais entre colunas distantes são plausíveis (proteção original); adjacência direta é o sinal de mesclagem horizontal transbordando pra coluna seguinte, coincidência deixa de ser plausível | resolve "Coluna 7" duplicada de "Coluna 6" (nota de rodapé mesclada); "Coluna 6" em si (a cópia canônica) continua aparecendo — sem evidência (só 3 linhas) pra generalizar remoção automática sem risco em outro arquivo real |
 | `SeriesComparisonPanel`/`TrendSummaryPanel` usam `flex flex-wrap`, não `grid` com media query de viewport | a largura real desses painéis é a do card do widget (pode ser 1/3 da grade), não a da tela — `sm:grid-cols-[...]` cortava texto num widget estreito mesmo em viewport desktop | flex-wrap reflui pela largura real do container; verificado ao vivo sem overflow (`scrollWidth === clientWidth`) numa pizza real em ~231px |
 | Todo parser regex de `workbook-metadata.ts` (namespace principal do spreadsheetML) tolera um prefixo de namespace opcional (`<x:dataValidation>` além de `<dataValidation>`); `normalizePart` usa o `Target` de relacionamento direto quando começa com `/` (absoluto, raiz do pacote) em vez de sempre combinar com a pasta base | um gerador de OOXML fora do Excel/openpyxl/exceljs (script próprio do usuário) produziu arquivos espec-válidos com prefixo explícito de namespace e `Target` absoluto — a combinação zerava hyperlinks/validações/cores/comentários/tabelas em silêncio, sem nenhum erro, porque a parte do worksheet resolvia pra um caminho de ZIP inexistente | não se aplica às namespaces de desenho/gráfico (`xdr:`/`a:`/`c:`), sempre prefixadas por convenção mesmo em arquivos do Excel — sem evidência de quebra ali; ver [[CURRENT_STATE_AUDIT#83. Usuário trouxe corpus sintético de 6 planilhas próprias: bug real de dois estágios no inventário avançado OOXML (namespace prefixada + Target absoluto)]] |
+| `eslint-plugin-react-hooks` não pode passar de `5.x` neste projeto por enquanto | `6.x`/`7.x` já suportam `eslint@10` (resolve o ERESOLVE), mas passaram a incluir regras de análise "React Compiler" pesadas por padrão no `recommended` — `eslint .` completo foi de 19,8s pra mais de 10 minutos sem terminar (CPU ativa o tempo todo, não é travamento) | grupo `eslint`+`@eslint/js`+`globals` 10.x do Dependabot fechado por isso, não só rejeitado; ver [[CURRENT_STATE_AUDIT#109. Revisão de mais PRs do Dependabot: zod 4 e react-day-picker 10 mescladas, grupo eslint 10 fechado por regressão real de performance (não incompatibilidade)]] |
 
 ## Checklist antes de publicar
 

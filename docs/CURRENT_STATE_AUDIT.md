@@ -5980,3 +5980,68 @@ no conteúdo, com os campos esperados.
 --noEmit`, `npx eslint` nos 5 arquivos tocados (CRLF normalizado antes,
 armadilha conhecida), `npm run build` + `npm run performance:check`
 (zero regressão de orçamento) aprovados.
+
+## 109. Revisão de mais PRs do Dependabot: zod 4 e react-day-picker 10 mescladas, grupo eslint 10 fechado por regressão real de performance (não incompatibilidade)
+
+Continuação da seção 105/107. `zod` (3→4, PR #163) e `react-day-picker`
+(9→10, PR #160) mescladas depois de confirmar que nenhum dos dois é
+usado de fato no código-fonte (`zod` é dependência direta órfã — só
+usado transitivamente por `@hookform/resolvers`/TanStack internamente;
+`react-day-picker`/`Calendar` é scaffolding do shadcn/ui nunca
+importado por nenhuma rota) — risco de regressão essencialmente zero,
+mas testado da mesma forma rigorosa mesmo assim. Achado real na PR do
+`react-day-picker`: a v10 renomeou a chave `table` do `UI` enum pra
+`month_grid` — `tsc` pegou o erro de tipo em `calendar.tsx`, corrigido
+como parte do merge (migração real, não gambiarra). Ambas as PRs
+tiveram o mesmo problema recorrente de lockfile fora de sincronia
+gerado pelo Dependabot (`lru-cache`, quarta vez nesta sessão),
+corrigido do mesmo jeito de sempre.
+
+`lucide-react` (0.x→1.x, PR #167) também mesclada — só ícones
+adicionados entre 0.575 e 1.31, nenhuma mudança de API que afetasse o
+projeto (imports nomeados continuam resolvendo). Lockfile também
+precisou da mesma correção.
+
+`@types/node` (22→26, PR #164): confirmado de novo (CI roda
+`node-version: 22` explícito em todos os jobs de
+`.github/workflows/application.yml`; produção Vercel usa
+`nodejs24.x`) que a versão 26 fica à frente dos dois ambientes reais —
+comentado e deixado aberto, sem `ignore` (não é rejeição permanente).
+
+**Grupo eslint (eslint 10.8.1 + @eslint/js 10.0.1 + globals 17.11.0,
+PRs #162/#166/#161)**: achado em duas etapas.
+
+1. Primeira tentativa de merge das três juntas: `npm ci` falha com
+   ERESOLVE real — `eslint-plugin-react-hooks@5.2.0` (versão atual do
+   projeto) só declara suporte a `eslint` até `^9.0.0` como peer.
+   Comentado nas três PRs, deixadas abertas (bloqueio resolúvel, ao
+   contrário do caso do TypeScript 7 na seção 105).
+2. Investigação de desbloqueio: `eslint-plugin-react-hooks@7.1.1` já
+   declara suporte a `eslint ^10.0.0` — instala sem conflito. Mas o
+   lint completo do repo (`eslint .`), que roda em **19,8s** na `main`
+   original (medido numa `git worktree` separada, como linha de base),
+   passou de **10 minutos sem terminar** com o combo eslint 10 +
+   react-hooks 7.1.1 — confirmado que não era travamento (processo
+   `node` com CPU ativa ~100% de um core o tempo inteiro, não
+   deadlock/CPU zerada) via `Get-Process` no PowerShell. Isolado por
+   diretório (`src/lib/`, `src/components/oliam/`,
+   `src/routes/index.tsx` individualmente — todos rápidos, 14-90s) não
+   reproduziu o problema; só o `eslint .` do repo inteiro junto trava
+   lento. Suspeita: as regras de análise "React Compiler" que o
+   `eslint-plugin-react-hooks` passou a incluir por padrão a partir da
+   v6 fazem inferência mais pesada (possivelmente com custo não-linear
+   no tamanho do projeto) que a v5 nunca teve.
+
+Decisão: **as três PRs do grupo eslint foram fechadas** (não mescladas,
+não só um `@dependabot ignore`) — um lint de 10+ minutos inviabilizaria
+a CI. Diferente da rejeição do TypeScript 7 (incompatibilidade
+estrutural permanente), aqui a combinação tecnicamente instala e
+funciona, só é lenta demais pra usar. Revisitar se o
+`eslint-plugin-react-hooks` lançar uma versão que resolva essa
+lentidão, ou se surgir uma forma de manter as regras de hooks
+essenciais sem herdar as novas regras pesadas do `recommended`.
+
+`npx vitest run`, `npx tsc --noEmit`, `npm run build` +
+`npm run performance:check` aprovados nas duas PRs mescladas (zod,
+react-day-picker) antes do merge; `lucide-react` também passou pela
+mesma bateria antes do merge.
