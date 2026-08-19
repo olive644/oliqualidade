@@ -452,6 +452,21 @@ function isMetadataRow(row: (string | number | null)[]): boolean {
   );
 }
 
+function isSheetContextRow(row: (string | number | null)[]): boolean {
+  const labels = row
+    .filter((cell) => cell !== null && cell !== "")
+    .map((cell) => String(cell).trim())
+    .filter(Boolean);
+  const firstLabel = labels[0] ?? "";
+  if (/^ano fiscal$/i.test(firstLabel)) return true;
+  if (!/^produto$/i.test(firstLabel)) return false;
+  const distinct = new Set(labels.map((label) => label.toLocaleLowerCase("pt-BR")));
+  return (
+    labels.some((label) => /^resultados?$/i.test(label)) ||
+    (labels.length > 2 && distinct.size === 2)
+  );
+}
+
 /**
  * Acha o índice da linha de cabeçalho real. Por padrão assume a primeira
  * linha (comportamento de sempre). Só procura mais abaixo quando a primeira
@@ -476,6 +491,7 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
   if (
     !isBanner(0) &&
     !isMetadataRow(firstRow) &&
+    !isSheetContextRow(firstRow) &&
     !isClearlyNotHeaderRow(firstRow) &&
     fillRatio(firstRow) >= SPARSE_HEADER_RATIO
   ) {
@@ -488,6 +504,7 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
     if (isBanner(i)) continue;
     const row = aoa[i] ?? [];
     if (isMetadataRow(row)) continue;
+    if (isSheetContextRow(row)) continue;
     if (isClearlyNotHeaderRow(row) && !isYearHeaderRow(row)) continue;
     // Cabeçalhos verdadeiros costumam ser seguidos imediatamente por dados.
     // Esse bônus resolve empates com blocos institucionais mesclados
@@ -525,6 +542,12 @@ function findHierarchicalHeaderStart(
     const filled = row.filter((value) => value !== null && value !== "");
     if (!filled.length || filled.some((value) => cellLooksNumeric(value) || cellLooksDate(value)))
       break;
+    // Linhas de contexto como "ANO FISCAL | FY25" e
+    // "PRODUTO | Resinas X" descrevem a planilha inteira. Mesmo quando a
+    // segunda também contém um grupo visual como "RESULTADOS", ela não é
+    // uma camada do cabeçalho da tabela e não deve prefixar todas as
+    // colunas (nem transformar uma aba-modelo vazia em um registro falso).
+    if (isSheetContextRow(row)) break;
     const distinctLabels = [
       ...new Set(filled.map((value) => String(value).trim()).filter(Boolean)),
     ];
@@ -1829,6 +1852,29 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     if (!headerWasBlank[index]) return true;
     return nonBlankRows.some((row) => row[header] !== null && row[header] !== "");
   });
+  const identityHeaders = headers
+    .slice(0, 8)
+    .filter((header) =>
+      /(?:^| — )(?:data|n[uú]mero(?: do| de)? recebimento|lote(?:\/op)?|nota fiscal(?: fedex)?)$/i.test(
+        header,
+      ),
+    );
+  let preparedTemplateRowsTrimmed = 0;
+  while (rows.length > 0 && identityHeaders.length > 0) {
+    const last = rows[rows.length - 1 - preparedTemplateRowsTrimmed];
+    if (!last) break;
+    if (identityHeaders.some((header) => last[header] !== null && last[header] !== "")) break;
+    const filled = Object.values(last).filter((value) => value !== null && value !== "").length;
+    // Formulários costumam pré-preencher fornecedor, status e responsáveis
+    // em dezenas de linhas futuras. Sem data, número, lote ou nota fiscal,
+    // esse sufixo ainda não representa recebimentos reais; importá-lo cria
+    // uma massa artificial de "Não informado". O limite de densidade evita
+    // confundir com um registro legítimo que apenas perdeu um identificador.
+    if (filled / Math.max(1, activeTrailingHeaders.length) > 0.5) break;
+    preparedTemplateRowsTrimmed++;
+  }
+  if (preparedTemplateRowsTrimmed > 0) rows.length -= preparedTemplateRowsTrimmed;
+
   let trailingNotesTrimmed = 0;
   while (
     rows.length > 1 &&
@@ -1988,6 +2034,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       `${trailingNotesTrimmed} linha${trailingNotesTrimmed > 1 ? "s" : ""} no fim da planilha ${trailingNotesTrimmed > 1 ? "pareciam" : "parecia"} nota${trailingNotesTrimmed > 1 ? "s" : ""}/resumo solto${trailingNotesTrimmed > 1 ? "s" : ""} em vez de dado da tabela. O conteúdo de observação foi preservado separadamente, sem poluir os registros do cronograma.`,
     );
   }
+  if (preparedTemplateRowsTrimmed > 0) {
+    messages.push(
+      `${preparedTemplateRowsTrimmed} linha${preparedTemplateRowsTrimmed > 1 ? "s" : ""} futura${preparedTemplateRowsTrimmed > 1 ? "s" : ""} no fim do formulário tinha${preparedTemplateRowsTrimmed > 1 ? "m" : ""} apenas valores pré-preenchidos, sem data, número, lote ou nota fiscal; ${preparedTemplateRowsTrimmed > 1 ? "foram ignoradas" : "foi ignorada"} para não gerar "Não informado" artificial.`,
+    );
+  }
   if (renamed > 0) {
     messages.push(
       `${renamed} coluna${renamed > 1 ? "s" : ""} com nome repetido no cabeçalho ${renamed > 1 ? "foram" : "foi"} renomeada${renamed > 1 ? "s" : ""} para não perder dados.`,
@@ -2049,7 +2100,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       rowsAboveHeaderIgnored: headerRowIndex,
       hiddenRowsIgnored,
       blankRowsIgnored: blankSkipped,
-      trailingRowsIgnored: trailingNotesTrimmed + footerRowsIgnored,
+      trailingRowsIgnored: preparedTemplateRowsTrimmed + trailingNotesTrimmed + footerRowsIgnored,
       columnsIgnored: ghostColumns.length + redundantColumns.length,
       notesPreserved: diagnostics.sourceNotes.length,
       repeatedHeaderRowsIgnored: repeatedHeaderRowsSkipped,
