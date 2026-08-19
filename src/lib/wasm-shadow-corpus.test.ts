@@ -106,6 +106,9 @@ describe.skipIf(!existsSync(generatedManifestPath))(
       const manifest = JSON.parse(readFileSync(generatedManifestPath, "utf8")) as GeneratedManifest;
       expect(manifest.schemaVersion).toBe("1.0.0");
       expect(manifest.cases).toHaveLength(50);
+      expect(
+        manifest.cases.filter((testCase) => testCase.features.includes("emptyColumns")),
+      ).toHaveLength(12);
 
       const observations: WasmCorpusObservation[] = [];
       const cases = [];

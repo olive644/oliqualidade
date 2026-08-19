@@ -605,13 +605,9 @@ describe("leitor universal de planilhas", () => {
 
     const [sheet] = readWorkbookBytes(bytes, "cronograma.xlsx");
 
-    expect(Object.keys(sheet?.rows[0] ?? {})).toEqual([
-      "Ponto / Item",
-      "jun/2025",
-      "set/2025",
-      "mar/2026",
-    ]);
+    expect(Object.keys(sheet?.rows[0] ?? {})).toEqual(["Ponto / Item", "jun/2025", "mar/2026"]);
     expect(sheet?.rows[0]).toMatchObject({ "Ponto / Item": "Laboratório", "jun/2025": 3 });
+    expect(sheet?.rows[0]).not.toHaveProperty("set/2025");
   });
 
   it("não converte texto em data inválida quando a célula herdou o estilo de mês/ano", () => {

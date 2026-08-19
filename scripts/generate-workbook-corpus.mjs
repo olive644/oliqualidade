@@ -17,6 +17,12 @@ function workbookFor(testCase) {
         if (column === 0) return `${testCase.id} · linha ${row}`;
         if (column === 1) return new Date(Date.UTC(2024 + (row % 3), row % 12, (row % 27) + 1));
         if (column === 2) return row % 2 === 0;
+        // Mantém cabeçalho e largura da planilha, mas deixa uma coluna
+        // inteira sem valores. Esse perfil reproduz formulários reais com
+        // colunas apenas formatadas e protege o leitor contra uma cascata
+        // de "Não informado".
+        if (column === testCase.columns - 2 && testCase.features.includes("emptyColumns"))
+          return null;
         if (column === testCase.columns - 1 && testCase.features.includes("formulas")) return null;
         return row * 100 + column + testCase.seed / 100;
       }),

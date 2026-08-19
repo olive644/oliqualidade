@@ -11,7 +11,6 @@ import {
   leftJoin,
   limitChartSeriesForRendering,
   matchesRange,
-  NOT_INFORMED,
   pieComparisonFor,
   pieRoundnessFor,
   rankingCoverageFor,
@@ -42,6 +41,19 @@ describe("chartSeries", () => {
     expect(chartSeries(rows, "categoria", "valor", "sum", "aggregate")).toEqual([
       { name: "A", total: 30 },
       { name: "B", total: 5 },
+    ]);
+  });
+
+  it("não cria pontos para categorias vazias no modo original", () => {
+    const rowsWithMissingGroups: Row[] = [
+      { categoria: "A", valor: 10 },
+      { categoria: null, valor: 20 },
+      { categoria: "", valor: 30 },
+      { categoria: "   ", valor: 40 },
+    ];
+
+    expect(chartSeries(rowsWithMissingGroups, "categoria", "valor", "sum", "raw")).toEqual([
+      { name: "A", total: 10, sourceRow: 1 },
     ]);
   });
 
@@ -275,10 +287,14 @@ describe("groupAndAggregate", () => {
     );
   });
 
-  it("usa 'Não informado' para valores de agrupamento ausentes", () => {
-    const rows: Row[] = [{ categoria: null, valor: 10 }];
+  it("ignora valores de agrupamento ausentes em vez de criar 'Não informado'", () => {
+    const rows: Row[] = [
+      { categoria: null, valor: 10 },
+      { categoria: "", valor: 20 },
+      { categoria: "   ", valor: 30 },
+    ];
     const result = groupAndAggregate(rows, "categoria", "valor", "sum");
-    expect(result[0]?.name).toBe(NOT_INFORMED);
+    expect(result).toEqual([]);
   });
 
   it("descarta grupos sem nenhum valor numérico válido (não mostra barra zerada)", () => {
@@ -353,6 +369,15 @@ describe("relevantAggregationOps", () => {
       { vendedor: "Bruno", comissao: null },
     ];
     expect(relevantAggregationOps(rows, "vendedor", "comissao")).toEqual(["sum", "count"]);
+  });
+
+  it("não deixa categorias vazias influenciarem as operações oferecidas", () => {
+    const rows: Row[] = [
+      { vendedor: "Ana", vendas: 10 },
+      { vendedor: null, vendas: 20 },
+      { vendedor: null, vendas: 30 },
+    ];
+    expect(relevantAggregationOps(rows, "vendedor", "vendas")).toEqual(["sum"]);
   });
 
   it("não quebra com uma base vazia", () => {
