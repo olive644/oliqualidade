@@ -456,9 +456,7 @@ export function ChartWidgetBody({
                             {
                               "--oliam-bar-delay": `${Math.min(entryIndex, 14) * 42}ms`,
                               transform:
-                                activeBarIndex === entryIndex
-                                  ? "scale(1.045, 1.08)"
-                                  : "scale(1)",
+                                activeBarIndex === entryIndex ? "scale(1.045, 1.08)" : "scale(1)",
                             } as CSSProperties
                           }
                         />
@@ -488,10 +486,7 @@ export function ChartWidgetBody({
             {barSeries.map((g) => `${g.name}, ${g.total}`).join("; ")}.
           </p>
           {selectedBar && (
-            <div
-              key={`${w.id}-bar-detail-${selectedBar.name}`}
-              className="oliam-chart-detail-swap"
-            >
+            <div key={`${w.id}-bar-detail-${selectedBar.name}`} className="oliam-chart-detail-swap">
               <SeriesComparisonPanel
                 selected={selectedBar}
                 comparison={selectedBarComparison}
@@ -710,10 +705,7 @@ export function ChartWidgetBody({
             />
           </div>
           {selectedPie && (
-            <div
-              key={`${w.id}-pie-detail-${selectedPie.name}`}
-              className="oliam-chart-detail-swap"
-            >
+            <div key={`${w.id}-pie-detail-${selectedPie.name}`} className="oliam-chart-detail-swap">
               <SeriesComparisonPanel
                 selected={selectedPie}
                 comparison={selectedPieComparison}
