@@ -1631,7 +1631,7 @@ function Dashboard(p: {
     );
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="oliam-app-shell flex h-screen overflow-hidden">
       <DashboardNavSidebar
         open={sidebar}
         onOpenChange={setSidebar}
@@ -1643,7 +1643,7 @@ function Dashboard(p: {
         rowCount={sheet.rows.length}
         onOpenMissingPanel={() => setMissingPanel(true)}
       />
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="oliam-dashboard-shell flex min-w-0 flex-1 flex-col">
         <header className="oliam-dashboard-topbar">
           <input
             ref={backupInput}
@@ -1656,7 +1656,7 @@ function Dashboard(p: {
               if (file) void restoreEncryptedBackup(file);
             }}
           />
-          <div className="flex items-center gap-2">
+          <div className="oliam-dashboard-title flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
@@ -1688,7 +1688,7 @@ function Dashboard(p: {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="oliam-dashboard-actions flex items-center gap-1">
             {analysisProgress && sheet.rows.length > 500 && (
               <div
                 className="hidden items-center gap-2 rounded-full border border-border bg-background px-2.5 py-1 text-[10px] text-muted-foreground lg:flex"
@@ -2043,8 +2043,11 @@ function Dashboard(p: {
           columns={sheet.columns}
           setColumns={setColumns}
         />
-        <div className="flex min-h-0 flex-1">
-          <div ref={contentRef} className="min-w-0 flex-1 overflow-auto bg-canvas p-4 md:p-6">
+        <div className="oliam-dashboard-body flex min-h-0 flex-1">
+          <div
+            ref={contentRef}
+            className="oliam-dashboard-content min-w-0 flex-1 overflow-auto bg-canvas p-4 md:p-6"
+          >
             <div className="oliam-export-watermark" aria-hidden="true" />
             <div className="oliam-export-header" aria-hidden="true">
               <div>
@@ -2106,7 +2109,7 @@ function Dashboard(p: {
         </div>
         {d.sheets.length > 1 && (
           <div
-            className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-t border-border bg-muted/30 px-2 py-1.5"
+            className="oliam-sheet-tabs flex shrink-0 items-center gap-0.5 overflow-x-auto border-t border-border bg-muted/30 px-2 py-1.5"
             role="tablist"
             aria-label="Abas do painel"
           >
@@ -2131,7 +2134,7 @@ function Dashboard(p: {
         )}
       </section>
       {presentation && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-canvas">
+        <div className="oliam-presentation fixed inset-0 z-50 flex flex-col bg-canvas">
           {presentationBar}
           <div className="flex-1 overflow-auto p-4 md:p-6">
             {sourceNotesPanel}
