@@ -9,44 +9,43 @@ test.describe("iPhone responsive shell", () => {
     isMobile: true,
   });
 
-  test(
-    "reaches a dashboard without overflow and keeps touch actions accessible",
-    async ({ page }) => {
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+  test("reaches a dashboard without overflow and keeps touch actions accessible", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
 
-      await expect(page.getByRole("heading", { name: "Oli.Qualidade" }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Oli.Qualidade" }).first()).toBeVisible();
 
-      const landingOverflow = await page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    const landingOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(landingOverflow).toBe(false);
+
+    await page.getByRole("button", { name: /ver demonstração/i }).click();
+
+    await expect(page.getByText("Confirme como cada coluna deve ser lida")).toBeVisible();
+    await page.getByRole("checkbox", { name: /cabeçalho/i }).check();
+    await page.getByRole("checkbox", { name: /intervalo de linhas/i }).check();
+    await page.getByRole("checkbox", { name: /tipos das colunas/i }).check();
+    await page.getByRole("button", { name: /gerar relatório/i }).click();
+
+    await expect(page.locator(".oliam-app-shell")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".oliam-dashboard-topbar")).toBeVisible();
+
+    const dashboardOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(dashboardOverflow).toBe(false);
+
+    const tooSmallActions = await page
+      .locator(".oliam-dashboard-topbar button:visible")
+      .evaluateAll(
+        (buttons) =>
+          buttons
+            .map((button) => button.getBoundingClientRect())
+            .filter((box) => box.width < 44 || box.height < 44).length,
       );
-      expect(landingOverflow).toBe(false);
-
-      await page.getByRole("button", { name: /ver demonstração/i }).click();
-
-      await expect(page.getByText("Confirme como cada coluna deve ser lida")).toBeVisible();
-      await page.getByRole("checkbox", { name: /cabeçalho/i }).check();
-      await page.getByRole("checkbox", { name: /intervalo de linhas/i }).check();
-      await page.getByRole("checkbox", { name: /tipos das colunas/i }).check();
-      await page.getByRole("button", { name: /gerar relatório/i }).click();
-
-      await expect(page.locator(".oliam-app-shell")).toBeVisible({ timeout: 15_000 });
-      await expect(page.locator(".oliam-dashboard-topbar")).toBeVisible();
-
-      const dashboardOverflow = await page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-      );
-      expect(dashboardOverflow).toBe(false);
-
-      const tooSmallActions = await page
-        .locator(".oliam-dashboard-topbar button:visible")
-        .evaluateAll(
-          (buttons) =>
-            buttons
-              .map((button) => button.getBoundingClientRect())
-              .filter((box) => box.width < 44 || box.height < 44).length,
-        );
-      expect(tooSmallActions).toBe(0);
-    },
-  );
+    expect(tooSmallActions).toBe(0);
+  });
 });
