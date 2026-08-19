@@ -1912,7 +1912,9 @@ function Dashboard(p: {
               </p>
               <TooltipProvider delayDuration={180}>
                 <div className="grid grid-cols-1 gap-1 sm:grid-cols-4 sm:gap-1.5">
-                  {(Object.keys(widgetTypeLabels) as WidgetType[]).map((type) => (
+                  {(Object.keys(widgetTypeLabels) as WidgetType[])
+                    .filter((type) => type !== "line")
+                    .map((type) => (
                     <Tooltip key={type}>
                       <TooltipTrigger asChild>
                         <DropdownMenuItem
