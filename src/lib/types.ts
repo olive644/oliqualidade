@@ -59,6 +59,7 @@ export type WidgetType =
   | "line"
   | "area"
   | "ranking"
+  | "radar"
   | "rating"
   | "map"
   | "insights"
@@ -82,13 +83,13 @@ export type Widget = {
   type: WidgetType;
   title?: string; // título customizado; vazio usa um título calculado
   metricKey?: string; // metric/metric-trend/rating: coluna numérica exibida
-  groupKey?: string; // bar/pie/line/area/ranking: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
-  valueKey?: string; // bar/pie/line/area/ranking: coluna numérica agregada
-  op?: ChartAggregationOp; // bar/pie/line/area/ranking: operação de agregação
+  groupKey?: string; // bar/pie/line/area/ranking/radar: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
+  valueKey?: string; // bar/pie/line/area/ranking/radar: coluna numérica agregada
+  op?: ChartAggregationOp; // bar/pie/line/area/ranking/radar: operação de agregação
   dataMode?: ChartDataMode; // raw: uma marca por linha do Excel; aggregate: combina categorias
   span: WidgetSpan;
   size: WidgetSize;
-  topN?: number; // ranking: quantos itens exibir (padrão 5)
+  topN?: number; // ranking/radar: quantos itens exibir (padrão 5)
   scaleMax?: number; // rating: nota máxima da escala (padrão 5)
   periodKeys?: string[]; // schedule-heatmap: colunas exibidas horizontalmente
   statusKey?: string; // schedule-heatmap: coluna que distingue planejado/executado/status
@@ -109,6 +110,7 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   line: "Linha do tempo",
   area: "Gráfico de área",
   ranking: "Ranking (Top N)",
+  radar: "Gráfico radar",
   rating: "Indicador de avaliação",
   map: "Mapa por localização",
   insights: "Insights automáticos",

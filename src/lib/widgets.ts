@@ -151,6 +151,7 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "metric-trend" ||
     type === "folder-files" ||
     type === "pie" ||
+    type === "radar" ||
     type === "rating"
   )
     return 1;
@@ -360,6 +361,7 @@ export function createWidget(
     type === "line" ||
     type === "area" ||
     type === "ranking" ||
+    type === "radar" ||
     type === "map" ||
     type === "insights"
   ) {
@@ -377,7 +379,7 @@ export function createWidget(
     if (valueKey) widget.valueKey = valueKey;
     widget.op = seed?.op ?? "sum";
     widget.dataMode = widget.op === "count" ? "aggregate" : "raw";
-    if (type === "ranking") widget.topN = 5;
+    if (type === "ranking" || type === "radar") widget.topN = 5;
   }
   return widget;
 }

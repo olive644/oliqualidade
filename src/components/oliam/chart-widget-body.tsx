@@ -13,6 +13,7 @@ import {
   Pie,
   PieChart as RPieChart,
   ResponsiveContainer,
+  Sector,
   Tooltip as ChartTooltip,
   XAxis,
   YAxis,
@@ -371,22 +372,39 @@ export function ChartWidgetBody({
                       tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
                     />
                     <ChartTooltip
-                      cursor={{ fill: "var(--accent)", fillOpacity: 0.4, radius: 6 }}
-                      content={(props) => (
-                        <BarTooltip
-                          active={props.active}
-                          payload={
-                            props.payload as {
-                              value?: number;
-                              payload?: { sourceRow?: number };
-                            }[]
-                          }
-                          label={props.label as string}
-                          series={barSeries}
-                          kind={valueCol.kind}
-                          mode={dataMode}
-                        />
-                      )}
+                      // Sem retângulo de fundo: o Recharts ativaria o
+                      // tooltip pra toda a faixa X da categoria (inclusive
+                      // o espaço vazio acima de uma barra curta), não só
+                      // sobre a barra desenhada. O destaque de "isto está
+                      // sob o mouse" já existe via opacidade do <Cell>
+                      // abaixo (mais preciso, por forma real).
+                      cursor={false}
+                      content={(props) =>
+                        // activeBarIndex só fica setado enquanto o mouse
+                        // está de fato sobre a forma SVG de uma barra
+                        // (onMouseEnter/onMouseLeave do próprio <Bar>,
+                        // acionado por barra real). O rastreamento por
+                        // eixo do Recharts (usado só pra decidir
+                        // active/payload/label aqui) continua achando que
+                        // deveria mostrar em toda a coluna — esta checagem
+                        // extra é o que restringe a exibição à barra em
+                        // si.
+                        activeBarIndex === null ? null : (
+                          <BarTooltip
+                            active={props.active}
+                            payload={
+                              props.payload as {
+                                value?: number;
+                                payload?: { sourceRow?: number };
+                              }[]
+                            }
+                            label={props.label as string}
+                            series={barSeries}
+                            kind={valueCol.kind}
+                            mode={dataMode}
+                          />
+                        )
+                      }
                     />
                     <Bar
                       dataKey="total"
@@ -431,7 +449,9 @@ export function ChartWidgetBody({
                           opacity={
                             activeBarIndex === null || activeBarIndex === entryIndex ? 1 : 0.45
                           }
-                          style={{ transition: "opacity 150ms ease" }}
+                          stroke={activeBarIndex === entryIndex ? "var(--foreground)" : "none"}
+                          strokeWidth={activeBarIndex === entryIndex ? 2 : 0}
+                          style={{ transition: "opacity 150ms ease, stroke 150ms ease" }}
                         />
                       ))}
                       <LabelList
@@ -527,6 +547,39 @@ export function ChartWidgetBody({
                     minAngle={4}
                     stroke="var(--card)"
                     strokeWidth={3}
+                    // Pop sutil pra fora na fatia em destaque (hover ou
+                    // clique), reaproveitando o mecanismo nativo do
+                    // Recharts em vez de um <Cell> extra ou estado novo —
+                    // displayedPieIndex já sabe qual fatia está ativa.
+                    {...(displayedPieIndex !== null ? { activeIndex: displayedPieIndex } : {})}
+                    activeShape={(rawProps: unknown) => {
+                      const p = rawProps as {
+                        cx?: number;
+                        cy?: number;
+                        innerRadius?: number;
+                        outerRadius?: number;
+                        startAngle?: number;
+                        endAngle?: number;
+                        fill?: string;
+                        stroke?: string;
+                        strokeWidth?: number;
+                        cornerRadius?: number;
+                      };
+                      return (
+                        <Sector
+                          cx={p.cx ?? 0}
+                          cy={p.cy ?? 0}
+                          innerRadius={p.innerRadius ?? 0}
+                          outerRadius={(p.outerRadius ?? 0) + 6}
+                          startAngle={p.startAngle ?? 0}
+                          endAngle={p.endAngle ?? 0}
+                          fill={p.fill ?? "var(--primary)"}
+                          stroke={p.stroke ?? "var(--card)"}
+                          strokeWidth={p.strokeWidth ?? 3}
+                          cornerRadius={p.cornerRadius ?? 0}
+                        />
+                      );
+                    }}
                     onClick={(_, index) => {
                       // Mesmo padrão de clique-para-filtrar já usado em
                       // barra/linha/área/ranking/mapa: clicar filtra na
