@@ -5905,3 +5905,78 @@ chega exatamente no valor final correto (417,66px = 100% do container).
 `npx vitest run` (567 passou, 1 pulado), `npx tsc --noEmit`, `npx
 eslint` nos 4 arquivos tocados (só ruído de CRLF pré-existente), `npm
 run build` (zero mudança no orçamento de bundle) aprovados.
+
+## 108. Diagnóstico de importação baixável e "Tentar modo de compatibilidade" na revisão (item da lista de melhorias do leitor trazida pelo usuário)
+
+Usuário trouxe uma lista grande de melhorias pro leitor/revisão de
+importação (progresso por estágio, comparação visual, perfis
+reutilizáveis, modo de compatibilidade, diagnóstico baixável,
+remapeamento de cores/tabelas/validações/pivot, segurança de borda,
+divisão de `import.ts`/`styles.css`). Escolhido começar pelos dois
+itens mais auto-contidos, ambos na tela de revisão (`review.tsx`), sem
+infraestrutura nova.
+
+**Achado prévio importante, antes de implementar qualquer coisa**:
+investigação encontrou que "Regras de importação reutilizáveis por
+modelo de planilha" — item que o `SECOND_BRAIN.md` listava como
+pendente no backlog (seção 9) — **já estava implementado e em uso**
+desde PRs antigas (#16, #21, #37): `ImportProfile`/`saveImportProfile`/
+`matchingImportProfile`/`adaptImportProfile`
+(`src/lib/import-workbench.ts`), com UI completa em `review.tsx`
+(botão "Salvar perfil", aviso de reaplicação/adaptação automática ao
+reabrir uma planilha do mesmo modelo). O backlog estava desatualizado
+nesse item — corrigido junto com esta sessão, sem reimplementar nada.
+
+**Diagnóstico baixável**: `importDiagnosticsExportPayload`
+(`src/lib/review-export.ts`) monta `{ generatedAt, file, sheet,
+fidelityPercent, audit, diagnostics }` a partir do que `sheetToRows`/
+`diagnoseImportedSheet` já calculam — nenhum dado novo computado. Único
+cuidado: `images[].dataUrl` (base64 da imagem embutida,
+`workbook-metadata.ts`) é removido antes do download, porque infla o
+arquivo sem ajudar a diagnosticar um problema de importação; o resto do
+inventário (`name`/`anchor`/`format`) é preservado. Botão "Baixar
+diagnóstico" no cabeçalho do painel "Relatório de fidelidade da
+importação" já existente (`review.tsx`, seção 98), com
+`preventDefault`/`stopPropagation` pra não togglear o `<details>` ao
+clicar. Reaproveita o mesmo padrão Blob+`<a download>` já usado (sem
+helper compartilhado) em `use-dashboard-export.ts`/
+`exception-panel-widget-body.tsx`.
+
+**"Tentar modo de compatibilidade"**: até agora, quando a confiança de
+cabeçalho/região é baixa (`needsConfirmation`), só existiam dois
+caminhos — a IA sugerir algo automaticamente (só cobre alguns casos) ou,
+se houvesse múltiplas regiões detectadas, "Usar esta região" por
+região (`review.tsx`, botão já existente). Não existia nenhum fallback
+pro caso mais simples: "não confio em nada disso, é só uma tabela
+plana". `compatibilityModeSelection` (`src/lib/import-workbench.ts`) é
+puramente estrutural — acha a primeira linha da grade original
+(`SourceGrid`) com qualquer dado, usa como cabeçalho, e todo o resto da
+grade como dado, sem nenhuma tentativa de pular títulos mesclados ou
+adivinhar semântica (documentado no próprio comentário da função: é
+"burro" de propósito, é o último recurso). Monta o mesmo formato de
+`ImportSelection`/`SourceSelection` que o botão "Usar esta região" já
+monta manualmente — populando `setSelection`, sem aplicar sozinho; o
+usuário revisa na Bancada de importação (que já muda pra modo "Selecionar
+na grade original" automaticamente) e clica "Aplicar seleção" como
+sempre. Zero estado novo, zero infraestrutura nova.
+
+Painel novo em `review.tsx`, visível quando `needsConfirmation &&
+active?.sourceGrid`, logo após o painel de warnings existente.
+
+Verificado ao vivo com dois workbooks sintéticos: um com regiões
+totalmente separadas por coluna vazia (auto-split do `import.ts` já
+resolve isso sozinho, painel de compatibilidade não aparece — confirma
+que o gate `needsConfirmation` está correto) e outro com linhas de
+contagem de coluna irregular sem nenhuma linha claramente textual
+(cabeçalho detectado a 48% de confiança) — painel aparece, clique
+troca a Bancada pra "Selecionar na grade original" com cabeçalho na
+linha 1 e dados nas linhas seguintes, exatamente como
+`compatibilityModeSelection` calcula; "Aplicar seleção" depois disso
+não quebra nada. Diagnóstico baixável verificado interceptando
+`URL.createObjectURL` no navegador real: JSON de 5,5 KB, sem `base64`
+no conteúdo, com os campos esperados.
+
+`npx vitest run` (572 passou, 1 pulado — 5 testes novos), `npx tsc
+--noEmit`, `npx eslint` nos 5 arquivos tocados (CRLF normalizado antes,
+armadilha conhecida), `npm run build` + `npm run performance:check`
+(zero regressão de orçamento) aprovados.

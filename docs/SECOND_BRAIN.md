@@ -208,6 +208,9 @@ audit inteiro.
 | Relatório de fidelidade por aba (percentual + detalhamento de ajustes na revisão) | `auditFidelityPercent` (`import.ts`, opera sobre `ImportAudit`); painel `<details>` em `review.tsx` (reaproveita `confidenceLevelFor`/`ConfidenceDot` já usados pela confiança por coluna) | `import.test.ts` (`describe("auditFidelityPercent")`) + verificação manual com upload real — ver [[CURRENT_STATE_AUDIT#98. Relatório de fidelidade por aba na revisão de importação (item pendente da seção 96, backlog item 9)]] |
 | Checklist de confirmação obrigatória (cabeçalho/intervalo/tipos) antes de "Gerar relatório" | `headerChecked`/`rangeChecked`/`typesChecked` (`review.tsx`, reseta por `useEffect` em `p.activeIndex`); botão final `disabled` pelos 3 juntos | verificação manual (0/3, 2/3, 3/3) + `e2e/demo-dashboard.spec.ts` (marca os 3 antes de clicar) — ver [[CURRENT_STATE_AUDIT#99. Confirmação de cabeçalho/intervalo/tipos obrigatória antes de gerar o relatório (backlog item 9, "modo de revisão pré-importação mais guiado")]] |
 | Ctrl+P / ⌘P (exporta o painel como PDF em vez de imprimir) | `exportPdfRef` (`routes/index.tsx`, mesmo padrão de `undoRef`/`redoRef`), chama `exportPdf` de `use-dashboard-export.ts` | verificação manual (estado "Gerando PDF…" idêntico ao menu original) — ver [[CURRENT_STATE_AUDIT#102. Ctrl+P exporta o painel como PDF em vez de imprimir]] |
+| Diagnóstico de importação baixável (JSON, sem `dataUrl` de imagem) | `importDiagnosticsExportPayload` (`review-export.ts`); botão "Baixar diagnóstico" no painel de fidelidade em `review.tsx` | `review-export.test.ts` + verificação manual (intercepta `URL.createObjectURL`) |
+| Fallback estrutural "Tentar modo de compatibilidade" (cabeçalho/região automáticos falharam) | `compatibilityModeSelection` (`import-workbench.ts`, opera sobre `SourceGrid`); painel em `review.tsx`, visível quando `needsConfirmation` | `import-workbench.test.ts` + verificação manual (workbook com cabeçalho de baixa confiança) |
+| Regras de importação reutilizáveis por modelo de planilha (perfis) | `ImportProfile`/`saveImportProfile`/`matchingImportProfile`/`adaptImportProfile` (`import-workbench.ts`); UI em `review.tsx` ("Salvar perfil", aviso de reaplicação) | `import-workbench.test.ts` |
 
 ## Regras de produto que não podem regredir
 
@@ -443,15 +446,27 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
    escolhido pelo usuário entre 3 opções apresentadas (era decisão de
    produto, muda comportamento de toda importação). Ver
    [[CURRENT_STATE_AUDIT#99. Confirmação de cabeçalho/intervalo/tipos obrigatória antes de gerar o relatório (backlog item 9, "modo de revisão pré-importação mais guiado")]].
+   ~~Regras de importação reutilizáveis por modelo de planilha~~ **Já
+   estava feito** — achado da seção 108 do audit: este item ficou
+   registrado como pendente por engano; `ImportProfile`/
+   `saveImportProfile`/`matchingImportProfile`/`adaptImportProfile`
+   (`src/lib/import-workbench.ts`) já existiam desde PRs antigas (#16,
+   #21, #37), com UI completa em `review.tsx` (botão "Salvar perfil",
+   aviso de reaplicação automática). Corrigido aqui, nada reimplementado.
+   ~~UX de erro: diagnóstico de importação baixável, "tentar modo
+   compatível"~~ **Feito** — botão "Baixar diagnóstico" no painel de
+   fidelidade (remove `images[].dataUrl` antes de exportar) e painel
+   "Tentar modo de compatibilidade" (fallback puramente estrutural:
+   primeira linha com dado vira cabeçalho, resto vira dado), visível
+   quando `needsConfirmation`. Ver
+   [[CURRENT_STATE_AUDIT#108. Diagnóstico de importação baixável e "Tentar modo de compatibilidade" na revisão (item da lista de melhorias do leitor trazida pelo usuário)]].
    **Pendente, registrado nesta mesma seção do usuário, não abandonado**:
-   - Regras de importação reutilizáveis por modelo de planilha.
    - Identificação de arquivo por conteúdo real (não só extensão) +
      limite de área declarada desproporcional à célula preenchida.
    - Remapeamento seguro de cores de tema/validações/tabelas
      estruturadas/pivot tables ao dividir abas em regiões (hoje
      descartado de forma conservadora).
-   - UX de erro: diagnóstico de importação baixável, "tentar modo
-     compatível", comparação visual encontrado×importado, progresso real
+   - UX de erro: comparação visual encontrado×importado, progresso real
      por etapa.
    - Segurança: ~~`npm audit`+Dependabot na CI~~ **Feito** —
      `.github/dependabot.yml` (npm/cargo/github-actions, semanal), job

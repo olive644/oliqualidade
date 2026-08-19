@@ -1,5 +1,7 @@
 import { safeSpreadsheetValue } from "@/lib/encrypted-backup";
 import { compareVersions, type VersionDiff } from "@/lib/import-workbench";
+import { auditFidelityPercent, type ImportAudit } from "@/lib/import";
+import type { ImportDiagnostics } from "@/lib/import-intelligence";
 import type { AuditEntry } from "@/lib/data-review";
 import type { Dashboard, Row, SheetData, Value } from "@/lib/types";
 
@@ -165,6 +167,39 @@ export function rowsToCsv(rows: Row[]): string {
     headers.map(csvCell).join(";"),
     ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(";")),
   ].join("\r\n")}`;
+}
+
+export type ImportDiagnosticsExportPayload = {
+  generatedAt: string;
+  file: string;
+  sheet: string;
+  fidelityPercent: number | null;
+  audit: ImportAudit | null;
+  diagnostics: ImportDiagnostics;
+};
+
+/**
+ * Monta o diagnóstico completo de uma aba para download (evidência/relato de
+ * problema). `images[].dataUrl` é removido — é base64 da imagem embutida,
+ * inflaria o arquivo sem ajudar a diagnosticar um problema de importação.
+ */
+export function importDiagnosticsExportPayload(
+  fileName: string,
+  sheetName: string,
+  diagnostics: ImportDiagnostics,
+  audit?: ImportAudit,
+): ImportDiagnosticsExportPayload {
+  return {
+    generatedAt: new Date().toISOString(),
+    file: fileName,
+    sheet: sheetName,
+    fidelityPercent: audit ? auditFidelityPercent(audit) : null,
+    audit: audit ?? null,
+    diagnostics: {
+      ...diagnostics,
+      images: diagnostics.images.map(({ dataUrl: _dataUrl, ...rest }) => rest),
+    },
+  };
 }
 
 export function reviewReportSections(dashboard: Dashboard) {
