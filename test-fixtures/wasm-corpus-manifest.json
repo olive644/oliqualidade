@@ -37,7 +37,8 @@
         "formulas",
         "merges",
         "hiddenRows",
-        "hiddenColumns"
+        "hiddenColumns",
+        "emptyColumns"
       ]
     },
     {
@@ -86,7 +87,8 @@
         "formulas",
         "merges",
         "hiddenRows",
-        "hiddenColumns"
+        "hiddenColumns",
+        "emptyColumns"
       ]
     },
     {
