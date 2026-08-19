@@ -85,6 +85,44 @@ describe("contexto vivo do assistente", () => {
     expect(buildLiveSuggestedPrompts(context)).toContain("Resuma 1 registro desta visão filtrada.");
   });
 
+  it("prioriza o widget e a célula que estão em foco", () => {
+    const context = buildLiveDashboardContext({
+      dashboardName: "Operações",
+      sheetName: "Diário",
+      columns,
+      rows: [{ Data: "01/08/2026", "Itens Processados": 179, Equipe: "A" }],
+      totalRows: 1,
+      widgets: [trendWidget],
+      filters: [],
+      search: "",
+      sort: null,
+      focus: {
+        widgetId: "trend",
+        cell: { rowIndex: 1, columnKey: "Itens Processados", address: "B2" },
+      },
+    });
+
+    expect(context.focus).toEqual({
+      widget: {
+        id: "trend",
+        type: "metric-trend",
+        title: "Itens Processados",
+        status: "ready",
+      },
+      cell: {
+        rowIndex: 1,
+        columnKey: "Itens Processados",
+        columnLabel: "Itens Processados",
+        kind: "number",
+        formattedValue: "179",
+        address: "B2",
+      },
+    });
+    expect(buildLiveSuggestedPrompts(context)[0]).toBe(
+      "O que o valor 179 em Itens Processados, linha 1, representa nesta visão?",
+    );
+  });
+
   it("resume séries extensas sem perder a indicação de que há mais itens", () => {
     const bar: Widget = {
       id: "bar",

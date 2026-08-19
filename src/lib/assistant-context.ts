@@ -7,6 +7,7 @@ import {
   sortAllBarCategories,
   type AggregationOp,
 } from "@/lib/data-pipeline";
+import { sourceRowIndexOf } from "@/lib/data-review";
 import { fmt, sortChronologically } from "@/lib/format";
 import type { FolderMonitorView } from "@/lib/folder-monitor";
 import {
@@ -55,6 +56,23 @@ export type LiveWidgetSnapshot = {
   rowCount?: number;
 };
 
+export type LiveDashboardFocus = {
+  widget: {
+    id: string;
+    type: WidgetType;
+    title: string;
+    status: "ready" | "empty";
+  } | null;
+  cell: {
+    rowIndex: number;
+    columnKey: string;
+    columnLabel: string;
+    kind: string;
+    formattedValue: string;
+    address?: string;
+  } | null;
+};
+
 export type LiveDashboardContext = {
   capturedAt: string;
   source: "current-filtered-view";
@@ -73,6 +91,7 @@ export type LiveDashboardContext = {
   }>;
   sort: { columnKey: string; columnLabel: string; direction: "asc" | "desc" } | null;
   widgets: LiveWidgetSnapshot[];
+  focus?: LiveDashboardFocus;
 };
 
 type BuildLiveDashboardContextInput = {
@@ -87,6 +106,10 @@ type BuildLiveDashboardContextInput = {
   sort: { key: string; dir: "asc" | "desc" } | null;
   versionDelta?: ReadonlyMap<string, number | null> | null;
   folderMonitor?: FolderMonitorView;
+  focus?: {
+    widgetId?: string | null;
+    cell?: { rowIndex: number; columnKey?: string; address?: string } | null;
+  };
   now?: Date;
 };
 
@@ -265,7 +288,7 @@ function snapshotWidget(
 ): LiveWidgetSnapshot {
   if (widget.type === "metric" || widget.type === "metric-trend")
     return metricWidget(widget, columns, rows, versionDelta);
-  if (["bar", "pie", "line", "area", "ranking", "map"].includes(widget.type))
+  if (["bar", "pie", "line", "area", "ranking", "map", "radar"].includes(widget.type))
     return groupedWidget(widget, columns, rows);
   if (widget.type === "rating") {
     const numericColumns = columns.filter((column) => numericKinds.includes(column.kind));
@@ -408,6 +431,20 @@ export function buildLiveDashboardContext(
   input: BuildLiveDashboardContextInput,
 ): LiveDashboardContext {
   const columnByKey = new Map(input.columns.map((column) => [column.key, column]));
+  const widgets = input.widgets.map((widget) =>
+    snapshotWidget(widget, input.columns, input.rows, input.versionDelta, input.folderMonitor),
+  );
+  const focusedWidget = input.focus?.widgetId
+    ? widgets.find((widget) => widget.id === input.focus?.widgetId)
+    : undefined;
+  const focusedCell = input.focus?.cell;
+  const focusedColumn = focusedCell?.columnKey ? columnByKey.get(focusedCell.columnKey) : undefined;
+  const hasSourceIndexes = input.rows.some((row) => sourceRowIndexOf(row) !== null);
+  const focusedRow =
+    focusedCell && focusedColumn
+      ? (input.rows.find((row) => sourceRowIndexOf(row) === focusedCell.rowIndex - 1) ??
+        (!hasSourceIndexes ? input.rows[focusedCell.rowIndex - 1] : undefined))
+      : undefined;
   return {
     capturedAt: (input.now ?? new Date()).toISOString(),
     source: "current-filtered-view",
@@ -434,9 +471,28 @@ export function buildLiveDashboardContext(
           direction: input.sort.dir,
         }
       : null,
-    widgets: input.widgets.map((widget) =>
-      snapshotWidget(widget, input.columns, input.rows, input.versionDelta, input.folderMonitor),
-    ),
+    widgets,
+    focus: {
+      widget: focusedWidget
+        ? {
+            id: focusedWidget.id,
+            type: focusedWidget.type,
+            title: focusedWidget.title,
+            status: focusedWidget.status,
+          }
+        : null,
+      cell:
+        focusedCell && focusedColumn && focusedRow
+          ? {
+              rowIndex: focusedCell.rowIndex,
+              columnKey: focusedColumn.key,
+              columnLabel: focusedColumn.label,
+              kind: focusedColumn.kind,
+              formattedValue: fmt(focusedRow[focusedColumn.key] ?? null, focusedColumn.kind) ?? "—",
+              ...(focusedCell.address ? { address: focusedCell.address } : {}),
+            }
+          : null,
+    },
   };
 }
 
@@ -450,6 +506,25 @@ export function buildLiveSuggestedPrompts(context: LiveDashboardContext): string
     if (prompt && !prompts.includes(prompt) && prompts.length < 4) prompts.push(prompt);
   };
   const readyWidgets = context.widgets.filter((widget) => widget.status === "ready");
+  const focusedCell = context.focus?.cell;
+  if (focusedCell)
+    add(
+      `O que o valor ${focusedCell.formattedValue} em ${focusedCell.columnLabel}, linha ${focusedCell.rowIndex}, representa nesta visão?`,
+    );
+
+  const focusedWidget = context.focus?.widget
+    ? readyWidgets.find((widget) => widget.id === context.focus?.widget?.id)
+    : undefined;
+  if (focusedWidget?.trend)
+    add(
+      `Explique a variação de ${focusedWidget.trend.formattedChange} em ${focusedWidget.title}, de ${focusedWidget.trend.firstPeriod.label} até ${focusedWidget.trend.lastPeriod.label}.`,
+    );
+  else if (focusedWidget?.displayedValue)
+    add(
+      `O que o valor ${focusedWidget.displayedValue.formatted} de ${focusedWidget.title} representa nesta visão?`,
+    );
+  else if (focusedWidget) add(`Quais são os principais destaques de ${focusedWidget.title}?`);
+
   const trend = readyWidgets.find((widget) => widget.trend)?.trend;
   const trendWidget = readyWidgets.find((widget) => widget.trend);
   if (trend && trendWidget)
@@ -472,7 +547,7 @@ export function buildLiveSuggestedPrompts(context: LiveDashboardContext): string
 
   const chart = readyWidgets.find(
     (widget) =>
-      ["bar", "pie", "line", "area", "map"].includes(widget.type) &&
+      ["bar", "pie", "line", "area", "map", "radar"].includes(widget.type) &&
       (widget.series?.items.length ?? 0) > 0,
   );
   if (chart) add(`Quais são os principais destaques de ${chart.title}?`);

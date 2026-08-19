@@ -1212,6 +1212,7 @@ function Dashboard(p: {
     columnKey?: string;
     address?: string;
   } | null>(null);
+  const [focusedWidgetId, setFocusedWidgetId] = useState<string | null>(null);
   const [formatPanel, setFormatPanel] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [importDiagnostics, setImportDiagnostics] = useState(false);
@@ -1255,6 +1256,8 @@ function Dashboard(p: {
   useEffect(() => {
     setSearch("");
     setSort(null);
+    setFocusedCell(null);
+    setFocusedWidgetId(null);
     setWidgetClipboard(null);
   }, [d.id, activeSheetIndex]);
   useEffect(() => {
@@ -1423,6 +1426,7 @@ function Dashboard(p: {
         search,
         sort,
         versionDelta,
+        focus: { widgetId: focusedWidgetId, cell: focusedCell },
         ...(p.folderMonitor ? { folderMonitor: p.folderMonitor } : {}),
       }),
     [
@@ -1436,6 +1440,8 @@ function Dashboard(p: {
       search,
       sort,
       versionDelta,
+      focusedWidgetId,
+      focusedCell,
       p.folderMonitor,
     ],
   );
@@ -1534,6 +1540,19 @@ function Dashboard(p: {
     <SourceVisualsPanel sourceShapes={sheet.sourceShapes} sourceCharts={sheet.sourceCharts} />
   );
 
+  const focusAssistantCell = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return;
+    const cell = target.closest<HTMLElement>("[data-assistant-cell]");
+    const rowIndex = Number(cell?.dataset["assistantRowIndex"]);
+    const columnKey = cell?.dataset["assistantColumnKey"];
+    if (!cell || !Number.isFinite(rowIndex) || rowIndex < 1 || !columnKey) return;
+    setFocusedCell((current) =>
+      current?.rowIndex === rowIndex && current.columnKey === columnKey
+        ? current
+        : { rowIndex, columnKey },
+    );
+  };
+
   const gridContent =
     widgets.length === 0 ? (
       <button
@@ -1551,46 +1570,62 @@ function Dashboard(p: {
     ) : (
       <div className="grid grid-cols-1 gap-px bg-border lg:grid-cols-3">
         {widgets.map((w, i) => (
-          <WidgetCard
+          <div
             key={w.id}
-            widget={w}
-            index={i}
-            count={widgets.length}
-            data={data}
-            totalRows={rulesApplied.length}
-            columns={sheet.columns}
-            numericCols={nums}
-            groupableCols={groupableCols}
-            sourceImages={sheet.sourceImages ?? []}
-            sourceCellFills={sheet.sourceCellFills ?? []}
-            colorGroupLabels={sheet.colorGroupLabels ?? []}
-            interpolated={interpolated}
-            sort={sort}
-            setSort={setSort}
-            versionDelta={versionDelta}
-            versionDiff={detailedVersionDiff}
-            exceptions={effectiveIntelligence.exceptions}
-            semanticProfiles={effectiveIntelligence.columns}
-            exceptionDecisions={sheet.exceptionDecisions ?? {}}
-            auditTrail={sheet.auditTrail ?? []}
-            onExceptionDecision={setExceptionDecision}
-            onCorrectException={correctException}
-            onEditCell={editTableCell}
-            onTraceException={traceException}
-            focusedCell={focusedCell}
-            folderMonitor={p.folderMonitor}
-            animationDelay={Math.min(i, 8) * 40}
-            filters={sheet.filters}
-            setFilters={setFilters}
-            onConfigure={(patch) => updateWidget(w.id, patch)}
-            onCopy={() => copyCurrentWidget(w)}
-            onPaste={() => pasteCopiedWidget(w.id)}
-            canPaste={Boolean(widgetClipboard)}
-            onRemove={() => removeWidget(w.id)}
-            onMoveBack={() => moveWidget(w.id, -1)}
-            onMoveForward={() => moveWidget(w.id, 1)}
-            onDropWidget={(fromId) => reorderWidget(fromId, w.id)}
-          />
+            className="contents"
+            data-assistant-widget-id={w.id}
+            onPointerEnter={() =>
+              setFocusedWidgetId((current) => (current === w.id ? current : w.id))
+            }
+            onFocusCapture={(event) => {
+              setFocusedWidgetId(w.id);
+              focusAssistantCell(event.target);
+            }}
+            onClickCapture={(event) => {
+              setFocusedWidgetId(w.id);
+              focusAssistantCell(event.target);
+            }}
+          >
+            <WidgetCard
+              widget={w}
+              index={i}
+              count={widgets.length}
+              data={data}
+              totalRows={rulesApplied.length}
+              columns={sheet.columns}
+              numericCols={nums}
+              groupableCols={groupableCols}
+              sourceImages={sheet.sourceImages ?? []}
+              sourceCellFills={sheet.sourceCellFills ?? []}
+              colorGroupLabels={sheet.colorGroupLabels ?? []}
+              interpolated={interpolated}
+              sort={sort}
+              setSort={setSort}
+              versionDelta={versionDelta}
+              versionDiff={detailedVersionDiff}
+              exceptions={effectiveIntelligence.exceptions}
+              semanticProfiles={effectiveIntelligence.columns}
+              exceptionDecisions={sheet.exceptionDecisions ?? {}}
+              auditTrail={sheet.auditTrail ?? []}
+              onExceptionDecision={setExceptionDecision}
+              onCorrectException={correctException}
+              onEditCell={editTableCell}
+              onTraceException={traceException}
+              focusedCell={focusedCell}
+              folderMonitor={p.folderMonitor}
+              animationDelay={Math.min(i, 8) * 40}
+              filters={sheet.filters}
+              setFilters={setFilters}
+              onConfigure={(patch) => updateWidget(w.id, patch)}
+              onCopy={() => copyCurrentWidget(w)}
+              onPaste={() => pasteCopiedWidget(w.id)}
+              canPaste={Boolean(widgetClipboard)}
+              onRemove={() => removeWidget(w.id)}
+              onMoveBack={() => moveWidget(w.id, -1)}
+              onMoveForward={() => moveWidget(w.id, 1)}
+              onDropWidget={(fromId) => reorderWidget(fromId, w.id)}
+            />
+          </div>
         ))}
       </div>
     );
