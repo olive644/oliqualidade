@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "Oli.Qualidade",
+  "short_name": "Oli",
+  "description": "BI preciso para planilhas, com múltiplos painéis e modo escuro.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#EAF5F4",
+  "theme_color": "#0A8A8D",
+  "icons": [
+    {
+      "src": "/oli-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
