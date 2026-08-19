@@ -644,20 +644,47 @@ function findHierarchicalHeaderEnd(
     const noDataAnywhereBelowForLayer = aoa
       .slice(end + 2)
       .every((row) => row.every((value) => value === null || value === ""));
+    // A próxima linha subdivide o intervalo de colunas de algum grupo desta
+    // linha em duas ou mais mesclagens próprias — sinal estrutural forte
+    // (não estatístico) de que aquela linha é a sub-camada de cabeçalho do
+    // grupo, não a primeira linha de dado. Ex.: um cronograma real com 10
+    // colunas simples (Equipamento, Código...) ao lado de um grupo
+    // "Calibração 2023" mesclado cobrindo o ano inteiro, cuja segunda linha
+    // mescla os meses dois a dois (Mar:Abr, Mai:Jun...) — várias
+    // mesclagens menores dentro do intervalo do grupo. Exige pelo menos
+    // duas, não uma só: uma célula de dado às vezes repete a mesma
+    // mesclagem cosmética do cabeçalho (ex.: "Limite" alargado visualmente
+    // em três colunas, e cada linha de dado abaixo repete a mesma
+    // mesclagem de três colunas) — isso não subdivide nada, é a mesma
+    // mesclagem inteira ecoando, não deve ser lido como subcabeçalho.
+    const nextGroupedMergesWithinGroups = horizontal.some((group) => {
+      const nestedMerges = merges.filter(
+        (merge) =>
+          merge.s.r === end + 1 &&
+          merge.e.r === end + 1 &&
+          merge.e.c > merge.s.c &&
+          merge.s.c >= group.s.c &&
+          merge.e.c <= group.e.c,
+      );
+      return nestedMerges.length >= 2;
+    });
     // Um cabeçalho folha pode conter uma ou duas mesclagens apenas para
     // ampliar visualmente um rótulo (ex.: "Limites" em F:H). Quando há
     // vários outros rótulos não mesclados na mesma linha, a próxima linha é
-    // dado, não uma nova camada hierárquica — exceto quando a linha atual
-    // já mistura colunas simples ("Colaborador", "Função") com colunas
-    // realmente agrupadas ("Treinamentos obrigatórios" mesclada cobrindo
-    // 4 subcolunas) e não há dado nenhum abaixo pra confundir: nesse caso
-    // os rótulos não mesclados são colunas de nível único legítimas, não
-    // sinal de que a próxima linha é dado.
+    // dado, não uma nova camada hierárquica — exceto quando (a) a linha
+    // atual já mistura colunas simples ("Colaborador", "Função") com
+    // colunas realmente agrupadas ("Treinamentos obrigatórios" mesclada
+    // cobrindo 4 subcolunas) e não há dado nenhum abaixo pra confundir, ou
+    // (b) a própria próxima linha tem mesclagens de grupo dentro do
+    // intervalo de algum grupo desta linha: nesses dois casos os rótulos
+    // não mesclados são colunas de nível único legítimas, não sinal de que
+    // a próxima linha é dado.
     if (
       !sparseUnmergedParent &&
       distinctParents.size >= 3 &&
       unmergedLabels.length >= 2 &&
-      !(horizontal.length > 0 && noDataAnywhereBelowForLayer)
+      !(horizontal.length > 0 && noDataAnywhereBelowForLayer) &&
+      !nextGroupedMergesWithinGroups
     )
       break;
     const isSingleFullWidthGroup =
@@ -710,6 +737,7 @@ function composeHierarchicalHeaders(
   aoa: (string | number | null)[][],
   start: number,
   end: number,
+  merges: RelativeMerge[],
 ): { raw: (string | number | null)[]; hierarchical: boolean } {
   const layers = aoa.slice(start, end + 1);
   const width = Math.max(0, ...layers.map((row) => row.length));
@@ -722,10 +750,36 @@ function composeHierarchicalHeaders(
     });
   });
   const leaf = layers.at(-1) ?? [];
+  // Uma coluna cujo rótulo, numa camada antes da folha, já veio de uma
+  // célula isolada (sem fazer parte de nenhuma mesclagem horizontal de
+  // verdade naquela linha) é uma coluna "plana": o rótulo já está completo,
+  // não é um grupo esperando sub-rótulo de outra coluna. É o caso comum de
+  // um cabeçalho misto — colunas simples (Equipamento, Código...) ao lado
+  // de um grupo mesclado (ex.: "Calibração 2023") com sub-cabeçalho próprio
+  // na linha seguinte. Uma folha em branco ali é normal (a coluna não tem
+  // segundo nível), não motivo pra descartar o cabeçalho inteiro.
+  const flatColumn = Array.from({ length: width }, (_, column) => {
+    for (let layerIndex = 0; layerIndex < layers.length - 1; layerIndex++) {
+      const value = layers[layerIndex]![column];
+      if (headerIsInvalid(value ?? null)) continue;
+      const row = start + layerIndex;
+      const isGrouped = merges.some(
+        (merge) =>
+          merge.s.r === row &&
+          merge.e.r === row &&
+          merge.e.c > merge.s.c &&
+          column >= merge.s.c &&
+          column <= merge.e.c,
+      );
+      return !isGrouped;
+    }
+    return false;
+  });
   const raw = Array.from({ length: width }, (_, column) => {
     // Uma coluna vazia na camada folha é separador visual, mesmo que fique
-    // sob o alcance horizontal do último grupo da camada pai.
-    if (headerIsInvalid(leaf[column] ?? null)) return null;
+    // sob o alcance horizontal do último grupo da camada pai — exceto numa
+    // coluna plana, cujo rótulo já veio completo de uma camada anterior.
+    if (headerIsInvalid(leaf[column] ?? null) && !flatColumn[column]) return null;
     const parts: string[] = [];
     for (const layer of [...expandedParents, leaf]) {
       const value = layer[column];
@@ -1780,6 +1834,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     aoa,
     headerRowIndex,
     headerRowEnd,
+    merges,
   );
   let mergedHeaderCells = 0;
   for (let row = headerRowIndex; row <= headerRowEnd; row++)

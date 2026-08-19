@@ -11,6 +11,7 @@ rust/oli-ooxml-core/target/
 test-fixtures/generated/
 test-fixtures/private/
 test-fixtures/sanitized-real/
+upload/
 test-results/
 playwright-report/
 blob-report/
