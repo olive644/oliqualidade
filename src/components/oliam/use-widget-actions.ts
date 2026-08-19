@@ -24,7 +24,8 @@ export function useWidgetActions(p: {
 }) {
   const { sheet } = p;
   const widgets =
-    sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows);
+    sheet.widgets ??
+    buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows, sheet.intelligence?.columns);
 
   const setWidgets = (next: Widget[]) => {
     p.recordHistory();

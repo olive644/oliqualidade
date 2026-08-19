@@ -677,7 +677,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
     const sheet = dashboard.sheets[sheetIndex];
     if (!sheet) return;
     const widgets =
-      sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows);
+      sheet.widgets ??
+      buildDefaultWidgets(
+        sheet.columns,
+        sheet.chartConfig,
+        sheet.rows,
+        sheet.intelligence?.columns,
+      );
     if (widgets.some((widget) => widget.type === "folder-files")) return;
     persist(
       list.map((item) =>
@@ -1558,7 +1564,14 @@ function Dashboard(p: {
       <button
         className="oliam-dropzone w-full"
         onClick={() =>
-          setWidgets(buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows))
+          setWidgets(
+            buildDefaultWidgets(
+              sheet.columns,
+              sheet.chartConfig,
+              sheet.rows,
+              sheet.intelligence?.columns,
+            ),
+          )
         }
       >
         <LayoutDashboard className="size-6 text-primary" />
