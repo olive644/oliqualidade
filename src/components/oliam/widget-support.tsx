@@ -756,6 +756,36 @@ export function SeriesComparisonPanel({
   onFilter?: (() => void) | undefined;
   filterLabel: string;
 }) {
+  const shareLabel =
+    comparison?.share !== null && comparison?.share !== undefined
+      ? comparison.share.toLocaleString("pt-BR", {
+          style: "percent",
+          maximumFractionDigits: 1,
+        })
+      : null;
+  const relativeLabel =
+    comparison?.relativeDifference !== null && comparison?.relativeDifference !== undefined
+      ? Math.abs(comparison.relativeDifference).toLocaleString("pt-BR", {
+          style: "percent",
+          maximumFractionDigits: 1,
+        })
+      : null;
+  const relativeSummary =
+    comparison?.relativeDifference === null || comparison?.relativeDifference === undefined
+      ? null
+      : comparison.relativeDifference > 0
+        ? `${relativeLabel} acima`
+        : comparison.relativeDifference < 0
+          ? `${relativeLabel} abaixo`
+          : "no mesmo nível";
+  const explanation = shareLabel
+    ? comparison?.reference
+      ? relativeSummary
+        ? `${selected.name} representa ${shareLabel} do total e está ${relativeSummary} de ${comparison.reference.name}.`
+        : `${selected.name} representa ${shareLabel} do total. A diferença para ${comparison.reference.name} é absoluta; o percentual não pode ser calculado porque a referência é zero.`
+      : `${selected.name} representa ${shareLabel} do total e não há outra categoria visível para comparação.`
+    : `Não é possível calcular a participação de ${selected.name} no total.`;
+
   return (
     // flex-wrap (não grid-cols fixo por breakpoint de viewport): a largura
     // real disponível aqui é a do card do widget (pode ser 1/3 da tela),
@@ -777,6 +807,9 @@ export function SeriesComparisonPanel({
             ? ` · comparação com ${comparison.reference.name}, a maior outra categoria.`
             : " · não há outra categoria para comparar."}
         </p>
+        <p className="mt-1 text-[10px] font-medium leading-relaxed text-foreground/80">
+          {explanation}
+        </p>
       </div>
       <div className="min-w-28 flex-1 basis-28">
         <p
@@ -792,12 +825,7 @@ export function SeriesComparisonPanel({
       <div className="min-w-28 flex-1 basis-28">
         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Participação</p>
         <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-          {comparison?.share !== null && comparison?.share !== undefined
-            ? comparison.share.toLocaleString("pt-BR", {
-                style: "percent",
-                maximumFractionDigits: 1,
-              })
-            : "—"}
+          {shareLabel ? `${shareLabel} do total` : "—"}
         </p>
       </div>
       <div className="min-w-28 flex-1 basis-28">
@@ -821,11 +849,8 @@ export function SeriesComparisonPanel({
         >
           {comparison?.difference !== null && comparison?.difference !== undefined
             ? `${comparison.difference >= 0 ? "+" : ""}${fmt(comparison.difference, kind)}${
-                comparison.relativeDifference !== null
-                  ? ` · ${comparison.relativeDifference >= 0 ? "+" : ""}${comparison.relativeDifference.toLocaleString(
-                      "pt-BR",
-                      { style: "percent", maximumFractionDigits: 1 },
-                    )}`
+                relativeSummary
+                  ? ` · ${relativeSummary}`
                   : ""
               }`
             : "Sem referência"}
