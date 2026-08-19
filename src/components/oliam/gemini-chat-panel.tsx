@@ -24,6 +24,9 @@ export function GeminiChatPanel({
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<GeminiChatMessage[]>([]);
   const suggestedPrompts = useMemo(() => buildLiveSuggestedPrompts(liveView), [liveView]);
+  const focusLabel = liveView.focus?.cell
+    ? `${liveView.focus.cell.columnLabel}, linha ${liveView.focus.cell.rowIndex}`
+    : liveView.focus?.widget?.title;
 
   useEffect(() => setMessages([]), [dashboard.id, sheet.name]);
 
@@ -62,6 +65,7 @@ export function GeminiChatPanel({
                 <strong>Oli</strong>
                 <p>
                   {sheet.name} · {liveView.visibleRows} linhas
+                  {focusLabel ? ` · Foco: ${focusLabel}` : ""}
                 </p>
               </div>
             </div>
@@ -79,7 +83,11 @@ export function GeminiChatPanel({
             {!messages.length && (
               <div className="oli-chat-welcome">
                 <strong>O que você quer entender neste painel?</strong>
-                <span>Use uma sugestão ou escreva sua pergunta.</span>
+                <span>
+                  {focusLabel
+                    ? `Estou considerando o foco atual em ${focusLabel}. Use uma sugestão ou escreva sua pergunta.`
+                    : "Passe o mouse ou selecione um widget para dar foco, ou escreva sua pergunta."}
+                </span>
               </div>
             )}
             {messages.map((message, index) => (
@@ -98,7 +106,7 @@ export function GeminiChatPanel({
             )}
           </div>
           <div className="oli-chat-suggestions" aria-label="Perguntas sugeridas para esta visão">
-            {suggestedPrompts.slice(0, 2).map((prompt) => (
+            {suggestedPrompts.map((prompt) => (
               <button
                 key={prompt}
                 type="button"

@@ -105,6 +105,22 @@ describe("segurança do Gemini", () => {
         search: "",
         filters: [],
         sort: null,
+        focus: {
+          widget: {
+            id: "valor",
+            type: "metric-trend",
+            title: "Valor alterado",
+            status: "ready",
+          },
+          cell: {
+            rowIndex: 1,
+            columnKey: "Valor",
+            columnLabel: "Rótulo alterado",
+            kind: "text",
+            formattedValue: "R$ 200,00",
+            address: "B2",
+          },
+        },
         widgets: [
           {
             id: "valor",
@@ -135,7 +151,24 @@ describe("segurança do Gemini", () => {
 
     expect(context.liveView?.widgets).toHaveLength(1);
     expect(context.liveView?.widgets[0]?.trend?.formattedChange).toBe("-40,4%");
+    expect(context.liveView?.focus).toEqual({
+      widget: {
+        id: "valor",
+        type: "metric-trend",
+        title: "Valor",
+        status: "ready",
+      },
+      cell: {
+        rowIndex: 1,
+        columnKey: "Valor",
+        columnLabel: "Valor",
+        kind: "currency",
+        formattedValue: "R$ 200,00",
+        address: "B2",
+      },
+    });
     expect(JSON.stringify(context.liveView)).not.toContain('"CPF"');
+    expect(JSON.stringify(context.liveView)).not.toContain("Rótulo alterado");
   });
 
   it("calcula quem vendeu mais em cada mês sem enviar linhas individuais", () => {

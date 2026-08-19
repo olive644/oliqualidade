@@ -180,6 +180,9 @@ export function DataTable({
                     return (
                       <div
                         key={column.key}
+                        data-assistant-cell
+                        data-assistant-row-index={(sourceRowIndex ?? item.index) + 1}
+                        data-assistant-column-key={column.key}
                         role={column.formula ? undefined : "button"}
                         tabIndex={column.formula ? undefined : 0}
                         aria-label={

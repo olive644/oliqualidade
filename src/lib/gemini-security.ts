@@ -427,6 +427,39 @@ function sanitizeLiveView(
         .map((widget) => sanitizeLiveWidget(widget, safeKeys))
         .filter((widget): widget is LiveWidgetSnapshot => widget !== null)
     : [];
+  const requestedFocus = view.focus;
+  const focusedWidget = requestedFocus?.widget
+    ? widgets.find((widget) => widget.id === requestedFocus.widget?.id)
+    : undefined;
+  const focusedColumn = requestedFocus?.cell
+    ? safeColumns.find((column) => column.key === requestedFocus.cell?.columnKey)
+    : undefined;
+  const focusedRowIndex = finiteNumber(requestedFocus?.cell?.rowIndex);
+  const focus = requestedFocus
+    ? {
+        widget: focusedWidget
+          ? {
+              id: focusedWidget.id,
+              type: focusedWidget.type,
+              title: focusedWidget.title,
+              status: focusedWidget.status,
+            }
+          : null,
+        cell:
+          requestedFocus.cell && focusedColumn && focusedRowIndex !== null && focusedRowIndex >= 1
+            ? {
+                rowIndex: Math.floor(focusedRowIndex),
+                columnKey: focusedColumn.key,
+                columnLabel: focusedColumn.label,
+                kind: focusedColumn.kind,
+                formattedValue: safeText(requestedFocus.cell.formattedValue, 160),
+                ...(requestedFocus.cell.address
+                  ? { address: safeText(requestedFocus.cell.address, 40) }
+                  : {}),
+              }
+            : null,
+      }
+    : undefined;
   return {
     capturedAt: safeText(view.capturedAt, 60),
     source: "current-filtered-view",
@@ -438,6 +471,7 @@ function sanitizeLiveView(
     filters,
     sort,
     widgets,
+    ...(focus ? { focus } : {}),
   };
 }
 
