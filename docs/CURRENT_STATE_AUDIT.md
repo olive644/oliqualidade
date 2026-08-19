@@ -6045,3 +6045,94 @@ essenciais sem herdar as novas regras pesadas do `recommended`.
 `npm run performance:check` aprovados nas duas PRs mescladas (zod,
 react-day-picker) antes do merge; `lucide-react` também passou pela
 mesma bateria antes do merge.
+
+## 110. Correção do tooltip da barra, pop de hover em barra/pizza, glow no ranking, e novo widget "Radar"
+
+Usuário colou o código de um componente de exemplo ("Bento Dashboard",
+framer-motion, visual brutalista) e pediu três coisas, decididas por
+perguntas de esclarecimento antes de implementar: (1) levar o
+*espírito* de animação/hover do exemplo pros widgets de ranking/barra/
+pizza já existentes, sem adotar framer-motion nem o visual brutalista
+(mesma decisão da seção 107); (2) corrigir o tooltip do gráfico de
+barras, que aparecia em qualquer ponto da coluna da categoria, não só
+sobre a barra; (3) adicionar o gráfico "radar/stats" do exemplo como
+tipo de widget de verdade, com dados reais, do tamanho da pizza.
+
+**Tooltip da barra**: causa raiz confirmada lendo
+`node_modules/recharts/es6/cartesian/Bar.js` — o `<Tooltip cursor={...}>`
+do Recharts rastreia a posição X do mouse e ativa pra toda a faixa da
+categoria (eixo), independente da altura real da barra. Em paralelo já
+existia `activeBarIndex`, setado via `onMouseEnter`/`onMouseLeave` do
+próprio `<Bar>` — que o Recharts dispara por barra real renderizada
+(handler recebe `(data, index, event)`, mecanismo mais preciso).
+Correção: `cursor={false}` (remove o retângulo de fundo que pintava a
+coluna inteira) + `content` do `<ChartTooltip>` agora só renderiza
+`<BarTooltip>` quando `activeBarIndex !== null`. Nenhuma mudança em
+`data`/`barSeries`/`isAnimationActive` — risco zero de reintroduzir o
+bug de flicker do eixo Y (seção 48). Verificado ao vivo despachando
+eventos de mouse sintéticos direto no elemento da barra (não no
+`elementFromPoint` de uma coordenada, que aqui não atravessa o SVG por
+alguma peculiaridade de layout não investigada): sobre a barra, o
+tooltip mostra "Quarta R$ 8,00 linha 3 do Excel ↓ 92%"; no espaço vazio
+da mesma coluna (acima da barra curta), o `content` retorna vazio.
+
+**Pop de hover em barra e pizza**: barra ganhou `stroke`/`strokeWidth`
+condicionais no `<Cell>` já existente (mesmo padrão do `<Cell>` da
+pizza). Pizza ganhou `activeShape` nativo do Recharts (`<Sector>` com
+`outerRadius` +6 na fatia ativa) — sem estado novo, reaproveita
+`displayedPieIndex` que já existia. Verificado ao vivo: raio do setor
+sob o mouse foi de 71.06 pra 77.06 (o +6 esperado) ao despachar eventos
+de mouse no elemento real.
+
+**Glow de hover no ranking/avaliação/sidebar**: `.oliam-ranking-fill`
+(reaproveitada pelos 3 lugares desde a seção 107) ganhou
+`filter: brightness(1.12)` + halo (`box-shadow`) no `:hover`, sem mexer
+em altura/`transform: scale` — a track tem `overflow: hidden` e altura
+fixa (7px), cresceria cortada. Desligado também em
+`prefers-reduced-motion: reduce`, mesmo padrão já usado no arquivo.
+**Não verificado interativamente**: `:hover` é estado nativo do
+navegador, não disparável por evento de mouse sintético (diferente do
+`onMouseEnter` do React, que responde a qualquer `MouseEvent`
+despachado) — e este sandbox não consegue tirar screenshot/mover o
+mouse de verdade (pane não compõe frames em segundo plano, mesma
+limitação já documentada pra RAF/screenshot). Confirmado apenas que a
+regra CSS compilou corretamente no stylesheet servido (`brightness(1.12)`
+presente) e que a sintaxe é idêntica ao `.oliam-ranking-row:hover` já
+comprovado funcionando.
+
+**Novo widget "Radar"**: mesma semântica do ranking (`groupKey`
+categórica + `valueKey` numérica + `op`, Top `topN` como eixos, padrão
+5), reaproveitando `chartSeries` diretamente — nenhuma agregação nova.
+Renderização 100% Recharts nativo (`RadarChart`/`PolarGrid`/
+`PolarAngleAxis`/`PolarRadiusAxis`/`Radar`), cores via variáveis CSS já
+usadas em outros gráficos. Arquivo próprio
+`src/components/oliam/radar-widget-body.tsx` (não amontoado em
+`chart-widget-body.tsx`, que já é grande e só agrupa bar/pie/line/area
+por compartilharem estado — radar não compartilha nada com eles).
+Registrado nos 6 pontos do checklist da seção 47: `types.ts` (união +
+`widgetTypeLabels`), `widget-support.tsx`
+(`widgetTypeDescriptions`+`WidgetPickerIcon`, ícone `Radar` do
+lucide-react), `widgets.ts` (`defaultSpan`/`defaultSize` na mesma
+condição de `"pie"` + branch de `createWidget`), `widget-card.tsx`
+(dispatcher), `routes/index.tsx` (`canAdd`, mesma condição de `pie`).
+Mesma decisão da seção 47: **não** entra na recomendação automática
+(`auto-dashboard.ts` não foi tocado), só aparece no seletor manual
+"Adicionar widget".
+
+Verificado ao vivo (dados colados, categoria "Quarta" com valor bem
+menor que as outras pra forçar uma barra curta): o item do seletor
+"Widget" precisou do mesmo contorno já documentado pra `DropdownMenu`
+do Radix (`.click()` sintético não abre o menu; sequência
+`pointerdown`/`pointerup`/`click` despachada via `dispatchEvent`, sim)
+— "Gráfico radar" aparece na lista, widget criado com título "Radar ·
+Soma de Valor por Categoria" (dados reais), classe
+`lg:col-span-1 min-h-80` (idêntica à da pizza), eixos mostrando as 5
+maiores categorias corretas, polígono do radar renderizado. Zero erro
+no console.
+
+`npx vitest run` (572 passou, 1 pulado — mesma contagem, nenhuma
+função pura nova), `npx tsc --noEmit`, `npx eslint` nos 7 arquivos
+tocados (só avisos pré-existentes de `react-refresh/only-export-components`,
+não relacionados), `npm run build` + `npm run performance:check`
+(recharts-vendor subiu de ~407 pra ~418 KiB pelo `RadarChart` novo,
+orçamento continua aprovado) aprovados.
