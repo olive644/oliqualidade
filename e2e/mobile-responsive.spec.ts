@@ -9,7 +9,9 @@ test.describe("iPhone responsive shell", () => {
     isMobile: true,
   });
 
-  test("reaches a dashboard without overflow and keeps touch actions accessible", async ({ page }) => {
+  test(
+    "reaches a dashboard without overflow and keeps touch actions accessible",
+    async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
@@ -44,6 +46,7 @@ test.describe("iPhone responsive shell", () => {
             .map((button) => button.getBoundingClientRect())
             .filter((box) => box.width < 44 || box.height < 44).length,
       );
-    expect(tooSmallActions).toBe(0);
-  });
+      expect(tooSmallActions).toBe(0);
+    },
+  );
 });
