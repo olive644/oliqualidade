@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Radar as RadarIcon } from "lucide-react";
 import {
   PolarAngleAxis,
@@ -25,6 +26,7 @@ import {
   aggregationLabels,
   chartSeries,
   NOT_INFORMED,
+  pieComparisonFor,
   relevantAggregationOps,
   semanticAggregationOps,
   toggleClickFilter,
@@ -36,6 +38,7 @@ import {
   ChartReadingGuide,
   FieldDropSlot,
   FilterChip,
+  SeriesComparisonPanel,
   truncateLabel,
   WidgetHead,
   type WidgetDragProps,
@@ -68,6 +71,13 @@ export function RadarWidgetBody({
   sizeControls: React.ReactNode;
   animationDelay: number;
 }) {
+  // Mesmo padrão do pizza (chart-widget-body.tsx): hover troca o
+  // destaque, sem estado de "seleção" própria — clicar já filtra
+  // diretamente.
+  const [activeAxisIndex, setActiveAxisIndex] = useState<number | null>(null);
+  const handleGroupClick = (groupKey: string, value: string) => {
+    setFilters(toggleClickFilter(filters, groupKey, value));
+  };
   const groupCol = columns.find((c) => c.key === w.groupKey);
   const requestedOp = w.op ?? "sum";
   const configuredValueCol = columns.find((c) => c.key === w.valueKey);
@@ -100,6 +110,28 @@ export function RadarWidgetBody({
     .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
     .slice(0, topN)
     .map((g) => ({ ...g, label: truncateLabel(String(g.name), 14) }));
+  // Uma opção de "Eixos" só aparece se mudar o resultado de verdade —
+  // ex.: com só 3 categorias na planilha, "5" e "8" desenhariam o mesmo
+  // triângulo de "3", então ficam de fora (evita a sensação de seletor
+  // quebrado quando na verdade não há mais categoria pra mostrar).
+  const axisOptions = [3, 5, 8].filter((n, i, all) => {
+    const effective = Math.min(n, grouped.length);
+    const previous = i > 0 ? Math.min(all[i - 1]!, grouped.length) : -1;
+    return effective !== previous;
+  });
+  // A leitura detalhada fica visível desde o início usando a maior
+  // categoria; hover apenas troca o foco — mesmo padrão do pizza.
+  const largestAxisIndex = axes.reduce(
+    (largest, entry, index, entries) =>
+      largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
+        ? index
+        : largest,
+    -1,
+  );
+  const summaryAxisIndex = activeAxisIndex ?? (largestAxisIndex >= 0 ? largestAxisIndex : null);
+  const selectedAxis = summaryAxisIndex !== null ? axes[summaryAxisIndex] : null;
+  const selectedAxisComparison =
+    summaryAxisIndex !== null ? pieComparisonFor(axes, summaryAxisIndex) : null;
 
   return (
     <article
@@ -172,7 +204,7 @@ export function RadarWidgetBody({
             value={topN}
             onChange={(e) => onConfigure({ topN: Number(e.target.value) })}
           >
-            {[3, 5, 8].map((n) => (
+            {axisOptions.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
@@ -198,16 +230,7 @@ export function RadarWidgetBody({
       ) : (
         <div className="h-64 min-w-0 p-2">
           <ResponsiveContainer width="100%" height="100%">
-            <RadarChart
-              data={axes}
-              margin={{ top: 8, right: 16, bottom: 8, left: 16 }}
-              onClick={(state) => {
-                const label = state?.activeLabel;
-                if (typeof label === "string" && groupCol) {
-                  setFilters(toggleClickFilter(filters, groupCol.key, label));
-                }
-              }}
-            >
+            <RadarChart data={axes} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
               <PolarGrid stroke="var(--border)" strokeOpacity={0.6} />
               <PolarAngleAxis
                 dataKey="label"
@@ -256,10 +279,52 @@ export function RadarWidgetBody({
                 strokeWidth={2}
                 isAnimationActive
                 cursor="pointer"
+                // Cada ponta é seu próprio alvo de hover/clique (igual ao
+                // <Cell> da barra/pizza) — dá um leve zoom na ponta sob o
+                // mouse e clique filtra direto, sem depender do
+                // rastreamento por eixo do RadarChart (que não distingue
+                // "sobre a ponta" de "sobre a área preenchida").
+                dot={(dotProps: { cx?: number; cy?: number; index?: number }) => {
+                  const { cx, cy, index } = dotProps;
+                  if (typeof cx !== "number" || typeof cy !== "number" || index === undefined) {
+                    return <g />;
+                  }
+                  const isActive = activeAxisIndex === index;
+                  return (
+                    <circle
+                      key={`axis-dot-${index}`}
+                      cx={cx}
+                      cy={cy}
+                      r={isActive ? 7 : 4}
+                      fill="var(--primary)"
+                      stroke="var(--card)"
+                      strokeWidth={2}
+                      style={{
+                        transition: "r 150ms cubic-bezier(0.16, 1, 0.3, 1)",
+                        cursor: "pointer",
+                      }}
+                      onMouseEnter={() => setActiveAxisIndex(index)}
+                      onMouseLeave={() => setActiveAxisIndex(null)}
+                      onClick={() => {
+                        const entry = axes[index];
+                        if (entry && groupCol) handleGroupClick(groupCol.key, String(entry.name));
+                      }}
+                    />
+                  );
+                }}
               />
             </RadarChart>
           </ResponsiveContainer>
         </div>
+      )}
+      {selectedAxis && (
+        <SeriesComparisonPanel
+          selected={selectedAxis}
+          comparison={selectedAxisComparison}
+          kind={valueCol?.kind ?? "number"}
+          filterLabel="Filtrar por esta categoria"
+          onFilter={() => groupCol && handleGroupClick(groupCol.key, String(selectedAxis.name))}
+        />
       )}
     </article>
   );

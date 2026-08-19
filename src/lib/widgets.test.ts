@@ -19,6 +19,7 @@ import {
 } from "@/lib/widgets";
 import { numericKinds } from "@/lib/types";
 import type { Column, Row } from "@/lib/types";
+import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 
 const col = (key: string, kind: Column["kind"]): Column => ({
   key,
@@ -157,6 +158,48 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
   it("createWidget (ranking) não usa a coluna quase vazia como agrupamento", () => {
     const w = createWidget("ranking", columns, undefined, rows);
     expect(w.groupKey).toBe("status_parcela");
+  });
+
+  it("createWidget (radar) evita coluna não agregável como métrica quando existe outra numérica somável", () => {
+    // Reproduz o achado real do usuário: um widget Radar novo nascia
+    // agrupando "Turno" e contando "Conformidade" (uma coluna numérica,
+    // mas marcada `aggregable: false` pelo perfil semântico — um
+    // score/taxa, não algo que faça sentido somar). A operação relevante
+    // degradava pra "contagem" só no render (`semanticAggregationOps`
+    // usa o perfil semântico, que `createWidget` não recebia antes),
+    // deixando "Conformidade" marcada no seletor sem nenhum efeito real
+    // no gráfico. Com "Amostras" (numérica de verdade somável)
+    // disponível, o radar deve preferi-la.
+    const columns: Column[] = [
+      col("Turno", "category"),
+      col("Setor", "category"),
+      col("Conformidade", "number"),
+      col("Amostras", "number"),
+    ];
+    const radarRows: Row[] = [
+      { Turno: "Manha", Setor: "A", Conformidade: 95, Amostras: 10 },
+      { Turno: "Manha", Setor: "B", Conformidade: 80, Amostras: 12 },
+      { Turno: "Tarde", Setor: "A", Conformidade: 60, Amostras: 20 },
+      { Turno: "Tarde", Setor: "B", Conformidade: 85, Amostras: 18 },
+      { Turno: "Noite", Setor: "A", Conformidade: 40, Amostras: 5 },
+      { Turno: "Noite", Setor: "B", Conformidade: 55, Amostras: 7 },
+    ];
+    const semanticProfiles: ColumnSemanticProfile[] = [
+      {
+        key: "Conformidade",
+        label: "Conformidade",
+        role: "result",
+        unit: null,
+        unitFamily: "dimensionless",
+        aggregable: false,
+        confidence: 0.8,
+        reasons: [],
+        warnings: [],
+      },
+    ];
+    const w = createWidget("radar", columns, undefined, radarRows, semanticProfiles);
+    expect(w.valueKey).toBe("Amostras");
+    expect(w.op).not.toBe("count");
   });
 
   it("createWidget (área) usa a coluna de parcela como eixo X quando não há data", () => {

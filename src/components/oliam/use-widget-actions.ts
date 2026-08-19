@@ -32,7 +32,10 @@ export function useWidgetActions(p: {
   };
 
   const addWidget = (type: WidgetType) =>
-    setWidgets([...widgets, createWidget(type, sheet.columns, undefined, sheet.rows)]);
+    setWidgets([
+      ...widgets,
+      createWidget(type, sheet.columns, undefined, sheet.rows, sheet.intelligence?.columns),
+    ]);
 
   const copyCurrentWidget = (widget: Widget) => {
     p.setWidgetClipboard({ ...widget });
