@@ -849,9 +849,7 @@ export function SeriesComparisonPanel({
         >
           {comparison?.difference !== null && comparison?.difference !== undefined
             ? `${comparison.difference >= 0 ? "+" : ""}${fmt(comparison.difference, kind)}${
-                relativeSummary
-                  ? ` · ${relativeSummary}`
-                  : ""
+                relativeSummary ? ` · ${relativeSummary}` : ""
               }`
             : "Sem referência"}
         </p>
