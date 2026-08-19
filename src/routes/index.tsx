@@ -1915,29 +1915,29 @@ function Dashboard(p: {
                   {(Object.keys(widgetTypeLabels) as WidgetType[])
                     .filter((type) => type !== "line")
                     .map((type) => (
-                    <Tooltip key={type}>
-                      <TooltipTrigger asChild>
-                        <DropdownMenuItem
-                          disabled={!canAdd[type]}
-                          onSelect={() => addWidget(type)}
-                          aria-label={`${widgetTypeLabels[type]}. ${widgetTypeDescriptions[type]}`}
-                          className="flex h-11 w-full cursor-pointer items-center justify-start gap-3 rounded-xl border border-transparent px-3 text-muted-foreground hover:border-border hover:text-foreground focus:border-primary focus:text-primary sm:size-11 sm:justify-center sm:p-0"
-                        >
-                          <WidgetPickerIcon type={type} />
-                          <span className="text-sm font-medium sm:sr-only">
-                            {widgetTypeLabels[type]}
-                          </span>
-                        </DropdownMenuItem>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-64">
-                        <p className="font-semibold">{widgetTypeLabels[type]}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {canAdd[type]
-                            ? widgetTypeDescriptions[type]
-                            : "Este widget precisa de colunas compatíveis nesta aba."}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
+                      <Tooltip key={type}>
+                        <TooltipTrigger asChild>
+                          <DropdownMenuItem
+                            disabled={!canAdd[type]}
+                            onSelect={() => addWidget(type)}
+                            aria-label={`${widgetTypeLabels[type]}. ${widgetTypeDescriptions[type]}`}
+                            className="flex h-11 w-full cursor-pointer items-center justify-start gap-3 rounded-xl border border-transparent px-3 text-muted-foreground hover:border-border hover:text-foreground focus:border-primary focus:text-primary sm:size-11 sm:justify-center sm:p-0"
+                          >
+                            <WidgetPickerIcon type={type} />
+                            <span className="text-sm font-medium sm:sr-only">
+                              {widgetTypeLabels[type]}
+                            </span>
+                          </DropdownMenuItem>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-64">
+                          <p className="font-semibold">{widgetTypeLabels[type]}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {canAdd[type]
+                              ? widgetTypeDescriptions[type]
+                              : "Este widget precisa de colunas compatíveis nesta aba."}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
                   ))}
                 </div>
               </TooltipProvider>
