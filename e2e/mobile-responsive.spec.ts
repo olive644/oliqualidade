@@ -9,19 +9,35 @@ test.describe("iPhone responsive shell", () => {
     isMobile: true,
   });
 
-  test("keeps the home screen inside the viewport with touch-sized actions", async ({ page }) => {
+  test("reaches a dashboard without overflow and keeps touch actions accessible", async ({ page }) => {
     await page.goto("/");
+    await page.waitForLoadState("networkidle");
 
-    await expect(page.locator(".oliam-home-shell")).toBeVisible();
-    await expect(page.locator(".oliam-topbar")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Oli.Qualidade" }).first()).toBeVisible();
 
-    const hasHorizontalOverflow = await page.evaluate(
+    const landingOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     );
-    expect(hasHorizontalOverflow).toBe(false);
+    expect(landingOverflow).toBe(false);
+
+    await page.getByRole("button", { name: /ver demonstração/i }).click();
+
+    await expect(page.getByText("Confirme como cada coluna deve ser lida")).toBeVisible();
+    await page.getByRole("checkbox", { name: /cabeçalho/i }).check();
+    await page.getByRole("checkbox", { name: /intervalo de linhas/i }).check();
+    await page.getByRole("checkbox", { name: /tipos das colunas/i }).check();
+    await page.getByRole("button", { name: /gerar relatório/i }).click();
+
+    await expect(page.locator(".oliam-app-shell")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".oliam-dashboard-topbar")).toBeVisible();
+
+    const dashboardOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(dashboardOverflow).toBe(false);
 
     const tooSmallActions = await page
-      .locator(".oliam-topbar button:visible")
+      .locator(".oliam-dashboard-topbar button:visible")
       .evaluateAll(
         (buttons) =>
           buttons
