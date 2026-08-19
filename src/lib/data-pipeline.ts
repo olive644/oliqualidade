@@ -7,6 +7,12 @@ import { parseDateValue, parseNumericValue } from "@/lib/format";
  * fatia da pizza) e aplicar uma marcação visual diferenciada. */
 export const NOT_INFORMED = "Não informado";
 
+function writtenGroupLabel(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  return String(value);
+}
+
 export function sortAllBarCategories<T extends { total: number }>(series: T[]): T[] {
   return [...series].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
 }
@@ -232,7 +238,8 @@ export function groupAndAggregate(
 ): { name: string; total: number }[] {
   const buckets = new Map<string, { values: number[]; rowCount: number }>();
   for (const r of rows) {
-    const name = String(r[groupKey] ?? NOT_INFORMED);
+    const name = writtenGroupLabel(r[groupKey]);
+    if (name === null) continue;
     if (!buckets.has(name)) buckets.set(name, { values: [], rowCount: 0 });
     const bucket = buckets.get(name);
     if (!bucket) continue;
@@ -267,7 +274,8 @@ export function chartSeries(
 ): Array<{ name: string; total: number; sourceRow?: number }> {
   if (mode === "aggregate") return groupAndAggregate(rows, groupKey, valueKey, op);
   return rows.flatMap((row, index) => {
-    const name = String(row[groupKey] ?? NOT_INFORMED);
+    const name = writtenGroupLabel(row[groupKey]);
+    if (name === null) return [];
     if (op === "count") return [{ name, total: 1, sourceRow: index + 1 }];
     const value = parseNumericValue(row[valueKey]);
     return value !== null ? [{ name, total: value, sourceRow: index + 1 }] : [];
@@ -326,7 +334,8 @@ export function relevantAggregationOps(
 ): AggregationOp[] {
   const buckets = new Map<string, { values: number; rowCount: number }>();
   for (const r of rows) {
-    const name = String(r[groupKey] ?? NOT_INFORMED);
+    const name = writtenGroupLabel(r[groupKey]);
+    if (name === null) continue;
     const bucket = buckets.get(name) ?? { values: 0, rowCount: 0 };
     bucket.rowCount++;
     const raw = r[valueKey];
