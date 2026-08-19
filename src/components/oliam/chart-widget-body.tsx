@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   Area,
   AreaChart,
@@ -439,6 +439,7 @@ export function ChartWidgetBody({
                       {barSeries.map((entry, entryIndex) => (
                         <Cell
                           key={`${entry.name}-${entry.sourceRow ?? entryIndex}`}
+                          className="oliam-chart-bar-cell"
                           fill={
                             conditionalColor(
                               entry.total,
@@ -451,7 +452,15 @@ export function ChartWidgetBody({
                           }
                           stroke={activeBarIndex === entryIndex ? "var(--foreground)" : "none"}
                           strokeWidth={activeBarIndex === entryIndex ? 2 : 0}
-                          style={{ transition: "opacity 150ms ease, stroke 150ms ease" }}
+                          style={
+                            {
+                              "--oliam-bar-delay": `${Math.min(entryIndex, 14) * 42}ms`,
+                              transform:
+                                activeBarIndex === entryIndex
+                                  ? "scale(1.045, 1.08)"
+                                  : "scale(1)",
+                            } as CSSProperties
+                          }
                         />
                       ))}
                       <LabelList
@@ -479,13 +488,18 @@ export function ChartWidgetBody({
             {barSeries.map((g) => `${g.name}, ${g.total}`).join("; ")}.
           </p>
           {selectedBar && (
-            <SeriesComparisonPanel
-              selected={selectedBar}
-              comparison={selectedBarComparison}
-              kind={valueCol.kind}
-              filterLabel="Filtrar por esta categoria"
-              onFilter={() => handleGroupClick(groupCol.key, selectedBar.name)}
-            />
+            <div
+              key={`${w.id}-bar-detail-${selectedBar.name}`}
+              className="oliam-chart-detail-swap"
+            >
+              <SeriesComparisonPanel
+                selected={selectedBar}
+                comparison={selectedBarComparison}
+                kind={valueCol.kind}
+                filterLabel="Filtrar por esta categoria"
+                onFilter={() => handleGroupClick(groupCol.key, selectedBar.name)}
+              />
+            </div>
           )}
         </>
       ) : w.type === "pie" ? (
@@ -496,7 +510,7 @@ export function ChartWidgetBody({
               w.span > 1 && "md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,0.9fr)]",
             )}
           >
-            <div className="h-52 min-w-0 overflow-visible">
+            <div className="oliam-chart-pie-enter h-52 min-w-0 overflow-visible">
               <ResponsiveContainer width="100%" height="100%">
                 <RPieChart margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
                   <ChartTooltip
@@ -560,24 +574,32 @@ export function ChartWidgetBody({
                         outerRadius?: number;
                         startAngle?: number;
                         endAngle?: number;
+                        midAngle?: number;
                         fill?: string;
                         stroke?: string;
                         strokeWidth?: number;
                         cornerRadius?: number;
                       };
+                      const radians = -((p.midAngle ?? 0) * Math.PI) / 180;
+                      const offset = 5;
+                      const translateX = Math.cos(radians) * offset;
+                      const translateY = Math.sin(radians) * offset;
                       return (
-                        <Sector
-                          cx={p.cx ?? 0}
-                          cy={p.cy ?? 0}
-                          innerRadius={p.innerRadius ?? 0}
-                          outerRadius={(p.outerRadius ?? 0) + 6}
-                          startAngle={p.startAngle ?? 0}
-                          endAngle={p.endAngle ?? 0}
-                          fill={p.fill ?? "var(--primary)"}
-                          stroke={p.stroke ?? "var(--card)"}
-                          strokeWidth={p.strokeWidth ?? 3}
-                          cornerRadius={p.cornerRadius ?? 0}
-                        />
+                        <g transform={`translate(${translateX} ${translateY})`}>
+                          <Sector
+                            className="oliam-chart-pie-active-slice"
+                            cx={p.cx ?? 0}
+                            cy={p.cy ?? 0}
+                            innerRadius={p.innerRadius ?? 0}
+                            outerRadius={(p.outerRadius ?? 0) + 6}
+                            startAngle={p.startAngle ?? 0}
+                            endAngle={p.endAngle ?? 0}
+                            fill={p.fill ?? "var(--primary)"}
+                            stroke={p.stroke ?? "var(--card)"}
+                            strokeWidth={p.strokeWidth ?? 3}
+                            cornerRadius={p.cornerRadius ?? 0}
+                          />
+                        </g>
                       );
                     }}
                     onClick={(_, index) => {
@@ -596,7 +618,8 @@ export function ChartWidgetBody({
                     onMouseEnter={(_, i) => setActivePieIndex(i)}
                     onMouseLeave={() => setActivePieIndex(null)}
                     cursor="pointer"
-                    animationDuration={500}
+                    animationDuration={680}
+                    animationEasing="ease-out"
                   >
                     {pieSeries.map((entry, i) => (
                       <Cell
@@ -605,7 +628,9 @@ export function ChartWidgetBody({
                         opacity={displayedPieIndex === null || displayedPieIndex === i ? 1 : 0.45}
                         stroke={displayedPieIndex === i ? "var(--foreground)" : "var(--card)"}
                         strokeWidth={displayedPieIndex === i ? 2 : 3}
-                        style={{ transition: "opacity 150ms ease, stroke 150ms ease" }}
+                        style={{
+                          transition: "opacity 220ms ease, stroke 220ms ease",
+                        }}
                       />
                     ))}
                     <Label
@@ -618,7 +643,11 @@ export function ChartWidgetBody({
                         const label = active ? truncateLabel(active.name, 12) : "Total";
                         const value = fmt(active ? active.total : pieTotal, valueCol.kind) ?? "–";
                         return (
-                          <g style={{ pointerEvents: "none" }}>
+                          <g
+                            key={active ? `pie-center-${active.name}` : "pie-center-total"}
+                            className="oliam-chart-center-swap"
+                            style={{ pointerEvents: "none" }}
+                          >
                             <text
                               x={box.cx}
                               y={box.cy}
@@ -681,17 +710,22 @@ export function ChartWidgetBody({
             />
           </div>
           {selectedPie && (
-            <SeriesComparisonPanel
-              selected={selectedPie}
-              comparison={selectedPieComparison}
-              kind={valueCol.kind}
-              filterLabel="Filtrar por esta fatia"
-              onFilter={
-                selectedPie.name !== "Outros"
-                  ? () => handleGroupClick(groupCol.key, selectedPie.name)
-                  : undefined
-              }
-            />
+            <div
+              key={`${w.id}-pie-detail-${selectedPie.name}`}
+              className="oliam-chart-detail-swap"
+            >
+              <SeriesComparisonPanel
+                selected={selectedPie}
+                comparison={selectedPieComparison}
+                kind={valueCol.kind}
+                filterLabel="Filtrar por esta fatia"
+                onFilter={
+                  selectedPie.name !== "Outros"
+                    ? () => handleGroupClick(groupCol.key, selectedPie.name)
+                    : undefined
+                }
+              />
+            </div>
           )}
           <p className="sr-only">
             Tabela alternativa à pizza:{" "}

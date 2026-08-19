@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Radar as RadarIcon } from "lucide-react";
 import {
   PolarAngleAxis,
@@ -228,7 +228,7 @@ export function RadarWidgetBody({
             : "São necessárias ao menos 3 categorias para desenhar o radar."}
         </p>
       ) : (
-        <div className="h-64 min-w-0 p-2">
+        <div className="oliam-chart-radar-enter h-64 min-w-0 p-2">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={axes} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
               <PolarGrid stroke="var(--border)" strokeOpacity={0.6} />
@@ -278,6 +278,8 @@ export function RadarWidgetBody({
                 fillOpacity={0.35}
                 strokeWidth={2}
                 isAnimationActive
+                animationDuration={680}
+                animationEasing="ease-out"
                 cursor="pointer"
                 // Cada ponta é seu próprio alvo de hover/clique (igual ao
                 // <Cell> da barra/pizza) — dá um leve zoom na ponta sob o
@@ -293,16 +295,20 @@ export function RadarWidgetBody({
                   return (
                     <circle
                       key={`axis-dot-${index}`}
+                      className="oliam-chart-radar-dot"
                       cx={cx}
                       cy={cy}
                       r={isActive ? 7 : 4}
                       fill="var(--primary)"
                       stroke="var(--card)"
                       strokeWidth={2}
-                      style={{
-                        transition: "r 150ms cubic-bezier(0.16, 1, 0.3, 1)",
-                        cursor: "pointer",
-                      }}
+                      style={
+                        {
+                          "--oliam-radar-delay": `${Math.min(index, 12) * 48}ms`,
+                          transition: "r 280ms cubic-bezier(0.16, 1, 0.3, 1)",
+                          cursor: "pointer",
+                        } as CSSProperties
+                      }
                       onMouseEnter={() => setActiveAxisIndex(index)}
                       onMouseLeave={() => setActiveAxisIndex(null)}
                       onClick={() => {
@@ -318,13 +324,18 @@ export function RadarWidgetBody({
         </div>
       )}
       {selectedAxis && (
-        <SeriesComparisonPanel
-          selected={selectedAxis}
-          comparison={selectedAxisComparison}
-          kind={valueCol?.kind ?? "number"}
-          filterLabel="Filtrar por esta categoria"
-          onFilter={() => groupCol && handleGroupClick(groupCol.key, String(selectedAxis.name))}
-        />
+        <div
+          key={`${w.id}-radar-detail-${selectedAxis.name}`}
+          className="oliam-chart-detail-swap"
+        >
+          <SeriesComparisonPanel
+            selected={selectedAxis}
+            comparison={selectedAxisComparison}
+            kind={valueCol?.kind ?? "number"}
+            filterLabel="Filtrar por esta categoria"
+            onFilter={() => groupCol && handleGroupClick(groupCol.key, String(selectedAxis.name))}
+          />
+        </div>
       )}
     </article>
   );
