@@ -119,6 +119,34 @@ export function rowsFromSourceGrid(grid: SourceGrid, selection: SourceSelection)
     .filter((row) => Object.values(row).some((value) => value !== null && value !== ""));
 }
 
+/**
+ * Fallback estrutural puro: ignora a detecção automática de cabeçalho/região
+ * e usa a primeira linha com algum dado da grade original como cabeçalho, com
+ * todo o restante da grade como dado. Não decide nada por conteúdo/semântica
+ * — só estrutura, para quando a detecção automática (baseada em confiança) e
+ * as sugestões de IA não encontraram nada aproveitável.
+ */
+export function compatibilityModeSelection(grid: SourceGrid): ImportSelection | null {
+  const headerRowIndex = grid.rows.findIndex((row) =>
+    row.some((value) => value !== null && value !== ""),
+  );
+  if (headerRowIndex < 0) return null;
+
+  const source: SourceSelection = {
+    headerRow: grid.startRow + headerRowIndex,
+    startRow: grid.startRow + headerRowIndex + 1,
+    endRow: grid.startRow + grid.rows.length - 1,
+    startColumn: grid.startColumn,
+    endColumn: grid.startColumn + (grid.rows[0]?.length ?? 1) - 1,
+  };
+  return {
+    startRow: 1,
+    endRow: Math.max(1, source.endRow - source.startRow + 1),
+    ignoredColumns: [],
+    source,
+  };
+}
+
 export function applyImportSelection(
   rows: Row[],
   selection: ImportSelection,

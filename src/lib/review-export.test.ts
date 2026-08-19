@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
-import { auditExportRows, comparisonExportRows, rowsToCsv } from "@/lib/review-export";
+import {
+  auditExportRows,
+  comparisonExportRows,
+  importDiagnosticsExportPayload,
+  rowsToCsv,
+} from "@/lib/review-export";
 import { buildCorrectedWorkbook } from "@/lib/review-workbook";
+import { auditFidelityPercent, sheetToRows } from "@/lib/import";
 import type { Dashboard } from "@/lib/types";
 
 const dashboard: Dashboard = {
@@ -95,5 +101,37 @@ describe("review export", () => {
     expect(csv.startsWith("\uFEFF")).toBe(true);
     expect(csv).toContain('"\'=SUM(A1:A2)"');
     expect(csv).toContain('"0";"false"');
+  });
+
+  it("diagn\u00F3stico baix\u00E1vel remove dataUrl das imagens mas preserva o resto do invent\u00E1rio", () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Item", "Valor"],
+      ["Po\u00E7o", 5],
+    ]);
+    const { diagnostics, audit } = sheetToRows(ws);
+    const withImage = {
+      ...diagnostics!,
+      images: [
+        { name: "logo.png", anchor: "A1", format: "png", dataUrl: "data:image/png;base64,ABC" },
+      ],
+    };
+    const payload = importDiagnosticsExportPayload("planilha.xlsx", "Cronograma", withImage, audit);
+    expect(payload.file).toBe("planilha.xlsx");
+    expect(payload.sheet).toBe("Cronograma");
+    expect(payload.fidelityPercent).toBe(auditFidelityPercent(audit!));
+    expect(payload.diagnostics.images).toEqual([{ name: "logo.png", anchor: "A1", format: "png" }]);
+    expect(JSON.stringify(payload)).not.toContain("base64");
+    expect(payload.diagnostics.columns).toEqual(diagnostics!.columns);
+  });
+
+  it("diagn\u00F3stico baix\u00E1vel aceita aba sem auditoria (fidelityPercent nulo)", () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Item", "Valor"],
+      ["Po\u00E7o", 5],
+    ]);
+    const { diagnostics } = sheetToRows(ws);
+    const payload = importDiagnosticsExportPayload("planilha.xlsx", "Cronograma", diagnostics!);
+    expect(payload.fidelityPercent).toBeNull();
+    expect(payload.audit).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import {
   adaptImportProfile,
   applyImportSelection,
   compareVersions,
+  compatibilityModeSelection,
   filePatternForProfile,
   matchImportProfile,
   rowsFromSourceGrid,
@@ -73,6 +74,68 @@ describe("import workbench", () => {
         endColumn: 2,
       }),
     ).toEqual([]);
+  });
+
+  it("modo de compatibilidade usa a primeira linha com dado como cabeçalho e o resto como dado", () => {
+    const grid = {
+      startRow: 5,
+      startColumn: 2,
+      totalRows: 3,
+      totalColumns: 3,
+      rows: [
+        ["Data", "Poço", "Torre"],
+        ["01/08/2026", 1, 2],
+        ["02/08/2026", 3, 4],
+      ],
+      truncatedRows: false,
+      truncatedColumns: false,
+    };
+    expect(compatibilityModeSelection(grid)).toEqual({
+      startRow: 1,
+      endRow: 2,
+      ignoredColumns: [],
+      source: {
+        headerRow: 5,
+        startRow: 6,
+        endRow: 7,
+        startColumn: 2,
+        endColumn: 4,
+      },
+    });
+  });
+
+  it("modo de compatibilidade é puramente estrutural: uma linha de título mesclado vira o cabeçalho, sem tentar pular", () => {
+    const grid = {
+      startRow: 5,
+      startColumn: 2,
+      totalRows: 4,
+      totalColumns: 3,
+      rows: [
+        ["Relatório mensal", null, null],
+        [null, null, null],
+        ["Data", "Poço", "Torre"],
+        ["01/08/2026", 1, 2],
+      ],
+      truncatedRows: false,
+      truncatedColumns: false,
+    };
+    expect(compatibilityModeSelection(grid)?.source?.headerRow).toBe(5);
+  });
+
+  it("modo de compatibilidade retorna null para grade totalmente vazia", () => {
+    const grid = {
+      startRow: 1,
+      startColumn: 1,
+      totalRows: 2,
+      totalColumns: 2,
+      rows: [
+        [null, null],
+        [null, null],
+      ],
+      truncatedRows: false,
+      truncatedColumns: false,
+    };
+    expect(compatibilityModeSelection(grid)).toBeNull();
   });
 
   it("gera assinatura estável e detecta mudanças de estrutura", () => {

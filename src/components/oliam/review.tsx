@@ -30,11 +30,13 @@ import { auditFidelityPercent, type SourceGrid, type ImportAudit } from "@/lib/i
 import {
   adaptImportProfile,
   applyImportSelection,
+  compatibilityModeSelection,
   defaultSelection,
   matchingImportProfile,
   saveImportProfile,
   type ImportSelection,
 } from "@/lib/import-workbench";
+import { importDiagnosticsExportPayload } from "@/lib/review-export";
 import {
   buildSmartImportInput,
   smartImportFingerprint,
@@ -209,6 +211,37 @@ export function Review(p: {
       return next;
     });
     toast.success(`${safe.length} sugestão(ões) segura(s) aplicada(s).`);
+  };
+  const applyCompatibilityMode = () => {
+    if (!active?.sourceGrid) return;
+    const compatSelection = compatibilityModeSelection(active.sourceGrid);
+    if (!compatSelection) {
+      toast.error("Não encontramos nenhuma linha com dado nesta aba.");
+      return;
+    }
+    setSelection(compatSelection);
+    toast.success(
+      'Modo de compatibilidade aplicado à seleção. Revise na Bancada de importação abaixo e clique em "Aplicar seleção".',
+    );
+  };
+  const downloadImportDiagnostics = () => {
+    if (!active?.diagnostics) return;
+    const payload = importDiagnosticsExportPayload(
+      p.name,
+      active.name,
+      active.diagnostics,
+      active.audit,
+    );
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    const slug = (value: string) => value.toLowerCase().replaceAll(" ", "-");
+    anchor.download = `${slug(p.name)}-${slug(active.name)}-diagnostico.json`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2_000);
+    toast.success("Diagnóstico da aba exportado.");
   };
   const sheetConfidenceMatrix = buildSheetConfidenceMatrix(p.sheets);
   return (
@@ -535,6 +568,23 @@ export function Review(p: {
             </div>
           </div>
         ) : null}
+        {needsConfirmation && active?.sourceGrid && (
+          <div className="mb-5 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <AlertTriangle className="size-4 text-amber-600" />
+              Não conseguimos detectar cabeçalho ou região com confiança
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              O modo de compatibilidade ignora a detecção automática e usa a primeira linha com dado
+              da planilha como cabeçalho, com todo o restante como dado — útil quando a estrutura é
+              simples, mas a formatação confundiu a leitura automática. Você pode ajustar
+              manualmente depois, na Bancada de importação abaixo.
+            </p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={applyCompatibilityMode}>
+              Tentar modo de compatibilidade
+            </Button>
+          </div>
+        )}
         {active?.diagnostics?.sourceNotes.length ? (
           <details className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
@@ -795,9 +845,22 @@ export function Review(p: {
                 <Gauge className="size-4 text-primary" />
                 Relatório de fidelidade da importação
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-                <ConfidenceDot level={confidenceLevelFor(auditFidelityPercent(active.audit))} />
-                {auditFidelityPercent(active.audit)}%
+              <span className="inline-flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                  <ConfidenceDot level={confidenceLevelFor(auditFidelityPercent(active.audit))} />
+                  {auditFidelityPercent(active.audit)}%
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    downloadImportDiagnostics();
+                  }}
+                >
+                  Baixar diagnóstico
+                </Button>
               </span>
             </summary>
             <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
