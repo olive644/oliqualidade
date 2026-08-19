@@ -222,6 +222,71 @@ describe("sheetToRows", () => {
     expect(rows).toEqual([]);
   });
 
+  it("não mistura ano fiscal e produto nos cabeçalhos de um formulário operacional", () => {
+    // Derivado da estrutura do FRS-QA-435: duas linhas de contexto ficam
+    // entre o título institucional e um cabeçalho com células verticais.
+    // Elas descrevem a aba inteira, não cada coluna da tabela.
+    const ws = sheet([
+      ["Recebimento de material", null, null, null, null, null],
+      [null, null, null, null, null, null],
+      ["ANO FISCAL", "FY25", null, null, null, null],
+      ["PRODUTO", "Resina exemplo", null, null, "RESULTADOS", null],
+      ["DATA", "NÚMERO DE RECEBIMENTO", "LOTE", "FORNECEDOR", "STATUS", "OBSERVAÇÕES"],
+      [null, null, null, null, null, null],
+      ["01/08/2026", 1, "L-001", "Fornecedor A", "CONFORME", "Recebido"],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+      { s: { r: 2, c: 1 }, e: { r: 2, c: 3 } },
+      { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },
+      { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } },
+      ...Array.from({ length: 6 }, (_, column) => ({
+        s: { r: 4, c: column },
+        e: { r: 5, c: column },
+      })),
+    ];
+
+    const { rows } = sheetToRows(ws);
+
+    expect(Object.keys(rows[0] ?? {})).toEqual([
+      "DATA",
+      "NÚMERO DE RECEBIMENTO",
+      "LOTE",
+      "FORNECEDOR",
+      "STATUS",
+      "OBSERVAÇÕES",
+    ]);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("ignora no fim do formulário linhas futuras só com valores pré-preenchidos", () => {
+    // Outro recorte derivado do FRS-QA-435: fornecedor/status/responsável
+    // já vêm preparados em muitas linhas, mas sem identidade do
+    // recebimento ainda não são registros reais.
+    const ws = sheet([
+      ["DATA", "NÚMERO DE RECEBIMENTO", "LOTE", "FORNECEDOR", "STATUS", "RESPONSÁVEL"],
+      ["01/08/2026", 1, "L-001", "Fornecedor A", "CONFORME", "Ana"],
+      [null, null, null, "Fornecedor A", "CONFORME", "Ana"],
+      [null, null, null, "Fornecedor A", "CONFORME", "Ana"],
+      [null, null, null, "Fornecedor A", "CONFORME", "Ana"],
+    ]);
+
+    const result = sheetToRows(ws);
+
+    expect(result.rows).toEqual([
+      {
+        DATA: "01/08/2026",
+        "NÚMERO DE RECEBIMENTO": 1,
+        LOTE: "L-001",
+        FORNECEDOR: "Fornecedor A",
+        STATUS: "CONFORME",
+        RESPONSÁVEL: "Ana",
+      },
+    ]);
+    expect(result.audit?.trailingRowsIgnored).toBe(3);
+    expect(result.warning).toContain("valores pré-preenchidos");
+  });
+
   it("reconhece cabeçalho hierárquico misto (colunas simples + colunas agrupadas na mesma linha) sem dado abaixo", () => {
     // Linha pai com "Colaborador"/"Função" (colunas simples, sem sub-linha)
     // ao lado de "Treinamentos obrigatórios"/"Avaliação" (mescladas,
