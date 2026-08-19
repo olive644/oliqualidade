@@ -5158,3 +5158,353 @@
     font-size: clamp(34px, 11.5vw, 54px);
   }
 }
+
+
+/* iPhone-ready responsive shell
+ * Keeps the desktop composition unchanged while honoring iOS safe areas,
+ * coarse pointers and compact viewports.
+ */
+:root {
+  --oli-safe-top: env(safe-area-inset-top, 0px);
+  --oli-safe-right: env(safe-area-inset-right, 0px);
+  --oli-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --oli-safe-left: env(safe-area-inset-left, 0px);
+}
+
+html,
+body {
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+.oliam-root {
+  min-height: 100dvh;
+}
+
+.oliam-app-shell {
+  height: 100dvh;
+  min-height: 100dvh;
+  padding-right: var(--oli-safe-right);
+  padding-left: var(--oli-safe-left);
+}
+
+.oliam-home-shell {
+  min-height: 100dvh;
+  padding-right: var(--oli-safe-right);
+  padding-left: var(--oli-safe-left);
+}
+
+.oliam-presentation {
+  padding:
+    var(--oli-safe-top)
+    var(--oli-safe-right)
+    var(--oli-safe-bottom)
+    var(--oli-safe-left);
+}
+
+.oli-assistant-shell {
+  right: max(22px, var(--oli-safe-right));
+  bottom: max(20px, var(--oli-safe-bottom));
+}
+
+@media (max-width: 900px) and (pointer: coarse) {
+  .oliam-topbar button,
+  .oliam-dashboard-topbar button,
+  .oliam-toolbar button,
+  .oliam-sidebar button,
+  .oliam-sheet-tabs button,
+  .oliam-home-shell button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .oliam-toolbar input,
+  .oliam-toolbar select,
+  .oliam-sidebar input,
+  .oliam-sidebar select {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 700px) {
+  .oliam-app-shell,
+  .oliam-dashboard-shell {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .oliam-dashboard-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: calc(60px + var(--oli-safe-top));
+    height: auto;
+    gap: 8px;
+    overflow: visible;
+    padding:
+      var(--oli-safe-top)
+      max(10px, var(--oli-safe-right))
+      0
+      max(10px, var(--oli-safe-left));
+  }
+
+  .oliam-dashboard-title {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .oliam-dashboard-title > div:last-child {
+    min-width: 0;
+  }
+
+  .oliam-dashboard-title h1,
+  .oliam-dashboard-title p {
+    max-width: 38vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .oliam-dashboard-title input {
+    width: min(38vw, 180px);
+  }
+
+  .oliam-dashboard-actions {
+    min-width: 0 !important;
+    max-width: min(50vw, 240px);
+    margin-left: 0 !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    padding-block: 4px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .oliam-dashboard-actions::-webkit-scrollbar,
+  .oliam-toolbar::-webkit-scrollbar,
+  .oliam-sheet-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .oliam-dashboard-actions > *,
+  .oliam-toolbar > *,
+  .oliam-sheet-tabs > * {
+    scroll-snap-align: start;
+  }
+
+  .oliam-toolbar {
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding:
+      8px
+      max(12px, var(--oli-safe-right))
+      8px
+      max(12px, var(--oli-safe-left));
+    scroll-padding-inline: max(12px, var(--oli-safe-left));
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .oliam-toolbar > :first-child {
+    width: min(78vw, 320px);
+  }
+
+  .oliam-toolbar .oliam-input {
+    height: 44px;
+  }
+
+  .oliam-dashboard-body {
+    min-width: 0;
+  }
+
+  .oliam-dashboard-content {
+    padding: 12px !important;
+    padding-bottom: max(18px, var(--oli-safe-bottom)) !important;
+    overscroll-behavior: contain;
+    scroll-padding-top: 12px;
+  }
+
+  .oliam-dashboard-content .oliam-widget {
+    min-width: 0;
+    grid-column: 1 / -1 !important;
+    border-radius: 22px;
+  }
+
+  .oliam-dashboard-content .oliam-widget h2 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .oliam-sheet-tabs {
+    gap: 6px;
+    padding:
+      6px
+      max(10px, var(--oli-safe-right))
+      max(6px, var(--oli-safe-bottom))
+      max(10px, var(--oli-safe-left));
+    scroll-padding-inline: max(10px, var(--oli-safe-left));
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .oliam-sheet-tabs button {
+    display: inline-flex;
+    align-items: center;
+    padding-inline: 14px;
+  }
+
+  .oliam-sidebar {
+    top: 0;
+    bottom: 0;
+    width: min(88vw, 320px) !important;
+    height: 100dvh;
+    padding-top: var(--oli-safe-top);
+    padding-bottom: var(--oli-safe-bottom);
+    padding-left: var(--oli-safe-left);
+    overscroll-behavior: contain;
+  }
+
+  .oliam-sidebar-backdrop {
+    min-height: 100dvh;
+  }
+
+  .oliam-home-shell .oliam-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: calc(64px + var(--oli-safe-top));
+    height: auto;
+    gap: 8px;
+    overflow: visible;
+    padding:
+      var(--oli-safe-top)
+      max(12px, var(--oli-safe-right))
+      0
+      max(12px, var(--oli-safe-left));
+  }
+
+  .oliam-home-shell .oliam-topbar > :last-child {
+    margin-left: 0;
+  }
+
+  .oliam-home-shell .oliam-topbar strong {
+    font-size: 1rem;
+  }
+
+  .oliam-home-main {
+    padding:
+      32px
+      max(14px, var(--oli-safe-right))
+      max(32px, var(--oli-safe-bottom))
+      max(14px, var(--oli-safe-left)) !important;
+  }
+
+  .oliam-home-main h1 {
+    font-size: clamp(1.9rem, 9vw, 2.5rem);
+    line-height: 1.03;
+  }
+
+  .oliam-home-card-actions {
+    position: static !important;
+    justify-content: flex-end;
+    padding: 0 12px 12px;
+    opacity: 1 !important;
+  }
+
+  .oliam-home-card-actions button {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .oliam-dropzone {
+    min-height: 220px;
+    padding: 28px 18px;
+    text-align: center;
+  }
+
+  .oliam-modal-content {
+    right: max(8px, var(--oli-safe-right));
+    bottom: max(8px, var(--oli-safe-bottom));
+    left: max(8px, var(--oli-safe-left));
+    top: auto;
+    width: auto;
+    max-width: none;
+    max-height: calc(
+      100dvh - var(--oli-safe-top) - var(--oli-safe-bottom) - 16px
+    );
+    overflow-y: auto;
+    border-radius: 24px;
+    padding: 20px;
+    transform: none;
+  }
+
+  .oliam-modal-content button {
+    min-height: 44px;
+  }
+
+  .oli-assistant-shell {
+    right: max(8px, var(--oli-safe-right));
+    bottom: max(8px, var(--oli-safe-bottom));
+  }
+
+  .oli-chat-panel {
+    width: calc(
+      100vw - var(--oli-safe-left) - var(--oli-safe-right) - 16px
+    );
+    height: min(
+      680px,
+      calc(100dvh - var(--oli-safe-top) - var(--oli-safe-bottom) - 112px)
+    );
+    min-height: min(380px, calc(100dvh - 132px));
+    border-radius: 24px 24px 8px 24px;
+  }
+
+  .oli-chat-content {
+    overscroll-behavior: contain;
+  }
+
+  .oli-chat-identity p {
+    max-width: calc(
+      100vw - var(--oli-safe-left) - var(--oli-safe-right) - 150px
+    );
+  }
+}
+
+@media (max-width: 390px) {
+  .oliam-home-shell .oliam-topbar strong {
+    display: none;
+  }
+
+  .oliam-dashboard-title h1,
+  .oliam-dashboard-title p {
+    max-width: 34vw;
+  }
+
+  .oliam-dashboard-actions {
+    max-width: 52vw;
+  }
+
+  .oli-chat-panel {
+    height: calc(
+      100dvh - var(--oli-safe-top) - var(--oli-safe-bottom) - 104px
+    );
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .oli-chat-panel {
+    height: calc(
+      100dvh - var(--oli-safe-top) - var(--oli-safe-bottom) - 16px
+    );
+    min-height: 0;
+  }
+
+  .oli-mascot-group[data-open] {
+    display: none;
+  }
+}
