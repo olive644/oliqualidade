@@ -87,7 +87,12 @@ export function RadarWidgetBody({
   const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
     ? (w.op ?? "sum")
     : (relevantOps[0] ?? "sum");
-  const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
+  // Radar sempre agrega por categoria: cada eixo precisa ser único, ao
+  // contrário de ranking/barra (onde "linha a linha" faz sentido e cada
+  // linha vira uma marca própria). Nunca oferece nem herda modo raw — se
+  // oferecesse, categorias repetidas virariam eixos duplicados
+  // sobrepostos, quebrando a leitura do polígono.
+  const dataMode: ChartDataMode = "aggregate";
   const topN = w.topN ?? 5;
   const grouped =
     groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
@@ -157,8 +162,6 @@ export function RadarWidgetBody({
           operations={relevantOps}
           metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
           group={groupCol?.label}
-          allowRaw
-          onRaw={() => onConfigure({ dataMode: "raw" })}
           onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
         />
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
