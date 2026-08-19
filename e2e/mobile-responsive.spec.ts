@@ -20,11 +20,14 @@ test.describe("iPhone responsive shell", () => {
     );
     expect(hasHorizontalOverflow).toBe(false);
 
-    const tooSmallActions = await page.locator(".oliam-topbar button:visible").evaluateAll((buttons) =>
-      buttons
-        .map((button) => button.getBoundingClientRect())
-        .filter((box) => box.width < 44 || box.height < 44).length,
-    );
+    const tooSmallActions = await page
+      .locator(".oliam-topbar button:visible")
+      .evaluateAll(
+        (buttons) =>
+          buttons
+            .map((button) => button.getBoundingClientRect())
+            .filter((box) => box.width < 44 || box.height < 44).length,
+      );
     expect(tooSmallActions).toBe(0);
   });
 });
