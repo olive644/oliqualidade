@@ -73,8 +73,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      {
+        name: "viewport",
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
+      },
       { title: "Oli.Qualidade" },
+      { name: "theme-color", content: "#0A8A8D" },
+      { name: "format-detection", content: "telephone=no" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Oli.Qualidade" },
       {
         name: "description",
         content: "BI preciso para planilhas, com múltiplos painéis e modo escuro.",
@@ -100,6 +109,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "icon", href: "/oli-mark.svg", type: "image/svg+xml" },
       { rel: "shortcut icon", href: "/oli-mark.svg", type: "image/svg+xml" },
+      { rel: "apple-touch-icon", href: "/oli-mark.svg" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
@@ -114,7 +125,7 @@ function RootShell({ children }: { children: ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body className="oliam-root">
         {children}
         <Scripts />
       </body>
