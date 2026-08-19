@@ -502,18 +502,27 @@ desbloquear. Atualizar aqui em vez de duplicar em conversas de handoff.
     `useState(() => typeof window === "undefined" ? true :
     window.matchMedia(...).matches)`. Ver
     [[CURRENT_STATE_AUDIT#97. Corrigido o bug real de hidratação SSR sinalizado na seção 96 ("Hydration failed... modo privado")]].
-11. **Revisão dos PRs do Dependabot** `#pendente` — 5 de baixo risco já
-    mescladas (4 GitHub Actions + 1 grupo minor/patch do npm, este
-    último precisou de correção manual de lockfile fora de sincronia).
-    TypeScript 7 rejeitado (incompatibilidade real com
-    `typescript-eslint`, Dependabot instruído a não reabrir). Restam
-    pra revisar, um de cada vez, com teste local antes de mesclar:
-    `eslint`+`@eslint/js`+`globals` (major, revisar juntos —
-    prováveis dependências entre si e com `typescript-eslint`), `zod`
-    3→4 (mudança de API conhecida, usado em várias validações),
-    `react-day-picker` 9→10, `lucide-react` 0.x→1.x, `html2canvas-pro`
-    1.6→2.3, `@types/node` 22→26. Ver
-    [[CURRENT_STATE_AUDIT#105. Revisão dos 14 PRs abertos pelo Dependabot: 5 de baixo risco mescladas, TypeScript 7 rejeitado por incompatibilidade real]].
+11. **Revisão dos PRs do Dependabot** `#pendente` — 6 mescladas até
+    agora: 4 GitHub Actions + 1 grupo minor/patch do npm + `html2canvas-pro`
+    1.6→2.3 (as duas últimas precisaram da mesma correção manual de
+    lockfile fora de sincronia gerado pelo Dependabot). TypeScript 7
+    rejeitado (incompatibilidade real com `typescript-eslint`,
+    Dependabot instruído a não reabrir). Restam pra revisar, um de cada
+    vez, com teste local antes de mesclar: `eslint`+`@eslint/js`+
+    `globals` (major, revisar juntos — prováveis dependências entre si
+    e com `typescript-eslint`), `zod` 3→4 (mudança de API conhecida,
+    usado em várias validações), `react-day-picker` 9→10,
+    `lucide-react` 0.x→1.x, `@types/node` 22→26 (usuário já foi avisado
+    que essa não vale a pena enquanto o runtime for Node 22). Ver
+    [[CURRENT_STATE_AUDIT#105. Revisão dos 14 PRs abertos pelo Dependabot: 5 de baixo risco mescladas, TypeScript 7 rejeitado por incompatibilidade real]]
+    e [[CURRENT_STATE_AUDIT#107. `html2canvas-pro` atualizado (1.6.7 → 2.3.8) e animação de entrada das barras de preenchimento]].
+12. ~~Animação de entrada das barras de preenchimento~~ **Feito** —
+    `@keyframes oliam-fill-in` (scaleX 0→1) em `.oliam-ranking-fill`,
+    usado por ranking/avaliação/ranking da sidebar, com atraso
+    escalonado por índice. Sem `framer-motion`, zero custo de bundle —
+    a infraestrutura de entrada dos widgets (`oliam-in`, hover,
+    reduced-motion) já existia e não precisou de mudança. Ver
+    [[CURRENT_STATE_AUDIT#107. `html2canvas-pro` atualizado (1.6.7 → 2.3.8) e animação de entrada das barras de preenchimento]].
 
 ## Comandos operacionais
 
