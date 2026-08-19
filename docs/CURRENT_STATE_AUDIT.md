@@ -6170,3 +6170,69 @@ valores repetidos + Amostras numérica): eixos agora mostram
 reais (`Radar · Média de Amostras por Turno`, operação "média"
 auto-escolhida). `npx vitest run` (572 passou, 1 pulado), `npx tsc
 --noEmit`, `npx eslint` no arquivo tocado aprovados.
+
+## 112. Três achados reais no widget Radar: métrica padrão sem sentido, opção de "Eixos" sem efeito, e falta de hover/métricas como pizza/barra
+
+Usuário testou o widget Radar (seção 110/111) com dados reais e trouxe
+três problemas concretos, um por vez, cada um com achado real por trás
+(nenhum era "o seletor não funciona" — a suspeita inicial da seção 110
+foi descartada por teste ao vivo: `<select>` sempre respondeu
+corretamente a mudança real de valor).
+
+**1. Métrica padrão sem sentido ao criar o widget** — um Radar novo
+agrupando "Turno" nascia contando "Conformidade" (`Registros por
+Turno`), mesmo existindo uma coluna genuinamente somável
+("Amostras"). Causa real: `createWidget` (`widgets.ts`) escolhia
+`nums[0]` (primeira coluna numérica por posição) sem considerar se ela
+sobrevive como métrica agregável — a degradação pra "contagem"
+acontecia de verdade, mas só no *render* (`semanticAggregationOps` usa
+o perfil semântico da coluna, ex. `aggregable: false` pra uma coluna
+tipo "taxa/score" mesmo com `kind: "number"`), porque `createWidget`
+nunca recebia esse perfil. Corrigido threading `semanticProfiles`
+através de `createWidget` (novo 5º parâmetro opcional,
+`sheet.intelligence?.columns` no único call site que importa,
+`use-widget-actions.ts`) — radar agora prefere a primeira coluna
+numérica que sobrevive como soma/média de verdade, caindo no padrão
+antigo (`nums[0]`) só se nenhuma qualificar. Teste novo em
+`widgets.test.ts` reproduz o cenário exato (coluna "Conformidade" com
+`aggregable: false`, "Amostras" saudável) — antes do fix falhava
+(escolhia Conformidade), depois passa.
+
+**2. Opção "Eixos: 8" sem nenhum efeito visível** — com só 3 categorias
+possíveis na coluna de agrupamento, qualquer valor de "Eixos" ≥3
+desenha o mesmo triângulo, mas a lista fixa `[3, 5, 8]` sempre
+oferecia as três opções, parecendo um seletor quebrado. Corrigido:
+`axisOptions` agora filtra a lista fixa mantendo só valores cujo
+resultado *efetivo* (`Math.min(n, categoriasDisponíveis)`) é diferente
+do valor anterior — com 3 categorias, só "3" aparece; com, digamos, 4,
+"3" e "5" aparecem (a segunda já mostra tudo) mas "8" some, porque
+teria o mesmo efeito de "5".
+
+**3. Sem hover/zoom/métricas como pizza e barra** — pedido explícito do
+usuário: "quero que as pontas do radar deem um leve zoom e mostrem os
+dados, igual a pizza". Pizza/barra já tinham esse padrão
+(`activeShape`/`Cell` com opacidade + `SeriesComparisonPanel` com
+`pieComparisonFor`, ambos genéricos sobre `{name, total}[]` desde a
+seção 43) — radar reaproveita os dois sem nenhuma lógica nova: `dot`
+customizado no `<Radar>` (cada ponta é um `<circle>` com
+`onMouseEnter`/`onMouseLeave` próprios, `r` de 4→7 no hover, mesma
+transição cubic-bezier já usada em outros lugares) e
+`SeriesComparisonPanel` abaixo do gráfico, usando `pieComparisonFor`
+sobre `axes`. O `onClick` antigo do `RadarChart` (baseado em
+`state.activeLabel`, rastreamento por eixo — mesmo padrão problemático
+da seção 110 pro tooltip da barra) foi removido: o clique agora vive
+no próprio `<circle>` de cada ponta, preciso por forma real, e
+manter os dois juntos causaria duplo toggle (filtro ligado pelo
+`<circle>`, desligado de novo pelo `onClick` do chart, cancelando um
+ao outro).
+
+Verificado ao vivo removendo os widgets de teste antigos e criando um
+Radar do zero: título nasceu `Radar · Média de Amostras por Turno`
+(não mais Conformidade/contagem); seletor de eixos mostrou só `["3"]`;
+hover num `<circle>` real confirmou raio 4→7 e o painel de comparação
+trocando para a categoria sob o mouse (`"Manha... Valor de Manha 10...
+Diferença para Tarde -9 · -47,4%"`). Zero erro no console.
+
+`npx vitest run` (573 passou, 1 pulado — 1 teste novo), `npx tsc
+--noEmit`, `npx eslint` nos 4 arquivos tocados (CRLF normalizado
+antes), `npm run build` + `npm run performance:check` aprovados.
