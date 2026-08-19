@@ -199,7 +199,8 @@
   }
   * {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent) transparent;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent)
+      transparent;
   }
 }
 
@@ -355,7 +356,8 @@
     border-color: color-mix(in oklab, var(--primary) 30%, var(--border));
     box-shadow:
       0 2px 4px color-mix(in oklab, var(--foreground) 6%, transparent),
-      0 20px 40px -10px color-mix(in oklab, var(--primary) 18%, var(--foreground) 8%);
+      0 20px 40px -10px
+        color-mix(in oklab, var(--primary) 18%, var(--foreground) 8%);
     transform: translateY(-2px);
   }
 }
@@ -656,7 +658,12 @@
   justify-content: space-between;
   overflow: hidden;
   padding: 11px 12px 11px 15px;
-  background: linear-gradient(125deg, var(--oli-blue-deep), var(--oli-blue) 62%, #2776e8);
+  background: linear-gradient(
+    125deg,
+    var(--oli-blue-deep),
+    var(--oli-blue) 62%,
+    #2776e8
+  );
   color: white;
 }
 .oli-chat-header::after {
@@ -723,7 +730,8 @@
   padding: 15px;
   overflow-y: auto;
   background:
-    radial-gradient(circle at 12% 6%, rgb(75 134 255 / 10%), transparent 29%), var(--card);
+    radial-gradient(circle at 12% 6%, rgb(75 134 255 / 10%), transparent 29%),
+    var(--card);
 }
 .oli-chat-welcome {
   display: grid;
@@ -1129,7 +1137,8 @@
   min-height: 360px;
   border-color: var(--border);
   border-radius: 20px;
-  box-shadow: 0 20px 55px color-mix(in oklab, var(--foreground) 18%, transparent);
+  box-shadow: 0 20px 55px
+    color-mix(in oklab, var(--foreground) 18%, transparent);
 }
 .oli-chat-header {
   min-height: 62px;
@@ -1240,7 +1249,8 @@
     z-index: 50;
     height: 100%;
     width: min(85vw, 260px) !important;
-    box-shadow: 0 12px 36px color-mix(in oklab, var(--foreground) 30%, transparent);
+    box-shadow: 0 12px 36px
+      color-mix(in oklab, var(--foreground) 30%, transparent);
   }
   .oliam-sidebar-backdrop {
     display: block;
@@ -1480,7 +1490,8 @@
     border-color: color-mix(in oklab, var(--primary) 28%, var(--border));
     box-shadow:
       0 2px 6px color-mix(in oklab, var(--foreground) 6%, transparent),
-      0 24px 48px -12px color-mix(in oklab, var(--primary) 16%, var(--foreground) 10%);
+      0 24px 48px -12px
+        color-mix(in oklab, var(--primary) 16%, var(--foreground) 10%);
     transform: translateY(-3px);
   }
 }
@@ -1550,6 +1561,143 @@
     transform: scaleX(1);
   }
 }
+
+/* Motion dos gráficos — as animações atuam somente sobre transform/opacidade.
+   A paleta, a geometria final e o layout continuam definidos pelos próprios
+   widgets, para que a leitura visual permaneça idêntica ao fim do movimento. */
+.oliam-chart-bar-cell {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: oliam-chart-bar-rise 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: var(--oliam-bar-delay, 0ms);
+  transition:
+    opacity 220ms ease,
+    stroke 220ms ease,
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oliam-chart-bar-cell:active {
+  transform: scale(0.98, 0.94) !important;
+}
+
+.oliam-chart-pie-enter {
+  transform-origin: center;
+  animation: oliam-chart-pie-spin-in 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.oliam-chart-pie-active-slice {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: oliam-chart-slice-pop 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.oliam-chart-radar-enter {
+  transform-origin: center;
+  animation: oliam-chart-radar-bloom 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.oliam-chart-radar-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: oliam-chart-radar-dot-in 420ms cubic-bezier(0.16, 1, 0.3, 1)
+    backwards;
+  animation-delay: var(--oliam-radar-delay, 0ms);
+}
+
+.oliam-chart-center-swap {
+  animation: oliam-chart-label-swap 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.oliam-chart-detail-swap {
+  animation: oliam-chart-detail-swap 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes oliam-chart-bar-rise {
+  from {
+    opacity: 0;
+    transform: scaleY(0.04);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes oliam-chart-pie-spin-in {
+  from {
+    opacity: 0;
+    transform: rotate(-22deg) scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes oliam-chart-slice-pop {
+  from {
+    transform: scale(0.96);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes oliam-chart-radar-bloom {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes oliam-chart-radar-dot-in {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes oliam-chart-label-swap {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes oliam-chart-detail-swap {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.oliam-export-mode .oliam-chart-bar-cell,
+.oliam-export-mode .oliam-chart-pie-enter,
+.oliam-export-mode .oliam-chart-pie-active-slice,
+.oliam-export-mode .oliam-chart-radar-enter,
+.oliam-export-mode .oliam-chart-radar-dot,
+.oliam-export-mode .oliam-chart-center-swap,
+.oliam-export-mode .oliam-chart-detail-swap {
+  animation: none !important;
+  transform: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .oliam-widget {
     animation: none;
@@ -1564,6 +1712,17 @@
       filter: none;
       box-shadow: none;
     }
+  }
+  .oliam-chart-bar-cell,
+  .oliam-chart-pie-enter,
+  .oliam-chart-pie-active-slice,
+  .oliam-chart-radar-enter,
+  .oliam-chart-radar-dot,
+  .oliam-chart-center-swap,
+  .oliam-chart-detail-swap {
+    animation: none;
+    transition: none;
+    transform: none !important;
   }
 }
 
@@ -1622,7 +1781,8 @@
   overflow: hidden;
   border-radius: 14px 14px 12px 12px;
   background: var(--folder-blue-deep);
-  box-shadow: 0 14px 26px -14px color-mix(in oklab, var(--foreground) 42%, transparent);
+  box-shadow: 0 14px 26px -14px
+    color-mix(in oklab, var(--foreground) 42%, transparent);
 }
 
 .oli-folder-tab {
@@ -1666,7 +1826,8 @@
       ) -120px
       0 / 80px 100% no-repeat,
     var(--sheet-color);
-  box-shadow: 0 7px 17px -10px color-mix(in oklab, var(--foreground) 60%, transparent);
+  box-shadow: 0 7px 17px -10px
+    color-mix(in oklab, var(--foreground) 60%, transparent);
   transform: translateY(calc(var(--document-index) * 3px))
     scale(calc(1 - var(--document-index) * 0.025));
   transform-origin: bottom center;
@@ -2016,7 +2177,8 @@
   margin-block-start: 9px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: color-mix(in oklab, var(--primary) 35%, var(--muted)) transparent;
+  scrollbar-color: color-mix(in oklab, var(--primary) 35%, var(--muted))
+    transparent;
   scrollbar-width: thin;
 }
 
@@ -2336,12 +2498,21 @@
   background-color: var(--container-night-bg);
 }
 
-.theme-switch__checkbox:checked + .theme-switch__container .theme-switch__circle-container {
-  left: calc(100% - var(--circle-container-offset) - var(--circle-container-diameter));
+.theme-switch__checkbox:checked
+  + .theme-switch__container
+  .theme-switch__circle-container {
+  left: calc(
+    100% - var(--circle-container-offset) - var(--circle-container-diameter)
+  );
 }
 
-.theme-switch__checkbox:checked + .theme-switch__container .theme-switch__circle-container:hover {
-  left: calc(100% - var(--circle-container-offset) - var(--circle-container-diameter) - 0.187em);
+.theme-switch__checkbox:checked
+  + .theme-switch__container
+  .theme-switch__circle-container:hover {
+  left: calc(
+    100% - var(--circle-container-offset) - var(--circle-container-diameter) -
+      0.187em
+  );
 }
 
 .theme-switch__circle-container:hover {
@@ -2357,11 +2528,15 @@
   transform: translate(0);
 }
 
-.theme-switch__checkbox:checked + .theme-switch__container .theme-switch__clouds {
+.theme-switch__checkbox:checked
+  + .theme-switch__container
+  .theme-switch__clouds {
   bottom: -4.062em;
 }
 
-.theme-switch__checkbox:checked + .theme-switch__container .theme-switch__stars-container {
+.theme-switch__checkbox:checked
+  + .theme-switch__container
+  .theme-switch__stars-container {
   top: 50%;
   transform: translateY(-50%);
 }
@@ -2422,7 +2597,8 @@
 }
 
 .oliam-loader-wrap .loader .ground div {
-  transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px) translateZ(100px) scale(0);
+  transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px)
+    translateZ(100px) scale(0);
   width: 200px;
   height: 200px;
   background: var(--primary);
@@ -2811,14 +2987,17 @@
 @keyframes oliam-ground {
   0%,
   65% {
-    transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px) translateZ(100px) scale(0);
+    transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px)
+      translateZ(100px) scale(0);
   }
   75%,
   90% {
-    transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px) translateZ(100px) scale(1);
+    transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px)
+      translateZ(100px) scale(1);
   }
   100% {
-    transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px) translateZ(100px) scale(0);
+    transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px)
+      translateZ(100px) scale(0);
   }
 }
 @keyframes oliam-ground-shine {
@@ -2883,7 +3062,8 @@
   height: 7px;
   border-radius: 50%;
   background: var(--secondary-accent);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--secondary-accent) 16%, transparent);
+  box-shadow: 0 0 0 4px
+    color-mix(in oklab, var(--secondary-accent) 16%, transparent);
   animation: oli-welcome-pulse 2s ease-in-out infinite;
 }
 .oli-welcome-copy h1 {
@@ -3328,7 +3508,13 @@
   z-index: 14;
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(90deg, transparent, #2b5db5, #61e0c2, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #2b5db5,
+    #61e0c2,
+    transparent
+  );
   opacity: 0.55;
 }
 .oli-scene-spark {
@@ -3458,7 +3644,8 @@
 .oli-upload-orbit i {
   position: absolute;
   inset: -5px;
-  border: 1px solid color-mix(in oklab, var(--secondary-accent) 45%, transparent);
+  border: 1px solid
+    color-mix(in oklab, var(--secondary-accent) 45%, transparent);
   border-block-color: transparent;
   border-radius: 25px;
   animation: oli-upload-orbit 4s linear infinite;
@@ -4417,7 +4604,8 @@
   background: var(--card);
   padding: 9px 13px 9px 11px;
   color: var(--foreground);
-  box-shadow: 0 14px 34px color-mix(in oklab, var(--foreground) 17%, transparent);
+  box-shadow: 0 14px 34px
+    color-mix(in oklab, var(--foreground) 17%, transparent);
   opacity: 0;
   pointer-events: none;
   transform: translateY(9px) scale(0.88);
@@ -4433,7 +4621,8 @@
   width: 11px;
   height: 11px;
   border-right: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
-  border-bottom: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--primary) 28%, var(--border));
   background: var(--card);
   content: "";
   transform: rotate(45deg);
@@ -4481,12 +4670,14 @@
   border: 1px solid color-mix(in oklab, var(--primary) 24%, var(--border));
   border-radius: 24px 24px 8px 24px;
   background: var(--card);
-  box-shadow: 0 26px 70px color-mix(in oklab, var(--foreground) 22%, transparent);
+  box-shadow: 0 26px 70px
+    color-mix(in oklab, var(--foreground) 22%, transparent);
 }
 .oli-chat-header {
   min-height: 72px;
   padding: 12px 13px 12px 14px;
-  border-bottom: 1px solid color-mix(in oklab, var(--primary) 18%, var(--border));
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--primary) 18%, var(--border));
   background:
     radial-gradient(
       circle at 12% 10%,
@@ -4536,7 +4727,10 @@
 .oli-chat-content {
   padding: 16px;
   background:
-    linear-gradient(color-mix(in oklab, var(--primary) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(
+      color-mix(in oklab, var(--primary) 3%, transparent) 1px,
+      transparent 1px
+    ),
     linear-gradient(
       90deg,
       color-mix(in oklab, var(--primary) 3%, transparent) 1px,
@@ -4727,7 +4921,11 @@
 }
 .oli-typewriter {
   --typewriter-blue: var(--primary);
-  --typewriter-blue-dark: color-mix(in oklab, var(--primary) 54%, var(--foreground));
+  --typewriter-blue-dark: color-mix(
+    in oklab,
+    var(--primary) 54%,
+    var(--foreground)
+  );
   --typewriter-key: var(--primary-foreground);
   --typewriter-paper: color-mix(in oklab, var(--primary) 7%, var(--card));
   --typewriter-text: color-mix(in oklab, var(--primary) 30%, var(--border));
@@ -4750,7 +4948,10 @@
   height: 20px;
   margin-left: 14px;
   border-radius: 3px;
-  background: linear-gradient(var(--typewriter-blue), var(--typewriter-blue-dark));
+  background: linear-gradient(
+    var(--typewriter-blue),
+    var(--typewriter-blue-dark)
+  );
   transform: translateX(14px);
   animation: oli-typewriter-slide var(--typewriter-duration) ease infinite;
 }
@@ -4833,7 +5034,11 @@
 .oli-typewriter-keyboard::before {
   inset: 0;
   border-radius: 7px;
-  background: linear-gradient(135deg, var(--typewriter-blue), var(--typewriter-blue-dark));
+  background: linear-gradient(
+    135deg,
+    var(--typewriter-blue),
+    var(--typewriter-blue-dark)
+  );
   transform: perspective(10px) rotateX(2deg);
   transform-origin: 50% 100%;
 }

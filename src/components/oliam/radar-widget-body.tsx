@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Radar as RadarIcon } from "lucide-react";
 import {
   PolarAngleAxis,
@@ -105,7 +105,9 @@ export function RadarWidgetBody({
   const dataMode: ChartDataMode = "aggregate";
   const topN = w.topN ?? 5;
   const grouped =
-    groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
+    groupCol && valueCol
+      ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode)
+      : [];
   const axes = [...grouped]
     .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
     .slice(0, topN)
@@ -123,19 +125,26 @@ export function RadarWidgetBody({
   // categoria; hover apenas troca o foco — mesmo padrão do pizza.
   const largestAxisIndex = axes.reduce(
     (largest, entry, index, entries) =>
-      largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
+      largest < 0 ||
+      entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
         ? index
         : largest,
     -1,
   );
-  const summaryAxisIndex = activeAxisIndex ?? (largestAxisIndex >= 0 ? largestAxisIndex : null);
-  const selectedAxis = summaryAxisIndex !== null ? axes[summaryAxisIndex] : null;
+  const summaryAxisIndex =
+    activeAxisIndex ?? (largestAxisIndex >= 0 ? largestAxisIndex : null);
+  const selectedAxis =
+    summaryAxisIndex !== null ? axes[summaryAxisIndex] : null;
   const selectedAxisComparison =
     summaryAxisIndex !== null ? pieComparisonFor(axes, summaryAxisIndex) : null;
 
   return (
     <article
-      className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+      className={cn(
+        "oliam-widget group bg-card",
+        spanClass(w.span),
+        sizeClass(w.size, w.type),
+      )}
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       <WidgetHead
@@ -151,7 +160,11 @@ export function RadarWidgetBody({
         className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
         data-export-controls
       >
-        <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
+        <FilterChip
+          groupKey={groupCol?.key}
+          filters={filters}
+          setFilters={setFilters}
+        />
         <FieldDropSlot
           accepts={groupableKinds}
           onDropColumn={(key) => onConfigure({ groupKey: key })}
@@ -171,11 +184,15 @@ export function RadarWidgetBody({
           </select>
         </FieldDropSlot>
         <FieldDropSlot
-          accepts={op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds}
+          accepts={
+            op === "count" ? (Object.keys(kinds) as Kind[]) : numericKinds
+          }
           onDropColumn={(key) => onConfigure({ valueKey: key })}
         >
           <select
-            aria-label={op === "count" ? "Coluna usada para contar" : "Coluna numérica"}
+            aria-label={
+              op === "count" ? "Coluna usada para contar" : "Coluna numérica"
+            }
             className="oliam-select"
             value={valueCol?.key ?? ""}
             onChange={(e) => onConfigure({ valueKey: e.target.value })}
@@ -192,9 +209,13 @@ export function RadarWidgetBody({
           mode={dataMode}
           operation={op}
           operations={relevantOps}
-          metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
+          metric={
+            op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")
+          }
           group={groupCol?.label}
-          onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
+          onOperation={(operation) =>
+            onConfigure({ dataMode: "aggregate", op: operation })
+          }
         />
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           Eixos
@@ -228,9 +249,12 @@ export function RadarWidgetBody({
             : "São necessárias ao menos 3 categorias para desenhar o radar."}
         </p>
       ) : (
-        <div className="h-64 min-w-0 p-2">
+        <div className="oliam-chart-radar-enter h-64 min-w-0 p-2">
           <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={axes} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
+            <RadarChart
+              data={axes}
+              margin={{ top: 8, right: 16, bottom: 8, left: 16 }}
+            >
               <PolarGrid stroke="var(--border)" strokeOpacity={0.6} />
               <PolarAngleAxis
                 dataKey="label"
@@ -241,7 +265,8 @@ export function RadarWidgetBody({
                 cursor={false}
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
-                  const entry = payload[0]?.payload as { name: string; total: number } | undefined;
+                  const entry = payload[0]?.payload as
+                    { name: string; total: number } | undefined;
                   if (!entry) return null;
                   return (
                     <div
@@ -262,7 +287,9 @@ export function RadarWidgetBody({
                           marginBottom: 2,
                         }}
                       >
-                        {entry.name === NOT_INFORMED ? "Não informado" : entry.name}
+                        {entry.name === NOT_INFORMED
+                          ? "Não informado"
+                          : entry.name}
                       </div>
                       <span style={{ color: "var(--popover-foreground)" }}>
                         {fmt(entry.total, valueCol.kind) ?? entry.total}
@@ -278,36 +305,51 @@ export function RadarWidgetBody({
                 fillOpacity={0.35}
                 strokeWidth={2}
                 isAnimationActive
+                animationDuration={680}
+                animationEasing="ease-out"
                 cursor="pointer"
                 // Cada ponta é seu próprio alvo de hover/clique (igual ao
                 // <Cell> da barra/pizza) — dá um leve zoom na ponta sob o
                 // mouse e clique filtra direto, sem depender do
                 // rastreamento por eixo do RadarChart (que não distingue
                 // "sobre a ponta" de "sobre a área preenchida").
-                dot={(dotProps: { cx?: number; cy?: number; index?: number }) => {
+                dot={(dotProps: {
+                  cx?: number;
+                  cy?: number;
+                  index?: number;
+                }) => {
                   const { cx, cy, index } = dotProps;
-                  if (typeof cx !== "number" || typeof cy !== "number" || index === undefined) {
+                  if (
+                    typeof cx !== "number" ||
+                    typeof cy !== "number" ||
+                    index === undefined
+                  ) {
                     return <g />;
                   }
                   const isActive = activeAxisIndex === index;
                   return (
                     <circle
                       key={`axis-dot-${index}`}
+                      className="oliam-chart-radar-dot"
                       cx={cx}
                       cy={cy}
                       r={isActive ? 7 : 4}
                       fill="var(--primary)"
                       stroke="var(--card)"
                       strokeWidth={2}
-                      style={{
-                        transition: "r 150ms cubic-bezier(0.16, 1, 0.3, 1)",
-                        cursor: "pointer",
-                      }}
+                      style={
+                        {
+                          "--oliam-radar-delay": `${Math.min(index, 12) * 48}ms`,
+                          transition: "r 280ms cubic-bezier(0.16, 1, 0.3, 1)",
+                          cursor: "pointer",
+                        } as CSSProperties
+                      }
                       onMouseEnter={() => setActiveAxisIndex(index)}
                       onMouseLeave={() => setActiveAxisIndex(null)}
                       onClick={() => {
                         const entry = axes[index];
-                        if (entry && groupCol) handleGroupClick(groupCol.key, String(entry.name));
+                        if (entry && groupCol)
+                          handleGroupClick(groupCol.key, String(entry.name));
                       }}
                     />
                   );
@@ -318,13 +360,21 @@ export function RadarWidgetBody({
         </div>
       )}
       {selectedAxis && (
-        <SeriesComparisonPanel
-          selected={selectedAxis}
-          comparison={selectedAxisComparison}
-          kind={valueCol?.kind ?? "number"}
-          filterLabel="Filtrar por esta categoria"
-          onFilter={() => groupCol && handleGroupClick(groupCol.key, String(selectedAxis.name))}
-        />
+        <div
+          key={`${w.id}-radar-detail-${selectedAxis.name}`}
+          className="oliam-chart-detail-swap"
+        >
+          <SeriesComparisonPanel
+            selected={selectedAxis}
+            comparison={selectedAxisComparison}
+            kind={valueCol?.kind ?? "number"}
+            filterLabel="Filtrar por esta categoria"
+            onFilter={() =>
+              groupCol &&
+              handleGroupClick(groupCol.key, String(selectedAxis.name))
+            }
+          />
+        </div>
       )}
     </article>
   );
