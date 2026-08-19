@@ -124,6 +124,7 @@ export function RatingWidgetBody({
               style={{
                 width: `${values.length ? Math.min(100, (avg / scaleMax) * 100) : 0}%`,
                 background: ratingColor,
+                animationDelay: "150ms",
               }}
             />
           </div>

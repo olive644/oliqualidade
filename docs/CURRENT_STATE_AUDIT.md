@@ -5843,3 +5843,65 @@ Escolhido remover o workflow.
 Dependabot e o gate `dependency-audit` (`npm audit --audit-level=high`)
 continuam funcionando normalmente em repositório privado — nenhum dos
 dois depende de GHAS.
+
+## 107. `html2canvas-pro` atualizado (1.6.7 → 2.3.8) e animação de entrada das barras de preenchimento
+
+Usuário pediu pra revisar só o `html2canvas-pro` entre as majors
+pendentes da seção 105 — é a lib usada no export de PDF/PNG do painel,
+única com chance real de melhorar algo concreto (changelog tinha
+"Performance Improvements": cache LRU pra gradientes lineares, cache de
+parse de CSS). Testado localmente (`git checkout` do branch do
+Dependabot + `npx npm@10 ci`): mesma armadilha de lockfile fora de
+sincronia já vista duas vezes nesta sessão (`lru-cache` faltando),
+corrigida do mesmo jeito. `npx vitest run`, `npx tsc --noEmit`, `npm
+run build`, `npx playwright test` (E2E) aprovados com a versão nova.
+Mesclado sem mais investigação — não achado nada que quebrasse.
+
+**Animação de entrada das barras de preenchimento** — pedido separado
+do usuário: replicar as animações de um componente de exemplo (cards
+"bento" com `framer-motion`, spring physics, hover pop) nos widgets que
+fizessem sentido, mantendo o design atual do site. Investigação prévia
+importante: a maior parte da infraestrutura de animação **já existia**
+e já era bem desenhada — `@keyframes oliam-in` (fade + leve subida) com
+`animationDelay` já fiado widget a widget desde `routes/index.tsx`
+(`Math.min(i, 8) * 40`) através de `widget-card.tsx` até cada
+`*-widget-body.tsx`, hover com elevação e sombra, e respeito a
+`prefers-reduced-motion` já implementado. O gráfico de barras do
+Recharts tem a animação de entrada **deliberadamente** desligada
+(`isAnimationActive={false}`, com comentário explicando um bug real de
+flicker no eixo Y a cada hover, já corrigido em sessão anterior) — não
+mexido, por respeito à correção já documentada.
+
+O que faltava de verdade: as 3 barras de preenchimento por porcentagem
+do app (`ranking-widget-body.tsx`, `rating-widget-body.tsx`,
+`insight-sidebar.tsx`, todas reaproveitando `.oliam-ranking-fill`) já
+tinham uma `transition` de `width` bem calibrada, mas ela só dispara
+quando o dado *muda depois* — a largura nasce direto no valor final no
+primeiro render (setada via inline style), então nunca "cresce" na
+entrada visível, mesmo com a transition pronta.
+
+Adicionado `@keyframes oliam-fill-in` (`scaleX` 0→1,
+`transform-origin: left` — mais barato que animar `width` de verdade,
+roda só no compositor) como `animation` na própria `.oliam-ranking-fill`,
+com atraso escalonado por índice nas listas (`150 + min(i,10)*45`ms em
+`ranking-widget-body.tsx`/`insight-sidebar.tsx`) e atraso fixo de 150ms
+na avaliação (barra única). O atraso garante que a barra só começa a
+crescer depois que o card do widget termina de entrar, não simultâneo.
+`prefers-reduced-motion` desliga a animação nova junto com a existente.
+Sem `framer-motion` nem nenhuma dependência nova — zero custo de
+bundle, mesma filosofia de animação CSS-only já usada em todo o app.
+
+**Verificação em navegador real com um alarme falso investigado**: a
+barra pareceu travada em `scaleX(0)` por vários segundos ao checar via
+`getAnimations()` — `playState: "running"` mas `currentTime: 0`
+congelado. Isolado como limitação do ambiente de teste, não bug: o
+Browser pane não estava em primeiro plano ("the Browser pane is not
+displayed" no erro do `screenshot`), e o Chrome desacelera/pausa o
+avanço de tempo de animações CSS em abas em segundo plano — mesma
+classe de limitação já encontrada com o hang do `html2canvas` numa
+sessão anterior. Confirmado forçando `anim.finish()` via JS: a barra
+chega exatamente no valor final correto (417,66px = 100% do container).
+
+`npx vitest run` (567 passou, 1 pulado), `npx tsc --noEmit`, `npx
+eslint` nos 4 arquivos tocados (só ruído de CRLF pré-existente), `npm
+run build` (zero mudança no orçamento de bundle) aprovados.

@@ -112,7 +112,7 @@ export function InsightSidebar(p: {
             Ranking por {cat.label}
           </p>
           <div className="space-y-0.5">
-            {p.sidebarRanking.map((r) => {
+            {p.sidebarRanking.map((r, i) => {
               const active = p.filters.some((f) => f.key === cat.key && f.value === r.name);
               return (
                 <button
@@ -146,6 +146,7 @@ export function InsightSidebar(p: {
                         background:
                           conditionalColor(r.total, primary.kind, primary.conditionalFormat) ??
                           (active ? "var(--primary)" : "var(--secondary-accent)"),
+                        animationDelay: `${Math.min(i, 10) * 45}ms`,
                       }}
                     />
                   </div>
