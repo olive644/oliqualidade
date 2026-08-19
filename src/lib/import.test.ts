@@ -196,6 +196,49 @@ describe("sheetToRows", () => {
     expect(rows[0]?.["Perigo identificado"]).toBe("Vazamento");
   });
 
+  it("reconhece um bloco de título mesclado em várias linhas e colunas como banner", () => {
+    // Reproduz um cronograma de calibração real: título institucional
+    // ocupando 3 linhas de altura visual (mesclagem retangular, não só
+    // horizontal) ao lado de um quadro "Revisão/Data/Folha" separado,
+    // seguido de uma linha em branco e só então o cabeçalho de verdade.
+    // Antes da correção, o preenchimento por mesclagem fazia essa linha de
+    // título parecer 100% cheia, disparando o atalho que aceita a primeira
+    // linha "cheia" como cabeçalho — o cabeçalho real (EQUIPAMENTO,
+    // MODELO...) virava dado, e as 6 colunas ficavam nomeadas a partir do
+    // texto do título ("...ANO 2011", "...ANO 2011_2", "...ANO 2011_3"...).
+    const ws = sheet([
+      [
+        "CRONOGRAMA DE CALIBRAÇÃO DE EQUIPAMENTOS - ANO 2011",
+        null,
+        null,
+        null,
+        "Revisão:            00",
+        null,
+      ],
+      [null, null, null, null, "Data:     01/02/2011", null],
+      [null, null, null, null, "Folha:               1/1", null],
+      [null, null, null, null, null, null],
+      ["EQUIPAMENTO", "MODELO", "SETOR", "CÓDIGO", "DATA", null],
+      ["Balança", "MIC-15", "Preparação", "BA01", "03/11", "09/11"],
+      ["Balança", "BP15", "Sorvete", "BA02", "03/11", "09/11"],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 2, c: 3 } },
+      { s: { r: 0, c: 4 }, e: { r: 0, c: 5 } },
+      { s: { r: 1, c: 4 }, e: { r: 1, c: 5 } },
+      { s: { r: 2, c: 4 }, e: { r: 2, c: 5 } },
+    ];
+
+    const { rows } = sheetToRows(ws);
+
+    const headers = Object.keys(rows[0] ?? {});
+    expect(headers).toEqual(
+      expect.arrayContaining(["EQUIPAMENTO", "MODELO", "SETOR", "CÓDIGO", "DATA"]),
+    );
+    expect(rows[0]?.["EQUIPAMENTO"]).toBe("Balança");
+    expect(rows).toHaveLength(2);
+  });
+
   it("não fabrica registro fantasma a partir do cabeçalho hierárquico de um modelo genuinamente vazio", () => {
     // Um modelo (.xltx/.xltm) sem nenhuma linha preenchida não tem
     // evidência de dado (numérica/data) pra confirmar a segunda camada do

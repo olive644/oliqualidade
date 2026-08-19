@@ -423,6 +423,34 @@ function isClearlyNotHeaderRow(row: (string | number | null)[]): boolean {
   return filled.some(cellLooksNumeric);
 }
 
+const MIN_REPEATED_NEXT_ROW_RATIO = 0.3;
+
+/**
+ * Detecta se uma linha repete, palavra por palavra e na mesma coluna, uma
+ * fração relevante dos valores da linha seguinte — sinal de que ambas são
+ * linhas de dado agrupadas (ex: várias linhas de "Balança" seguidas), não
+ * um cabeçalho seguido do primeiro registro. Um rótulo de cabeçalho de
+ * verdade praticamente nunca é idêntico ao valor de dado logo abaixo dele
+ * na mesma coluna.
+ */
+function rowRepeatsNextRow(
+  row: (string | number | null)[],
+  next: (string | number | null)[],
+): boolean {
+  let comparable = 0;
+  let matches = 0;
+  const width = Math.max(row.length, next.length);
+  for (let column = 0; column < width; column++) {
+    const a = row[column];
+    const b = next[column];
+    if (a === null || a === "" || b === null || b === "") continue;
+    comparable++;
+    if (String(a).trim().toLocaleLowerCase("pt-BR") === String(b).trim().toLocaleLowerCase("pt-BR"))
+      matches++;
+  }
+  return comparable > 0 && matches / comparable >= MIN_REPEATED_NEXT_ROW_RATIO;
+}
+
 function isYearHeaderRow(row: (string | number | null)[]): boolean {
   const filled = row.filter((cell) => cell !== null && cell !== "");
   const numeric = filled.filter(cellLooksNumeric);
@@ -493,6 +521,7 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
     !isMetadataRow(firstRow) &&
     !isSheetContextRow(firstRow) &&
     !isClearlyNotHeaderRow(firstRow) &&
+    !rowRepeatsNextRow(firstRow, aoa[1] ?? []) &&
     fillRatio(firstRow) >= SPARSE_HEADER_RATIO
   ) {
     return 0;
@@ -506,6 +535,21 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
     if (isMetadataRow(row)) continue;
     if (isSheetContextRow(row)) continue;
     if (isClearlyNotHeaderRow(row) && !isYearHeaderRow(row)) continue;
+    // Uma linha de dado bem preenchida (sem coluna sobrando em branco) pode
+    // superar em preenchimento uma linha de cabeçalho legítima que, por
+    // acaso, tem uma coluna sem rótulo (comum quando a planilha original
+    // não nomeou todas as colunas de dado). O sinal mais forte pra
+    // desempatar aqui: valores de rótulo de cabeçalho praticamente nunca se
+    // repetem, palavra por palavra, com a linha vizinha — mas linhas de
+    // dado agrupadas por categoria (ex: várias "Balança" seguidas) repetem
+    // valores entre si o tempo todo. Compara com as duas vizinhas (não só
+    // a de baixo): a última linha de um grupo repetido não tem "próxima"
+    // linha igual pra comparar, mas ainda repete a de cima.
+    if (
+      rowRepeatsNextRow(row, aoa[i + 1] ?? []) ||
+      rowRepeatsNextRow(row, i > 0 ? (aoa[i - 1] ?? []) : [])
+    )
+      continue;
     // Cabeçalhos verdadeiros costumam ser seguidos imediatamente por dados.
     // Esse bônus resolve empates com blocos institucionais mesclados
     // (assinaturas/cargos), que podem ter a mesma densidade visual do
@@ -1507,6 +1551,21 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   });
   const bannerRows = new Set<number>();
   for (const m of merges) {
+    // Uma mesclagem retangular (várias linhas E várias colunas na mesma
+    // célula) é sempre um bloco de título/assinatura institucional — ex.:
+    // o nome do documento ocupando 3 linhas de altura visual, ao lado de um
+    // quadro "Revisão/Data/Folha" separado. Um grupo de cabeçalho de
+    // tabela real nunca mescla a própria camada de grupo com a camada de
+    // sub-coluna dentro da MESMA célula: cada camada usa sua própria
+    // mesclagem horizontal, numa linha só. Sem este caso, um bloco de
+    // título assim (que preenche a linha inteira via expansão da
+    // mesclagem, fillRatio 100%) passava pelo atalho que aceita a primeira
+    // linha "cheia" como cabeçalho, engolindo a linha de cabeçalho real
+    // mais abaixo como se fosse a primeira linha de dado.
+    if (m.e.c > m.s.c && m.e.r > m.s.r) {
+      for (let row = m.s.r; row <= m.e.r; row++) bannerRows.add(row);
+      continue;
+    }
     if (!(m.e.c > m.s.c && m.s.r === m.e.r)) continue;
     if (originalFilledCount.get(m.s.r) === 1) {
       bannerRows.add(m.s.r);
