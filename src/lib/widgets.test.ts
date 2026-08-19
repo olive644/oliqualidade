@@ -66,13 +66,14 @@ describe("buildDefaultWidgets", () => {
     col("data_venda", "date"),
   ];
 
-  it("reproduz o layout antigo: até 3 métricas, barra, pizza, linha e tabela", () => {
+  it("monta o layout padrão com até 3 métricas, barra, pizza, área e tabela", () => {
     const widgets = buildDefaultWidgets(columns);
     const types = widgets.map((w) => w.type);
     expect(types.filter((t) => t === "metric")).toHaveLength(3);
     expect(types).toContain("bar");
     expect(types).toContain("pie");
-    expect(types).toContain("line");
+    expect(types).toContain("area");
+    expect(types).not.toContain("line");
     expect(types[types.length - 1]).toBe("table");
   });
 
@@ -94,12 +95,13 @@ describe("buildDefaultWidgets", () => {
     expect(bar?.op).toBe("avg");
   });
 
-  it("não adiciona pizza sem coluna de categoria/texto, nem linha sem coluna de data", () => {
+  it("não adiciona pizza nem área sem coluna compatível", () => {
     const numericOnly: Column[] = [col("receita", "currency"), col("custo", "currency")];
     const widgets = buildDefaultWidgets(numericOnly);
     const types = widgets.map((w) => w.type);
     expect(types).not.toContain("pie");
     expect(types).not.toContain("line");
+    expect(types).not.toContain("area");
     expect(types).not.toContain("bar");
     expect(types).toContain("table");
   });
@@ -483,7 +485,7 @@ describe("createWidget, novos tipos", () => {
     expect(widget.detailKeys).toEqual(["Máx."]);
   });
 
-  it("área usa data como agrupamento padrão, como a linha", () => {
+  it("área usa data como agrupamento padrão", () => {
     const w = createWidget("area", columns);
     expect(w.groupKey).toBe("data_venda");
     expect(w.valueKey).toBe("receita");
