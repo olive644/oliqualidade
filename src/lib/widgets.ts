@@ -162,7 +162,8 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "ranking" ||
     type === "map" ||
     type === "insights" ||
-    type === "image"
+    type === "image" ||
+    type === "area-card"
   )
     return 2;
   return 3; // line, area, table
@@ -171,7 +172,7 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
 export function defaultSize(type: WidgetType): WidgetSize {
   if (type === "metric" || type === "metric-trend" || type === "folder-files" || type === "rating")
     return "sm";
-  if (type === "map" || type === "image") return "lg";
+  if (type === "map" || type === "image" || type === "area-card") return "lg";
   return "md";
 }
 
@@ -366,6 +367,7 @@ export function createWidget(
     type === "pie" ||
     type === "line" ||
     type === "area" ||
+    type === "area-card" ||
     type === "ranking" ||
     type === "radar" ||
     type === "map" ||
@@ -373,7 +375,7 @@ export function createWidget(
   ) {
     const groupKey =
       seed?.groupKey ??
-      (type === "line" || type === "area"
+      (type === "line" || type === "area" || type === "area-card"
         ? (dateColFilled?.key ?? pickSequentialIndexColumn(columns, rows)?.key)
         : type === "map"
           ? pickLocationColumn(columns, rows)?.key

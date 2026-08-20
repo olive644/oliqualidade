@@ -58,6 +58,7 @@ export type WidgetType =
   | "pie"
   | "line"
   | "area"
+  | "area-card"
   | "ranking"
   | "radar"
   | "rating"
@@ -109,6 +110,7 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   pie: "Gráfico de pizza",
   line: "Linha do tempo",
   area: "Gráfico de área",
+  "area-card": "Gráfico de área (cartão)",
   ranking: "Ranking (Top N)",
   radar: "Gráfico radar",
   rating: "Indicador de avaliação",
