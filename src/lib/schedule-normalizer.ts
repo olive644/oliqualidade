@@ -68,8 +68,7 @@ export function scheduleFillMeaning(color: string): ScheduleFillMeaning | null {
   const chroma = max - min;
   const lightness = (max + min) / 2;
   const saturation = chroma === 0 ? 0 : chroma / (1 - Math.abs(2 * lightness - 1));
-  if (chroma < 0.08 || saturation < 0.18 || lightness < 0.06 || lightness > 0.97)
-    return null;
+  if (chroma < 0.08 || saturation < 0.18 || lightness < 0.06 || lightness > 0.97) return null;
 
   let hue = 0;
   if (max === red) hue = 60 * (((green - blue) / chroma) % 6);
@@ -240,11 +239,7 @@ export function scheduleCellState(
     )
   )
     return "failed";
-  if (
-    /\b(?:reprogramad[oa]|pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(
-      text,
-    )
-  )
+  if (/\b(?:reprogramad[oa]|pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(text))
     return "warning";
   if (
     /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(text) ||
@@ -275,9 +270,7 @@ export function scheduleCellState(
   )
     return "failed";
   if (
-    /\b(?:reprogramad[oa]|pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(
-      status,
-    )
+    /\b(?:reprogramad[oa]|pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(status)
   )
     return "warning";
   if (/\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(status))

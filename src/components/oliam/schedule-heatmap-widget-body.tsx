@@ -596,9 +596,7 @@ export function ScheduleHeatmapWidgetBody({
                         {periodCols.map((column) => {
                           const value = row[column.key];
                           const sourceEmpty = isBlankScheduleValue(value);
-                          const fillMeaning = sourceEmpty
-                            ? fillMeaningFor(row, column.key)
-                            : null;
+                          const fillMeaning = sourceEmpty ? fillMeaningFor(row, column.key) : null;
                           const state =
                             fillMeaning?.state ?? scheduleCellState(value, status, criterion);
                           const empty = sourceEmpty && !fillMeaning;
