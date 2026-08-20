@@ -151,8 +151,8 @@ export function ScheduleHeatmapWidgetBody({
   };
   const effectiveScheduleValue = (row: Row, columnKey: string) => {
     const value = row[columnKey];
-    if (!isBlankScheduleValue(value)) return value;
-    return fillMeaningFor(row, columnKey)?.label ?? value;
+    if (!isBlankScheduleValue(value)) return value ?? null;
+    return fillMeaningFor(row, columnKey)?.label ?? null;
   };
   const scheduleRows = scheduleData.filter(
     (row) =>
