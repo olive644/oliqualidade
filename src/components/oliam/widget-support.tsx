@@ -278,7 +278,6 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
   pie: "Mostra a participação de cada categoria no total.",
   line: "Exibe a evolução dos valores por data.",
   area: "Destaca volume e evolução ao longo de um período.",
-  "area-card": "Mesma evolução em área, em um cartão com resumo de valor atual, média e variação.",
   ranking: "Ordena e exibe os maiores resultados.",
   radar: "Compara as maiores categorias em um gráfico de eixos radiais.",
   rating: "Transforma uma média numérica em uma nota visual.",
@@ -305,7 +304,7 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "folder-files") return <Files className={className} />;
   if (type === "bar") return <BarChart3 className={className} />;
   if (type === "pie") return <PieIcon className={className} />;
-  if (type === "area" || type === "area-card") return <Activity className={className} />;
+  if (type === "area") return <Activity className={className} />;
   if (type === "ranking") return <ListOrdered className={className} />;
   if (type === "radar") return <RadarIcon className={className} />;
   if (type === "rating") return <Star className={className} />;

@@ -122,7 +122,6 @@ import type { FolderMonitorView } from "@/lib/folder-monitor";
 import type { ColorGroupLabel, SourceCellFill } from "@/lib/cell-fill-provenance";
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { AnimatedNumber } from "./animated-number";
-import { AreaCardWidgetBody } from "./area-card-widget-body";
 import { ChartWidgetBody } from "./chart-widget-body";
 import { ExceptionPanelWidgetBody } from "./exception-panel-widget-body";
 import { InsightsWidgetBody } from "./insights-widget-body";
@@ -502,25 +501,6 @@ export function WidgetCard({
   if (w.type === "bar" || w.type === "pie" || w.type === "line" || w.type === "area") {
     return (
       <ChartWidgetBody
-        widget={w}
-        data={data}
-        columns={columns}
-        numericCols={numericCols}
-        groupableCols={groupableCols}
-        semanticProfiles={semanticProfiles}
-        filters={filters}
-        setFilters={setFilters}
-        onConfigure={onConfigure}
-        dragProps={dragProps}
-        sizeControls={sizeControls}
-        animationDelay={animationDelay}
-      />
-    );
-  }
-
-  if (w.type === "area-card") {
-    return (
-      <AreaCardWidgetBody
         widget={w}
         data={data}
         columns={columns}
