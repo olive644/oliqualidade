@@ -73,10 +73,15 @@ const TEMPORAL_KIND = new Set<ColumnDiagnostic["kind"]>(["date", "datetime"]);
 const IDENTIFIER_NAME =
   /(^|[\s_-])(id|codigo|c[oó]digo|cod|n[º°o]\.?|n[uú]mero|cpf|cnpj|pedido|matr[ií]cula|sku|uuid|protocolo)([\s_.-]|\d|$)/i;
 const METRIC_NAME =
-  /(valor|faturamento|receita|venda|quantidade|qtd|pre[cç]o|custo|lucro|margem|total|saldo|ticket|meta)/i;
+  /(valor|faturamento|receita|venda|quantidade|qtd|pre[cç]o|custo|lucro|margem|total|saldo|ticket|meta|value|revenue|sales?|quantity|qty|amount|price|cost|profit|margin|balance|target|goal)/i;
 const TEMPORAL_NAME =
   /(^|[\s_-])(data|date|m[eê]s|month|ano|year|semana|week|trimestre|quarter)([\s_-]|$)/i;
-const GEO_NAME = /(cidade|munic[ií]pio|estado|\buf\b|regi[aã]o|pa[ií]s|city|state|country|region)/i;
+// Mesmo vocabulário de LOCATION_KEY_HINT (widgets.ts), usado ali pro widget
+// de mapa preferir uma coluna geográfica de verdade — aqui decide se uma
+// dimensão vira "mapa" ou "barras" na recomendação automática. Os dois
+// deveriam reconhecer as mesmas colunas como geográficas.
+const GEO_NAME =
+  /(cidade|munic[ií]pio|estado|\buf\b|regi[aã]o|pa[ií]s|local(idade)?|endere[cç]o|bairro|\bcep\b|territ[oó]rio|city|state|country|region|location|address)/i;
 
 function clampScore(value: number): number {
   return Math.round(Math.max(0, Math.min(100, value)));

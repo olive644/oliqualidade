@@ -125,6 +125,20 @@ describe("classifyDashboardColumn", () => {
     );
     expect(result.role).toBe("metric");
   });
+
+  it.each(["revenue", "amount", "sales", "cost", "profit"])(
+    'reconhece "%s" como medida empresarial em inglês, igual ao já feito em português',
+    (name) => {
+      // METRIC_NAME só tinha termos em português, diferente de
+      // TEMPORAL_NAME/GEO_NAME/IDENTIFIER_NAME, que já eram bilíngues. Uma
+      // coluna numérica chamada "revenue"/"amount" não ganhava o bônus de
+      // confiança nem o motivo "medida empresarial", mesmo tendo o mesmo
+      // papel de uma coluna "receita"/"valor".
+      const result = classifyDashboardColumn(column(name, "number"), diagnostic(name, "number"));
+      expect(result.role).toBe("metric");
+      expect(result.reasons).toContain("O nome da coluna indica uma medida empresarial.");
+    },
+  );
 });
 
 describe("generateAutoDashboardPlan", () => {
@@ -251,6 +265,32 @@ describe("generateAutoDashboardPlan", () => {
     expect(barGroupKeys).toContain("linha_producao");
     expect(barGroupKeys).not.toContain("turno");
   });
+
+  it.each(["Localidade", "Endereço", "Território"])(
+    'reconhece "%s" como dimensão geográfica e recomenda mapa em vez de barras',
+    (geoLabel) => {
+      // GEO_NAME só reconhecia um subconjunto do vocabulário já usado em
+      // LOCATION_KEY_HINT (widgets.ts) — cidade/estado/país/região, mas não
+      // localidade/endereço/território. Uma coluna assim virava um gráfico
+      // de barras genérico em vez de mapa, mesmo sendo claramente
+      // geográfica.
+      const geoColumns = [column("faturamento", "currency"), column(geoLabel, "category")];
+      const geoRows: Row[] = Array.from({ length: 6 }, (_, index) => ({
+        faturamento: 100 + index,
+        [geoLabel]: ["A", "B", "C"][index % 3] ?? "A",
+      }));
+      const geoDiagnostics = diagnostics([
+        diagnostic("faturamento", "currency"),
+        diagnostic(geoLabel, "category", { unique: 3 }),
+      ]);
+      const plan = generateAutoDashboardPlan({
+        columns: geoColumns,
+        rows: geoRows,
+        diagnostics: geoDiagnostics,
+      });
+      expect(plan.recommendations.some((item) => item.widgetType === "map")).toBe(true);
+    },
+  );
 
   it("gera categorias por contagem quando a base só possui códigos e textos", () => {
     const controlColumns = [

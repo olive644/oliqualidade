@@ -4,6 +4,7 @@ import { resolveFormulaCell } from "@/lib/formula";
 import { diagnoseImportedSheet, type ImportDiagnostics } from "@/lib/import-intelligence";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 import { scheduleToLong, type LongScheduleRow } from "@/lib/schedule-normalizer";
+import { isPeriodColumnLabel } from "@/lib/widgets";
 import { sliceAdvancedMetadata, type WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
 
 export type SheetImportResult = {
@@ -106,6 +107,12 @@ const SPARSE_HEADER_RATIO = 0.34;
 // "quase vazia" para o usuário revisar, em vez de seguir silenciosamente
 // para os widgets (onde uma coluna assim vira agrupamento ruim).
 const NEAR_EMPTY_RATIO = 0.1;
+
+// Número mínimo de colunas com rótulo de período (mês/ano) no cabeçalho para
+// tratar a planilha como um cronograma largo real, onde uma coluna de
+// período vazia é uma etapa futura, não lixo. Duas colunas isoladas com nome
+// de mês não são evidência suficiente.
+const MIN_SCHEDULE_PERIOD_COLUMNS = 3;
 
 // Células mescladas com texto mais comprido que isso (uma frase corrida,
 // não um rótulo curto de categoria) não são replicadas pelas outras
@@ -1709,11 +1716,16 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   ) {
     const { rows: blockRows, blockColumnName } = blocksToRows(blocks);
     const dataHeaders = blocks[0]!.headers;
+    const periodDataHeaders =
+      dataHeaders.filter((header) => isPeriodColumnLabel(header)).length >=
+        MIN_SCHEDULE_PERIOD_COLUMNS && blockRows.length >= 5
+        ? new Set(dataHeaders.filter((header) => isPeriodColumnLabel(header)))
+        : new Set<string>();
     const {
       rows: blockRowsWithoutEmptyColumns,
       headers: blockHeadersWithValues,
       emptyColumns: emptyBlockColumns,
-    } = removeColumnsWithoutValues(blockRows, [blockColumnName, ...dataHeaders]);
+    } = removeColumnsWithoutValues(blockRows, [blockColumnName, ...dataHeaders], periodDataHeaders);
     const dataHeadersWithValues = blockHeadersWithValues.filter(
       (header) => header !== blockColumnName,
     );
@@ -1946,9 +1958,18 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // Cabeçalho, borda e formatação não tornam uma coluna um dado. Se não há
   // nenhum valor real em nenhuma linha importada, removemos a coluna por
   // completo para que ela não vire uma faixa inteira de "Não informado".
-  // Zero e `false` continuam sendo valores válidos e são preservados.
-  const headersWithSourceFormulas = new Set(
+  // Zero e `false` continuam sendo valores válidos e são preservados. Numa
+  // planilha larga de cronograma (muitas colunas de período mês/ano), uma
+  // coluna de período vazia representa uma etapa futura ainda não realizada,
+  // não lixo de formatação — preservamos essas. Duas colunas de período
+  // isoladas não bastam como evidência de cronograma real, então o limiar
+  // exige pelo menos MIN_SCHEDULE_PERIOD_COLUMNS no cabeçalho inteiro.
+  const periodHeaderCount = headers.filter((header) => isPeriodColumnLabel(header)).length;
+  const looksLikeWideSchedule =
+    periodHeaderCount >= MIN_SCHEDULE_PERIOD_COLUMNS && rows.length >= 5;
+  const headersToPreserveWhenEmpty = new Set(
     headers.filter((header, index) => {
+      if (looksLikeWideSchedule && isPeriodColumnLabel(header)) return true;
       for (let relativeRow = headerRowEnd + 1; relativeRow < sourceAoa.length; relativeRow++) {
         const address = XLSX.utils.encode_cell({
           r: range.s.r + relativeRow,
@@ -1963,7 +1984,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     rows: rowsWithoutEmptyColumns,
     headers: headersWithValues,
     emptyColumns,
-  } = removeColumnsWithoutValues(rows, headers, headersWithSourceFormulas);
+  } = removeColumnsWithoutValues(rows, headers, headersToPreserveWhenEmpty);
 
   // Colunas sem nenhum texto no cabeçalho E quase sem dados: quase sempre
   // são um fragmento solto capturado só por estar dentro do retângulo de
