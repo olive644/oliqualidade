@@ -204,6 +204,47 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
     expect(w.op).not.toBe("count");
   });
 
+  it.each(["bar", "pie", "ranking", "line", "area", "map", "insights"] as const)(
+    "createWidget (%s) evita coluna não agregável como métrica quando existe outra numérica somável",
+    (type) => {
+      // Mesma branch compartilhada do radar (ver teste acima): antes desta
+      // correção, bar/pie/ranking/line/area/map/insights sempre caíam em
+      // nums[0] como métrica padrão e op: "sum" fixo, mesmo quando a
+      // primeira coluna numérica era marcada `aggregable: false` (um
+      // score/taxa) e havia outra coluna somável de verdade disponível.
+      const columns: Column[] = [
+        col("Turno", "category"),
+        col("Setor", "category"),
+        col("Conformidade", "number"),
+        col("Amostras", "number"),
+      ];
+      const widgetRows: Row[] = [
+        { Turno: "Manha", Setor: "A", Conformidade: 95, Amostras: 10 },
+        { Turno: "Manha", Setor: "B", Conformidade: 80, Amostras: 12 },
+        { Turno: "Tarde", Setor: "A", Conformidade: 60, Amostras: 20 },
+        { Turno: "Tarde", Setor: "B", Conformidade: 85, Amostras: 18 },
+        { Turno: "Noite", Setor: "A", Conformidade: 40, Amostras: 5 },
+        { Turno: "Noite", Setor: "B", Conformidade: 55, Amostras: 7 },
+      ];
+      const semanticProfiles: ColumnSemanticProfile[] = [
+        {
+          key: "Conformidade",
+          label: "Conformidade",
+          role: "result",
+          unit: null,
+          unitFamily: "dimensionless",
+          aggregable: false,
+          confidence: 0.8,
+          reasons: [],
+          warnings: [],
+        },
+      ];
+      const w = createWidget(type, columns, undefined, widgetRows, semanticProfiles);
+      expect(w.valueKey).toBe("Amostras");
+      expect(w.op).not.toBe("count");
+    },
+  );
+
   it("createWidget (área) usa a coluna de parcela como eixo X quando não há data", () => {
     const w = createWidget("area", columns, undefined, rows);
     expect(w.groupKey).toBe("parcela");

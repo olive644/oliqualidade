@@ -380,16 +380,17 @@ export function createWidget(
           : undefined) ??
       cat?.key ??
       groupableBest?.key;
-    // Radar precisa de uma métrica que agregue de verdade (soma/média) —
-    // sem isso a operação relevante degrada pra "contagem" no render
-    // (ver semanticAggregationOps), e a coluna numérica escolhida vira
-    // decoração: some do título, mas continua marcada no seletor como se
-    // estivesse em uso, o que pareceu "quebrado" pro usuário. Prefere a
-    // primeira coluna numérica que sobrevive como soma/média; sem
-    // nenhuma qualificada, cai no mesmo padrão (nums[0]) dos outros
-    // tipos de widget desta lista.
-    const radarValueCol =
-      type === "radar" && groupKey && !seed?.valueKey
+    // Um widget novo precisa de uma métrica que agregue de verdade
+    // (soma/média) — sem isso a operação relevante degrada pra "contagem"
+    // no render (ver semanticAggregationOps), e a coluna numérica escolhida
+    // vira decoração: some do título, mas continua marcada no seletor como
+    // se estivesse em uso, o que pareceu "quebrado" pro usuário (achado
+    // original no radar, PR #178; mesma branch compartilhada por
+    // bar/pie/line/area/ranking/map/insights tinha o mesmo problema).
+    // Prefere a primeira coluna numérica que sobrevive como soma/média; sem
+    // nenhuma qualificada, cai no padrão simples (nums[0]).
+    const qualifiedValueCol =
+      groupKey && !seed?.valueKey
         ? (nums.find((c) =>
             semanticAggregationOps(
               relevantAggregationOps(rows, groupKey, c.key),
@@ -398,21 +399,21 @@ export function createWidget(
             ).some((op) => op === "sum" || op === "avg"),
           ) ?? nums[0])
         : undefined;
-    const valueKey = seed?.valueKey ?? radarValueCol?.key ?? nums[0]?.key;
+    const valueKey = seed?.valueKey ?? qualifiedValueCol?.key ?? nums[0]?.key;
     if (groupKey) widget.groupKey = groupKey;
     if (valueKey) widget.valueKey = valueKey;
-    const radarOps =
-      radarValueCol && groupKey
+    const qualifiedOps =
+      qualifiedValueCol && groupKey
         ? semanticAggregationOps(
-            relevantAggregationOps(rows, groupKey, radarValueCol.key),
-            radarValueCol,
-            semanticProfiles.find((profile) => profile.key === radarValueCol.key),
+            relevantAggregationOps(rows, groupKey, qualifiedValueCol.key),
+            qualifiedValueCol,
+            semanticProfiles.find((profile) => profile.key === qualifiedValueCol.key),
           )
         : undefined;
     widget.op =
       seed?.op ??
-      (radarOps
-        ? (radarOps.find((op) => op === "sum" || op === "avg") ?? radarOps[0] ?? "sum")
+      (qualifiedOps
+        ? (qualifiedOps.find((op) => op === "sum" || op === "avg") ?? qualifiedOps[0] ?? "sum")
         : "sum");
     widget.dataMode = widget.op === "count" ? "aggregate" : "raw";
     if (type === "ranking" || type === "radar") widget.topN = 5;
