@@ -40,11 +40,10 @@ import {
 import { importDiagnosticsExportPayload } from "@/lib/review-export";
 import {
   buildSmartImportInput,
-  smartImportFingerprint,
   type SmartImportAnalysis,
   type SmartImportSuggestion,
 } from "@/lib/smart-import";
-import { analyzeImportWithAi, markSmartImportAutoAnalysis } from "@/lib/smart-import-client";
+import { analyzeImportWithAi } from "@/lib/smart-import-client";
 import { ConfidenceDot } from "./confidence-dot";
 import { Mark } from "./mark";
 import { OliLoader } from "./oli-loader";
@@ -89,7 +88,6 @@ export function Review(p: {
   const [smartError, setSmartError] = useState<string | null>(null);
   const [smartCached, setSmartCached] = useState(false);
   const [appliedSmartSuggestions, setAppliedSmartSuggestions] = useState<Set<string>>(new Set());
-  const autoAnalyzedSheets = useRef(new Set<string>());
   const smartInput = useMemo(
     () =>
       active?.diagnostics
@@ -120,18 +118,11 @@ export function Review(p: {
     setSmartCached(false);
     setAppliedSmartSuggestions(new Set());
   }, [p.activeIndex]);
-  useEffect(() => {
-    if (!active?.diagnostics || !smartInput) return;
-    const needsAiHelp =
-      active.diagnostics.confidence < 80 ||
-      active.diagnostics.header.confidence < 0.75 ||
-      active.diagnostics.tableRegions.length > 1;
-    const sheetKey = `${p.activeIndex}:${active.name}`;
-    if (!needsAiHelp || autoAnalyzedSheets.current.has(sheetKey)) return;
-    const fingerprint = smartImportFingerprint(smartInput);
-    autoAnalyzedSheets.current.add(sheetKey);
-    if (markSmartImportAutoAnalysis(fingerprint)) void runSmartAnalysis();
-  }, [active?.diagnostics, active?.name, p.activeIndex, runSmartAnalysis, smartInput]);
+  // A análise inteligente nunca dispara sozinha: mesmo quando a leitura tem
+  // confiança baixa, quem decide se vale enviar a estrutura da planilha para
+  // o modelo é a pessoa, pelo botão "Analisar estrutura". Antes isso rodava
+  // automaticamente abaixo de um limiar de confiança, o que surpreendia o
+  // usuário com uma chamada de IA que ele não pediu.
   useEffect(() => {
     const match = matchingImportProfile(rows, p.name, active?.sourceGrid);
     setSelection(match?.selection ?? defaultSelection(rows));
@@ -152,6 +143,60 @@ export function Review(p: {
     ((active?.diagnostics?.confidence ?? 100) < 70 ||
       (active?.diagnostics?.header.confidence ?? 1) < 0.7 ||
       (active?.diagnostics?.tableRegions.length ?? 0) > 1);
+  const confirmations = [
+    {
+      id: "header",
+      title: "Cabeçalho",
+      checked: headerChecked,
+      set: setHeaderChecked,
+      attention: needsConfirmation,
+      detail: `${
+        active?.diagnostics
+          ? `Detectado na linha ${active.diagnostics.header.row}, com ${Math.round(active.diagnostics.header.confidence * 100)}% de confiança.`
+          : "Confirme que a primeira linha da tabela é o cabeçalho correto."
+      }${needsConfirmation ? " Confiança baixa — revise com atenção." : ""}`,
+    },
+    {
+      id: "range",
+      title: "Intervalo de linhas",
+      checked: rangeChecked,
+      set: setRangeChecked,
+      attention: false,
+      detail: `Linhas ${selection.startRow} a ${selection.endRow} de ${rows.length} no total. Ajuste na Bancada de importação acima e aplique a seleção antes de confirmar.`,
+    },
+    {
+      id: "types",
+      title: "Tipos das colunas",
+      checked: typesChecked,
+      set: setTypesChecked,
+      attention: false,
+      detail: `${columns.length} coluna(s) com tipo definido (Número, Moeda, Texto, Data…). Revise a lista acima e corrija o que estiver errado.`,
+    },
+  ] as const;
+  const pending = confirmations.filter((item) => !item.checked);
+  const confirmedCount = confirmations.length - pending.length;
+  const allConfirmed = pending.length === 0;
+  const pendingLabels = pending.map((item) => item.title.toLowerCase()).join(", ");
+  const confirmationRef = useRef<HTMLDivElement>(null);
+  // Destaque temporário aceso ao tentar gerar sem confirmar tudo.
+  const [missingHighlighted, setMissingHighlighted] = useState(false);
+  useEffect(() => {
+    if (allConfirmed) setMissingHighlighted(false);
+  }, [allConfirmed]);
+  // O botão continua clicável mesmo faltando confirmação: um botão morto não
+  // explica o que falta. Ao clicar sem tudo marcado, avisa exatamente quais
+  // itens faltam e traz o bloco para a tela.
+  const handleGenerate = () => {
+    if (!allConfirmed) {
+      setMissingHighlighted(true);
+      confirmationRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      toast.warning("Confirme os 3 itens antes de gerar o relatório.", {
+        description: `Falta confirmar: ${pendingLabels}.`,
+      });
+      return;
+    }
+    p.confirm(reportMode);
+  };
   const suggestionKey = (suggestion: SmartImportSuggestion) =>
     `${suggestion.type}:${suggestion.columnKey}:${suggestion.proposedLabel ?? suggestion.proposedKind ?? ""}`;
   const applySmartSuggestion = (suggestion: SmartImportSuggestion) => {
@@ -1025,74 +1070,6 @@ export function Review(p: {
         ) : null}
         <div className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-            <ListChecks className="size-4 text-primary" />
-            Confirme antes de gerar o relatório
-          </div>
-          <div className="grid gap-2">
-            <label
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm",
-                needsConfirmation
-                  ? "border-amber-500/30 bg-amber-500/5"
-                  : "border-border bg-muted/25",
-              )}
-            >
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4 accent-primary"
-                checked={headerChecked}
-                onChange={(event) => setHeaderChecked(event.target.checked)}
-              />
-              <span>
-                <strong className="font-medium">Cabeçalho</strong>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {active?.diagnostics
-                    ? `Detectado na linha ${active.diagnostics.header.row}, com ${Math.round(active.diagnostics.header.confidence * 100)}% de confiança.`
-                    : "Confirme que a primeira linha da tabela abaixo é o cabeçalho correto."}{" "}
-                  Se estiver errado, corrija em "Selecionar na grade original", na Bancada de
-                  importação abaixo.
-                  {needsConfirmation
-                    ? " Confiança baixa nesta leitura — revise com atenção antes de confirmar."
-                    : ""}
-                </span>
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/25 p-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4 accent-primary"
-                checked={rangeChecked}
-                onChange={(event) => setRangeChecked(event.target.checked)}
-              />
-              <span>
-                <strong className="font-medium">Intervalo de linhas</strong>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Linhas {selection.startRow} a {selection.endRow} de {rows.length} no total. Ajuste
-                  em "Primeira linha"/"Última linha", na Bancada de importação abaixo, e clique em
-                  "Aplicar seleção" antes de confirmar.
-                </span>
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/25 p-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4 accent-primary"
-                checked={typesChecked}
-                onChange={(event) => setTypesChecked(event.target.checked)}
-              />
-              <span>
-                <strong className="font-medium">Tipos das colunas</strong>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {columns.length} coluna(s) com tipo definido (Número, Moeda, Texto, Data...).
-                  Revise a tabela "Coluna / Tipo e formato / Amostra" abaixo e corrija o que estiver
-                  errado.
-                </span>
-              </span>
-            </label>
-          </div>
-        </div>
-        <div className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
             <LayoutGrid className="size-4 text-primary" />
             Como montar o relatório?
           </div>
@@ -1321,14 +1298,78 @@ export function Review(p: {
             </div>
           ))}
         </div>
-        <div className="mt-8 text-right">
-          <Button
-            className="px-6 shadow-sm"
-            onClick={() => p.confirm(reportMode)}
-            disabled={!headerChecked || !rangeChecked || !typesChecked}
-          >
-            Gerar relatório
-          </Button>
+        {/* As três confirmações ficam aqui, coladas no botão que elas liberam.
+            Antes moravam no topo da página, longe da ação — quem rolava até o
+            fim encontrava um botão desabilitado sem nada por perto explicando
+            o porquê. */}
+        <div
+          ref={confirmationRef}
+          className="mt-8 overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-muted/25 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <ListChecks className="size-4 text-primary" />
+              Confirme antes de gerar o relatório
+            </div>
+            <span
+              className={cn(
+                "font-mono text-xs",
+                allConfirmed ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
+              )}
+            >
+              {confirmedCount} de 3 confirmados
+            </span>
+          </div>
+          <div className="grid gap-2 p-4 sm:grid-cols-3">
+            {confirmations.map((item) => (
+              <label
+                key={item.id}
+                className={cn(
+                  "flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-sm transition-colors",
+                  item.checked
+                    ? "border-primary/40 bg-primary/5"
+                    : missingHighlighted
+                      ? "border-amber-500/60 bg-amber-500/10"
+                      : item.attention
+                        ? "border-amber-500/30 bg-amber-500/5"
+                        : "border-border bg-muted/25 hover:bg-muted/40",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0 accent-primary"
+                  checked={item.checked}
+                  onChange={(event) => item.set(event.target.checked)}
+                />
+                <span className="min-w-0">
+                  <strong className="font-medium">{item.title}</strong>
+                  <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                    {item.detail}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border px-4 py-3">
+            {!allConfirmed && (
+              <p
+                className={cn(
+                  "mr-auto text-xs transition-colors",
+                  missingHighlighted
+                    ? "text-amber-700 dark:text-amber-300"
+                    : "text-muted-foreground",
+                )}
+                role={missingHighlighted ? "alert" : undefined}
+              >
+                {missingHighlighted
+                  ? `Falta confirmar: ${pendingLabels}.`
+                  : "Marque as três confirmações para liberar o relatório."}
+              </p>
+            )}
+            <Button className="px-6 shadow-sm" onClick={handleGenerate}>
+              Gerar relatório
+            </Button>
+          </div>
         </div>
       </div>
     </div>
