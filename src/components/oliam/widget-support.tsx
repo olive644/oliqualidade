@@ -196,7 +196,7 @@ export function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 pointer-coarse:size-11"
+            className="size-7 pointer-coarse:size-12"
             aria-label={`Copiar ${title}`}
             title="Copiar widget"
             onClick={onCopy}
@@ -206,7 +206,7 @@ export function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 pointer-coarse:size-11"
+            className="size-7 pointer-coarse:size-12"
             aria-label={`Colar widget após ${title}`}
             title={canPaste ? "Colar widget após este" : "Copie um widget primeiro"}
             disabled={!canPaste}
@@ -217,7 +217,7 @@ export function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 pointer-coarse:size-11"
+            className="size-7 pointer-coarse:size-12"
             aria-label={`Mover ${title} para trás`}
             disabled={disableBack}
             onClick={onMoveBack}
@@ -227,7 +227,7 @@ export function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 pointer-coarse:size-11"
+            className="size-7 pointer-coarse:size-12"
             aria-label={`Mover ${title} para frente`}
             disabled={disableForward}
             onClick={onMoveForward}
@@ -237,7 +237,7 @@ export function WidgetHead({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 pointer-coarse:size-11 hover:bg-destructive/10 hover:text-destructive"
+            className="size-7 pointer-coarse:size-12 hover:bg-destructive/10 hover:text-destructive"
             aria-label={`Remover ${title}`}
             onClick={onRemove}
           >
@@ -589,7 +589,7 @@ export function CalculationButton({
               type="button"
               variant="outline"
               size="icon"
-              className="relative size-8 shrink-0 pointer-coarse:size-11"
+              className="relative size-8 shrink-0 pointer-coarse:size-12"
               aria-label={`Escolher cálculo. Atual: ${current}`}
             >
               <Calculator className="size-4" />

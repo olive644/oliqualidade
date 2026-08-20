@@ -2149,7 +2149,7 @@ function Dashboard(p: {
       {presentation && (
         <div className="oliam-presentation fixed inset-0 z-50 flex flex-col bg-canvas">
           {presentationBar}
-          <div className="flex-1 overflow-auto p-4 md:p-6">
+          <div className="oliam-presentation-content flex-1 overflow-auto p-4 md:p-6">
             {sourceNotesPanel}
             {sourceVisualsPanel}
             {gridContent}

@@ -5199,8 +5199,14 @@ body {
   padding:
     var(--oli-safe-top)
     var(--oli-safe-right)
-    var(--oli-safe-bottom)
+    0
     var(--oli-safe-left);
+}
+
+/* padding-bottom com env() fica no conteúdo rolável interno, não na camada
+ * position:fixed em si — ver comentário em .oliam-sidebar-content. */
+.oliam-presentation-content {
+  padding-bottom: var(--oli-safe-bottom);
 }
 
 .oli-assistant-shell {
@@ -5209,14 +5215,16 @@ body {
 }
 
 @media (max-width: 900px) and (pointer: coarse) {
+  /* 48px cobre os dois padrões de referência ao mesmo tempo: 44pt da Apple
+   * HIG (iOS) e 48dp do Material Design (Android) — o maior dos dois. */
   .oliam-topbar button,
   .oliam-dashboard-topbar button,
   .oliam-toolbar button,
   .oliam-sidebar button,
   .oliam-sheet-tabs button,
   .oliam-home-shell button {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 48px;
+    min-height: 48px;
   }
 
   .oliam-toolbar input,
@@ -5365,9 +5373,16 @@ body {
     width: min(88vw, 320px) !important;
     height: 100dvh;
     padding-top: var(--oli-safe-top);
-    padding-bottom: var(--oli-safe-bottom);
     padding-left: var(--oli-safe-left);
     overscroll-behavior: contain;
+  }
+
+  /* padding-bottom com env() fica no conteúdo rolável interno, não no
+   * elemento position:fixed em si — no Chrome Android, esse padrão na
+   * própria camada fixa trava a barra de gestos ("chin") aberta durante a
+   * rolagem, em vez de deixá-la recolher. */
+  .oliam-sidebar-content {
+    padding-bottom: var(--oli-safe-bottom);
   }
 
   .oliam-sidebar-backdrop {
@@ -5417,8 +5432,8 @@ body {
   }
 
   .oliam-home-card-actions button {
-    width: 44px !important;
-    height: 44px !important;
+    width: 48px !important;
+    height: 48px !important;
   }
 
   .oliam-dropzone {
@@ -5444,7 +5459,7 @@ body {
   }
 
   .oliam-modal-content button {
-    min-height: 44px;
+    min-height: 48px;
   }
 
   .oli-assistant-shell {

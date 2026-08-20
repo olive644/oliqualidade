@@ -74,7 +74,7 @@ export function useChartHorizontalScroll() {
         variant="outline"
         size="icon"
         className={cn(
-          "rounded-full bg-card/90 shadow-sm backdrop-blur pointer-coarse:size-11",
+          "rounded-full bg-card/90 shadow-sm backdrop-blur pointer-coarse:size-12",
           compact ? "size-7" : "size-8",
         )}
         onClick={() => scrollChart(-1)}
@@ -88,7 +88,7 @@ export function useChartHorizontalScroll() {
         variant="outline"
         size="icon"
         className={cn(
-          "rounded-full bg-card/90 shadow-sm backdrop-blur pointer-coarse:size-11",
+          "rounded-full bg-card/90 shadow-sm backdrop-blur pointer-coarse:size-12",
           compact ? "size-7" : "size-8",
         )}
         onClick={() => scrollChart(1)}

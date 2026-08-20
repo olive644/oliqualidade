@@ -34,7 +34,7 @@ export function DashboardNavSidebar(p: {
           <Mark />
           <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
         </div>
-        <div className="flex-1 overflow-auto p-3">
+        <div className="oliam-sidebar-content flex-1 overflow-auto p-3">
           <button
             className="oliam-nav-item text-muted-foreground"
             onClick={() => {
