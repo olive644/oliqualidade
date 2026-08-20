@@ -228,6 +228,32 @@ describe("generateAutoDashboardPlan", () => {
     expect(widgets.every((item) => Boolean(item.title))).toBe(true);
   });
 
+  it.each(["Localidade", "Endereço", "Território"])(
+    'reconhece "%s" como dimensão geográfica e recomenda mapa em vez de barras',
+    (geoLabel) => {
+      // GEO_NAME só reconhecia um subconjunto do vocabulário já usado em
+      // LOCATION_KEY_HINT (widgets.ts) — cidade/estado/país/região, mas não
+      // localidade/endereço/território. Uma coluna assim virava um gráfico
+      // de barras genérico em vez de mapa, mesmo sendo claramente
+      // geográfica.
+      const geoColumns = [column("faturamento", "currency"), column(geoLabel, "category")];
+      const geoRows: Row[] = Array.from({ length: 6 }, (_, index) => ({
+        faturamento: 100 + index,
+        [geoLabel]: ["A", "B", "C"][index % 3] ?? "A",
+      }));
+      const geoDiagnostics = diagnostics([
+        diagnostic("faturamento", "currency"),
+        diagnostic(geoLabel, "category", { unique: 3 }),
+      ]);
+      const plan = generateAutoDashboardPlan({
+        columns: geoColumns,
+        rows: geoRows,
+        diagnostics: geoDiagnostics,
+      });
+      expect(plan.recommendations.some((item) => item.widgetType === "map")).toBe(true);
+    },
+  );
+
   it("gera categorias por contagem quando a base só possui códigos e textos", () => {
     const controlColumns = [
       column("Código", "text"),
