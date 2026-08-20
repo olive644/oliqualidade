@@ -13,6 +13,14 @@ export type SheetImportResult = {
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
   audit?: ImportAudit;
+  /**
+   * Para cada linha de `rows`, o índice (base 0, relativo ao início da grade
+   * de origem) da linha da planilha que a originou. Permite voltar de uma
+   * linha importada à célula original — cor de preenchimento, por exemplo —
+   * mesmo quando linhas ocultas, em branco ou de rodapé foram descartadas
+   * no meio do caminho.
+   */
+  rowOrigins?: number[];
   tableMode?:
     | "single"
     | "repeated-blocks"
@@ -1983,14 +1991,23 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
       return typeof value === "string" && value.trim() === String(h).trim();
     });
   };
-  const sourceDataRows = aoa
+  // Índice (relativo à `aoa`) da linha da planilha que originou cada linha
+  // importada. Acompanha todos os descartes abaixo (ocultas, cabeçalho
+  // repetido, em branco, notas de rodapé) para que consumidores externos
+  // possam voltar da linha final à célula original sem repetir essa lógica
+  // nem assumir que os dados seguem o cabeçalho sequencialmente — suposição
+  // que quebra em qualquer aba com linha oculta ou em branco no meio.
+  const sourceRowOffsets = aoa
     .slice(headerRowEnd + 1, footerRowIndex)
-    .filter((_, offset) => !hiddenRows.has(headerRowEnd + 1 + offset))
-    .filter((row) => {
+    .map((row, offset) => ({ row, offset: headerRowEnd + 1 + offset }))
+    .filter(({ offset }) => !hiddenRows.has(offset))
+    .filter(({ row }) => {
       if (!isRepeatedHeaderRow(row)) return true;
       repeatedHeaderRowsSkipped++;
       return false;
     });
+  const sourceDataRows = sourceRowOffsets.map(({ row }) => row);
+  let rowOrigins = sourceRowOffsets.map(({ offset }) => offset);
   const headers = refineGenericDocumentHeaders(initialHeaders, sourceDataRows);
   let placeholderCellsNormalized = 0;
 
@@ -2013,7 +2030,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // corte de notas do fim, senão elas ocupam sozinhas o orçamento do corte
   // e a nota de verdade (que está antes delas no arquivo) nunca é
   // alcançada.
-  const nonBlankRows = dataRows.filter((r) => Object.values(r).some((v) => v !== null && v !== ""));
+  const keptAfterBlank = dataRows
+    .map((row, index) => ({ row, origin: rowOrigins[index] ?? -1 }))
+    .filter(({ row }) => Object.values(row).some((v) => v !== null && v !== ""));
+  const nonBlankRows = keptAfterBlank.map(({ row }) => row);
+  rowOrigins = keptAfterBlank.map(({ origin }) => origin);
   const blankSkipped = dataRows.length - nonBlankRows.length;
 
   // Notas/resumo soltos no fim da planilha (comum em formulários que
@@ -2055,7 +2076,10 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     if (filled / Math.max(1, activeTrailingHeaders.length) > 0.5) break;
     preparedTemplateRowsTrimmed++;
   }
-  if (preparedTemplateRowsTrimmed > 0) rows.length -= preparedTemplateRowsTrimmed;
+  if (preparedTemplateRowsTrimmed > 0) {
+    rows.length -= preparedTemplateRowsTrimmed;
+    rowOrigins.length -= preparedTemplateRowsTrimmed;
+  }
 
   let trailingNotesTrimmed = 0;
   while (
@@ -2084,7 +2108,10 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     if (filled / Math.max(1, activeTrailingHeaders.length) >= TRAILING_NOTE_FILL_RATIO) break;
     trailingNotesTrimmed++;
   }
-  if (trailingNotesTrimmed > 0) rows.length -= trailingNotesTrimmed;
+  if (trailingNotesTrimmed > 0) {
+    rows.length -= trailingNotesTrimmed;
+    rowOrigins.length -= trailingNotesTrimmed;
+  }
 
   // Cabeçalho, borda e formatação não tornam uma coluna um dado. Se não há
   // nenhum valor real em nenhuma linha importada, removemos a coluna por
@@ -2310,6 +2337,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     warning: messages.length ? messages.join(" ") : null,
     diagnostics,
     sourceGrid,
+    rowOrigins,
     audit: {
       sourceNonEmptyCells,
       outputNonEmptyCells: normalizedRows.reduce(
@@ -2343,6 +2371,8 @@ export type SheetOption = {
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
   audit?: ImportAudit;
+  /** Ver `SheetImportResult.rowOrigins`. */
+  rowOrigins?: number[];
   /** Representação canônica para cronogramas, sem alterar a tabela visível. */
   longScheduleRows?: LongScheduleRow[];
 };
@@ -2866,6 +2896,7 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
         ...(audit
           ? { audit: regionsKeptTogether ? { ...audit, regionsKeptTogether } : audit }
           : {}),
+        ...(result.rowOrigins ? { rowOrigins: result.rowOrigins } : {}),
         ...(longScheduleRows.length ? { longScheduleRows } : {}),
       },
     ];

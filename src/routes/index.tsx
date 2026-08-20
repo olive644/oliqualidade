@@ -221,6 +221,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       diagnostics?: ImportDiagnostics;
       sourceGrid?: SourceGrid;
       audit?: ImportAudit;
+      rowOrigins?: number[];
       sourceNotes?: SourceNote[];
       sourceImages?: WorkbookImageDiagnostic[];
       sourceShapes?: WorkbookShapeDiagnostic[];
@@ -421,6 +422,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       rows: Row[];
       diagnostics?: ImportDiagnostics;
       sourceGrid?: SourceGrid;
+      rowOrigins?: number[];
       audit?: ImportAudit;
     }[],
     n: string,
@@ -448,6 +450,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
         ...(s.sourceGrid ? { sourceGrid: s.sourceGrid } : {}),
         ...(s.audit ? { audit: s.audit } : {}),
+        ...(s.rowOrigins ? { rowOrigins: s.rowOrigins } : {}),
         ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
         ...(s.diagnostics?.images.length ? { sourceImages: s.diagnostics.images } : {}),
         ...(s.diagnostics?.shapes.length ? { sourceShapes: s.diagnostics.shapes } : {}),
@@ -513,6 +516,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.diagnostics,
         s.audit,
         s.sourceGrid,
+        s.rowOrigins,
       );
       const colorGroupLabels = resolveColorGroupLabels(s.rows, columns, sourceCellFills);
       return {
@@ -915,6 +919,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.diagnostics,
         s.audit,
         s.sourceGrid,
+        s.rowOrigins,
       );
       const colorGroupLabels = resolveColorGroupLabels(s.rows, s.columns, sourceCellFills);
       return {

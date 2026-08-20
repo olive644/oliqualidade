@@ -178,3 +178,108 @@ describe("resolveColorGroupLabels", () => {
     expect(resolveColorGroupLabels(groupRows, groupColumns, [])).toEqual([]);
   });
 });
+
+// Estrutura do FRS-QA-BR-413 (cronograma de calibração real): cabeçalho
+// hierárquico de duas linhas, cada mês cobrindo DUAS colunas mescladas
+// (previsto | ocorrido), meses sem texto nenhum — o andamento existe só como
+// cor de célula — e linhas ocultas/em branco descartadas no meio dos dados.
+const scheduleColumns: Column[] = [
+  { key: "equipamento", label: "EQUIPAMENTO", kind: "text", visible: true, description: "" },
+  {
+    key: "jan",
+    label: "CALIBRAÇÃO 2023 — JAN",
+    kind: "text",
+    visible: true,
+    description: "",
+  },
+  {
+    key: "fev",
+    label: "CALIBRAÇÃO 2023 — FEV",
+    kind: "text",
+    visible: true,
+    description: "",
+  },
+];
+
+const scheduleRows: Row[] = [{ equipamento: "Altímetro", jan: null, fev: null }];
+
+const scheduleGrid: SourceGrid = {
+  startRow: 1,
+  startColumn: 1,
+  totalRows: 4,
+  totalColumns: 5,
+  rows: [
+    ["EQUIPAMENTO", "CALIBRAÇÃO 2023", null, null, null],
+    [null, "JAN", null, "FEV", null],
+    ["Linha oculta", null, null, null, null],
+    ["Altímetro", null, null, null, null],
+  ],
+  truncatedRows: false,
+  truncatedColumns: false,
+};
+
+const scheduleAudit: ImportAudit = { ...cleanAudit, hiddenRowsIgnored: 1 };
+
+const scheduleDiagnostics = (cellFills: ImportDiagnostics["cellFills"]) =>
+  ({ header: { row: 1, confidence: 1 }, cellFills }) as ImportDiagnostics;
+
+describe("resolveSourceCellFills em cronograma real", () => {
+  it("resolve a cor mesmo com linha oculta descartada, usando rowOrigins", () => {
+    // A linha importada veio da linha 4 da grade (índice 3): a linha 3 estava
+    // oculta no Excel. Sem `rowOrigins` a suposição sequencial apontaria para
+    // a linha errada, então a versão anterior preferia devolver nada.
+    const resolved = resolveSourceCellFills(
+      scheduleRows,
+      scheduleColumns,
+      scheduleDiagnostics([{ address: "B4", color: "#0000FF" }]),
+      scheduleAudit,
+      scheduleGrid,
+      [3],
+    );
+    expect(resolved).toEqual([{ rowIndex: 0, columnKey: "jan", color: "#0000FF" }]);
+  });
+
+  it("casa a coluna pelo segmento do cabeçalho hierárquico", () => {
+    // O rótulo importado é "CALIBRAÇÃO 2023 — FEV", mas na grade original a
+    // célula diz só "FEV", numa segunda linha de cabeçalho.
+    const resolved = resolveSourceCellFills(
+      scheduleRows,
+      scheduleColumns,
+      scheduleDiagnostics([{ address: "D4", color: "#00B050" }]),
+      scheduleAudit,
+      scheduleGrid,
+      [3],
+    );
+    expect(resolved).toEqual([{ rowIndex: 0, columnKey: "fev", color: "#00B050" }]);
+  });
+
+  it("não perde a segunda célula de um mês mesclado, e o desfecho fica por último", () => {
+    // JAN cobre B e C: previsto (azul) à esquerda, ocorrido (verde) à direita.
+    const resolved = resolveSourceCellFills(
+      scheduleRows,
+      scheduleColumns,
+      scheduleDiagnostics([
+        { address: "B4", color: "#0000FF" },
+        { address: "C4", color: "#00B050" },
+      ]),
+      scheduleAudit,
+      scheduleGrid,
+      [3],
+    );
+    expect(resolved).toEqual([
+      { rowIndex: 0, columnKey: "jan", color: "#0000FF" },
+      { rowIndex: 0, columnKey: "jan", color: "#00B050" },
+    ]);
+  });
+
+  it("sem rowOrigins, continua recusando associar quando houve descarte", () => {
+    const resolved = resolveSourceCellFills(
+      scheduleRows,
+      scheduleColumns,
+      scheduleDiagnostics([{ address: "B4", color: "#0000FF" }]),
+      scheduleAudit,
+      scheduleGrid,
+    );
+    expect(resolved).toEqual([]);
+  });
+});
