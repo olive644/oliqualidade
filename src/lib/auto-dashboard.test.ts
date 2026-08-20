@@ -228,6 +228,44 @@ describe("generateAutoDashboardPlan", () => {
     expect(widgets.every((item) => Boolean(item.title))).toBe(true);
   });
 
+  it("escolhe as dimensões por confiança/qualidade, não pela ordem da planilha", () => {
+    // As duas primeiras colunas categóricas da planilha ("setor", "turno")
+    // têm qualidade ruim (baixa confiança do diagnóstico, qualityScore
+    // abaixo de 70), enquanto a terceira ("linha_producao") é praticamente
+    // perfeita. Antes desta correção, `dimensions.slice(0, 2)` pegava
+    // sempre as 2 primeiras da planilha nessa ordem — a coluna de melhor
+    // qualidade nunca virava gráfico de barra/ranking por estar em 3º
+    // lugar, mesmo sendo claramente a mais confiável.
+    const rankedColumns = [
+      column("faturamento", "currency"),
+      column("setor", "category"),
+      column("turno", "category"),
+      column("linha_producao", "category"),
+    ];
+    const rankedRows: Row[] = Array.from({ length: 12 }, (_, index) => ({
+      faturamento: 100 + index,
+      setor: ["A", "B", "C"][index % 3] ?? "A",
+      turno: ["Manha", "Tarde"][index % 2] ?? "Manha",
+      linha_producao: ["L1", "L2", "L3"][index % 3] ?? "L1",
+    }));
+    const rankedDiagnostics = diagnostics([
+      diagnostic("faturamento", "currency"),
+      diagnostic("setor", "category", { unique: 3, confidence: 0.5, qualityScore: 50 }),
+      diagnostic("turno", "category", { unique: 2, confidence: 0.5, qualityScore: 50 }),
+      diagnostic("linha_producao", "category", { unique: 3, confidence: 0.99, qualityScore: 99 }),
+    ]);
+    const plan = generateAutoDashboardPlan({
+      columns: rankedColumns,
+      rows: rankedRows,
+      diagnostics: rankedDiagnostics,
+    });
+    const barGroupKeys = plan.recommendations
+      .filter((item) => item.widgetType === "bar")
+      .map((item) => item.groupKey);
+    expect(barGroupKeys).toContain("linha_producao");
+    expect(barGroupKeys).not.toContain("turno");
+  });
+
   it.each(["Localidade", "Endereço", "Território"])(
     'reconhece "%s" como dimensão geográfica e recomenda mapa em vez de barras',
     (geoLabel) => {

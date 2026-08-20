@@ -237,7 +237,15 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   const byRole = (role: DashboardColumnRole) =>
     classifications.filter((item) => item.role === role);
   const metrics = byRole("metric");
-  const dimensions = byRole("dimension");
+  // As dimensões entram nos gráficos automáticos (barra/ranking/pizza) na
+  // ordem de melhor confiança/qualidade primeiro, não na ordem em que a
+  // coluna aparece na planilha — com muitas dimensões candidatas, só as
+  // primeiras (`dimensions.slice(0, 2)`, mais abaixo) viram widget; sem
+  // essa ordenação, uma coluna de ótima qualidade em 3º lugar nunca
+  // aparecia, enquanto duas colunas ruins mas bem no início sempre
+  // ganhavam. Sort é estável, então colunas com confiança igual mantêm a
+  // ordem original da planilha entre si.
+  const dimensions = [...byRole("dimension")].sort((a, b) => b.confidence - a.confidence);
   const temporal = byRole("temporal-dimension");
   const identifiers = byRole("identifier");
   const recommendations: DashboardRecommendation[] = [];
