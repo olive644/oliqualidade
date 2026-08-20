@@ -160,6 +160,45 @@ describe("sheetToRows", () => {
     expect(warning).toContain("cabeçalho hierárquico");
   });
 
+  it("combina cabeçalho misto (colunas simples + um grupo mesclado com sub-cabeçalho) com dado de verdade abaixo", () => {
+    // Reproduz um cronograma de calibração real: 3 colunas simples
+    // (Equipamento, Código, Marca) ao lado de um grupo "Calibração 2023"
+    // mesclado cobrindo 6 colunas, cuja segunda linha subdivide o grupo em
+    // 3 pares de meses mesclados (Jan, Mar, Mai). Antes da correção, a
+    // trava contra confundir a primeira linha de dado com cabeçalho
+    // (pensada pra planilhas com só colunas simples) via nesse padrão
+    // misto "muitos rótulos simples + 1 grupo" um sinal de "próxima linha é
+    // dado" — perdendo Jan/Mar/Mai e deixando as 6 colunas do grupo com o
+    // mesmo nome genérico "Calibração 2023" (distinguíveis só por um
+    // sufixo numérico sem sentido).
+    const ws = sheet([
+      ["Equipamento", "Código", "Marca", "Calibração 2023", null, null, null, null, null],
+      [null, null, null, "Jan", null, "Mar", null, "Mai", null],
+      ["Altímetro", "QAS-001", "Mitutoyo", "OK", null, "OK", null, null, null],
+      ["Balança", "QAS-002", "OHAUS", null, null, "OK", null, "OK", null],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 3 }, e: { r: 0, c: 8 } },
+      { s: { r: 1, c: 3 }, e: { r: 1, c: 4 } },
+      { s: { r: 1, c: 5 }, e: { r: 1, c: 6 } },
+      { s: { r: 1, c: 7 }, e: { r: 1, c: 8 } },
+    ];
+
+    const { rows } = sheetToRows(ws);
+
+    const headers = Object.keys(rows[0] ?? {});
+    expect(headers).toContain("Equipamento");
+    expect(headers).toContain("Código");
+    expect(headers).toContain("Marca");
+    expect(headers).toContain("Calibração 2023 — Jan");
+    expect(headers).toContain("Calibração 2023 — Mar");
+    expect(headers).toContain("Calibração 2023 — Mai");
+    expect(headers.filter((h) => h === "Calibração 2023")).toHaveLength(0);
+    expect(rows[0]?.["Equipamento"]).toBe("Altímetro");
+    expect(rows[0]?.["Calibração 2023 — Jan"]).toBe("OK");
+    expect(rows).toHaveLength(2);
+  });
+
   it("reconhece o título mesclado como banner mesmo quando o gerador repete o texto em toda célula da mesclagem", () => {
     // Excel de verdade só grava o valor na célula de origem da mesclagem;
     // alguns geradores de OOXML fora do Excel (scripts próprios) escrevem o
