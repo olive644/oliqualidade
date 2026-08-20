@@ -488,6 +488,7 @@ export function WidgetCard({
         widget={w}
         data={data}
         columns={columns}
+        sourceCellFills={sourceCellFills}
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}

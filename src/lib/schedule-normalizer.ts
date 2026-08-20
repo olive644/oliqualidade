@@ -25,6 +25,10 @@ export type ScheduleCriterion = {
 
 export type ScheduleEvaluation = "within" | "outside" | "not-evaluable";
 export type ScheduleCellState = "empty" | "planned" | "done" | "warning" | "failed" | "neutral";
+export type ScheduleFillMeaning = {
+  state: Extract<ScheduleCellState, "planned" | "done" | "warning" | "failed">;
+  label: "Programado" | "Realizado" | "Reprogramado" | "Não realizado";
+};
 
 export type ScheduleMetrics = {
   cells: number;
@@ -41,6 +45,44 @@ export type ScheduleMetrics = {
 
 const PERIOD =
   /^(?:(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:[cç]o)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)[-/ ]?\d{2,4}|\d{1,2}[-/]\d{2,4}|\d{4})$/i;
+
+/**
+ * Interpreta a legenda visual usada por cronogramas que marcam o período só
+ * pela cor da célula: azul = programado, verde = realizado, amarelo/laranja =
+ * reprogramado e vermelho = não realizado. A classificação por matiz aceita
+ * os tons e clareamentos comuns do Excel sem depender de quatro RGBs exatos;
+ * cinza, branco, preto, roxo e cores quase neutras ficam deliberadamente de
+ * fora para não transformar formatação decorativa em dado.
+ */
+export function scheduleFillMeaning(color: string): ScheduleFillMeaning | null {
+  const raw = color.trim().replace(/^#/, "");
+  const expanded = raw.length === 3 ? [...raw].map((part) => `${part}${part}`).join("") : raw;
+  const rgbHex = expanded.length === 8 ? expanded.slice(2) : expanded;
+  if (!/^[0-9a-f]{6}$/i.test(rgbHex)) return null;
+
+  const red = Number.parseInt(rgbHex.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(rgbHex.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(rgbHex.slice(4, 6), 16) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const chroma = max - min;
+  const lightness = (max + min) / 2;
+  const saturation = chroma === 0 ? 0 : chroma / (1 - Math.abs(2 * lightness - 1));
+  if (chroma < 0.08 || saturation < 0.18 || lightness < 0.06 || lightness > 0.97)
+    return null;
+
+  let hue = 0;
+  if (max === red) hue = 60 * (((green - blue) / chroma) % 6);
+  else if (max === green) hue = 60 * ((blue - red) / chroma + 2);
+  else hue = 60 * ((red - green) / chroma + 4);
+  if (hue < 0) hue += 360;
+
+  if (hue < 18 || hue >= 345) return { state: "failed", label: "Não realizado" };
+  if (hue < 70) return { state: "warning", label: "Reprogramado" };
+  if (hue < 170) return { state: "done", label: "Realizado" };
+  if (hue < 260) return { state: "planned", label: "Programado" };
+  return null;
+}
 
 /** Converte números de planilhas brasileiras sem confundir 0,46 com 46. */
 export function parseScheduleNumber(value: Value | undefined): number | null {
@@ -192,9 +234,17 @@ export function scheduleCellState(
   // O conteúdo da célula é a fonte de verdade. O status geral da linha é
   // apenas fallback: "Planejado" não pode esconder uma medição já preenchida
   // nem transformar um valor fora do limite em uma marcação planejada.
-  if (/\b(?:nc|n[aã]o conforme|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(text))
+  if (
+    /\b(?:nc|n[aã]o conforme|n[aã]o realizad[oa]|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(
+      text,
+    )
+  )
     return "failed";
-  if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(text))
+  if (
+    /\b(?:reprogramad[oa]|pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(
+      text,
+    )
+  )
     return "warning";
   if (
     /\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(text) ||
@@ -218,9 +268,17 @@ export function scheduleCellState(
     return "planned";
 
   const status = String(rowStatus ?? "").trim();
-  if (/\b(?:nc|n[aã]o conforme|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(status))
+  if (
+    /\b(?:nc|n[aã]o conforme|n[aã]o realizad[oa]|reprovad[oa]|atrasad[oa]|cancelad[oa]|falha)\b/i.test(
+      status,
+    )
+  )
     return "failed";
-  if (/\b(?:pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(status))
+  if (
+    /\b(?:reprogramad[oa]|pendente|aten[cç][aã]o|em andamento|parcial|aguardando)\b/i.test(
+      status,
+    )
+  )
     return "warning";
   if (/\b(?:executad[oa]|conclu[ií]d[oa]|realizad[oa]|aprovad[oa]|conforme|ok)\b/i.test(status))
     return "done";
