@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseScheduleCriterion,
+  scheduleFillMeaning,
   scheduleCellState,
   summarizeScheduleRows,
 } from "@/lib/schedule-normalizer";
@@ -16,6 +17,41 @@ const column = (key: string, kind: Column["kind"] = "text"): Column => ({
 });
 
 describe("métricas de cronograma", () => {
+  it("interpreta as quatro cores de situação usadas em cronogramas do Excel", () => {
+    expect(scheduleFillMeaning("#5B9BD5")).toEqual({ state: "planned", label: "Programado" });
+    expect(scheduleFillMeaning("#70AD47")).toEqual({ state: "done", label: "Realizado" });
+    expect(scheduleFillMeaning("#FFD966")).toEqual({ state: "warning", label: "Reprogramado" });
+    expect(scheduleFillMeaning("#C00000")).toEqual({ state: "failed", label: "Não realizado" });
+    expect(scheduleFillMeaning("#FFFFFF")).toBeNull();
+    expect(scheduleFillMeaning("#808080")).toBeNull();
+  });
+
+  it("contabiliza os rótulos derivados das cores nas métricas", () => {
+    const rows: Row[] = [
+      {
+        item: "Balança",
+        jan: "Programado",
+        fev: "Realizado",
+        mar: "Reprogramado",
+        abr: "Não realizado",
+      },
+    ];
+    const metrics = summarizeScheduleRows(
+      rows,
+      [column("item"), column("jan"), column("fev"), column("mar"), column("abr")],
+      ["jan", "fev", "mar", "abr"],
+    );
+    expect(metrics).toMatchObject({
+      planned: 1,
+      results: 3,
+      within: 1,
+      attention: 1,
+      outside: 1,
+      empty: 0,
+      coverage: 100,
+    });
+  });
+
   it("separa códigos planejados de resultados executados", () => {
     const rows: Row[] = [
       { item: "Poço", status: "Planejado", jan: "T", fev: "M", observacao: null },
