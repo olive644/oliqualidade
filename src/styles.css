@@ -4772,12 +4772,6 @@
     height: calc(100dvh - 148px);
   }
 }
-@media (hover: none) {
-  .oli-chat-invite {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
 .oli-mascot-group[data-open] .oli-chat-invite {
   opacity: 0;
   transform: translateY(9px) scale(0.88);
@@ -5336,10 +5330,22 @@ body {
     scroll-padding-top: 12px;
   }
 
+  /* Grade de 2 colunas em vez de 1: widgets compactos (métrica, pizza,
+   * radar...) cabem lado a lado; widgets grandes (barra, tabela, área...)
+   * continuam ocupando a linha inteira — só reduz um pouco, sem espremer
+   * gráfico nenhum. */
+  .oliam-widget-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .oliam-dashboard-content .oliam-widget {
     min-width: 0;
-    grid-column: 1 / -1 !important;
+    grid-column: span 2 / span 2;
     border-radius: 22px;
+  }
+
+  .oliam-dashboard-content .oliam-widget[class~="lg:col-span-1"] {
+    grid-column: span 1 / span 1;
   }
 
   .oliam-dashboard-content .oliam-widget h2 {
@@ -5518,10 +5524,11 @@ body {
 
   .oli-chat-panel {
     width: calc(
-      100vw - var(--oli-safe-left) - var(--oli-safe-right) - 16px
+      100vw - var(--oli-safe-left) - var(--oli-safe-right) - 24px
     );
+    max-width: 380px;
     height: min(
-      680px,
+      600px,
       calc(100dvh - var(--oli-safe-top) - var(--oli-safe-bottom) - 112px)
     );
     min-height: min(380px, calc(100dvh - 132px));
@@ -5554,8 +5561,9 @@ body {
   }
 
   .oli-chat-panel {
-    height: calc(
-      100dvh - var(--oli-safe-top) - var(--oli-safe-bottom) - 104px
+    height: min(
+      600px,
+      calc(100dvh - var(--oli-safe-top) - var(--oli-safe-bottom) - 140px)
     );
   }
 }
