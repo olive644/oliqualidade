@@ -1465,6 +1465,7 @@ function Dashboard(p: {
     pie: nums.length > 0 && groupableCols.length > 0,
     line: nums.length > 0 && !!dateCol,
     area: nums.length > 0 && groupableCols.length > 0,
+    "area-card": nums.length > 0 && groupableCols.length > 0,
     ranking: nums.length > 0 && groupableCols.length > 0,
     radar: nums.length > 0 && groupableCols.length > 0,
     rating: nums.length > 0,
