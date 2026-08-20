@@ -125,6 +125,20 @@ describe("classifyDashboardColumn", () => {
     );
     expect(result.role).toBe("metric");
   });
+
+  it.each(["revenue", "amount", "sales", "cost", "profit"])(
+    'reconhece "%s" como medida empresarial em inglês, igual ao já feito em português',
+    (name) => {
+      // METRIC_NAME só tinha termos em português, diferente de
+      // TEMPORAL_NAME/GEO_NAME/IDENTIFIER_NAME, que já eram bilíngues. Uma
+      // coluna numérica chamada "revenue"/"amount" não ganhava o bônus de
+      // confiança nem o motivo "medida empresarial", mesmo tendo o mesmo
+      // papel de uma coluna "receita"/"valor".
+      const result = classifyDashboardColumn(column(name, "number"), diagnostic(name, "number"));
+      expect(result.role).toBe("metric");
+      expect(result.reasons).toContain("O nome da coluna indica uma medida empresarial.");
+    },
+  );
 });
 
 describe("generateAutoDashboardPlan", () => {
