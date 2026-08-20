@@ -36,7 +36,7 @@ export function Home(p: {
     0,
   );
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
+    <div className="oliam-home-shell flex min-h-screen flex-col bg-canvas">
       <header className="oliam-topbar sticky top-0 z-20">
         <div className="flex items-center gap-3">
           <Mark />
@@ -59,7 +59,7 @@ export function Home(p: {
           }}
           aria-hidden="true"
         />
-        <div className="mx-auto w-full max-w-6xl px-6 pb-14 pt-12">
+        <div className="oliam-home-main mx-auto w-full max-w-6xl px-6 pb-14 pt-12">
           <div className="mb-9 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide text-primary shadow-sm">
@@ -149,7 +149,7 @@ export function Home(p: {
                       )}
                     </span>
                   </button>
-                  <div className="absolute right-2 top-3.5 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <div className="oliam-home-card-actions absolute right-2 top-3.5 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                     <Button
                       variant="ghost"
                       size="icon"
