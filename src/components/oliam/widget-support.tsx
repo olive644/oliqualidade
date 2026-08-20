@@ -66,6 +66,20 @@ import {
 } from "@/lib/data-pipeline";
 import type { SpreadsheetException } from "@/lib/spreadsheet-intelligence";
 
+/**
+ * Em toque (sem hover confiável), tocar direto numa fatia/barra pra filtrar
+ * é fácil demais de disparar sem querer — o usuário só queria olhar o
+ * valor. Usado pra trocar, só em dispositivos de toque, o clique-filtra-na-
+ * hora (preservado no desktop) por clique-inspeciona-primeiro, com um
+ * botão explícito "Filtrar por X" no painel de detalhe que já existe.
+ * Calculado por chamada (não é estado reativo): a única coisa que importa é
+ * o tipo de ponteiro no momento do clique, igual ao padrão já usado em
+ * `closeSidebarOnMobile` (dashboard-nav-sidebar.tsx).
+ */
+export function isCoarsePointer(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+}
+
 export function FieldDropSlot({
   accepts,
   onDropColumn,

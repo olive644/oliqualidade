@@ -5349,6 +5349,28 @@ body {
     white-space: nowrap;
   }
 
+  /* Barra de configuração do widget (coluna, calculadora, agrupamento...):
+   * cada campo "Coluna [rótulo] [select]" ocupa a largura toda e empilha,
+   * em vez de espremer o <select> nativo (que não encolhe pelo conteúdo)
+   * ao lado dos outros campos e do botão da calculadora até cortar texto. */
+  .oliam-widget-config-bar {
+    align-items: stretch;
+  }
+
+  .oliam-widget-config-bar > div {
+    width: 100%;
+  }
+
+  .oliam-widget-config-bar label {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .oliam-widget-config-bar .oliam-select {
+    min-width: 0;
+    max-width: 65%;
+  }
+
   .oliam-sheet-tabs {
     gap: 6px;
     padding:
@@ -5422,6 +5444,33 @@ body {
   .oliam-home-main h1 {
     font-size: clamp(1.9rem, 9vw, 2.5rem);
     line-height: 1.03;
+  }
+
+  /* Lista de painéis: em vez de empilhar um card embaixo do outro (rolagem
+   * vertical longa antes mesmo de ver o conteúdo do painel), vira um
+   * carrossel horizontal com "snap" — arrasta pro lado e escolhe. */
+  .oliam-dashboard-grid {
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 4px;
+    padding-bottom: 4px;
+    margin-inline: -4px;
+    padding-inline: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .oliam-dashboard-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .oliam-dashboard-card {
+    flex: 0 0 82vw;
+    max-width: 360px;
+    scroll-snap-align: center;
   }
 
   .oliam-home-card-actions {

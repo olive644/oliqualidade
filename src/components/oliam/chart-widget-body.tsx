@@ -59,6 +59,7 @@ import {
   compactAxisValue,
   FieldDropSlot,
   FilterChip,
+  isCoarsePointer,
   PieLegend,
   SeriesComparisonPanel,
   TrendSummaryPanel,
@@ -241,7 +242,7 @@ export function ChartWidgetBody({
     >
       <WidgetHead title={title} icon={icon} {...dragProps} />
       <div
-        className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
         data-export-controls
       >
         <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
@@ -426,7 +427,18 @@ export function ChartWidgetBody({
                         // confiar no payload, é o mesmo padrão já usado com
                         // sucesso no <Pie> (onClick={(_, index) => ...}).
                         const entry = barSeries[i];
-                        if (entry) handleGroupClick(groupCol.key, entry.name);
+                        if (!entry) return;
+                        if (isCoarsePointer()) {
+                          // Em toque, sem hover confiável, o primeiro toque
+                          // só seleciona (mesmo estado que o mouse usa no
+                          // hover) pra mostrar o painel de detalhe com o
+                          // botão "Filtrar por esta categoria" — filtrar
+                          // direto no toque fica fácil demais de disparar
+                          // sem querer. Desktop preservado sem mudança.
+                          setActiveBarIndex(i);
+                          return;
+                        }
+                        handleGroupClick(groupCol.key, entry.name);
                       }}
                       onMouseEnter={(_, i) => setActiveBarIndex(i)}
                       onMouseLeave={() => setActiveBarIndex(null)}
@@ -613,10 +625,14 @@ export function ChartWidgetBody({
                       // hora, sem precisar de um botão extra. "Outros" é um
                       // agrupador sintético (não existe como valor real na
                       // planilha), então só seleciona para exibir a
-                      // comparação, sem tentar filtrar por ele.
+                      // comparação, sem tentar filtrar por ele. Em toque
+                      // (sem hover confiável), o toque só seleciona — o
+                      // filtro só acontece pelo botão "Filtrar por esta
+                      // fatia" no painel de detalhe, pra não disparar um
+                      // filtro sem querer. Desktop preservado sem mudança.
                       setSelectedPieIndex(index);
                       const entry = pieSeries[index];
-                      if (entry && entry.name !== "Outros") {
+                      if (entry && entry.name !== "Outros" && !isCoarsePointer()) {
                         handleGroupClick(groupCol.key, entry.name);
                       }
                     }}
@@ -708,7 +724,7 @@ export function ChartWidgetBody({
               onSelectIndex={(i) => {
                 setSelectedPieIndex(i);
                 const entry = pieSeries[i];
-                if (entry && entry.name !== "Outros") {
+                if (entry && entry.name !== "Outros" && !isCoarsePointer()) {
                   handleGroupClick(groupCol.key, entry.name);
                 }
               }}

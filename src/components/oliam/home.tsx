@@ -97,11 +97,11 @@ export function Home(p: {
               <span className="text-sm text-muted-foreground">Envie uma planilha para começar</span>
             </button>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="oliam-dashboard-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {sorted.map((d, i) => (
                 <article
                   key={d.id}
-                  className="oliam-widget group relative bg-card"
+                  className="oliam-widget oliam-dashboard-card group relative bg-card"
                   style={{ animationDelay: `${i * 30}ms` }}
                 >
                   <span
