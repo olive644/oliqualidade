@@ -64,7 +64,7 @@ export function BookmarkPanel({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-7 shrink-0"
+                  className="size-7 shrink-0 pointer-coarse:size-11"
                   aria-label={`Excluir marcador ${b.name}`}
                   onClick={() => onRemove(b.id)}
                 >
