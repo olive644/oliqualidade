@@ -204,6 +204,15 @@ function formatTemporalCell(d: Date, cell?: XLSX.CellObject): string {
   const hasTime = /h|s|am\/pm|a\/p|\[(?:h+|m+|s+)\]/i.test(numberFormat);
   const hasYear = /y/i.test(numberFormat);
   const hasMonth = /m/i.test(numberFormat);
+  // Mês por nome (`mmm`/`mmmm`, ex. "mmm-yy") é o sinal deliberado de que a
+  // célula representa um PERÍODO (cabeçalho de cronograma), não um dia —
+  // caso em que vale colapsar a granularidade (ver abaixo). Mês numérico
+  // (`mm`, ex. "mm/yy") é só um formato de data compacto, comum em
+  // planilhas brasileiras, e não implica que o dia seja irrelevante: uma
+  // coluna de "DATA" por linha formatada como "mm/yy" pode ter um dia real
+  // e diferente por linha (ex.: FRS-QA-BR-413) que colapsar destruiria,
+  // fazendo linhas com datas distintas parecerem idênticas.
+  const hasNamedMonth = /m{3,}/i.test(numberFormat);
   const hasDay = /d/i.test(numberFormat);
 
   // Para hora e duração, a representação pronta do SheetJS é mais fiel ao
@@ -216,7 +225,7 @@ function formatTemporalCell(d: Date, cell?: XLSX.CellObject): string {
   // Cabeçalhos de cronograma como `mmm-yy` representam um PERÍODO, não um
   // dia. Transformá-los em dd/mm/aaaa inventava o dia 31 e ainda deslocava
   // o mês pelo fuso horário. Mantemos a granularidade declarada no formato.
-  if (hasYear && hasMonth && !hasDay && !hasTime) {
+  if (hasYear && hasNamedMonth && !hasDay && !hasTime) {
     const monthNames = [
       "jan",
       "fev",
@@ -231,10 +240,7 @@ function formatTemporalCell(d: Date, cell?: XLSX.CellObject): string {
       "nov",
       "dez",
     ];
-    const month = /m{3,}/i.test(numberFormat)
-      ? monthNames[parts.month - 1]
-      : String(parts.month).padStart(2, "0");
-    return `${month}/${parts.year}`;
+    return `${monthNames[parts.month - 1]}/${parts.year}`;
   }
   if (hasYear && !hasMonth && !hasDay && !hasTime) return String(parts.year);
 
@@ -567,7 +573,18 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
       0,
     );
     const dataEvidence = Math.min(0.25, numericBelow / Math.max(1, width * 3));
-    const score = fillRatio(row) + dataEvidence;
+    // Uma linha de dado costuma vencer no preenchimento a linha de cabeçalho
+    // logo acima quando esta deixou alguma coluna sem rótulo. Datas soltas no
+    // meio de rótulos textuais são o sinal que separa as duas: um cabeçalho
+    // com colunas de período é feito de datas (a maioria das células), mas
+    // uma linha de registro só tem uma ou duas ("DATA DA CALIBRAÇÃO") entre
+    // vários campos de texto. Penalizar apenas esse caso minoritário mantém
+    // cabeçalhos de cronograma por data intactos e evita que o primeiro
+    // registro seja promovido a cabeçalho (achado real no FRS-QA-BR-413).
+    const filledCells = row.filter((c) => c !== null && c !== "");
+    const dateCells = filledCells.filter(cellLooksDate).length;
+    const dateNoise = dateCells > 0 && dateCells * 2 < filledCells.length ? 0.5 : 0;
+    const score = fillRatio(row) + dataEvidence - dateNoise;
     if (score > bestScore) {
       bestScore = score;
       bestIndex = i;
