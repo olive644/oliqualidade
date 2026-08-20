@@ -118,7 +118,7 @@ export function MetricWidgetBody({
         {...dragProps}
       />
       <div
-        className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
         data-export-controls
       >
         <FieldDropSlot

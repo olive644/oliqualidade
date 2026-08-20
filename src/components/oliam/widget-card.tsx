@@ -276,7 +276,7 @@ export function WidgetCard({
   };
   const sizeControls = (
     <div
-      className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+      className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
       data-export-controls
     >
       <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -618,7 +618,7 @@ export function WidgetCard({
           {...dragProps}
         />
         <div
-          className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+          className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
           data-export-controls
         >
           <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
