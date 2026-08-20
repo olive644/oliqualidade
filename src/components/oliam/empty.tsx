@@ -72,14 +72,6 @@ export function Empty(p: {
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-canvas">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[28rem] opacity-70"
-        style={{
-          background:
-            "radial-gradient(50% 90% at 20% 0%, color-mix(in oklab, var(--primary) 16%, transparent), transparent), radial-gradient(40% 70% at 90% 15%, color-mix(in oklab, var(--secondary-accent) 14%, transparent), transparent)",
-        }}
-        aria-hidden="true"
-      />
       <header className="oliam-topbar">
         <div className="flex items-center gap-3">
           {p.showBack && (
@@ -93,20 +85,22 @@ export function Empty(p: {
               <ChevronLeft />
             </Button>
           )}
-          <Mark />
-          <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
+          <button
+            type="button"
+            className="group flex items-center gap-3 rounded-lg px-1 py-1 text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-default disabled:opacity-60"
+            aria-label="Ir para o início"
+            onClick={p.backHome}
+            disabled={!p.hydrated}
+          >
+            <Mark />
+            <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
+          </button>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="hidden text-xs text-muted-foreground sm:inline">
-            BI para dados que precisam fechar
-          </span>
-          <ThemeToggle theme={p.theme} toggle={p.toggleTheme} disabled={!p.hydrated} />
-        </div>
+        <ThemeToggle theme={p.theme} toggle={p.toggleTheme} disabled={!p.hydrated} />
       </header>
       <main className="oli-welcome">
         <section className="oli-welcome-hero">
           <div className="oli-welcome-copy">
-            <p className="oli-welcome-badge">Novo painel</p>
             <h1 className="sr-only">Oli.Qualidade</h1>
             <OliWelcomeScene busy={p.loading} />
             <p className="oli-welcome-lead">
@@ -118,7 +112,6 @@ export function Empty(p: {
         <section className="oli-import-shell">
           <div className="oli-import-heading">
             <div>
-              <span className="oli-import-kicker">Importar dados</span>
               <h2>Escolha uma planilha</h2>
             </div>
             <div className="oli-file-types" aria-label="Formatos aceitos">
@@ -150,9 +143,8 @@ export function Empty(p: {
               </>
             ) : (
               <>
-                <span className="oli-upload-orbit">
+                <span className="oli-upload-icon">
                   <Upload />
-                  <i />
                 </span>
                 <span className="oli-dropzone-copy">
                   <strong>{dragging ? "Solte o arquivo aqui" : "Arraste sua planilha aqui"}</strong>
