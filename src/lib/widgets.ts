@@ -431,6 +431,7 @@ export function buildDefaultWidgets(
   columns: Column[],
   chartConfig?: ChartConfig,
   rows: Row[] = [],
+  semanticProfiles: ColumnSemanticProfile[] = [],
 ): Widget[] {
   const allNums = columns.filter((c) => numericKinds.includes(c.kind));
   // Mesmo cuidado de createWidget: nunca usar uma coluna 100% vazia como
@@ -443,7 +444,22 @@ export function buildDefaultWidgets(
   const dateColFilled = dateCol && fillRatio(dateCol, rows) >= MIN_FILL_RATIO ? dateCol : undefined;
   const groupable = columns.filter((c) => groupableKinds.includes(c.kind));
   const groupableBest = pickBestGroupColumn(groupable, rows);
-  const primary = nums[0];
+  // Mesmo cuidado de createWidget (ver comentário lá): prefere a primeira
+  // coluna numérica que sobrevive como soma/média sob o agrupamento que os
+  // widgets de barra/pizza/área abaixo realmente usam, em vez de sempre
+  // nums[0] — uma coluna não-agregável (ex.: um score/taxa) virava métrica
+  // padrão "quebrada" nos 3 widgets automáticos de uma vez.
+  const primaryGroupKey = chartConfig?.groupKey ?? cat?.key ?? groupableBest?.key;
+  const primary =
+    (primaryGroupKey
+      ? nums.find((c) =>
+          semanticAggregationOps(
+            relevantAggregationOps(rows, primaryGroupKey, c.key),
+            c,
+            semanticProfiles.find((profile) => profile.key === c.key),
+          ).some((op) => op === "sum" || op === "avg"),
+        )
+      : undefined) ?? nums[0];
   const widgets: Widget[] = [];
 
   for (const c of nums.slice(0, 3)) {

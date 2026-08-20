@@ -52,7 +52,14 @@ export function useUndoRedoHistory(
     rows: sheet.rows,
     filters: sheet.filters,
     columns: sheet.columns,
-    widgets: sheet.widgets ?? buildDefaultWidgets(sheet.columns, sheet.chartConfig, sheet.rows),
+    widgets:
+      sheet.widgets ??
+      buildDefaultWidgets(
+        sheet.columns,
+        sheet.chartConfig,
+        sheet.rows,
+        sheet.intelligence?.columns,
+      ),
     ...(sheet.intelligence ? { intelligence: sheet.intelligence } : {}),
     semanticOverrides: sheet.semanticOverrides ?? {},
     exceptionDecisions: sheet.exceptionDecisions ?? {},

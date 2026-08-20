@@ -105,6 +105,46 @@ describe("buildDefaultWidgets", () => {
     expect(types).not.toContain("bar");
     expect(types).toContain("table");
   });
+
+  it("evita coluna não agregável como métrica padrão da barra/pizza/área quando existe outra numérica somável", () => {
+    // Mesmo bug corrigido em createWidget (radar, PR #178, depois
+    // generalizado pros demais tipos): esta é a outra função que monta
+    // widgets padrão — usada só na migração de painéis criados antes do
+    // modelo configurável existir —, que tinha o mesmo problema sem ter
+    // sido corrigida junto. "Conformidade" é numérica, mas marcada
+    // `aggregable: false` pelo perfil semântico (um score/taxa); "Amostras"
+    // é a métrica somável de verdade que deveria ser escolhida.
+    const nonAggColumns: Column[] = [
+      col("Turno", "category"),
+      col("Setor", "category"),
+      col("Conformidade", "number"),
+      col("Amostras", "number"),
+    ];
+    const nonAggRows: Row[] = [
+      { Turno: "Manha", Setor: "A", Conformidade: 95, Amostras: 10 },
+      { Turno: "Manha", Setor: "B", Conformidade: 80, Amostras: 12 },
+      { Turno: "Tarde", Setor: "A", Conformidade: 60, Amostras: 20 },
+      { Turno: "Tarde", Setor: "B", Conformidade: 85, Amostras: 18 },
+    ];
+    const nonAggProfiles: ColumnSemanticProfile[] = [
+      {
+        key: "Conformidade",
+        label: "Conformidade",
+        role: "result",
+        unit: null,
+        unitFamily: "dimensionless",
+        aggregable: false,
+        confidence: 0.8,
+        reasons: [],
+        warnings: [],
+      },
+    ];
+    const widgets = buildDefaultWidgets(nonAggColumns, undefined, nonAggRows, nonAggProfiles);
+    const bar = widgets.find((w) => w.type === "bar");
+    const pie = widgets.find((w) => w.type === "pie");
+    expect(bar?.valueKey).toBe("Amostras");
+    expect(pie?.valueKey).toBe("Amostras");
+  });
 });
 
 describe("pickBestGroupColumn", () => {
