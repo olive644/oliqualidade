@@ -74,7 +74,11 @@ import {
   groupAndAggregate,
   matchesRange,
 } from "@/lib/data-pipeline";
-import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
+import {
+  resolveColorGroupLabels,
+  resolveScheduleFillStates,
+  resolveSourceCellFills,
+} from "@/lib/cell-fill-provenance";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type {
   WorkbookChartDiagnostic,
@@ -221,6 +225,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       diagnostics?: ImportDiagnostics;
       sourceGrid?: SourceGrid;
       audit?: ImportAudit;
+      rowOrigins?: number[];
       sourceNotes?: SourceNote[];
       sourceImages?: WorkbookImageDiagnostic[];
       sourceShapes?: WorkbookShapeDiagnostic[];
@@ -422,6 +427,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
       diagnostics?: ImportDiagnostics;
       sourceGrid?: SourceGrid;
       audit?: ImportAudit;
+      rowOrigins?: number[];
     }[],
     n: string,
   ) => {
@@ -448,6 +454,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics ? { diagnostics: s.diagnostics } : {}),
         ...(s.sourceGrid ? { sourceGrid: s.sourceGrid } : {}),
         ...(s.audit ? { audit: s.audit } : {}),
+        ...(s.rowOrigins ? { rowOrigins: s.rowOrigins } : {}),
         ...(s.diagnostics?.sourceNotes.length ? { sourceNotes: s.diagnostics.sourceNotes } : {}),
         ...(s.diagnostics?.images.length ? { sourceImages: s.diagnostics.images } : {}),
         ...(s.diagnostics?.shapes.length ? { sourceShapes: s.diagnostics.shapes } : {}),
@@ -513,8 +520,17 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.diagnostics,
         s.audit,
         s.sourceGrid,
+        s.rowOrigins,
       );
       const colorGroupLabels = resolveColorGroupLabels(s.rows, columns, sourceCellFills);
+      const scheduleFillStates = resolveScheduleFillStates(
+        s.rows,
+        columns,
+        s.diagnostics,
+        s.audit,
+        s.sourceGrid,
+        s.rowOrigins,
+      );
       return {
         name: s.name,
         rows: s.rows,
@@ -528,6 +544,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics?.charts.length ? { sourceCharts: s.diagnostics.charts } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
         ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
+        ...(scheduleFillStates.length ? { scheduleFillStates } : {}),
       };
     });
 
@@ -915,8 +932,17 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.diagnostics,
         s.audit,
         s.sourceGrid,
+        s.rowOrigins,
       );
       const colorGroupLabels = resolveColorGroupLabels(s.rows, s.columns, sourceCellFills);
+      const scheduleFillStates = resolveScheduleFillStates(
+        s.rows,
+        s.columns,
+        s.diagnostics,
+        s.audit,
+        s.sourceGrid,
+        s.rowOrigins,
+      );
       return {
         name: s.name,
         rows: s.rows,
@@ -936,6 +962,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.sourceCharts?.length ? { sourceCharts: s.sourceCharts } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
         ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
+        ...(scheduleFillStates.length ? { scheduleFillStates } : {}),
       };
     });
     if (reviewTarget === "new") {
@@ -1617,6 +1644,7 @@ function Dashboard(p: {
               sourceImages={sheet.sourceImages ?? []}
               sourceCellFills={sheet.sourceCellFills ?? []}
               colorGroupLabels={sheet.colorGroupLabels ?? []}
+              scheduleFillStates={sheet.scheduleFillStates ?? []}
               interpolated={interpolated}
               sort={sort}
               setSort={setSort}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
+import {
+  resolveColorGroupLabels,
+  resolveScheduleFillStates,
+  resolveSourceCellFills,
+} from "@/lib/cell-fill-provenance";
 import type { SourceCellFill } from "@/lib/cell-fill-provenance";
 import type { ImportAudit, SourceGrid } from "@/lib/import";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
@@ -176,5 +180,98 @@ describe("resolveColorGroupLabels", () => {
 
   it("retorna vazio sem nenhum sourceCellFills", () => {
     expect(resolveColorGroupLabels(groupRows, groupColumns, [])).toEqual([]);
+  });
+});
+
+// Estrutura do FRS-QA-BR-413 (cronograma de calibração real): cabeçalho
+// hierárquico de duas linhas, cada mês cobrindo DUAS colunas mescladas
+// (previsto | ocorrido), meses sem texto nenhum — o andamento existe só como
+// cor de célula — e linhas ocultas/em branco descartadas no meio dos dados.
+const scheduleColumns: Column[] = [
+  { key: "equipamento", label: "EQUIPAMENTO", kind: "text", visible: true, description: "" },
+  {
+    key: "jan",
+    label: "CALIBRAÇÃO 2023 — JAN",
+    kind: "text",
+    visible: true,
+    description: "",
+  },
+  {
+    key: "fev",
+    label: "CALIBRAÇÃO 2023 — FEV",
+    kind: "text",
+    visible: true,
+    description: "",
+  },
+];
+
+const scheduleRows: Row[] = [{ equipamento: "Altímetro", jan: null, fev: null }];
+
+const scheduleGrid: SourceGrid = {
+  startRow: 1,
+  startColumn: 1,
+  totalRows: 4,
+  totalColumns: 5,
+  rows: [
+    ["EQUIPAMENTO", "CALIBRAÇÃO 2023", null, null, null],
+    [null, "JAN", null, "FEV", null],
+    ["Linha oculta", null, null, null, null],
+    ["Altímetro", null, null, null, null],
+  ],
+  truncatedRows: false,
+  truncatedColumns: false,
+};
+
+const scheduleAudit: ImportAudit = { ...cleanAudit, hiddenRowsIgnored: 1 };
+
+const scheduleDiagnostics = (cellFills: ImportDiagnostics["cellFills"]) =>
+  ({ header: { row: 1, confidence: 1 }, cellFills }) as ImportDiagnostics;
+
+describe("resolveScheduleFillStates", () => {
+  it("lê o andamento que a planilha registra só como cor da célula", () => {
+    // B4/C4 = JAN (azul + verde), D4/E4 = FEV (azul + amarelo).
+    const resolved = resolveScheduleFillStates(
+      scheduleRows,
+      scheduleColumns,
+      scheduleDiagnostics([
+        { address: "B4", color: "#0000FF" },
+        { address: "C4", color: "#00B050" },
+        { address: "D4", color: "#0000FF" },
+        { address: "E4", color: "#FFFF00" },
+      ]),
+      scheduleAudit,
+      scheduleGrid,
+      [3],
+    );
+    expect(resolved).toEqual([
+      { rowIndex: 0, columnKey: "jan", state: "done" },
+      { rowIndex: 0, columnKey: "fev", state: "warning" },
+    ]);
+  });
+
+  it("ignora o zebrado cinza da tabela, que não é marcação de andamento", () => {
+    const resolved = resolveScheduleFillStates(
+      scheduleRows,
+      scheduleColumns,
+      scheduleDiagnostics([
+        { address: "B4", color: "#D9D9D9" },
+        { address: "C4", color: "#FFFFFF" },
+      ]),
+      scheduleAudit,
+      scheduleGrid,
+      [3],
+    );
+    expect(resolved).toEqual([]);
+  });
+
+  it("sem rowOrigins, não arrisca associar cor à linha errada quando houve descarte", () => {
+    const resolved = resolveScheduleFillStates(
+      scheduleRows,
+      scheduleColumns,
+      scheduleDiagnostics([{ address: "B4", color: "#00B050" }]),
+      scheduleAudit,
+      scheduleGrid,
+    );
+    expect(resolved).toEqual([]);
   });
 });

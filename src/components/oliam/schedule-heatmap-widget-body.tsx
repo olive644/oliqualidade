@@ -24,6 +24,8 @@ import {
   summarizeScheduleRows,
   type ScheduleCellState,
 } from "@/lib/schedule-normalizer";
+import type { ScheduleFillState } from "@/lib/cell-fill-provenance";
+import { sourceRowIndexOf } from "@/lib/data-review";
 import { fmt, parseNumericValue } from "@/lib/format";
 import {
   aggregate,
@@ -42,6 +44,7 @@ export function ScheduleHeatmapWidgetBody({
   widget: w,
   data,
   columns,
+  scheduleFillStates,
   filters,
   setFilters,
   onConfigure,
@@ -52,6 +55,8 @@ export function ScheduleHeatmapWidgetBody({
   widget: Widget;
   data: Row[];
   columns: Column[];
+  /** Andamento registrado só como cor na planilha original (ver `resolveScheduleFillStates`). */
+  scheduleFillStates?: ScheduleFillState[];
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
   onConfigure: (patch: Partial<Widget>) => void;
@@ -59,6 +64,30 @@ export function ScheduleHeatmapWidgetBody({
   sizeControls: React.ReactNode;
   animationDelay: number;
 }) {
+  // Andamento que só existe como cor na planilha (célula de mês sem texto
+  // nenhum, pintada de verde/azul/amarelo/vermelho). Indexado pela linha de
+  // origem, a mesma referência que a tabela usa, para sobreviver a filtros,
+  // ordenação e às cópias feitas pelas regras de dado ausente.
+  const fillStateByKey = new Map(
+    (scheduleFillStates ?? []).map((entry) => [
+      `${entry.rowIndex}:${entry.columnKey}`,
+      entry.state,
+    ]),
+  );
+  const fillStateFor = (row: Row, columnKey: string): ScheduleCellState | null => {
+    if (!fillStateByKey.size) return null;
+    const sourceRowIndex = sourceRowIndexOf(row);
+    if (sourceRowIndex === null) return null;
+    return fillStateByKey.get(`${sourceRowIndex}:${columnKey}`) ?? null;
+  };
+  const scheduleStateLabels: Record<ScheduleCellState, string> = {
+    empty: "Sem registro",
+    planned: "Programado",
+    done: "Realizado",
+    warning: "Reprogramado",
+    failed: "Não realizado",
+    neutral: "Marcado",
+  };
   const detectedPeriods = schedulePeriodColumns(columns);
   const configuredPeriods = (w.periodKeys ?? [])
     .map((key) => columns.find((column) => column.key === key))
@@ -552,9 +581,17 @@ export function ScheduleHeatmapWidgetBody({
                         })}
                         {periodCols.map((column) => {
                           const value = row[column.key];
-                          const state = scheduleCellState(value, status, criterion);
-                          const empty = isBlankScheduleValue(value);
-                          const label = empty ? "Sem registro" : String(value);
+                          const textEmpty = isBlankScheduleValue(value);
+                          // A cor só entra quando a célula não tem texto: um
+                          // valor escrito continua sendo a fonte de verdade.
+                          const colorState = textEmpty ? fillStateFor(row, column.key) : null;
+                          const state = colorState ?? scheduleCellState(value, status, criterion);
+                          const empty = textEmpty && !colorState;
+                          const label = colorState
+                            ? scheduleStateLabels[colorState]
+                            : textEmpty
+                              ? "Sem registro"
+                              : String(value);
                           const criterionLabel = criterion ? ` · Limite: ${criterion.label}` : "";
                           return (
                             <td

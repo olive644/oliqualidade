@@ -159,6 +159,8 @@ export type SheetData = {
   sourceCellFills?: import("@/lib/cell-fill-provenance").SourceCellFill[];
   /** Rótulo inferido por banda de cor de preenchimento sem mesclagem real, só para exibição — nunca escreve em `rows`. */
   colorGroupLabels?: import("@/lib/cell-fill-provenance").ColorGroupLabel[];
+  /** Andamento do cronograma que a planilha original registra só como cor de célula (ver `resolveScheduleFillStates`). */
+  scheduleFillStates?: import("@/lib/cell-fill-provenance").ScheduleFillState[];
   /** Formas nativas do Excel com texto, persistidas para exibição no painel (não só na revisão). */
   sourceShapes?: import("@/lib/workbook-metadata").WorkbookShapeDiagnostic[];
   /** Gráficos nativos do Excel, persistidos para exibição no painel (não só na revisão). */

@@ -119,7 +119,11 @@ import {
 } from "@/lib/spreadsheet-intelligence";
 import { parseEditedValue, suggestCorrection, type AuditEntry } from "@/lib/data-review";
 import type { FolderMonitorView } from "@/lib/folder-monitor";
-import type { ColorGroupLabel, SourceCellFill } from "@/lib/cell-fill-provenance";
+import type {
+  ColorGroupLabel,
+  ScheduleFillState,
+  SourceCellFill,
+} from "@/lib/cell-fill-provenance";
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { AnimatedNumber } from "./animated-number";
 import { ChartWidgetBody } from "./chart-widget-body";
@@ -179,6 +183,7 @@ export function WidgetCard({
   sourceImages,
   sourceCellFills,
   colorGroupLabels,
+  scheduleFillStates,
   interpolated,
   sort,
   setSort,
@@ -218,6 +223,7 @@ export function WidgetCard({
   sourceImages: WorkbookImageDiagnostic[];
   sourceCellFills: SourceCellFill[];
   colorGroupLabels: ColorGroupLabel[];
+  scheduleFillStates: ScheduleFillState[];
   interpolated: Set<string>;
   sort: { key: string; dir: "asc" | "desc" } | null;
   setSort: (s: { key: string; dir: "asc" | "desc" } | null) => void;
@@ -488,6 +494,7 @@ export function WidgetCard({
         widget={w}
         data={data}
         columns={columns}
+        scheduleFillStates={scheduleFillStates}
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}

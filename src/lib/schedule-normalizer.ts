@@ -26,6 +26,53 @@ export type ScheduleCriterion = {
 export type ScheduleEvaluation = "within" | "outside" | "not-evaluable";
 export type ScheduleCellState = "empty" | "planned" | "done" | "warning" | "failed" | "neutral";
 
+/**
+ * Traduz a cor de preenchimento de uma célula de cronograma no andamento que
+ * ela representa. Classifica por MATIZ, não por código hexadecimal exato:
+ * cada planilha usa um tom um pouco diferente de verde ou amarelo, e exigir
+ * o hex exato só funcionaria no arquivo em que a regra foi escrita.
+ *
+ * A convenção (verde = feito, vermelho = falhou, amarelo = atenção, azul =
+ * previsto) é a mesma que os cronogramas de calibração trazem escrita na
+ * própria legenda. Tons acinzentados, brancos ou pretos são descartados: são
+ * o zebrado/contorno da tabela, não marcação de andamento.
+ */
+export function scheduleStateFromColor(color: string): ScheduleCellState | null {
+  const hex = color.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  // Sem saturação relevante não há cor: é cinza, branco ou preto.
+  if (delta < 0.2) return null;
+  let hue: number;
+  if (max === r) hue = ((g - b) / delta) % 6;
+  else if (max === g) hue = (b - r) / delta + 2;
+  else hue = (r - g) / delta + 4;
+  hue = (hue * 60 + 360) % 360;
+  if (hue < 20 || hue >= 330) return "failed"; // vermelho: não realizado
+  if (hue < 70) return "warning"; // amarelo/laranja: reprogramado, atenção
+  if (hue < 170) return "done"; // verde: realizado
+  if (hue < 270) return "planned"; // azul/ciano: programado
+  return "warning"; // roxo/magenta: fora da convenção, mas ainda é marcação
+}
+
+const SCHEDULE_STATE_PRIORITY: ScheduleCellState[] = ["failed", "done", "warning", "planned"];
+
+/**
+ * Combina as marcações de uma mesma célula-mês quando ela cobre mais de uma
+ * coluna na planilha original (tipicamente "previsto" e "ocorrido" lado a
+ * lado). O desfecho vence a intenção: uma etapa programada E realizada é
+ * "realizada", não "programada".
+ */
+export function combineScheduleStates(states: ScheduleCellState[]): ScheduleCellState | null {
+  for (const candidate of SCHEDULE_STATE_PRIORITY) if (states.includes(candidate)) return candidate;
+  return null;
+}
+
 export type ScheduleMetrics = {
   cells: number;
   planned: number;
