@@ -181,12 +181,15 @@ const PERIOD_COLUMN_PATTERN =
 const COMPOSITE_NON_RESULT_PERIOD =
   /(?:—|-)?\s*(?:m[aá]quina|gramatura|n[°ºo]\s*de\s*amostras?|an[aá]lises?|ponto\s+de\s+amostragem)(?:_\d+)?\s*$/i;
 
+/** Testa se um rótulo de coluna representa um período (mês/ano, data) de cronograma. */
+export function isPeriodColumnLabel(label: string): boolean {
+  const trimmed = label.trim();
+  return PERIOD_COLUMN_PATTERN.test(trimmed) && !COMPOSITE_NON_RESULT_PERIOD.test(trimmed);
+}
+
 /** Colunas que representam períodos em planilhas largas de cronograma. */
 export function schedulePeriodColumns(columns: Column[]): Column[] {
-  return columns.filter((column) => {
-    const label = `${column.label}`.trim();
-    return PERIOD_COLUMN_PATTERN.test(label) && !COMPOSITE_NON_RESULT_PERIOD.test(label);
-  });
+  return columns.filter((column) => isPeriodColumnLabel(`${column.label}`));
 }
 
 export function scheduleStatusColumn(columns: Column[], periodKeys: string[]): Column | undefined {
