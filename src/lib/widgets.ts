@@ -162,8 +162,7 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "ranking" ||
     type === "map" ||
     type === "insights" ||
-    type === "image" ||
-    type === "area-card"
+    type === "image"
   )
     return 2;
   return 3; // line, area, table
@@ -172,7 +171,7 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
 export function defaultSize(type: WidgetType): WidgetSize {
   if (type === "metric" || type === "metric-trend" || type === "folder-files" || type === "rating")
     return "sm";
-  if (type === "map" || type === "image" || type === "area-card") return "lg";
+  if (type === "map" || type === "image") return "lg";
   return "md";
 }
 
@@ -367,7 +366,6 @@ export function createWidget(
     type === "pie" ||
     type === "line" ||
     type === "area" ||
-    type === "area-card" ||
     type === "ranking" ||
     type === "radar" ||
     type === "map" ||
@@ -375,7 +373,7 @@ export function createWidget(
   ) {
     const groupKey =
       seed?.groupKey ??
-      (type === "line" || type === "area" || type === "area-card"
+      (type === "line" || type === "area"
         ? (dateColFilled?.key ?? pickSequentialIndexColumn(columns, rows)?.key)
         : type === "map"
           ? pickLocationColumn(columns, rows)?.key
@@ -519,9 +517,14 @@ export function spanClass(span: WidgetSpan): string {
   return "lg:col-span-3";
 }
 
+// Altura mínima é só um piso — nunca corta conteúdo mais alto que ela, só
+// evita que widgets com pouco conteúdo (ex.: um cartão de métrica no
+// tamanho "Alto") fiquem esticados por engano. Em telas de desktop
+// (lg: 1024px+) o piso cai um pouco: menos espaço vazio desperdiçado sem
+// afetar o toque em mobile, que já usa outras regras de tamanho mínimo.
 export function sizeClass(size: WidgetSize, type: WidgetType): string {
   if (type === "table") return "";
-  if (size === "sm") return "min-h-36";
-  if (size === "md") return "min-h-80";
-  return "min-h-[28rem]";
+  if (size === "sm") return "min-h-36 lg:min-h-28";
+  if (size === "md") return "min-h-80 lg:min-h-64";
+  return "min-h-[28rem] lg:min-h-[22rem]";
 }

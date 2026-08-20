@@ -758,114 +758,128 @@ export function ChartWidgetBody({
           </p>
         </>
       ) : w.type === "area" ? (
-        <>
-          <div className="relative">
-            <div
-              ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
-              className={cn(
-                "h-56 overflow-x-auto overflow-y-hidden p-4",
-                timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
-              )}
-              onPointerDown={
-                timeSeriesPresentation.scrollable ? handleChartScrollPointerDown : undefined
-              }
-            >
-              <div
-                style={{
-                  height: "100%",
-                  width: timeSeriesPresentation.scrollable
-                    ? timeSeriesPresentation.contentWidth
-                    : "100%",
-                  minWidth: "100%",
-                }}
-              >
-                <ResponsiveContainer>
-                  <AreaChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
-                    <defs>
-                      <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
-                        <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid vertical={false} stroke="var(--border)" />
-                    <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} interval={0} />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      width={52}
-                      tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
-                    />
-                    <ChartTooltip
-                      contentStyle={{
-                        background: "var(--popover)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 12,
-                        fontSize: 12,
-                        padding: "8px 12px",
-                        boxShadow:
-                          "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
-                      }}
-                      labelStyle={{
-                        color: "var(--popover-foreground)",
-                        fontWeight: 600,
-                        marginBottom: 2,
-                      }}
-                      itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                      formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="total"
-                      stroke={seriesColor}
-                      strokeWidth={2}
-                      fill={`url(#area-${w.id})`}
-                      dot={(dotProps: ChartDotProps) => {
-                        const { key, ...rest } = dotProps as ChartDotProps & {
-                          key?: string | number;
-                        };
-                        return (
-                          <ChartDot
-                            key={key}
-                            {...rest}
-                            r={3}
-                            groupCol={groupCol}
-                            valueCol={valueCol}
-                            onSelect={handleGroupClick}
-                          />
-                        );
-                      }}
-                      activeDot={(dotProps: ChartDotProps) => {
-                        const { key, ...rest } = dotProps as ChartDotProps & {
-                          key?: string | number;
-                        };
-                        return (
-                          <ChartDot
-                            key={key}
-                            {...rest}
-                            r={5}
-                            groupCol={groupCol}
-                            valueCol={valueCol}
-                            onSelect={handleGroupClick}
-                          />
-                        );
-                      }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+        <div className="p-3">
+          <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/30">
+            <div className="flex items-center gap-2 px-4 pt-4 pb-1">
+              <span
+                className="size-3 shrink-0 rounded-sm"
+                style={{ backgroundColor: seriesColor }}
+                aria-hidden="true"
+              />
+              <span className="truncate text-xs text-muted-foreground">{valueCol.label}</span>
             </div>
-            {timeSeriesPresentation.scrollable && <ChartScrollButtons label="gráfico de área" />}
-          </div>
-          {timeSeriesPresentation.scrollable && (
-            <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-              {series.length.toLocaleString("pt-BR")} períodos · use as setas, arraste ou role para
-              os lados
+            <div className="relative">
+              <div
+                ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
+                className={cn(
+                  "h-56 overflow-x-auto overflow-y-hidden p-4",
+                  timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
+                )}
+                onPointerDown={
+                  timeSeriesPresentation.scrollable ? handleChartScrollPointerDown : undefined
+                }
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: timeSeriesPresentation.scrollable
+                      ? timeSeriesPresentation.contentWidth
+                      : "100%",
+                    minWidth: "100%",
+                  }}
+                >
+                  <ResponsiveContainer>
+                    <AreaChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
+                      <defs>
+                        <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
+                          <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} stroke="var(--border)" />
+                      <XAxis
+                        dataKey="name"
+                        tick={(props) => <AxisTick {...props} />}
+                        interval={0}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        width={52}
+                        tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
+                      />
+                      <ChartTooltip
+                        contentStyle={{
+                          background: "var(--popover)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          padding: "8px 12px",
+                          boxShadow:
+                            "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+                        }}
+                        labelStyle={{
+                          color: "var(--popover-foreground)",
+                          fontWeight: 600,
+                          marginBottom: 2,
+                        }}
+                        itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
+                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="total"
+                        stroke={seriesColor}
+                        strokeWidth={2}
+                        fill={`url(#area-${w.id})`}
+                        dot={(dotProps: ChartDotProps) => {
+                          const { key, ...rest } = dotProps as ChartDotProps & {
+                            key?: string | number;
+                          };
+                          return (
+                            <ChartDot
+                              key={key}
+                              {...rest}
+                              r={3}
+                              groupCol={groupCol}
+                              valueCol={valueCol}
+                              onSelect={handleGroupClick}
+                            />
+                          );
+                        }}
+                        activeDot={(dotProps: ChartDotProps) => {
+                          const { key, ...rest } = dotProps as ChartDotProps & {
+                            key?: string | number;
+                          };
+                          return (
+                            <ChartDot
+                              key={key}
+                              {...rest}
+                              r={5}
+                              groupCol={groupCol}
+                              valueCol={valueCol}
+                              onSelect={handleGroupClick}
+                            />
+                          );
+                        }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              {timeSeriesPresentation.scrollable && <ChartScrollButtons label="gráfico de área" />}
+            </div>
+            {timeSeriesPresentation.scrollable && (
+              <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+                {series.length.toLocaleString("pt-BR")} períodos · use as setas, arraste ou role
+                para os lados
+              </p>
+            )}
+            <p className="sr-only">
+              Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
             </p>
-          )}
-          <p className="sr-only">
-            Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
-          </p>
-          {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
-        </>
+            {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
+          </div>
+        </div>
       ) : (
         <>
           <div className="relative">
