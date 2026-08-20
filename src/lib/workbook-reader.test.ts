@@ -610,6 +610,57 @@ describe("leitor universal de planilhas", () => {
     expect(sheet?.rows[0]).not.toHaveProperty("set/2025");
   });
 
+  it("preserva o dia de uma coluna de datas exibida como mm/yy", () => {
+    // Reproduz o FRS-QA-BR-413: a coluna "DATA" tem uma data real e distinta
+    // por linha, mas o Excel a exibe compacta como "03/11". Colapsar para
+    // mês/ano (tratamento correto de `mmm-yy`, que é rótulo de período)
+    // fazia todas as linhas virarem a mesma data, escondendo a diferença.
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["EQUIPAMENTO", "DATA"],
+      ["Balança", new Date(2011, 2, 1)],
+      ["Termômetro", new Date(2011, 2, 2)],
+      ["Manômetro", new Date(2011, 2, 3)],
+    ]);
+    for (const address of ["B2", "B3", "B4"]) worksheet[address]!.z = "mm/yy";
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Plan1");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const [sheet] = readWorkbookBytes(bytes, "calibracao.xlsx");
+
+    expect(sheet?.rows.map((row) => row["DATA"])).toEqual([
+      "01/03/2011",
+      "02/03/2011",
+      "03/03/2011",
+    ]);
+    expect(Object.keys(sheet?.rows[0] ?? {})).toEqual(["EQUIPAMENTO", "DATA"]);
+  });
+
+  it("não promove o primeiro registro a cabeçalho quando ele tem mais colunas preenchidas", () => {
+    // Também do FRS-QA-BR-413: o cabeçalho real deixa a última coluna sem
+    // rótulo, então a primeira linha de dados o supera em preenchimento. As
+    // datas soltas entre campos de texto são o que revela que ela é dado.
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["EQUIPAMENTO", "MODELO", "SETOR", "CÓDIGO", "DATA", null],
+      ["Balança", "MIC-15", "Preparação", "BA01", new Date(2011, 2, 1), new Date(2011, 8, 1)],
+      ["Balança", "BP15", "Sorvete", "BA02", new Date(2011, 2, 2), new Date(2011, 8, 2)],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Plan1");
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const [sheet] = readWorkbookBytes(bytes, "cronograma-calibracao.xlsx");
+
+    expect(Object.keys(sheet?.rows[0] ?? {}).slice(0, 5)).toEqual([
+      "EQUIPAMENTO",
+      "MODELO",
+      "SETOR",
+      "CÓDIGO",
+      "DATA",
+    ]);
+    expect(sheet?.rows).toHaveLength(2);
+  });
+
   it("não converte texto em data inválida quando a célula herdou o estilo de mês/ano", () => {
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["Ponto / Item", new Date(2025, 5, 1), "Máx."],
