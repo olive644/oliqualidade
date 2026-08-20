@@ -363,6 +363,13 @@ describe("segurança do Gemini", () => {
     expect(modelRequest.input).toContain("É -40,4% na verdade");
     expect(modelRequest.input).toContain('"formattedChange":"-40,4%"');
     expect(modelRequest.system_instruction).toContain("fonte de verdade");
+    // Achado real do usuário: o chat mostrava LaTeX cru ($$\frac{...}$$) e
+    // markdown (**negrito**) sem nenhum renderizador na UI, já que
+    // `message.text` é exibido como texto puro em gemini-chat-panel.tsx.
+    // Instrui o modelo a nunca gerar essa notação, em vez de adicionar um
+    // renderizador de markdown/LaTeX (dependência nova) só pra isso.
+    expect(modelRequest.system_instruction).toContain("nunca use notação LaTeX");
+    expect(modelRequest.system_instruction).toContain("markdown");
   });
 
   it("troca um modelo antigo pelo padrão atual quando ele não existe", async () => {
