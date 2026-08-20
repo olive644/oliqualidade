@@ -5336,6 +5336,13 @@ body {
    * gráfico nenhum. */
   .oliam-widget-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Cada widget já tem borda e sombra próprias — o fundo do grid
+     * (bg-border, usado no desktop pra desenhar a linha fina entre
+     * células via gap-px) fica sem função aqui, e numa linha com um
+     * widget sozinho (contagem ímpar de compactos) vazava como uma caixa
+     * cinza preenchendo a célula vazia ao lado. Transparente deixa a cor
+     * de fundo do painel (canvas) aparecer, sem essa sobra visível. */
+    background: transparent;
   }
 
   .oliam-dashboard-content .oliam-widget {
