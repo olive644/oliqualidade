@@ -901,7 +901,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
     }
   };
 
-  const confirmReview = () => {
+  const confirmReview = (reportMode: "automatico" | "manual") => {
     const sheets = reviewSheets.map((s) => {
       const autoDashboard = generateAutoDashboardPlan({
         columns: s.columns,
@@ -923,7 +923,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         columns: s.columns,
         autoDashboard,
         intelligence,
-        widgets: buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
+        // No modo manual, o painel começa em branco (o usuário escolhe cada
+        // widget pelo botão "Widget" da barra de ferramentas) — a
+        // recomendação automática continua calculada e disponível na
+        // barra lateral de insights, só não é usada pra pré-popular o
+        // painel.
+        widgets:
+          reportMode === "manual" ? [] : buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
         ...(s.sourceNotes?.length ? { sourceNotes: s.sourceNotes } : {}),
         ...(s.sourceImages?.length ? { sourceImages: s.sourceImages } : {}),
         ...(s.sourceShapes?.length ? { sourceShapes: s.sourceShapes } : {}),

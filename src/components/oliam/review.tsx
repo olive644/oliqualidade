@@ -12,6 +12,7 @@ import {
   GripVertical,
   Image as ImageIcon,
   Info,
+  LayoutGrid,
   Link as LinkIcon,
   ListChecks,
   Palette,
@@ -65,12 +66,13 @@ export function Review(p: {
   setRows: (rows: Row[]) => void;
   name: string;
   back: () => void;
-  confirm: () => void;
+  confirm: (reportMode: "automatico" | "manual") => void;
   importWarning: string | null;
 }) {
   const [headerChecked, setHeaderChecked] = useState(false);
   const [rangeChecked, setRangeChecked] = useState(false);
   const [typesChecked, setTypesChecked] = useState(false);
+  const [reportMode, setReportMode] = useState<"automatico" | "manual">("automatico");
   useEffect(() => {
     setHeaderChecked(false);
     setRangeChecked(false);
@@ -1089,6 +1091,54 @@ export function Review(p: {
             </label>
           </div>
         </div>
+        <div className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+            <LayoutGrid className="size-4 text-primary" />
+            Como montar o relatório?
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              className={cn(
+                "flex items-start gap-3 rounded-xl border p-3 text-left text-sm transition-colors",
+                reportMode === "automatico"
+                  ? "border-primary/50 bg-primary/5"
+                  : "border-border bg-muted/25 hover:bg-muted/40",
+              )}
+              onClick={() => setReportMode("automatico")}
+              aria-pressed={reportMode === "automatico"}
+            >
+              <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+              <span>
+                <strong className="block font-medium">Automático</strong>
+                <span className="text-xs text-muted-foreground">
+                  O Oli escolhe os widgets que mais fazem sentido pros seus dados. Você continua
+                  livre pra adicionar, remover ou trocar qualquer um depois.
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "flex items-start gap-3 rounded-xl border p-3 text-left text-sm transition-colors",
+                reportMode === "manual"
+                  ? "border-primary/50 bg-primary/5"
+                  : "border-border bg-muted/25 hover:bg-muted/40",
+              )}
+              onClick={() => setReportMode("manual")}
+              aria-pressed={reportMode === "manual"}
+            >
+              <PenTool className="mt-0.5 size-4 shrink-0 text-primary" />
+              <span>
+                <strong className="block font-medium">Manual</strong>
+                <span className="text-xs text-muted-foreground">
+                  O painel começa em branco, sem nenhum widget. Você escolhe o que adicionar pelo
+                  botão "Widget" na barra de ferramentas.
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
         {active?.diagnostics?.columns.some((c) => c.sensitive) && (
           <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
@@ -1274,7 +1324,7 @@ export function Review(p: {
         <div className="mt-8 text-right">
           <Button
             className="px-6 shadow-sm"
-            onClick={p.confirm}
+            onClick={() => p.confirm(reportMode)}
             disabled={!headerChecked || !rangeChecked || !typesChecked}
           >
             Gerar relatório
