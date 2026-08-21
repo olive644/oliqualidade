@@ -1138,7 +1138,7 @@ export function Review(p: {
           {...(active?.rowOrigins ? { rowOrigins: active.rowOrigins } : {})}
           {...(active?.audit ? { audit: active.audit } : {})}
           fileName={p.name}
-          sheetName={active.name}
+          sheetName={active?.name ?? ""}
           selection={selection}
           setSelection={setSelection}
           canUndo={Boolean(undoRows)}
