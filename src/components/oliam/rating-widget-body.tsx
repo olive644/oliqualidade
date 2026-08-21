@@ -4,6 +4,7 @@ import { numericKinds, type Column, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, conditionalStyle, parseNumericValue } from "@/lib/format";
 import { EmptyWidget, FieldDropSlot, WidgetHead, type WidgetDragProps } from "./widget-support";
+import { WidgetConfigBar } from "./widget-config-context";
 
 export function RatingWidgetBody({
   widget: w,
@@ -62,10 +63,7 @@ export function RatingWidgetBody({
         icon={<Star className="size-3.5 shrink-0 text-muted-foreground" />}
         {...dragProps}
       />
-      <div
-        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-        data-export-controls
-      >
+      <WidgetConfigBar>
         <FieldDropSlot
           accepts={numericKinds}
           onDropColumn={(key) => onConfigure({ metricKey: key })}
@@ -101,7 +99,7 @@ export function RatingWidgetBody({
             ))}
           </select>
         </label>
-      </div>
+      </WidgetConfigBar>
       <div className="flex flex-col items-start gap-2 p-5">
         <p className="font-mono text-3xl" style={{ color: ratingStyle?.color }}>
           {values.length ? avg.toFixed(1) : "–"}

@@ -44,6 +44,7 @@ import {
   WidgetHead,
   type WidgetDragProps,
 } from "./widget-support";
+import { WidgetConfigBar } from "./widget-config-context";
 
 export function RadarWidgetBody({
   widget: w,
@@ -143,10 +144,7 @@ export function RadarWidgetBody({
         icon={<RadarIcon className="size-3.5 shrink-0 text-muted-foreground" />}
         {...dragProps}
       />
-      <div
-        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-        data-export-controls
-      >
+      <WidgetConfigBar>
         <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
         <FieldDropSlot
           accepts={groupableKinds}
@@ -207,7 +205,7 @@ export function RadarWidgetBody({
             ))}
           </select>
         </label>
-      </div>
+      </WidgetConfigBar>
       {sizeControls}
       {groupCol && valueCol && (
         <ChartReadingGuide

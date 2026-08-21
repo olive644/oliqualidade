@@ -22,6 +22,7 @@ import {
   PieChart as PieIcon,
   Radar as RadarIcon,
   ShieldAlert,
+  SlidersHorizontal,
   Sparkles,
   Star,
   Trash2,
@@ -29,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useWidgetConfig } from "./widget-config-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -182,6 +184,7 @@ export function WidgetHead({
   icon?: React.ReactNode;
 }) {
   const interactive = !!(onRemove || onCopy || onPaste || onMoveBack || onMoveForward);
+  const { open: configOpen, toggle: toggleConfig } = useWidgetConfig();
   return (
     <div
       className="flex h-12 flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 px-3 pointer-coarse:h-auto pointer-coarse:min-h-12 pointer-coarse:py-1.5"
@@ -207,6 +210,20 @@ export function WidgetHead({
           className="flex shrink-0 items-center gap-0.5 pointer-coarse:gap-1"
           data-export-controls
         >
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "size-7 pointer-coarse:size-12",
+              configOpen && "bg-muted text-foreground",
+            )}
+            aria-label={`${configOpen ? "Ocultar" : "Mostrar"} configuração de ${title}`}
+            aria-expanded={configOpen}
+            title={configOpen ? "Ocultar configuração" : "Configurar widget"}
+            onClick={toggleConfig}
+          >
+            <SlidersHorizontal className="size-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"

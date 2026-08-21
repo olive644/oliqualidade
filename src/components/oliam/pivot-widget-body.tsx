@@ -6,6 +6,7 @@ import { fmt } from "@/lib/format";
 import { aggregationLabels, semanticAggregationOps, type AggregationOp } from "@/lib/data-pipeline";
 import { buildPivotMatrix, type ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import { CalculationButton, EmptyWidget, WidgetHead, type WidgetDragProps } from "./widget-support";
+import { WidgetConfigBar } from "./widget-config-context";
 
 export function PivotWidgetBody({
   widget: w,
@@ -81,10 +82,7 @@ export function PivotWidgetBody({
         icon={<Columns3 className="size-3.5 text-primary" />}
         {...dragProps}
       />
-      <div
-        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-        data-export-controls
-      >
+      <WidgetConfigBar>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           Linhas
           <select
@@ -142,7 +140,7 @@ export function PivotWidgetBody({
           group={`${rowDimension.label} × ${columnDimension.label}`}
           onOperation={(operation) => onConfigure({ op: operation })}
         />
-      </div>
+      </WidgetConfigBar>
       {sizeControls}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border bg-card px-4 py-3 text-xs">
         <span>

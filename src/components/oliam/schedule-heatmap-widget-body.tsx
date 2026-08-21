@@ -41,6 +41,7 @@ import {
   WidgetHead,
   type WidgetDragProps,
 } from "./widget-support";
+import { WidgetConfigBar } from "./widget-config-context";
 
 export function ScheduleHeatmapWidgetBody({
   widget: w,
@@ -267,10 +268,7 @@ export function ScheduleHeatmapWidgetBody({
         icon={<CalendarRange className="size-3.5 shrink-0 text-muted-foreground" />}
         {...dragProps}
       />
-      <div
-        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-        data-export-controls
-      >
+      <WidgetConfigBar>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           Item
           <select
@@ -388,7 +386,7 @@ export function ScheduleHeatmapWidgetBody({
             </div>
           </div>
         )}
-      </div>
+      </WidgetConfigBar>
       {sizeControls}
       <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-4 py-1.5 text-[10px] text-muted-foreground">
         <span className="shrink-0 rounded-full bg-muted/40 px-2 py-1">

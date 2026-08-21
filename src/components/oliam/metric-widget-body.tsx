@@ -26,6 +26,7 @@ import {
   WidgetHead,
   type WidgetDragProps,
 } from "./widget-support";
+import { WidgetConfigBar } from "./widget-config-context";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
 import { AnimatedNumber } from "./animated-number";
 
@@ -117,10 +118,7 @@ export function MetricWidgetBody({
         }
         {...dragProps}
       />
-      <div
-        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-        data-export-controls
-      >
+      <WidgetConfigBar>
         <FieldDropSlot
           accepts={numericKinds}
           onDropColumn={(key) => onConfigure({ metricKey: key })}
@@ -168,7 +166,7 @@ export function MetricWidgetBody({
             </label>
           </FieldDropSlot>
         )}
-      </div>
+      </WidgetConfigBar>
       <div className="border-b border-border bg-card px-4 py-2 text-[11px] text-muted-foreground">
         <strong className="text-foreground">Cálculo atual:</strong>{" "}
         {calculationCopy[metricOp].action} para as {data.length.toLocaleString("pt-BR")} linhas

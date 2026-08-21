@@ -68,6 +68,7 @@ import {
   type ChartDotProps,
   type WidgetDragProps,
 } from "./widget-support";
+import { WidgetConfigBar } from "./widget-config-context";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
 
 export function ChartWidgetBody({
@@ -260,10 +261,7 @@ export function ChartWidgetBody({
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       <WidgetHead title={title} icon={icon} {...dragProps} />
-      <div
-        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-        data-export-controls
-      >
+      <WidgetConfigBar>
         <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
         <FieldDropSlot
           accepts={w.type === "line" ? (["date"] as Kind[]) : groupableKinds}
@@ -317,7 +315,7 @@ export function ChartWidgetBody({
           onRaw={() => onConfigure({ dataMode: "raw" })}
           onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
         />
-      </div>
+      </WidgetConfigBar>
       {sizeControls}
       {groupCol && valueCol && (
         <ChartReadingGuide
