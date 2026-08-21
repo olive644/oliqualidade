@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:fixture": "node scripts/generate-problematic-fixture.mjs",
     "test:corpus:generate": "node scripts/generate-workbook-corpus.mjs",
+    "compatibility:report": "node scripts/check-workbook-compatibility.mjs",
     "corpus:sanitize": "node scripts/sanitize-workbook-corpus.mjs",
     "corpus:derive-templates": "node scripts/derive-real-templates.mjs",
     "corpus:validate": "node scripts/validate-sanitized-workbook-corpus.mjs",

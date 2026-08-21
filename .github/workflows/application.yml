@@ -164,6 +164,37 @@ jobs:
         if: always()
         run: kill "$(cat dev-server.pid)" 2>/dev/null || true
 
+  compatibility:
+    name: Workbook compatibility matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate compatibility report
+        run: npm run compatibility:report
+
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: workbook-compatibility-report
+          path: |
+            test-results/workbook-compatibility-report.json
+            test-results/workbook-compatibility-report.md
+          retention-days: 30
+
   e2e:
     name: End-to-end (Playwright)
     runs-on: ubuntu-latest
