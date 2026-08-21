@@ -73,6 +73,21 @@ function xmlText(value: string): string {
       // leitura. Sem isso, o mesmo texto diverge entre os dois leitores só
       // por causa do fim de linha, gerando falso positivo de fidelidade.
       .replace(/\r\n?/g, "\n")
+      // Caractere de controle que o XML não aceita literalmente é gravado
+      // pelo Excel como `_xXXXX_` (ECMA-376). Aparece em arquivo real: um
+      // código de documento digitado com um caractere invisível no meio
+      // vira "FRS-SA_x0002_009" no XML. O SheetJS decodifica; sem fazer o
+      // mesmo aqui, a verificação independente acusava divergência em cada
+      // célula com esse texto — sete alarmes falsos num único arquivo, que
+      // derrubam a confiança da importação sem haver nada errado.
+      //
+      // Uma passada só, de propósito: `replace` continua a busca depois do
+      // trecho substituído, nunca dentro dele. Assim um literal "_x0002_"
+      // escrito de propósito — que o Excel grava como "_x005F_x0002_" —
+      // resolve sozinho: o primeiro trecho vira "_" e o resto ("x0002_") já
+      // não casa com o padrão, devolvendo o texto original em vez de um
+      // caractere de controle.
+      .replace(/_x([0-9a-fA-F]{4})_/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
   );
 }
 
