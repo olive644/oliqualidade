@@ -34,7 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useWidgetConfig } from "./widget-config-context";
+import { useWidgetConfig } from "./widget-config-state";
 import {
   DropdownMenu,
   DropdownMenuContent,
