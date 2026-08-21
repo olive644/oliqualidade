@@ -134,10 +134,7 @@ export function traceImportedCell(input: TraceImportedCellInput): CellProvenance
     warnings: columnDiagnostic?.warnings ?? [],
   };
 
-  const unavailable = (
-    reasons: string[],
-    sourceRow: number | null = null,
-  ): CellProvenance => ({
+  const unavailable = (reasons: string[], sourceRow: number | null = null): CellProvenance => ({
     ...base,
     status: "unavailable",
     mappingConfidence: 0,
@@ -183,9 +180,7 @@ export function traceImportedCell(input: TraceImportedCellInput): CellProvenance
   let sourceColumnIndex: number | null = null;
   let status: CellProvenanceStatus = "unavailable";
   let mappingConfidence = 0;
-  const reasons = [
-    "Linha associada pelo índice de origem preservado durante a importação.",
-  ];
+  const reasons = ["Linha associada pelo índice de origem preservado durante a importação."];
 
   if (headerCandidates.length === 1) {
     sourceColumnIndex = headerCandidates[0]!;
@@ -244,12 +239,7 @@ export function traceImportedCell(input: TraceImportedCellInput): CellProvenance
 
   return {
     ...base,
-    section: sectionLabel(
-      input.sheetName,
-      input.diagnostics,
-      origin + 1,
-      sourceColumnIndex + 1,
-    ),
+    section: sectionLabel(input.sheetName, input.diagnostics, origin + 1, sourceColumnIndex + 1),
     status,
     mappingConfidence,
     reasons,
@@ -257,8 +247,7 @@ export function traceImportedCell(input: TraceImportedCellInput): CellProvenance
     sourceRow: absoluteRow,
     sourceColumn: absoluteColumn,
     rawValue,
-    displayValue:
-      representation?.displayValue ?? String(sourceRow[sourceColumnIndex] ?? ""),
+    displayValue: representation?.displayValue ?? String(sourceRow[sourceColumnIndex] ?? ""),
     ...(representation?.numberFormat ? { numberFormat: representation.numberFormat } : {}),
     ...(representation?.formula ? { formula: representation.formula } : {}),
     normalized,

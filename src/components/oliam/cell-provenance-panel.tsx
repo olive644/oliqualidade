@@ -96,9 +96,7 @@ export function CellProvenancePanel({
         </div>
         <div className="border-t border-border py-3 sm:border-t-0 sm:pl-4">
           <dt className="text-muted-foreground">Valor importado</dt>
-          <dd className="mt-1 break-words font-medium">
-            {valueLabel(provenance.importedValue)}
-          </dd>
+          <dd className="mt-1 break-words font-medium">{valueLabel(provenance.importedValue)}</dd>
           <dd className="mt-1 text-muted-foreground">
             {provenance.normalized ? "Valor normalizado" : "Valor preservado"}
           </dd>

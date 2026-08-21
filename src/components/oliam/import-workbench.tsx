@@ -431,7 +431,9 @@ export function ImportWorkbench({
                                 <button
                                   type="button"
                                   className="block w-full truncate px-3 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
-                                  onClick={() => setSelectedCell({ rowIndex, columnKey: column.key })}
+                                  onClick={() =>
+                                    setSelectedCell({ rowIndex, columnKey: column.key })
+                                  }
                                   title={`Ver origem de ${column.label}, linha ${rowIndex + 1}: ${String(
                                     value ?? "",
                                   )}`}
