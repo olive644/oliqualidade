@@ -494,3 +494,60 @@ describe("migração de widgets incompatíveis", () => {
     );
   });
 });
+
+describe("migração de widgets salvos em linha a linha", () => {
+  const canais = ["Online", "Loja", "Parceiros"];
+  const vendas: Row[] = Array.from({ length: 60 }, (_, index) => ({
+    canal: canais[index % canais.length]!,
+    valor: 100 + index,
+  }));
+  const vendaColumns: Column[] = [
+    { key: "canal", label: "Canal", kind: "category", visible: true, description: "" },
+    { key: "valor", label: "Valor", kind: "number", visible: true, description: "" },
+  ];
+  const barWidget: Widget = {
+    id: "w1",
+    type: "bar",
+    groupKey: "canal",
+    valueKey: "valor",
+    op: "sum",
+    dataMode: "raw",
+    span: 2,
+    size: "md",
+  };
+  const dashboardWith = (widgets: Widget[], sheetRows = vendas, cols = vendaColumns) => ({
+    id: "d1",
+    name: "Vendas",
+    createdAt: 0,
+    updatedAt: 0,
+    pinned: false,
+    activeSheetIndex: 0,
+    sheets: [{ name: "Vendas", rows: sheetRows, columns: cols, filters: [], widgets }],
+  });
+
+  it("converte para agregado quando a coluna de agrupamento se repete", () => {
+    // 60 linhas em 3 canais: "linha a linha" desenharia 60 marcas sobre 3
+    // rótulos, que é o caso que travava o painel.
+    const migrated = migrateDashboard(dashboardWith([barWidget]));
+    const widget = migrated.sheets[0]?.widgets?.find((item) => item.id === "w1");
+    expect(widget?.dataMode).toBe("aggregate");
+  });
+
+  it("preserva 'linha a linha' quando cada linha é uma categoria própria", () => {
+    // Sem repetição os dois modos desenham o mesmo número de marcas, então a
+    // preferência salva não tem motivo para ser tocada.
+    const unicos: Row[] = canais.map((canal, index) => ({ canal, valor: index }));
+    const migrated = migrateDashboard(dashboardWith([barWidget], unicos));
+    const widget = migrated.sheets[0]?.widgets?.find((item) => item.id === "w1");
+    expect(widget?.dataMode).toBe("raw");
+  });
+
+  it("não mexe em widget que já está agregado nem em tipo sem marca por linha", () => {
+    const tabela: Widget = { ...barWidget, id: "w2", type: "table" };
+    const agregado: Widget = { ...barWidget, id: "w3", dataMode: "aggregate" };
+    const migrated = migrateDashboard(dashboardWith([tabela, agregado]));
+    const widgets = migrated.sheets[0]?.widgets ?? [];
+    expect(widgets.find((item) => item.id === "w2")?.dataMode).toBe("raw");
+    expect(widgets.find((item) => item.id === "w3")?.dataMode).toBe("aggregate");
+  });
+});
