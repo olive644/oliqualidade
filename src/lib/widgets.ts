@@ -3,6 +3,7 @@ import type {
   Column,
   Kind,
   Row,
+  Value,
   Widget,
   WidgetSize,
   WidgetSpan,
@@ -132,6 +133,77 @@ export function pickBestGroupColumn(candidates: Column[], rows: Row[]): Column |
   const usable = scored.filter((s) => s.fill >= MIN_FILL_RATIO);
   const pool = usable.length ? usable : scored;
   return pool.reduce((best, cur) => (cur.fill > best.fill ? cur : best)).c;
+}
+
+/** Quantos valores distintos uma coluna tem nas linhas atuais. */
+function distinctCount(column: Column, rows: Row[]): number {
+  const seen = new Set<Value>();
+  for (const row of rows) {
+    const value = row[column.key];
+    if (value !== null && value !== undefined && value !== "") seen.add(value);
+  }
+  return seen.size;
+}
+
+/**
+ * Faixa de categorias em que cada tipo de gráfico é legível.
+ *
+ * Uma barra deixa de ser lida "de relance" passando de uma dúzia de
+ * categorias — vira uma lista que se percorre, e para isso o ranking é
+ * melhor. Uma pizza fica ilegível bem antes: acima de meia dúzia de fatias
+ * os ângulos ficam parecidos demais para comparar. Já o ranking existe
+ * justamente para cardinalidade alta, onde recortar os maiores é a leitura.
+ */
+const CARDINALITY_RANGE: Partial<Record<WidgetType, { min: number; max: number }>> = {
+  bar: { min: 3, max: 12 },
+  pie: { min: 2, max: 6 },
+  radar: { min: 3, max: 8 },
+  ranking: { min: 6, max: Number.MAX_SAFE_INTEGER },
+};
+
+/**
+ * Escolhe a coluna de agrupamento pensando no gráfico que vai desenhá-la,
+ * em vez de dar a mesma coluna para todos.
+ *
+ * Antes, barra, pizza e ranking recebiam a coluna "de melhor qualidade" — a
+ * mesma para os três. Numa planilha com Canal (3 valores) e Vendedor (25), o
+ * painel inteiro repetia Canal: três barras, três fatias e um ranking de
+ * três itens, dizendo a mesma coisa em três formatos. Preferindo, para cada
+ * tipo, uma coluna dentro da faixa em que ele é legível, a barra pega
+ * Vendedor, a pizza fica com Canal e o painel passa a mostrar dois recortes
+ * diferentes dos dados.
+ *
+ * Fora da faixa ideal nada é descartado: a coluna que menos se afasta dela
+ * vence, então uma planilha que só tem colunas de 3 valores continua
+ * produzindo gráficos, como antes.
+ */
+function pickGroupColumnForWidget(
+  type: WidgetType,
+  candidates: Column[],
+  rows: Row[],
+): Column | undefined {
+  const range = CARDINALITY_RANGE[type];
+  if (!range || !candidates.length) return pickBestGroupColumn(candidates, rows);
+  const usable = candidates.filter((column) => fillRatio(column, rows) >= MIN_FILL_RATIO);
+  const pool = usable.length ? usable : candidates;
+  // Um ranking sem teto de categorias empata com qualquer coluna acima do
+  // mínimo; nesse caso vence a de maior cardinalidade, que é onde recortar
+  // os maiores diz alguma coisa — um "Top 5" de cinco categorias mostra
+  // tudo e não recorta nada.
+  const preferHigher = range.max === Number.MAX_SAFE_INTEGER;
+  const scored = pool.map((column) => {
+    const distinct = distinctCount(column, rows);
+    const distance =
+      distinct < range.min ? range.min - distinct : distinct > range.max ? distinct - range.max : 0;
+    return { column, distance, distinct, fill: fillRatio(column, rows) };
+  });
+  return scored.reduce((best, current) => {
+    if (current.distance !== best.distance)
+      return current.distance < best.distance ? current : best;
+    if (preferHigher && current.distinct !== best.distinct)
+      return current.distinct > best.distinct ? current : best;
+    return current.fill > best.fill ? current : best;
+  }).column;
 }
 
 /**
@@ -377,7 +449,11 @@ export function createWidget(
         ? (dateColFilled?.key ?? pickSequentialIndexColumn(columns, rows)?.key)
         : type === "map"
           ? pickLocationColumn(columns, rows)?.key
-          : undefined) ??
+          : // Barra, pizza, radar e ranking escolhem a coluna pela
+            // cardinalidade que cada um consegue desenhar, em vez de todos
+            // receberem a mesma "melhor coluna" e repetirem o mesmo recorte.
+            (pickGroupColumnForWidget(type, catCandidates, rows)?.key ??
+            pickGroupColumnForWidget(type, groupable, rows)?.key)) ??
       cat?.key ??
       groupableBest?.key;
     // Um widget novo precisa de uma métrica que agregue de verdade
