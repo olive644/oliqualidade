@@ -216,8 +216,9 @@ export function ScheduleHeatmapWidgetBody({
     direction: sortDirection,
   });
   const exploredRows = exploredEntries.map((entry) => entry.row);
-  const sectionOptions = [...new Set(explorerEntries.map((entry) => entry.section).filter(Boolean))]
-    .sort((left, right) => left.localeCompare(right, "pt-BR", { numeric: true }));
+  const sectionOptions = [
+    ...new Set(explorerEntries.map((entry) => entry.section).filter(Boolean)),
+  ].sort((left, right) => left.localeCompare(right, "pt-BR", { numeric: true }));
   const hasExplorerFilters = Boolean(scheduleQuery || stateFilter !== "all" || sectionFilter);
   const observationCols = allDetailCols.filter((column) =>
     /observa|nota|coment|justific|informa[cç][aã]o adicional/i.test(
@@ -285,9 +286,10 @@ export function ScheduleHeatmapWidgetBody({
         ),
       }
     : {};
-  const visibleRows = (
-    scheduleMode === "aggregate" ? [aggregateScheduleRow] : exploredRows
-  ).slice(0, 400);
+  const visibleRows = (scheduleMode === "aggregate" ? [aggregateScheduleRow] : exploredRows).slice(
+    0,
+    400,
+  );
   const togglePeriod = (key: string) => {
     const selected = new Set(periodCols.map((column) => column.key));
     if (selected.has(key) && selected.size > 1) selected.delete(key);
@@ -520,7 +522,11 @@ export function ScheduleHeatmapWidgetBody({
           type="button"
           className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
           onClick={() => setSortDirection((current) => (current === "asc" ? "desc" : "asc"))}
-          aria-label={sortDirection === "asc" ? "Ordenar em ordem decrescente" : "Ordenar em ordem crescente"}
+          aria-label={
+            sortDirection === "asc"
+              ? "Ordenar em ordem decrescente"
+              : "Ordenar em ordem crescente"
+          }
           title={sortDirection === "asc" ? "Ordem crescente" : "Ordem decrescente"}
         >
           <ArrowUpDown className="size-3.5" />
@@ -538,8 +544,12 @@ export function ScheduleHeatmapWidgetBody({
             Limpar filtros
           </button>
         )}
-        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground" aria-live="polite">
-          {exploredRows.length.toLocaleString("pt-BR")} de {scheduleRows.length.toLocaleString("pt-BR")}
+        <span
+          className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground"
+          aria-live="polite"
+        >
+          {exploredRows.length.toLocaleString("pt-BR")} de{" "}
+          {scheduleRows.length.toLocaleString("pt-BR")}
         </span>
       </div>
       <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-4 py-1.5 text-[10px] text-muted-foreground">
@@ -850,9 +860,10 @@ export function ScheduleHeatmapWidgetBody({
                                 const fillMeaning = isBlankScheduleValue(value)
                                   ? fillMeaningFor(row, column.key)
                                   : null;
-                                const label = isBlankScheduleValue(value) && !fillMeaning
-                                  ? "Sem registro"
-                                  : String(fillMeaning?.label ?? value);
+                                const label =
+                                  isBlankScheduleValue(value) && !fillMeaning
+                                    ? "Sem registro"
+                                    : String(fillMeaning?.label ?? value);
                                 return (
                                   <div
                                     key={column.key}
