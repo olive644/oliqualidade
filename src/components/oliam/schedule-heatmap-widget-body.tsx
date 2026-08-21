@@ -1,5 +1,5 @@
-import { Fragment, useMemo } from "react";
-import { CalendarRange, FileText } from "lucide-react";
+import { Fragment, useState } from "react";
+import { ArrowUpDown, CalendarRange, Eye, FileText, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type ChartDataMode,
@@ -21,13 +21,16 @@ import {
 import {
   scheduleCellState,
   scheduleCriterionForRow,
-  scheduleFillMeaning,
   summarizeScheduleRows,
   type ScheduleCellState,
-  type ScheduleFillMeaning,
 } from "@/lib/schedule-normalizer";
-import { sourceRowIndexOf } from "@/lib/data-review";
-import type { SourceCellFill } from "@/lib/cell-fill-provenance";
+import {
+  exploreScheduleRows,
+  type ScheduleExplorerEntry,
+  type ScheduleSortDirection,
+  type ScheduleSortKey,
+  type ScheduleStateFilter,
+} from "@/lib/schedule-explorer";
 import { fmt, parseNumericValue } from "@/lib/format";
 import {
   aggregate,
@@ -41,13 +44,11 @@ import {
   WidgetHead,
   type WidgetDragProps,
 } from "./widget-support";
-import { WidgetConfigBar } from "./widget-config-context";
 
 export function ScheduleHeatmapWidgetBody({
   widget: w,
   data,
   columns,
-  sourceCellFills,
   filters,
   setFilters,
   onConfigure,
@@ -58,7 +59,6 @@ export function ScheduleHeatmapWidgetBody({
   widget: Widget;
   data: Row[];
   columns: Column[];
-  sourceCellFills: SourceCellFill[];
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
   onConfigure: (patch: Partial<Widget>) => void;
@@ -66,6 +66,12 @@ export function ScheduleHeatmapWidgetBody({
   sizeControls: React.ReactNode;
   animationDelay: number;
 }) {
+  const [scheduleQuery, setScheduleQuery] = useState("");
+  const [stateFilter, setStateFilter] = useState<ScheduleStateFilter>("all");
+  const [sectionFilter, setSectionFilter] = useState("");
+  const [sortKey, setSortKey] = useState<ScheduleSortKey>("source");
+  const [sortDirection, setSortDirection] = useState<ScheduleSortDirection>("asc");
+  const [expandedSourceIndex, setExpandedSourceIndex] = useState<number | null>(null);
   const detectedPeriods = schedulePeriodColumns(columns);
   const configuredPeriods = (w.periodKeys ?? [])
     .map((key) => columns.find((column) => column.key === key))
@@ -137,55 +143,63 @@ export function ScheduleHeatmapWidgetBody({
     value === undefined ||
     value === "" ||
     (typeof value === "string" && /^[-–—]$/.test(value.trim()));
-  const sourceScheduleFillByCell = useMemo(() => {
-    const byCell = new Map<string, ScheduleFillMeaning>();
-    for (const fill of sourceCellFills) {
-      const meaning = scheduleFillMeaning(fill.color);
-      if (meaning) byCell.set(`${fill.rowIndex}:${fill.columnKey}`, meaning);
-    }
-    return byCell;
-  }, [sourceCellFills]);
-  const fillMeaningFor = (row: Row, columnKey: string) => {
-    const sourceRowIndex = sourceRowIndexOf(row);
-    if (sourceRowIndex === null) return null;
-    return sourceScheduleFillByCell.get(`${sourceRowIndex}:${columnKey}`) ?? null;
-  };
-  const effectiveScheduleValue = (row: Row, columnKey: string) => {
-    const value = row[columnKey];
-    if (!isBlankScheduleValue(value)) return value ?? null;
-    return fillMeaningFor(row, columnKey)?.label ?? null;
-  };
   const scheduleRows = scheduleData.filter(
     (row) =>
       groupCol &&
       row[groupCol.key] !== null &&
       row[groupCol.key] !== "" &&
-      (periodCols.some(
-        (column) =>
-          !isBlankScheduleValue(row[column.key]) || Boolean(fillMeaningFor(row, column.key)),
-      ) ||
+      (periodCols.some((column) => !isBlankScheduleValue(row[column.key])) ||
         (statusCol && row[statusCol.key] !== null && row[statusCol.key] !== "") ||
         allDetailCols.some((column) => row[column.key] !== null && row[column.key] !== "")),
   );
+  const explorerEntries: ScheduleExplorerEntry[] = scheduleRows.map((row, sourceIndex) => {
+    const status = statusCol ? String(row[statusCol.key] ?? "") : "";
+    const criterion = scheduleCriterionForRow(
+      row,
+      columns,
+      periodCols.map((column) => column.key),
+    );
+    return {
+      row,
+      sourceIndex,
+      item: groupCol ? String(row[groupCol.key] ?? "") : "",
+      section: sectionCol ? String(row[sectionCol.key] ?? "") : "",
+      status,
+      details: allDetailCols.flatMap((column) => {
+        const value = row[column.key];
+        return isBlankScheduleValue(value) ? [] : [String(value)];
+      }),
+      periods: periodCols.flatMap((column) => {
+        const value = row[column.key];
+        return isBlankScheduleValue(value) ? [] : [String(value)];
+      }),
+      states: periodCols.map((column) => scheduleCellState(row[column.key], status, criterion)),
+    };
+  });
+  const exploredEntries = exploreScheduleRows(explorerEntries, {
+    query: scheduleQuery,
+    state: stateFilter,
+    section: sectionFilter,
+    sort: sortKey,
+    direction: sortDirection,
+  });
+  const exploredRows = exploredEntries.map((entry) => entry.row);
+  const sectionOptions = [...new Set(explorerEntries.map((entry) => entry.section).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, "pt-BR", { numeric: true }));
+  const hasExplorerFilters = Boolean(scheduleQuery || stateFilter !== "all" || sectionFilter);
   const observationCols = allDetailCols.filter((column) =>
     /observa|nota|coment|justific|informa[cç][aã]o adicional/i.test(
       `${column.key} ${column.label}`,
     ),
   );
-  const metricRows = scheduleRows.map((row) => ({
-    ...row,
-    ...Object.fromEntries(
-      periodCols.map((column) => [column.key, effectiveScheduleValue(row, column.key)]),
-    ),
-  }));
   const scheduleStats = summarizeScheduleRows(
-    metricRows,
+    exploredRows,
     columns,
     periodCols.map((column) => column.key),
     statusCol?.key,
     observationCols.map((column) => column.key),
   );
-  const scheduleObservations = scheduleRows
+  const scheduleObservations = exploredRows
     .flatMap((row) =>
       observationCols.flatMap((column) => {
         const value = row[column.key];
@@ -222,8 +236,8 @@ export function ScheduleHeatmapWidgetBody({
         [groupCol.key]: `${aggregationLabels[scheduleOp]} de todos os itens`,
         ...Object.fromEntries(
           periodCols.map((column) => {
-            const values = scheduleRows.flatMap((row) => {
-              const value = effectiveScheduleValue(row, column.key);
+            const values = exploredRows.flatMap((row) => {
+              const value = row[column.key];
               if (scheduleOp === "count") return isBlankScheduleValue(value) ? [] : [1];
               const numeric = parseNumericValue(value);
               return numeric !== null ? [numeric] : [];
@@ -233,10 +247,9 @@ export function ScheduleHeatmapWidgetBody({
         ),
       }
     : {};
-  const visibleRows = (scheduleMode === "aggregate" ? [aggregateScheduleRow] : scheduleRows).slice(
-    0,
-    400,
-  );
+  const visibleRows = (
+    scheduleMode === "aggregate" ? [aggregateScheduleRow] : exploredRows
+  ).slice(0, 400);
   const togglePeriod = (key: string) => {
     const selected = new Set(periodCols.map((column) => column.key));
     if (selected.has(key) && selected.size > 1) selected.delete(key);
@@ -268,7 +281,10 @@ export function ScheduleHeatmapWidgetBody({
         icon={<CalendarRange className="size-3.5 shrink-0 text-muted-foreground" />}
         {...dragProps}
       />
-      <WidgetConfigBar>
+      <div
+        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
+        data-export-controls
+      >
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           Item
           <select
@@ -386,8 +402,119 @@ export function ScheduleHeatmapWidgetBody({
             </div>
           </div>
         )}
-      </WidgetConfigBar>
+      </div>
       {sizeControls}
+      <div
+        className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/10 px-4 py-2"
+        data-export-controls
+      >
+        <label className="relative min-w-48 flex-1 sm:max-w-sm">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <input
+            type="search"
+            value={scheduleQuery}
+            onChange={(event) => setScheduleQuery(event.target.value)}
+            className="oliam-plain-input h-8 w-full rounded-lg border border-border bg-card pl-8 pr-8 text-xs"
+            placeholder="Buscar item, situação ou detalhe"
+            aria-label="Buscar no cronograma"
+          />
+          {scheduleQuery && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+              onClick={() => setScheduleQuery("")}
+              aria-label="Limpar busca"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          Situação
+          <select
+            className="oliam-select h-8 max-w-52"
+            value={stateFilter}
+            onChange={(event) => setStateFilter(event.target.value as ScheduleStateFilter)}
+            aria-label="Filtrar situação do cronograma"
+          >
+            <option value="all">Todas</option>
+            <option value="planned">Programado</option>
+            <option value="done">Realizado / conforme</option>
+            <option value="warning">Reprogramado / atenção</option>
+            <option value="failed">Não realizado / fora do limite</option>
+            <option value="empty">Sem registro</option>
+            <option value="neutral">Outro valor</option>
+          </select>
+        </label>
+        {sectionOptions.length > 1 && (
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            Seção
+            <select
+              className="oliam-select h-8 max-w-52"
+              value={sectionFilter}
+              onChange={(event) => setSectionFilter(event.target.value)}
+              aria-label="Filtrar seção do cronograma"
+            >
+              <option value="">Todas</option>
+              {sectionOptions.map((section) => (
+                <option key={section} value={section}>
+                  {section}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          Ordenar
+          <select
+            className="oliam-select h-8 max-w-44"
+            value={sortKey}
+            onChange={(event) => setSortKey(event.target.value as ScheduleSortKey)}
+            aria-label="Ordenar cronograma"
+          >
+            <option value="source">Ordem original</option>
+            <option value="item">Item</option>
+            {sectionCol && <option value="section">Seção</option>}
+            <option value="status">Situação</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => setSortDirection((current) => (current === "asc" ? "desc" : "asc"))}
+          aria-label={
+            sortDirection === "asc"
+              ? "Ordenar em ordem decrescente"
+              : "Ordenar em ordem crescente"
+          }
+          title={sortDirection === "asc" ? "Ordem crescente" : "Ordem decrescente"}
+        >
+          <ArrowUpDown className="size-3.5" />
+        </button>
+        {hasExplorerFilters && (
+          <button
+            type="button"
+            className="h-8 rounded-lg px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => {
+              setScheduleQuery("");
+              setStateFilter("all");
+              setSectionFilter("");
+            }}
+          >
+            Limpar filtros
+          </button>
+        )}
+        <span
+          className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground"
+          aria-live="polite"
+        >
+          {exploredRows.length.toLocaleString("pt-BR")} de{" "}
+          {scheduleRows.length.toLocaleString("pt-BR")}
+        </span>
+      </div>
       <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-4 py-1.5 text-[10px] text-muted-foreground">
         <span className="shrink-0 rounded-full bg-muted/40 px-2 py-1">
           <strong className="text-foreground">Métrica</strong> · células por período
@@ -413,7 +540,9 @@ export function ScheduleHeatmapWidgetBody({
         </p>
       ) : !visibleRows.length ? (
         <p className="p-6 text-center text-xs text-muted-foreground">
-          Nenhuma marcação encontrada nos períodos selecionados.
+          {scheduleRows.length
+            ? "Nenhum item corresponde à busca e aos filtros atuais."
+            : "Nenhuma marcação encontrada nos períodos selecionados."}
         </p>
       ) : (
         <>
@@ -442,23 +571,13 @@ export function ScheduleHeatmapWidgetBody({
                 className: "text-primary",
               },
               {
-                label: "Realizados / dentro do limite",
+                label: "Dentro do limite",
                 value: scheduleStats.within,
                 suffix: "",
                 className: "text-emerald-700 dark:text-emerald-300",
               },
-              ...(scheduleStats.attention
-                ? [
-                    {
-                      label: "Reprogramados / atenção",
-                      value: scheduleStats.attention,
-                      suffix: "",
-                      className: "text-amber-700 dark:text-amber-300",
-                    },
-                  ]
-                : []),
               {
-                label: "Não realizados / fora do limite",
+                label: "Fora do limite",
                 value: scheduleStats.outside,
                 suffix: "",
                 className: "text-destructive",
@@ -525,6 +644,8 @@ export function ScheduleHeatmapWidgetBody({
                 {visibleRows.map((row, rowIndex) => {
                   const item = String(row[groupCol.key]);
                   const status = statusCol ? row[statusCol.key] : null;
+                  const explorerEntry = scheduleMode === "raw" ? exploredEntries[rowIndex] : null;
+                  const sourceIndex = explorerEntry?.sourceIndex ?? rowIndex;
                   const section = sectionCol ? String(row[sectionCol.key] ?? "") : "";
                   const previousSection =
                     sectionCol && rowIndex > 0
@@ -535,8 +656,14 @@ export function ScheduleHeatmapWidgetBody({
                     columns,
                     periodCols.map((column) => column.key),
                   );
+                  const populatedDetails = columns.filter(
+                    (column) =>
+                      !periodKeys.has(column.key) &&
+                      column.key !== groupCol.key &&
+                      !isBlankScheduleValue(row[column.key]),
+                  );
                   return (
-                    <Fragment key={`${section}-${item}-${rowIndex}`}>
+                    <Fragment key={`${section}-${item}-${sourceIndex}`}>
                       {section && section !== previousSection && (
                         <tr>
                           <th
@@ -552,21 +679,43 @@ export function ScheduleHeatmapWidgetBody({
                       )}
                       <tr>
                         <th className="sticky left-0 z-10 max-w-64 rounded-lg bg-card px-3 py-2 text-left font-medium shadow-[1px_0_0_var(--border)]">
-                          <button
-                            type="button"
-                            className="w-full text-left hover:text-primary"
-                            onClick={() =>
-                              setFilters(toggleClickFilter(filters, groupCol.key, item))
-                            }
-                            title={`Filtrar por ${item}`}
-                          >
-                            <span className="block truncate">{item}</span>
-                            {status !== null && status !== "" && (
-                              <span className="block truncate text-[10px] font-normal text-muted-foreground">
-                                {String(status)}
-                              </span>
+                          <div className="flex items-start gap-1">
+                            <button
+                              type="button"
+                              className="min-w-0 flex-1 text-left hover:text-primary"
+                              onClick={() =>
+                                setFilters(toggleClickFilter(filters, groupCol.key, item))
+                              }
+                              title={`Filtrar por ${item}`}
+                            >
+                              <span className="block truncate">{item}</span>
+                              {status !== null && status !== "" && (
+                                <span className="block truncate text-[10px] font-normal text-muted-foreground">
+                                  {String(status)}
+                                </span>
+                              )}
+                            </button>
+                            {scheduleMode === "raw" && (
+                              <button
+                                type="button"
+                                className={cn(
+                                  "shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                                  expandedSourceIndex === sourceIndex &&
+                                    "bg-primary/10 text-primary",
+                                )}
+                                onClick={() =>
+                                  setExpandedSourceIndex((current) =>
+                                    current === sourceIndex ? null : sourceIndex,
+                                  )
+                                }
+                                aria-expanded={expandedSourceIndex === sourceIndex}
+                                aria-label={`Ver detalhes de ${item}`}
+                                title="Ver todos os detalhes"
+                              >
+                                <Eye className="size-3.5" />
+                              </button>
                             )}
-                          </button>
+                          </div>
                         </th>
                         {detailCols.map((column) => {
                           const value = row[column.key];
@@ -593,14 +742,9 @@ export function ScheduleHeatmapWidgetBody({
                         })}
                         {periodCols.map((column) => {
                           const value = row[column.key];
-                          const sourceEmpty = isBlankScheduleValue(value);
-                          const fillMeaning = sourceEmpty ? fillMeaningFor(row, column.key) : null;
-                          const state =
-                            fillMeaning?.state ?? scheduleCellState(value, status, criterion);
-                          const empty = sourceEmpty && !fillMeaning;
-                          const label = empty
-                            ? "Sem registro"
-                            : String(fillMeaning?.label ?? value);
+                          const state = scheduleCellState(value, status, criterion);
+                          const empty = isBlankScheduleValue(value);
+                          const label = empty ? "Sem registro" : String(value);
                           const criterionLabel = criterion ? ` · Limite: ${criterion.label}` : "";
                           return (
                             <td
@@ -620,6 +764,66 @@ export function ScheduleHeatmapWidgetBody({
                           );
                         })}
                       </tr>
+                      {scheduleMode === "raw" && expandedSourceIndex === sourceIndex && (
+                        <tr>
+                          <td
+                            colSpan={1 + detailCols.length + periodCols.length}
+                            className="rounded-xl border border-primary/20 bg-primary/[0.04] p-3"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-semibold">Detalhes de {item}</p>
+                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                  Valores preservados da linha, sem preencher campos ausentes.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                onClick={() => setExpandedSourceIndex(null)}
+                                aria-label="Fechar detalhes"
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+                            <dl className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              {populatedDetails.map((column) => {
+                                const value = row[column.key];
+                                return (
+                                  <div
+                                    key={column.key}
+                                    className="rounded-lg border border-border/70 bg-card px-3 py-2"
+                                  >
+                                    <dt className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                                      {column.label}
+                                    </dt>
+                                    <dd className="mt-1 break-words text-[11px]">
+                                      {fmt(value ?? null, column.kind) ?? String(value)}
+                                    </dd>
+                                  </div>
+                                );
+                              })}
+                              {periodCols.map((column) => {
+                                const value = row[column.key];
+                                const label = isBlankScheduleValue(value)
+                                  ? "Sem registro"
+                                  : String(value);
+                                return (
+                                  <div
+                                    key={column.key}
+                                    className="rounded-lg border border-border/70 bg-card px-3 py-2"
+                                  >
+                                    <dt className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                                      {column.label}
+                                    </dt>
+                                    <dd className="mt-1 break-words text-[11px]">{label}</dd>
+                                  </div>
+                                );
+                              })}
+                            </dl>
+                          </td>
+                        </tr>
+                      )}
                     </Fragment>
                   );
                 })}
@@ -656,15 +860,15 @@ export function ScheduleHeatmapWidgetBody({
           )}
           <div className="flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-2 text-[10px] text-muted-foreground">
             <span className="font-medium text-foreground">
-              {scheduleRows.length.toLocaleString("pt-BR")} item(ns) · {periodCols.length}{" "}
+              {exploredRows.length.toLocaleString("pt-BR")} item(ns) · {periodCols.length}{" "}
               período(s)
               {detailCols.length ? ` · ${detailCols.length} informação(ões) extra(s)` : ""}
             </span>
             {[
               ["planned", "Planejado"],
-              ["done", "Realizado / dentro do limite / conforme"],
-              ["warning", "Reprogramado / pendente / atenção"],
-              ["failed", "Não realizado / fora do limite / não conforme"],
+              ["done", "Dentro do limite / conforme"],
+              ["warning", "Pendente / atenção"],
+              ["failed", "Fora do limite / não conforme"],
               ["empty", "Sem registro"],
             ].map(([state, label]) => (
               <span key={state} className="inline-flex items-center gap-1.5">
@@ -677,8 +881,8 @@ export function ScheduleHeatmapWidgetBody({
                 {label}
               </span>
             ))}
-            {scheduleRows.length > visibleRows.length && (
-              <span>Mostrando 400 de {scheduleRows.length.toLocaleString("pt-BR")} linhas.</span>
+            {exploredRows.length > visibleRows.length && (
+              <span>Mostrando 400 de {exploredRows.length.toLocaleString("pt-BR")} linhas.</span>
             )}
           </div>
         </>
