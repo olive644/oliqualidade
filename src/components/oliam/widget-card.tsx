@@ -154,6 +154,7 @@ import {
   ChartDot,
   type ChartDotProps,
 } from "./widget-support";
+import { WidgetConfigBar, WidgetConfigProvider } from "./widget-config-context";
 // Carregado sob demanda: Leaflet só entra no bundle quando um widget de mapa
 // é realmente exibido, em vez de pesar no chunk compartilhado por qualquer
 // painel (mesmo os que nunca usam mapa). Ver seção 63 do CURRENT_STATE_AUDIT.md.
@@ -167,7 +168,7 @@ const OperationalWidgetBody = lazy(() =>
   })),
 );
 
-export function WidgetCard({
+function WidgetCardBody({
   widget: w,
   index,
   count,
@@ -275,10 +276,7 @@ export function WidgetCard({
     disableForward: index === count - 1,
   };
   const sizeControls = (
-    <div
-      className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-      data-export-controls
-    >
+    <WidgetConfigBar>
       <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
         Largura
         <select
@@ -311,7 +309,7 @@ export function WidgetCard({
           </select>
         </label>
       )}
-    </div>
+    </WidgetConfigBar>
   );
 
   if (
@@ -618,10 +616,7 @@ export function WidgetCard({
           icon={<MapPin className="size-3.5 shrink-0 text-muted-foreground" />}
           {...dragProps}
         />
-        <div
-          className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-          data-export-controls
-        >
+        <WidgetConfigBar>
           <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
           <FieldDropSlot
             accepts={groupableKinds}
@@ -669,7 +664,7 @@ export function WidgetCard({
             onRaw={() => onConfigure({ dataMode: "raw" })}
             onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
           />
-        </div>
+        </WidgetConfigBar>
         {sizeControls}
         {groupCol && valueCol && (
           <ChartReadingGuide
@@ -755,5 +750,19 @@ export function WidgetCard({
         colorGroupLabels={colorGroupLabels}
       />
     </article>
+  );
+}
+
+/**
+ * O corpo tem vários `return` (um por tipo de widget), então o provedor de
+ * estado da configuração envolve o componente por fora — assim cada widget
+ * do painel tem o seu próprio, e abrir a configuração de um não abre a dos
+ * outros.
+ */
+export function WidgetCard(props: React.ComponentProps<typeof WidgetCardBody>) {
+  return (
+    <WidgetConfigProvider>
+      <WidgetCardBody {...props} />
+    </WidgetConfigProvider>
   );
 }
