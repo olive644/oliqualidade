@@ -53,7 +53,7 @@ const BUILTIN_FORMATS: Record<number, string> = {
   47: "mmss.0",
 };
 
-function xmlText(value: string): string {
+export function decodeOoxmlText(value: string): string {
   return (
     value
       .replace(/<[^>]+>/g, "")
@@ -126,7 +126,7 @@ function relationshipMap(xml: string, base: string): Map<string, string> {
 function sharedStrings(xml: string): string[] {
   return [...xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map((match) =>
     [...match[1]!.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)]
-      .map((part) => xmlText(part[1]!))
+      .map((part) => decodeOoxmlText(part[1]!))
       .join(""),
   );
 }
@@ -210,15 +210,15 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
     const rawText = /<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(body)?.[1];
     const inline = /<is\b[^>]*>([\s\S]*?)<\/is>/.exec(body)?.[1];
     const formula = /<f(?:\s[^>]*)?>([\s\S]*?)<\/f>/.exec(body)?.[1];
-    const decodedFormula = formula ? xmlText(formula) : undefined;
+    const decodedFormula = formula ? decodeOoxmlText(formula) : undefined;
     let rawValue: string | number | boolean | null = null;
     if (type === "s") rawValue = strings[Number(rawText)] ?? "";
-    else if (type === "inlineStr") rawValue = xmlText(inline ?? "");
+    else if (type === "inlineStr") rawValue = decodeOoxmlText(inline ?? "");
     else if (type === "b") rawValue = rawText === "1";
-    else if (type === "str" || type === "e") rawValue = xmlText(rawText ?? "");
+    else if (type === "str" || type === "e") rawValue = decodeOoxmlText(rawText ?? "");
     else if (rawText != null && rawText !== "") {
       const numeric = Number(rawText);
-      rawValue = Number.isFinite(numeric) ? numeric : xmlText(rawText);
+      rawValue = Number.isFinite(numeric) ? numeric : decodeOoxmlText(rawText);
     }
 
     let displayValue = rawValue == null ? "" : String(rawValue);
@@ -279,7 +279,7 @@ export function inspectOoxml(input: ArrayBuffer | Uint8Array | OoxmlArchive): Oo
   const structures = new Map<string, OoxmlSheetStructure>();
   for (const match of workbookXml.matchAll(/<sheet\b[^>]*\/>/g)) {
     const attrs = attributes(match[0]);
-    const name = xmlText(attrs["name"] ?? "Planilha");
+    const name = decodeOoxmlText(attrs["name"] ?? "Planilha");
     const path = rels.get(attrs["r:id"] ?? "");
     if (!path) continue;
     const parsed = readSheet(archiveText(archive, path), strings, formats, date1904);
