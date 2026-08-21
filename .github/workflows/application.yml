@@ -57,10 +57,10 @@ jobs:
         run: npm ci
 
       - name: Audit for high/critical vulnerabilities
-        # Bloqueia em high/critical; moderate/low ficam de fora do gate pra
-        # não travar a CI em achados de baixo risco sem correção disponível
-        # (ex.: dependência transitiva de uma lib direta que só corrige com
-        # major breaking change) — revisar com `npm audit` local sem
+        # A resolução forçada de uuid elimina o achado moderado que vinha do
+        # verificador independente ExcelJS, mas o gate segue em high: um aviso
+        # moderado numa dependência transitiva sem correção disponível travaria
+        # PRs sem relação nenhuma com ele. Rodar `npm audit` local sem
         # --audit-level quando precisar do quadro completo.
         run: npm audit --audit-level=high
 

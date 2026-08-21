@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { OliAm } from "./index";
+import { PainelRouteComponent } from "@/components/oliam/painel-route-component";
 
 export const Route = createFileRoute("/painel/$id")({
   head: () => ({
@@ -12,10 +12,5 @@ export const Route = createFileRoute("/painel/$id")({
       },
     ],
   }),
-  component: RouteComponent,
+  component: PainelRouteComponent,
 });
-
-function RouteComponent() {
-  const { id } = Route.useParams();
-  return <OliAm routeId={id} />;
-}
