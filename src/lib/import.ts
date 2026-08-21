@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Row } from "@/lib/types";
-import { resolveFormulaCell } from "@/lib/formula";
+import { isVolatileFormula, resolveFormulaCell } from "@/lib/formula";
 import { diagnoseImportedSheet, type ImportDiagnostics } from "@/lib/import-intelligence";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 import { scheduleToLong, type LongScheduleRow } from "@/lib/schedule-normalizer";
@@ -1567,6 +1567,7 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // pra não reavaliar a mesma referência várias vezes.
   const formulaCache = new Map<string, number | null>();
   let formulaCellsRecovered = 0;
+  let volatileCellsRecalculated = 0;
   const width = range.e.c - range.s.c + 1;
   for (let r = 0; r < sourceAoa.length; r++) {
     const row = sourceAoa[r] as (string | number | null)[];
@@ -1580,8 +1581,21 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
     // incluir essa posição no array, encurtando row.length antes da hora.
     for (let c = 0; c < width; c++) {
       const v = row[c];
-      if (v !== null && v !== undefined) continue;
       const addr = XLSX.utils.encode_cell({ r: r + range.s.r, c: c + range.s.c });
+      if (v !== null && v !== undefined) {
+        // Célula já preenchida: o valor do arquivo é a fonte mais confiável,
+        // porque foi o Excel quem calculou. A exceção são as fórmulas que
+        // dependem da data de hoje — ali o número gravado responde "quantos
+        // dias faltavam quando a planilha foi salva", e um cronograma de
+        // 2023 mostraria "-556 dias restantes" como se fosse hoje.
+        const formula = worksheetCellAtAddress(ws, addr)?.f;
+        if (typeof formula !== "string" || !isVolatileFormula(formula)) continue;
+        const recalculated = resolveFormulaCell(ws, addr, new Map(), new Set(), true);
+        if (recalculated === null || recalculated === v) continue;
+        row[c] = recalculated;
+        volatileCellsRecalculated++;
+        continue;
+      }
       const resolved = resolveFormulaCell(ws, addr, formulaCache);
       if (resolved !== null) {
         row[c] = resolved;
@@ -2266,6 +2280,11 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   if (mergedHeaderCells > 0) {
     messages.push(
       `${mergedHeaderCells} coluna${mergedHeaderCells > 1 ? "s" : ""} do cabeçalho vinha${mergedHeaderCells > 1 ? "m" : ""} de célula${mergedHeaderCells > 1 ? "s" : ""} mesclada${mergedHeaderCells > 1 ? "s" : ""} na planilha original. Usamos o nome do grupo pra elas, mas talvez você queira renomeá-las individualmente no painel de colunas.`,
+    );
+  }
+  if (volatileCellsRecalculated > 0) {
+    messages.push(
+      `${volatileCellsRecalculated} célula${volatileCellsRecalculated > 1 ? "s" : ""} ${volatileCellsRecalculated > 1 ? "dependiam" : "dependia"} da data de hoje (fórmulas com TODAY/NOW, como "dias restantes") e ${volatileCellsRecalculated > 1 ? "foram recalculadas" : "foi recalculada"} para a data atual. O arquivo guardava o resultado do dia em que foi salvo.`,
     );
   }
   if (mergedCells > 0) {

@@ -66,7 +66,44 @@ const FUNCTIONS: Record<string, (args: (number | null | undefined)[]) => number 
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   },
   COUNT: (args) => args.filter((value) => num(value) !== null).length,
+  // Data de hoje no serial do Excel (dias desde 30/12/1899). Sem hora, como
+  // no Excel, para que "TODAY() - vencimento" dê um número inteiro de dias.
+  TODAY: () => excelSerialToday(),
+  NOW: () => excelSerialToday() + nowFractionOfDay(),
 };
+
+/** Dias desde 30/12/1899, a época que o Excel usa para datas. */
+export function excelSerialToday(now: Date = new Date()): number {
+  const utcMidnight = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round(utcMidnight / 86_400_000) + 25_569;
+}
+
+/**
+ * Serial do Excel para uma data lida do arquivo. Usa os componentes UTC
+ * porque o SheetJS entrega o dia civil da planilha nesse fuso; ler em hora
+ * local deslocaria a data em um dia a oeste de Greenwich.
+ */
+function excelSerialFromDate(date: Date): number {
+  const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return Math.round(utcMidnight / 86_400_000) + 25_569;
+}
+
+function nowFractionOfDay(now: Date = new Date()): number {
+  return (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86_400;
+}
+
+/**
+ * Fórmulas cujo resultado depende da data em que foram calculadas.
+ *
+ * O Excel guarda o último valor calculado junto com a fórmula, e para quase
+ * tudo esse valor é confiável — é o que o app usa. Para estas, não é: o
+ * número gravado responde "quantos dias faltavam **no dia em que a planilha
+ * foi salva**". Um cronograma de calibração salvo em 2023 traz "-556 dias
+ * restantes" e o app mostraria isso como se fosse hoje.
+ */
+export function isVolatileFormula(formula: string): boolean {
+  return /\b(?:TODAY|NOW)\s*\(/i.test(formula);
+}
 
 class Parser {
   private pos = 0;
@@ -304,8 +341,13 @@ export function resolveFormulaCell(
   addr: string,
   cache: Map<string, number | null> = new Map(),
   inProgress: Set<string> = new Set(),
+  // Recalcula mesmo havendo valor guardado no arquivo. Só faz sentido para
+  // fórmulas voláteis (ver isVolatileFormula), onde o valor gravado responde
+  // a uma data que já passou; para as demais o cache do Excel é a fonte mais
+  // confiável, porque foi ele quem calculou.
+  ignoreCachedValue = false,
 ): number | null {
-  if (cache.has(addr)) return cache.get(addr)!;
+  if (!ignoreCachedValue && cache.has(addr)) return cache.get(addr)!;
   if (inProgress.has(addr)) return null;
   const cell = worksheetCellAtAddress(ws, addr) as
     { v?: unknown; f?: string; t?: string } | undefined;
@@ -315,14 +357,24 @@ export function resolveFormulaCell(
   // dela é um 0 de preenchimento, não um valor de verdade, mesmo quando é
   // um número. Sem checar "t" aqui, esse 0 falso seria devolvido como se
   // fosse o resultado real da fórmula, sem nunca tentar avaliar nada.
-  const hasRealValue = cell.t !== "z" && cell.v !== undefined;
+  const hasRealValue = !ignoreCachedValue && cell.t !== "z" && cell.v !== undefined;
   if (hasRealValue && typeof cell.v === "number") {
     cache.set(addr, cell.v);
     return cell.v;
   }
+  // Uma data é um número no Excel (dias desde 30/12/1899) e participa de
+  // conta como qualquer outro: é assim que "TODAY() - vencimento" devolve
+  // dias. O SheetJS entrega essas células como `Date` quando o arquivo é
+  // lido com `cellDates`, e tratá-las como "não numérico" fazia toda
+  // fórmula de prazo falhar — justamente o caso mais comum.
+  if (hasRealValue && cell.v instanceof Date) {
+    const serial = excelSerialFromDate(cell.v);
+    cache.set(addr, serial);
+    return serial;
+  }
   if (hasRealValue) {
-    // valor já preenchido, mas não numérico (texto, data...): não serve
-    // como operando de fórmula aritmética.
+    // valor já preenchido, mas não numérico (texto...): não serve como
+    // operando de fórmula aritmética.
     return null;
   }
   if (!cell.f || cell.f.includes("!")) {
