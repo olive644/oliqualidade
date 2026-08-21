@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import createGlobe, { type Globe } from "cobe";
+import { useEffect, useMemo, useState } from "react";
+import { feature } from "topojson-client";
+import type { FeatureCollection, Geometry } from "geojson";
+import type { Topology } from "topojson-specification";
 import { conditionalColor, fmt } from "@/lib/format";
 import {
   loadGeocodeCache,
@@ -9,82 +11,64 @@ import {
 } from "@/lib/storage";
 import { geocodeMissing } from "@/lib/geocode";
 import type { Column } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { OliLoader } from "@/components/oliam/oli-loader";
+import { isCoarsePointer } from "./widget-support";
 
-const AUTO_ROTATE_SPEED = 0.0018;
-const MIN_MARKER_SIZE = 0.035;
-const MAX_MARKER_SIZE = 0.12;
-// Raio de acerto mínimo em pixels de tela pra clicar/passar o mouse num
-// marcador pequeno — sem isso, marcadores de valor baixo (raio de globo
-// minúsculo) ficam quase impossíveis de acertar com precisão.
-const MIN_HIT_RADIUS_PX = 12;
+// Proporção 2:1 da projeção equirretangular: o mundo inteiro cabe sem corte,
+// que é o ponto de um mapa chapado — nada fica escondido do outro lado, como
+// acontecia no globo.
+const MAP_WIDTH = 720;
+const MAP_HEIGHT = 360;
+const MIN_BUBBLE = 4;
+const MAX_BUBBLE = 20;
 
-/** Converte lat/lng (graus) no vetor unitário 3D usado internamente pela
- * cobe para posicionar marcadores na esfera (extraído do código-fonte da
- * lib — a API pública não expõe essa conversão). */
-function markerVector(lat: number, lng: number): [number, number, number] {
-  const r = (lat * Math.PI) / 180;
-  const a = (lng * Math.PI) / 180 - Math.PI;
-  const o = Math.cos(r);
-  return [-o * Math.sin(a), Math.sin(r), o * Math.cos(a)];
+/**
+ * Projeção equirretangular: longitude vira x e latitude vira y, ambas
+ * lineares. É a projeção mais simples que existe e a única adequada aqui —
+ * qualquer projeção "melhor" (Mercator, Robinson) distorceria as posições
+ * sem oferecer nada em troca, já que este mapa é pano de fundo para bolhas,
+ * não uma ferramenta de navegação.
+ */
+function project(lng: number, lat: number): [number, number] {
+  return [((lng + 180) / 360) * MAP_WIDTH, ((90 - lat) / 180) * MAP_HEIGHT];
 }
 
-/** Aplica a mesma rotação (phi/theta) que a cobe aplica ao globo internamente
- * e projeta pra coordenadas de tela, pra permitir clique/hover precisos
- * sobre marcadores — a lib não expõe isso, então é recalculado aqui a
- * partir da matriz de rotação encontrada no shader da cobe. */
-function projectMarker(
-  lat: number,
-  lng: number,
-  phi: number,
-  theta: number,
-  canvasSize: number,
-): { x: number; y: number; visible: boolean } {
-  const [vx, vy, vz] = markerVector(lat, lng);
-  const c = Math.cos(phi);
-  const e = Math.sin(phi);
-  const d = Math.cos(theta);
-  const f = Math.sin(theta);
-  const sx = d * vx + f * vz;
-  const sy = f * e * vx + c * vy - d * e * vz;
-  const sz = -f * c * vx + e * vy + d * c * vz;
-  const radius = canvasSize / 2;
-  return {
-    x: canvasSize / 2 + sx * radius,
-    y: canvasSize / 2 - sy * radius,
-    visible: sz < -0.02,
-  };
+/** Converte os anéis de um polígono GeoJSON num `d` de <path>. */
+function ringsToPath(rings: number[][][]): string {
+  let path = "";
+  for (const ring of rings) {
+    ring.forEach(([lng, lat], index) => {
+      const [x, y] = project(lng ?? 0, lat ?? 0);
+      path += `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    path += "Z";
+  }
+  return path;
 }
 
-/** Converte uma cor CSS (var(--primary), #hex, etc.) pra RGB 0–1, formato
- * exigido pelo campo `color` de marcador da cobe. Resolvido via um elemento
- * de sonda (mesma técnica já usada no mapa Leaflet anterior), porque nem
- * toda cor CSS chega pronta como rgb() literal. */
-function resolveMarkerColor(probe: HTMLElement, css: string): [number, number, number] {
-  probe.style.color = css;
-  const computed = getComputedStyle(probe).color;
-  const match = computed.match(/(\d+(?:\.\d+)?)/g);
-  if (!match || match.length < 3) return [0.35, 0.35, 0.9];
-  const [r, g, b] = match.map(Number);
-  return [(r ?? 0) / 255, (g ?? 0) / 255, (b ?? 0) / 255];
-}
-
-type ResolvedMarker = {
+type ResolvedPlace = {
   name: string;
   total: number;
   point: GeoPoint;
-  size: number;
-  color: [number, number, number];
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  share: number;
 };
 
 /**
  * Corpo do widget de mapa: geocodifica os nomes de local do agrupamento
- * (mesmo cache/serviço compartilhado de antes) e desenha um marcador por
- * local resolvido num globo 3D (cobe), com tamanho e cor proporcionais ao
- * valor agregado. Como a cobe não expõe hit-testing de marcador, a posição
- * de cada um na tela é recalculada a cada frame (ver projectMarker) pra
- * viabilizar clique-pra-filtrar e tooltip — mesmo comportamento que o mapa
- * anterior tinha com o Leaflet.
+ * (mesmo cache e serviço de sempre) e desenha uma bolha por local sobre um
+ * mapa-múndi chapado, com o tamanho e a cor proporcionais ao valor agregado,
+ * ao lado de um ranking dos maiores.
+ *
+ * Substituiu um globo 3D. O globo era bonito e ruim de ler: metade dos
+ * locais ficava sempre do lado escondido, exigindo arrastar para conferir
+ * qualquer coisa, e comparar dois pontos distantes era impossível sem girar
+ * de um lado para o outro. Num mapa plano o conjunto inteiro aparece de uma
+ * vez, que é o que um painel precisa.
  */
 export default function MapWidgetBody({
   grouped,
@@ -95,31 +79,39 @@ export default function MapWidgetBody({
   valueColumn: Column;
   onSelect: (name: string) => void;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const globeRef = useRef<Globe | null>(null);
-  const markersRef = useRef<ResolvedMarker[]>([]);
-  const anglesRef = useRef({ phi: 0, theta: 0.28 });
-  const pointerRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const [cache, setCache] = useState<GeocodeCache>({});
   const [ready, setReady] = useState(false);
-  const [hovered, setHovered] = useState<{
-    name: string;
-    total: number;
-    x: number;
-    y: number;
-  } | null>(null);
-  const [isDark, setIsDark] = useState(
-    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
-  );
+  const [selected, setSelected] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [countries, setCountries] = useState<string[]>([]);
   const namesKey = grouped.map((g) => g.name).join("|");
 
+  // O contorno dos países são 108 KB de topologia que só interessam a quem
+  // abriu um mapa: entram por import dinâmico, fora do pacote principal.
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const el = document.documentElement;
-    const observer = new MutationObserver(() => setIsDark(el.classList.contains("dark")));
-    observer.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
+    let alive = true;
+    void (async () => {
+      const topology = (await import("world-atlas/countries-110m.json")).default as unknown;
+      if (!alive) return;
+      const collection = feature(
+        topology as Topology,
+        (topology as Topology).objects["countries"]!,
+      ) as unknown as FeatureCollection<Geometry>;
+      const paths: string[] = [];
+      for (const item of collection.features) {
+        if (item.geometry.type === "Polygon") {
+          paths.push(ringsToPath(item.geometry.coordinates as number[][][]));
+        } else if (item.geometry.type === "MultiPolygon") {
+          for (const polygon of item.geometry.coordinates as number[][][][]) {
+            paths.push(ringsToPath(polygon));
+          }
+        }
+      }
+      setCountries(paths);
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -157,204 +149,173 @@ export default function MapWidgetBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, namesKey]);
 
-  // Recalcula os marcadores resolvidos (posição, tamanho e cor) sempre que
-  // os dados, o cache de geocodificação ou o tema mudam, e envia pra cobe.
-  useEffect(() => {
+  const places = useMemo<ResolvedPlace[]>(() => {
     const resolved = grouped
       .map((g) => ({ ...g, point: cache[g.name] }))
       .filter((g): g is typeof g & { point: GeoPoint } => !!g.point);
     const max = resolved.reduce((m, g) => Math.max(m, Math.abs(g.total)), 0) || 1;
-    const primaryColor =
-      getComputedStyle(document.documentElement).getPropertyValue("--primary").trim() || "#0ea5e9";
-    const probe = document.createElement("span");
-    probe.hidden = true;
-    document.body.appendChild(probe);
-    markersRef.current = resolved.map((g) => {
-      const formattedColor = conditionalColor(
-        g.total,
-        valueColumn.kind,
-        valueColumn.conditionalFormat,
-      );
-      return {
-        name: g.name,
-        total: g.total,
-        point: g.point,
-        size: MIN_MARKER_SIZE + (Math.abs(g.total) / max) * (MAX_MARKER_SIZE - MIN_MARKER_SIZE),
-        color: resolveMarkerColor(probe, formattedColor ?? primaryColor),
-      };
-    });
-    probe.remove();
-    globeRef.current?.update({
-      markers: markersRef.current.map((m) => ({
-        location: [m.point.lat, m.point.lng],
-        size: m.size,
-        color: m.color,
-      })),
-    });
+    const sum = resolved.reduce((s, g) => s + g.total, 0);
+    return (
+      resolved
+        .map((g) => {
+          const [x, y] = project(g.point.lng, g.point.lat);
+          return {
+            name: g.name,
+            total: g.total,
+            point: g.point,
+            x,
+            y,
+            radius: MIN_BUBBLE + (Math.abs(g.total) / max) * (MAX_BUBBLE - MIN_BUBBLE),
+            color:
+              conditionalColor(g.total, valueColumn.kind, valueColumn.conditionalFormat) ??
+              "var(--primary)",
+            share: sum > 0 ? g.total / sum : 0,
+          };
+        })
+        // Maiores por baixo: bolhas pequenas sobre grandes continuam clicáveis,
+        // e o inverso esconderia os menores por completo.
+        .sort((a, b) => b.radius - a.radius)
+    );
   }, [grouped, cache, valueColumn]);
 
-  const findMarkerAt = useCallback((clientX: number, clientY: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    const size = rect.width;
-    const px = clientX - rect.left;
-    const py = clientY - rect.top;
-    const { phi, theta } = anglesRef.current;
-    let closest: { marker: ResolvedMarker; dist: number; x: number; y: number } | null = null;
-    for (const marker of markersRef.current) {
-      const proj = projectMarker(marker.point.lat, marker.point.lng, phi, theta, size);
-      if (!proj.visible) continue;
-      const dist = Math.hypot(proj.x - px, proj.y - py);
-      const hitRadius = Math.max(MIN_HIT_RADIUS_PX, marker.size * size * 0.6);
-      if (dist <= hitRadius && (!closest || dist < closest.dist)) {
-        closest = { marker, dist, x: proj.x, y: proj.y };
-      }
-    }
-    return closest;
-  }, []);
-
-  useEffect(() => {
-    if (!containerRef.current || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    let animationId = 0;
-    const baseColor: [number, number, number] = isDark ? [0.16, 0.17, 0.2] : [0.98, 0.98, 0.99];
-    const glowColor: [number, number, number] = isDark ? [0.22, 0.24, 0.3] : [0.92, 0.92, 0.95];
-
-    function frame() {
-      if (!pointerRef.current) anglesRef.current.phi += AUTO_ROTATE_SPEED;
-      globeRef.current?.update({ phi: anglesRef.current.phi, theta: anglesRef.current.theta });
-      animationId = requestAnimationFrame(frame);
-    }
-
-    function init() {
-      const width = canvas.offsetWidth;
-      if (width === 0 || globeRef.current) return;
-      globeRef.current = createGlobe(canvas, {
-        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-        width,
-        height: width,
-        phi: anglesRef.current.phi,
-        theta: anglesRef.current.theta,
-        dark: isDark ? 1 : 0,
-        diffuse: 1.4,
-        mapSamples: 14000,
-        mapBrightness: isDark ? 4 : 6,
-        baseColor,
-        markerColor: [0.35, 0.35, 0.9],
-        glowColor,
-        markerElevation: 0.02,
-        markers: markersRef.current.map((m) => ({
-          location: [m.point.lat, m.point.lng],
-          size: m.size,
-          color: m.color,
-        })),
-        opacity: 0.9,
-      });
-      frame();
-      setTimeout(() => canvas && (canvas.style.opacity = "1"));
-    }
-
-    if (canvas.offsetWidth > 0) {
-      init();
-    } else {
-      const ro = new ResizeObserver((entries) => {
-        if ((entries[0]?.contentRect.width ?? 0) > 0) {
-          ro.disconnect();
-          init();
-        }
-      });
-      ro.observe(canvas);
-    }
-
-    return () => {
-      cancelAnimationFrame(animationId);
-      globeRef.current?.destroy();
-      globeRef.current = null;
-    };
-  }, [isDark]);
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    pointerRef.current = { x: e.clientX, y: e.clientY, moved: false };
-    if (canvasRef.current) canvasRef.current.style.cursor = "grabbing";
-  };
-
-  useEffect(() => {
-    const handleMove = (e: PointerEvent) => {
-      const drag = pointerRef.current;
-      if (drag) {
-        const dx = e.clientX - drag.x;
-        const dy = e.clientY - drag.y;
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
-        anglesRef.current = {
-          phi: anglesRef.current.phi + dx / 300,
-          theta: Math.max(-1.2, Math.min(1.2, anglesRef.current.theta + dy / 800)),
-        };
-        pointerRef.current = { x: e.clientX, y: e.clientY, moved: drag.moved };
-        setHovered(null);
-        return;
-      }
-      const hit = findMarkerAt(e.clientX, e.clientY);
-      if (canvasRef.current) canvasRef.current.style.cursor = hit ? "pointer" : "grab";
-      setHovered(
-        hit ? { name: hit.marker.name, total: hit.marker.total, x: hit.x, y: hit.y } : null,
-      );
-    };
-    const handleUp = (e: PointerEvent) => {
-      const drag = pointerRef.current;
-      pointerRef.current = null;
-      if (canvasRef.current) canvasRef.current.style.cursor = "grab";
-      if (drag && !drag.moved) {
-        const hit = findMarkerAt(e.clientX, e.clientY);
-        if (hit) onSelect(hit.marker.name);
-      }
-    };
-    window.addEventListener("pointermove", handleMove, { passive: true });
-    window.addEventListener("pointerup", handleUp, { passive: true });
-    return () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-    };
-  }, [findMarkerAt, onSelect]);
+  const ranking = useMemo(
+    () => [...places].sort((a, b) => b.total - a.total).slice(0, 6),
+    [places],
+  );
+  const active = hovered ?? selected;
+  const activePlace = places.find((place) => place.name === active) ?? null;
 
   const resolvedCount = grouped.filter((g) => cache[g.name]).length;
   const notFoundCount = grouped.filter((g) => g.name in cache && cache[g.name] === null).length;
   const pending = grouped.length - resolvedCount - notFoundCount;
   const allUnresolved = !pending && grouped.length > 0 && resolvedCount === 0;
-  const pct =
-    hovered && markersRef.current.length
-      ? (hovered.total / (markersRef.current.reduce((s, m) => s + m.total, 0) || 1)) * 100
-      : 0;
+
+  const choose = (name: string) => {
+    // Mesmo contrato dos outros widgets: no toque o primeiro contato apenas
+    // seleciona, e o filtro sai do botão do painel de detalhe.
+    if (isCoarsePointer()) {
+      setSelected((current) => (current === name ? null : name));
+      return;
+    }
+    onSelect(name);
+  };
 
   return (
     <>
-      <div ref={containerRef} className="relative flex justify-center bg-muted/10 py-3">
-        <div className="relative aspect-square w-56 max-w-full">
-          <canvas
-            ref={canvasRef}
-            onPointerDown={handlePointerDown}
-            className="size-full touch-none"
-            style={{ cursor: "grab", opacity: 0, transition: "opacity 0.8s ease" }}
-          />
-          {hovered && (
-            <div
-              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs shadow-lg"
-              style={{ left: hovered.x, top: hovered.y - 8 }}
-            >
-              <p className="font-semibold text-popover-foreground">{hovered.name}</p>
-              <p className="text-muted-foreground">
-                {fmt(hovered.total, valueColumn.kind) ?? "–"} ({pct.toFixed(1)}%)
-              </p>
+      <div className="flex flex-col gap-3 p-3 lg:flex-row">
+        <div className="relative min-w-0 flex-[2]">
+          <svg
+            viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+            className="h-full w-full rounded-xl bg-muted/20"
+            role="img"
+            aria-label={`Mapa com ${places.length} local(is)`}
+          >
+            <g>
+              {countries.map((path, index) => (
+                <path
+                  key={index}
+                  d={path}
+                  className="fill-muted-foreground/15 stroke-muted-foreground/25"
+                  strokeWidth={0.4}
+                />
+              ))}
+            </g>
+            <g>
+              {places.map((place) => {
+                const isActive = active === place.name;
+                return (
+                  <circle
+                    key={place.name}
+                    cx={place.x}
+                    cy={place.y}
+                    r={place.radius}
+                    fill={place.color}
+                    fillOpacity={isActive ? 0.85 : 0.5}
+                    stroke={place.color}
+                    strokeWidth={isActive ? 2 : 1}
+                    className="cursor-pointer transition-[fill-opacity,stroke-width]"
+                    onMouseEnter={() => !isCoarsePointer() && setHovered(place.name)}
+                    onMouseLeave={() => !isCoarsePointer() && setHovered(null)}
+                    onClick={() => choose(place.name)}
+                  >
+                    <title>{`${place.name}: ${fmt(place.total, valueColumn.kind) ?? "–"}`}</title>
+                  </circle>
+                );
+              })}
+            </g>
+          </svg>
+          {pending > 0 && (
+            <div className="oliam-map-loading" role="status">
+              <OliLoader compact />
+              <span>Localizando {pending}…</span>
             </div>
           )}
         </div>
-        {pending > 0 && (
-          <div className="oliam-map-loading" role="status">
-            <OliLoader compact />
-            <span>Localizando {pending}…</span>
-          </div>
+        {ranking.length > 0 && (
+          // O ranking ao lado responde "quem são os maiores" sem obrigar a
+          // caçar a bolha maior no mapa, e dá um alvo de toque de tamanho
+          // decente para locais que no mapa têm poucos pixels.
+          <ul className="flex min-w-0 flex-1 flex-col gap-0.5 lg:max-w-56">
+            {ranking.map((place, index) => (
+              <li key={place.name}>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors",
+                    active === place.name ? "bg-muted" : "hover:bg-muted/50",
+                  )}
+                  onMouseEnter={() => !isCoarsePointer() && setHovered(place.name)}
+                  onMouseLeave={() => !isCoarsePointer() && setHovered(null)}
+                  onClick={() => choose(place.name)}
+                >
+                  <span className="w-3 shrink-0 font-mono text-[10px] text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ background: place.color }}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate">{place.name}</span>
+                  <span className="shrink-0 font-mono tabular-nums">
+                    {place.share.toLocaleString("pt-BR", {
+                      style: "percent",
+                      maximumFractionDigits: 0,
+                    })}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
+      {activePlace && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/10 px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium">{activePlace.name}</p>
+            <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
+              {fmt(activePlace.total, valueColumn.kind) ?? "–"}
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {activePlace.share.toLocaleString("pt-BR", {
+                  style: "percent",
+                  maximumFractionDigits: 1,
+                })}{" "}
+                do total
+              </span>
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-border px-3 py-1.5 text-xs transition-colors hover:bg-muted"
+            onClick={() => {
+              onSelect(activePlace.name);
+              setSelected(null);
+            }}
+          >
+            Filtrar por este local
+          </button>
+        </div>
+      )}
       {allUnresolved && (
         <p className="border-t bg-destructive/10 px-4 py-2 text-[11px] text-destructive">
           Nenhum dos {grouped.length} valores dessa coluna foi reconhecido como local (cidade,
@@ -364,14 +325,14 @@ export default function MapWidgetBody({
       )}
       <p className="border-t px-4 py-2 text-[11px] text-muted-foreground">
         Localização aproximada a partir do nome do local, via OpenStreetMap Nominatim. O tamanho de
-        cada marcador indica o valor agregado; clique para filtrar, arraste para girar o globo.
+        cada bolha indica o valor agregado.
         {pending > 0 && ` Localizando ${pending} de ${grouped.length}…`}
         {notFoundCount > 0 &&
           !allUnresolved &&
-          ` ${notFoundCount} local(is) não encontrado(s) e sem marcador no globo.`}
+          ` ${notFoundCount} local(is) não encontrado(s) e sem bolha no mapa.`}
       </p>
       <p className="sr-only">
-        Tabela alternativa ao globo: {grouped.map((g) => `${g.name}, ${g.total}`).join("; ")}.
+        Tabela alternativa ao mapa: {grouped.map((g) => `${g.name}, ${g.total}`).join("; ")}.
       </p>
     </>
   );
