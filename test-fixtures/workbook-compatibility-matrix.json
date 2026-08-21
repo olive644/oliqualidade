@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "1.0.0",
+  "formats": [
+    {
+      "extension": "xlsx",
+      "family": "OOXML",
+      "coverage": "generated",
+      "reader": "SheetJS + verificação OOXML"
+    },
+    {
+      "extension": "xlsm",
+      "family": "OOXML com macros",
+      "coverage": "generated",
+      "reader": "SheetJS + verificação OOXML"
+    },
+    {
+      "extension": "xlsb",
+      "family": "Excel binário",
+      "coverage": "generated",
+      "reader": "SheetJS"
+    },
+    {
+      "extension": "xls",
+      "family": "Excel legado",
+      "coverage": "generated",
+      "reader": "SheetJS"
+    },
+    {
+      "extension": "xltx",
+      "family": "Modelo OOXML",
+      "coverage": "generated",
+      "reader": "SheetJS + verificação OOXML"
+    },
+    {
+      "extension": "xltm",
+      "family": "Modelo OOXML com macros",
+      "coverage": "generated",
+      "reader": "SheetJS + verificação OOXML"
+    },
+    {
+      "extension": "ods",
+      "family": "OpenDocument",
+      "coverage": "generated",
+      "reader": "SheetJS"
+    },
+    {
+      "extension": "fods",
+      "family": "OpenDocument plano",
+      "coverage": "generated",
+      "reader": "SheetJS"
+    },
+    {
+      "extension": "csv",
+      "family": "Texto delimitado",
+      "coverage": "generated",
+      "reader": "Leitor de texto + SheetJS"
+    },
+    {
+      "extension": "tsv",
+      "family": "Texto delimitado",
+      "coverage": "generated",
+      "reader": "Leitor de texto + SheetJS"
+    },
+    {
+      "extension": "txt",
+      "family": "Texto delimitado",
+      "coverage": "generated",
+      "reader": "Leitor de texto + SheetJS"
+    },
+    {
+      "extension": "xml",
+      "family": "SpreadsheetML",
+      "coverage": "generated",
+      "reader": "SheetJS"
+    },
+    {
+      "extension": "html",
+      "family": "Tabela HTML",
+      "coverage": "generated",
+      "reader": "SheetJS"
+    },
+    {
+      "extension": "htm",
+      "family": "Tabela HTML",
+      "coverage": "generated",
+      "reader": "SheetJS"
+    },
+    {
+      "extension": "numbers",
+      "family": "Apple Numbers",
+      "coverage": "manual",
+      "reader": "SheetJS",
+      "note": "O formato exige uma fixture real exportada pelo Apple Numbers; o CI não fabrica um pacote válido."
+    }
+  ]
+}
