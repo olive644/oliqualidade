@@ -21,6 +21,7 @@ import {
   MapPin,
   Maximize2,
   Minimize2,
+  MoreHorizontal,
   PieChart as PieIcon,
   Radar as RadarIcon,
   ShieldAlert,
@@ -228,67 +229,70 @@ export function WidgetHead({
             <SlidersHorizontal className="size-3.5" />
           </Button>
           {expanded !== null && (
+            // Ícone com rótulo: "ampliar" é a ação nova e a que mais se
+            // procura ao explorar um gráfico apertado na grade. Sozinho entre
+            // ícones mudos ela desaparecia; a palavra ao lado é o que a torna
+            // encontrável. Em telas estreitas volta a ser só o ícone, onde
+            // não há largura para o texto.
             <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 pointer-coarse:size-12"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 px-2 pointer-coarse:h-12 pointer-coarse:px-3"
               aria-label={expanded ? `Reduzir ${title}` : `Ampliar ${title}`}
               title={expanded ? "Reduzir" : "Ampliar para ver em detalhe"}
               onClick={toggleExpanded}
             >
               {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+              <span className="hidden text-[11px] sm:inline">
+                {expanded ? "Reduzir" : "Ampliar"}
+              </span>
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 pointer-coarse:size-12"
-            aria-label={`Copiar ${title}`}
-            title="Copiar widget"
-            onClick={onCopy}
-          >
-            <Copy className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 pointer-coarse:size-12"
-            aria-label={`Colar widget após ${title}`}
-            title={canPaste ? "Colar widget após este" : "Copie um widget primeiro"}
-            disabled={!canPaste}
-            onClick={onPaste}
-          >
-            <ClipboardPaste className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 pointer-coarse:size-12"
-            aria-label={`Mover ${title} para trás`}
-            disabled={disableBack}
-            onClick={onMoveBack}
-          >
-            <ArrowLeft className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 pointer-coarse:size-12"
-            aria-label={`Mover ${title} para frente`}
-            disabled={disableForward}
-            onClick={onMoveForward}
-          >
-            <ArrowRight className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 pointer-coarse:size-12 hover:bg-destructive/10 hover:text-destructive"
-            aria-label={`Remover ${title}`}
-            onClick={onRemove}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
+          {/* Copiar, colar, reordenar e remover são ações de arrumação do
+              painel, não de leitura. Enfileiradas como ícones soltos, viravam
+              cinco alvos cinza idênticos que empurravam configurar e ampliar
+              para o meio da fila e escondiam as duas ações que a pessoa
+              realmente procura enquanto explora os dados. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 pointer-coarse:size-12"
+                aria-label={`Mais ações para ${title}`}
+                title="Mais ações"
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={() => onCopy?.()}>
+                <Copy className="size-3.5" />
+                Copiar widget
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!canPaste} onSelect={() => onPaste?.()}>
+                <ClipboardPaste className="size-3.5" />
+                {canPaste ? "Colar widget após este" : "Copie um widget primeiro"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={!!disableBack} onSelect={() => onMoveBack?.()}>
+                <ArrowLeft className="size-3.5" />
+                Mover para trás
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!!disableForward} onSelect={() => onMoveForward?.()}>
+                <ArrowRight className="size-3.5" />
+                Mover para frente
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => onRemove?.()}
+              >
+                <Trash2 className="size-3.5" />
+                Remover widget
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
     </div>
