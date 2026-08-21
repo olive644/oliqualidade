@@ -765,11 +765,18 @@ function WidgetCardBody({
  * outros.
  */
 /** Tipos cujo conteúdo não ganha nada em tela cheia. */
-const NOT_EXPANDABLE: WidgetType[] = ["metric", "metric-trend", "rating", "folder-files"];
+/**
+ * Ampliar existe só no gráfico de área, por pedido do usuário. Ampliar
+ * remonta o widget inteiro num diálogo, então cada tipo habilitado é uma
+ * segunda instância possível do mesmo gráfico; restringir a um tipo mantém
+ * o recurso onde ele rende mais (uma série temporal apertada num terço da
+ * grade) sem espalhar remontagens pelo painel todo.
+ */
+const EXPANDABLE: WidgetType[] = ["area"];
 
 export function WidgetCard(props: React.ComponentProps<typeof WidgetCardBody>) {
   const [expanded, setExpanded] = useState(false);
-  const canExpand = !NOT_EXPANDABLE.includes(props.widget.type);
+  const canExpand = EXPANDABLE.includes(props.widget.type);
   const toggleExpanded = useCallback(() => setExpanded((current) => !current), []);
 
   // Ampliado, o widget é remontado no diálogo ocupando a largura inteira e a

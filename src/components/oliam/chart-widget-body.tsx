@@ -149,7 +149,14 @@ export function ChartWidgetBody({
   const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
     ? (w.op ?? "sum")
     : (relevantOps[0] ?? "sum");
-  const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
+  // Contar "linha a linha" devolve 1 para cada registro e transforma cada
+  // linha da planilha numa categoria — 600 barras de valor 1, que não
+  // informam nada e travam o navegador. Acontecia sem ninguém escolher:
+  // o widget nasce com "raw" quando a operação inicial é soma, e se depois
+  // a métrica não sobrevive como agregável a operação degrada para
+  // contagem (semanticAggregationOps) enquanto o "raw" salvo permanece.
+  // Com contagem, agregar não é preferência: é a única leitura possível.
+  const dataMode: ChartDataMode = op === "count" ? "aggregate" : (w.dataMode ?? "raw");
   const title =
     dataMode === "raw" && op !== "count"
       ? `${valueCol?.label ?? "Valores"} por linha de ${groupCol?.label ?? "categoria"}`

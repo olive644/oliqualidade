@@ -560,6 +560,12 @@ export function ChartReadingGuide({
   mode: ChartDataMode;
   operation: string;
 }) {
+  const { open } = useWidgetConfig();
+  // O guia repete, em palavras, o que os seletores de X, Y e cálculo já
+  // mostram — útil enquanto se configura o widget, ruído permanente depois.
+  // Passa a acompanhar a configuração em vez de ocupar uma faixa fixa em
+  // cada um dos widgets do painel.
+  if (!open) return null;
   return (
     <div
       className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border/70 bg-card px-4 py-1.5 text-[10px] text-muted-foreground"
