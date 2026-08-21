@@ -523,8 +523,7 @@ export function ScheduleHeatmapWidgetBody({
           className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
           onClick={() => setSortDirection((current) => (current === "asc" ? "desc" : "asc"))}
           aria-label={
-            sortDirection === "asc"
-              ? "Ordenar em ordem decrescente"
+            sortDirection === "asc" ? "Ordenar em ordem decrescente"
               : "Ordenar em ordem crescente"
           }
           title={sortDirection === "asc" ? "Ordem crescente" : "Ordem decrescente"}
