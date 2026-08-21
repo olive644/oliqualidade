@@ -853,7 +853,7 @@ export function SeriesComparisonPanel({
     // linha, porque a viewport podia estar "sm" mesmo com o widget
     // estreito. flex-wrap reflui de acordo com o espaço que o próprio
     // card tem, seja qual for a largura da tela.
-    <div className="oliam-series-comparison-row flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
+    <div className="oliam-panel-enter oliam-series-comparison-row flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
       <div className="min-w-32 flex-[2] basis-40">
         <p className="truncate text-sm font-semibold" title={selected.name}>
           {selected.name}
@@ -948,7 +948,7 @@ export function WidgetMetricStrip({ metrics }: { metrics: WidgetMetric[] }) {
   if (!metrics.length) return null;
   return (
     <div
-      className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-border px-4 py-2"
+      className="oliam-panel-enter flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-border px-4 py-2"
       data-widget-metrics
     >
       {metrics.map((metric, index) => (
@@ -1004,7 +1004,7 @@ export function TrendSummaryPanel({ summary, kind }: { summary: TrendSummary; ki
   return (
     // Mesmo motivo do SeriesComparisonPanel logo acima: flex-wrap reflui
     // pela largura real do card do widget, não pela viewport.
-    <div className="oliam-trend-summary-row flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
+    <div className="oliam-panel-enter oliam-trend-summary-row flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
       <div className="min-w-32 flex-[1.6] basis-40">
         <p
           className="truncate text-[10px] uppercase tracking-wide text-muted-foreground"

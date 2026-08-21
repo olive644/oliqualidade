@@ -79,7 +79,7 @@ export function WidgetConfigBar({
   return (
     <div
       className={cn(
-        "oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2",
+        "oliam-widget-config-bar oliam-config-enter flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2",
         className,
       )}
       data-export-controls

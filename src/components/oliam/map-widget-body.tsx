@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { feature } from "topojson-client";
 import type { FeatureCollection, Geometry } from "geojson";
 import type { Topology } from "topojson-specification";
@@ -221,7 +221,7 @@ export default function MapWidgetBody({
               ))}
             </g>
             <g>
-              {places.map((place) => {
+              {places.map((place, index) => {
                 const isActive = active === place.name;
                 return (
                   <circle
@@ -233,7 +233,10 @@ export default function MapWidgetBody({
                     fillOpacity={isActive ? 0.85 : 0.5}
                     stroke={place.color}
                     strokeWidth={isActive ? 2 : 1}
-                    className="cursor-pointer transition-[fill-opacity,stroke-width]"
+                    className="oliam-map-bubble cursor-pointer transition-[fill-opacity,stroke-width]"
+                    style={
+                      { "--oliam-bubble-delay": `${Math.min(index, 12) * 45}ms` } as CSSProperties
+                    }
                     onMouseEnter={() => !isCoarsePointer() && setHovered(place.name)}
                     onMouseLeave={() => !isCoarsePointer() && setHovered(null)}
                     onClick={() => choose(place.name)}
@@ -290,7 +293,7 @@ export default function MapWidgetBody({
         )}
       </div>
       {activePlace && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/10 px-4 py-3">
+        <div className="oliam-panel-enter flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/10 px-4 py-3">
           <div className="min-w-0">
             <p className="truncate text-xs font-medium">{activePlace.name}</p>
             <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
