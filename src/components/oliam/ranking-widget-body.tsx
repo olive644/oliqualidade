@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ListOrdered } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -16,6 +17,7 @@ import {
   aggregationLabels,
   chartSeries,
   NOT_INFORMED,
+  pieComparisonFor,
   rankingCoverageFor,
   relevantAggregationOps,
   semanticAggregationOps,
@@ -28,6 +30,8 @@ import {
   ChartReadingGuide,
   FieldDropSlot,
   FilterChip,
+  isCoarsePointer,
+  SeriesComparisonPanel,
   WidgetHead,
   type WidgetDragProps,
 } from "./widget-support";
@@ -85,6 +89,19 @@ export function RankingWidgetBody({
   const ranked = [...grouped].sort((a, b) => b.total - a.total).slice(0, topN);
   const max = ranked.reduce((m, g) => Math.max(m, Math.abs(g.total)), 0) || 1;
   const coverage = rankingCoverageFor(ranked, grouped);
+  // Mesma leitura guiada de barra/pizza, que o ranking não tinha: o hover
+  // (desktop) troca o item explicado e, no toque, o primeiro contato apenas
+  // seleciona — o filtro sai do botão explícito no painel, para não filtrar
+  // sem querer com o dedo.
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const displayedIndex = activeIndex ?? selectedIndex;
+  // Sem hover nem seleção, o primeiro colocado já vem explicado: o painel
+  // nasce preenchido em vez de esperar interação que no toque nem existe.
+  const summaryIndex = displayedIndex ?? (ranked.length > 0 ? 0 : null);
+  const selectedEntry = summaryIndex !== null ? ranked[summaryIndex] : null;
+  const selectedComparison =
+    summaryIndex !== null && ranked.length ? pieComparisonFor(ranked, summaryIndex) : null;
   return (
     <article
       className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -196,8 +213,25 @@ export function RankingWidgetBody({
             <li key={`${g.name}-${g.sourceRow ?? i}`}>
               <button
                 type="button"
-                className="oliam-ranking-row w-full text-left"
-                onClick={() => setFilters(toggleClickFilter(filters, groupCol.key, String(g.name)))}
+                className={cn(
+                  "oliam-ranking-row w-full text-left transition-colors",
+                  summaryIndex === i && "bg-muted/40",
+                )}
+                aria-pressed={selectedIndex === i}
+                // Em toque o navegador emula mouseenter/leave em volta do
+                // clique; deixar o hover mexer aqui apagaria a seleção que o
+                // toque acabou de fixar.
+                onMouseEnter={() => !isCoarsePointer() && setActiveIndex(i)}
+                onMouseLeave={() => !isCoarsePointer() && setActiveIndex(null)}
+                onFocus={() => !isCoarsePointer() && setActiveIndex(i)}
+                onBlur={() => !isCoarsePointer() && setActiveIndex(null)}
+                onClick={() => {
+                  if (isCoarsePointer()) {
+                    setSelectedIndex(i === selectedIndex ? null : i);
+                    return;
+                  }
+                  setFilters(toggleClickFilter(filters, groupCol.key, String(g.name)));
+                }}
               >
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="truncate">
@@ -233,6 +267,18 @@ export function RankingWidgetBody({
             </li>
           ))}
         </ul>
+      )}
+      {groupCol && valueCol && selectedEntry && (
+        <SeriesComparisonPanel
+          selected={selectedEntry}
+          comparison={selectedComparison}
+          kind={valueCol.kind}
+          filterLabel="Filtrar por esta categoria"
+          onFilter={() => {
+            setFilters(toggleClickFilter(filters, groupCol.key, String(selectedEntry.name)));
+            setSelectedIndex(null);
+          }}
+        />
       )}
     </article>
   );

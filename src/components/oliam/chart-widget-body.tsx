@@ -109,6 +109,19 @@ export function ChartWidgetBody({
   const handleGroupClick = (groupKey: string, value: string) => {
     setFilters(toggleClickFilter(filters, groupKey, value));
   };
+  // Linha e área filtravam direto no clique do ponto, sem nenhuma leitura
+  // intermediária — no toque isso dispara filtro sem querer, e no desktop o
+  // usuário só via o valor no tooltip, que some. Agora o ponto seleciona
+  // primeiro (em qualquer entrada, para o desktop também ganhar a leitura
+  // explicada) e o filtro sai do botão do painel.
+  const [selectedPointName, setSelectedPointName] = useState<string | null>(null);
+  const handlePointClick = (groupKey: string, value: string) => {
+    if (isCoarsePointer()) {
+      setSelectedPointName((current) => (current === value ? null : value));
+      return;
+    }
+    handleGroupClick(groupKey, value);
+  };
 
   const groupCol =
     w.type === "line"
@@ -181,6 +194,12 @@ export function ChartWidgetBody({
     ? (conditionalColor(series.at(-1)?.total ?? null, valueCol.kind, valueCol.conditionalFormat) ??
       "var(--primary)")
     : "var(--primary)";
+  const selectedPointIndex = selectedPointName
+    ? series.findIndex((entry) => String(entry.name) === selectedPointName)
+    : -1;
+  const selectedPoint = selectedPointIndex >= 0 ? (series[selectedPointIndex] ?? null) : null;
+  const selectedPointComparison =
+    selectedPointIndex >= 0 ? pieComparisonFor(series, selectedPointIndex) : null;
   const barSeries = series;
   const barPresentation = barChartPresentation(barSeries.length);
   const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
@@ -842,7 +861,7 @@ export function ChartWidgetBody({
                               r={3}
                               groupCol={groupCol}
                               valueCol={valueCol}
-                              onSelect={handleGroupClick}
+                              onSelect={handlePointClick}
                             />
                           );
                         }}
@@ -857,7 +876,7 @@ export function ChartWidgetBody({
                               r={5}
                               groupCol={groupCol}
                               valueCol={valueCol}
-                              onSelect={handleGroupClick}
+                              onSelect={handlePointClick}
                             />
                           );
                         }}
@@ -878,6 +897,18 @@ export function ChartWidgetBody({
               Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
             </p>
             {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
+            {selectedPoint && (
+              <SeriesComparisonPanel
+                selected={selectedPoint}
+                comparison={selectedPointComparison}
+                kind={valueCol.kind}
+                filterLabel="Filtrar por este período"
+                onFilter={() => {
+                  handleGroupClick(groupCol.key, String(selectedPoint.name));
+                  setSelectedPointName(null);
+                }}
+              />
+            )}
           </div>
         </div>
       ) : (
@@ -945,7 +976,7 @@ export function ChartWidgetBody({
                             r={3}
                             groupCol={groupCol}
                             valueCol={valueCol}
-                            onSelect={handleGroupClick}
+                            onSelect={handlePointClick}
                           />
                         );
                       }}
@@ -960,7 +991,7 @@ export function ChartWidgetBody({
                             r={5}
                             groupCol={groupCol}
                             valueCol={valueCol}
-                            onSelect={handleGroupClick}
+                            onSelect={handlePointClick}
                           />
                         );
                       }}
@@ -981,6 +1012,18 @@ export function ChartWidgetBody({
             Tabela alternativa à evolução: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
           </p>
           {trendSummary && <TrendSummaryPanel summary={trendSummary} kind={valueCol.kind} />}
+          {selectedPoint && (
+            <SeriesComparisonPanel
+              selected={selectedPoint}
+              comparison={selectedPointComparison}
+              kind={valueCol.kind}
+              filterLabel="Filtrar por este período"
+              onFilter={() => {
+                handleGroupClick(groupCol.key, String(selectedPoint.name));
+                setSelectedPointName(null);
+              }}
+            />
+          )}
         </>
       )}
     </article>
