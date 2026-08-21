@@ -46,6 +46,7 @@ import {
   sortAllBarCategories,
   timeSeriesChartPresentation,
   toggleClickFilter,
+  seriesHeadline,
   trendSummaryFor,
   type AggregationOp,
 } from "@/lib/data-pipeline";
@@ -64,6 +65,8 @@ import {
   SeriesComparisonPanel,
   TrendSummaryPanel,
   truncateLabel,
+  WidgetMetricStrip,
+  type WidgetMetric,
   WidgetHead,
   type ChartDotProps,
   type WidgetDragProps,
@@ -254,6 +257,46 @@ export function ChartWidgetBody({
   const { cornerRadius: pieCornerRadius, paddingAngle: piePaddingAngle } =
     pieRoundnessFor(pieSeries);
   const insufficient = w.type === "line" ? series.length < 2 : series.length < 1;
+  // Linha sempre é cronológica; área só quando agrupada por data (mesma
+  // condição que decide se a série é ordenada por tempo, acima). Pizza e
+  // barra comparam categorias, então recebem total em vez de variação.
+  const temporalSeries = w.type === "line" || (w.type === "area" && groupCol?.kind === "date");
+  const headline =
+    groupCol && valueCol
+      ? seriesHeadline(w.type === "pie" ? pieSeries : series, {
+          temporal: temporalSeries,
+          operation: op,
+        })
+      : null;
+  const headlineMetrics: WidgetMetric[] = headline
+    ? [
+        {
+          label: headline.label,
+          value:
+            (temporalSeries
+              ? fmt(headline.latest ?? headline.total, valueCol!.kind)
+              : fmt(headline.total, valueCol!.kind)) ?? "–",
+          ...(headline.relativeChange !== null
+            ? {
+                change: `${headline.relativeChange >= 0 ? "+" : ""}${headline.relativeChange.toLocaleString(
+                  "pt-BR",
+                  { style: "percent", maximumFractionDigits: 1 },
+                )}`,
+                up: headline.relativeChange >= 0,
+              }
+            : {}),
+        },
+        temporalSeries
+          ? {
+              label: "Média do período",
+              value: fmt(headline.average, valueCol!.kind) ?? "–",
+            }
+          : {
+              label: w.type === "pie" ? "Fatias" : "Categorias",
+              value: headline.categoryCount.toLocaleString("pt-BR"),
+            },
+      ]
+    : [];
 
   return (
     <article
@@ -261,6 +304,7 @@ export function ChartWidgetBody({
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       <WidgetHead title={title} icon={icon} {...dragProps} />
+      {!insufficient && <WidgetMetricStrip metrics={headlineMetrics} />}
       <WidgetConfigBar>
         <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
         <FieldDropSlot

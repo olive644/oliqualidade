@@ -33,6 +33,8 @@ import {
   isCoarsePointer,
   SeriesComparisonPanel,
   WidgetHead,
+  WidgetMetricStrip,
+  type WidgetMetric,
   type WidgetDragProps,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
@@ -103,6 +105,32 @@ export function RankingWidgetBody({
   const selectedEntry = summaryIndex !== null ? ranked[summaryIndex] : null;
   const selectedComparison =
     summaryIndex !== null && ranked.length ? pieComparisonFor(ranked, summaryIndex) : null;
+  // O ranking já sabia quanto o Top N concentra do total; o número só vivia
+  // numa frase pequena. Sobe para a faixa de métricas junto com o líder, que
+  // é a leitura que o widget existe para dar.
+  const rankingMetrics: WidgetMetric[] =
+    valueCol && ranked.length
+      ? [
+          {
+            label: `Líder · ${ranked[0]!.name}`,
+            value: fmt(ranked[0]!.total, valueCol.kind) ?? "–",
+          },
+          {
+            label: `Top ${ranked.length} concentra`,
+            value:
+              coverage.topShare !== null
+                ? coverage.topShare.toLocaleString("pt-BR", {
+                    style: "percent",
+                    maximumFractionDigits: 1,
+                  })
+                : "–",
+          },
+          {
+            label: "Categorias",
+            value: coverage.categoryCount.toLocaleString("pt-BR"),
+          },
+        ]
+      : [];
   return (
     <article
       className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
@@ -117,6 +145,7 @@ export function RankingWidgetBody({
         icon={<ListOrdered className="size-3.5 shrink-0 text-muted-foreground" />}
         {...dragProps}
       />
+      {rankingMetrics.length > 0 && <WidgetMetricStrip metrics={rankingMetrics} />}
       <WidgetConfigBar>
         <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
         <FieldDropSlot
