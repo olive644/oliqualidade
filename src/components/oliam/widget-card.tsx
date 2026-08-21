@@ -594,7 +594,13 @@ function WidgetCardBody({
     const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
       ? (w.op ?? "sum")
       : (relevantOps[0] ?? "sum");
-    const dataMode: ChartDataMode = w.dataMode ?? (op === "count" ? "aggregate" : "raw");
+    // Mapa sempre agrega por local. "Linha a linha" faz sentido num gráfico
+    // onde cada registro é uma marca própria, mas num mapa dois registros da
+    // mesma cidade não são dois lugares: empilhavam bolhas idênticas na mesma
+    // coordenada e repetiam o nome no ranking, como se fossem locais
+    // distintos. A operação escolhida (soma, média…) continua valendo — o que
+    // deixa de ser opção é desagregar.
+    const dataMode: ChartDataMode = "aggregate";
     const grouped =
       groupCol && valueCol ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode) : [];
     const sortedByTotal = [...grouped].sort((a, b) => b.total - a.total);
@@ -661,8 +667,6 @@ function WidgetCardBody({
             operations={relevantOps}
             metric={op === "count" ? "os registros" : (valueCol?.label ?? "a métrica")}
             group={groupCol?.label}
-            allowRaw
-            onRaw={() => onConfigure({ dataMode: "raw" })}
             onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
           />
         </WidgetConfigBar>
