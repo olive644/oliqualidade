@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { WidgetConfigContext, useWidgetConfig } from "./widget-config-state";
 
-
 /**
  * Estado de "configuração à mostra" de um widget.
  *
