@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const resultDirectory = "test-results";
 const vitestPath = `${resultDirectory}/workbook-compatibility-vitest.json`;
@@ -7,11 +8,16 @@ const jsonPath = `${resultDirectory}/workbook-compatibility-report.json`;
 const markdownPath = `${resultDirectory}/workbook-compatibility-report.md`;
 const matrix = JSON.parse(readFileSync("test-fixtures/workbook-compatibility-matrix.json", "utf8"));
 
+// Chamar o binário do vitest pelo Node, e não por `npx`, mantém o relatório
+// reproduzível fora do CI: no Windows `spawnSync("npx")` falha com ENOENT
+// porque o executável é um .cmd, que só roda através do shell.
+const vitestBin = fileURLToPath(new URL("../node_modules/vitest/vitest.mjs", import.meta.url));
+
 mkdirSync(resultDirectory, { recursive: true });
 const run = spawnSync(
-  "npx",
+  process.execPath,
   [
-    "vitest",
+    vitestBin,
     "run",
     "src/lib/workbook-compatibility.test.ts",
     "--reporter=json",
