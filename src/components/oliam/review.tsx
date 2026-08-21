@@ -57,6 +57,7 @@ export function Review(p: {
     diagnostics?: ImportDiagnostics;
     sourceGrid?: SourceGrid;
     audit?: ImportAudit;
+    rowOrigins?: number[];
     sourceNotes?: SourceNote[];
   }[];
   activeIndex: number;
@@ -1134,7 +1135,10 @@ export function Review(p: {
           columns={columns}
           {...(active?.diagnostics ? { diagnostics: active.diagnostics } : {})}
           {...(active?.sourceGrid ? { sourceGrid: active.sourceGrid } : {})}
+          {...(active?.rowOrigins ? { rowOrigins: active.rowOrigins } : {})}
           {...(active?.audit ? { audit: active.audit } : {})}
+          fileName={p.name}
+          sheetName={active?.name ?? ""}
           selection={selection}
           setSelection={setSelection}
           canUndo={Boolean(undoRows)}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Sheet as SheetIcon, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -6,7 +6,9 @@ import { fmt } from "@/lib/format";
 import type { Column, Row } from "@/lib/types";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
 import type { SourceGrid, ImportAudit } from "@/lib/import";
+import { traceImportedCell } from "@/lib/cell-provenance";
 import { buildSheetHealth, defaultSelection, type ImportSelection } from "@/lib/import-workbench";
+import { CellProvenancePanel } from "./cell-provenance-panel";
 import { ConfidenceDot } from "./confidence-dot";
 
 export function ImportWorkbench({
@@ -14,7 +16,10 @@ export function ImportWorkbench({
   columns,
   diagnostics,
   sourceGrid,
+  rowOrigins,
   audit,
+  fileName,
+  sheetName,
   selection,
   setSelection,
   apply,
@@ -26,7 +31,10 @@ export function ImportWorkbench({
   columns: Column[];
   diagnostics?: ImportDiagnostics;
   sourceGrid?: SourceGrid;
+  rowOrigins?: number[];
   audit?: ImportAudit;
+  fileName: string;
+  sheetName: string;
   selection: ImportSelection;
   setSelection: (selection: ImportSelection) => void;
   apply: () => void;
@@ -35,9 +43,40 @@ export function ImportWorkbench({
   saveProfile: () => void;
 }) {
   const [tab, setTab] = useState<"preview" | "health">("preview");
+  const [selectedCell, setSelectedCell] = useState<{
+    rowIndex: number;
+    columnKey: string;
+  } | null>(null);
   const previewRows = rows.slice(0, 30);
   const previewColumns = columns.slice(0, 12);
   const sourceSelection = selection.source;
+  useEffect(() => setSelectedCell(null), [rows, sheetName, sourceGrid]);
+  const selectedProvenance = useMemo(() => {
+    if (!selectedCell) return null;
+    const column = columns.find((item) => item.key === selectedCell.columnKey);
+    if (!column) return null;
+    return traceImportedCell({
+      fileName,
+      sheetName,
+      rows,
+      rowIndex: selectedCell.rowIndex,
+      column,
+      ...(sourceGrid ? { sourceGrid } : {}),
+      ...(rowOrigins ? { rowOrigins } : {}),
+      ...(diagnostics ? { diagnostics } : {}),
+      mappingInvalidated: canUndo,
+    });
+  }, [
+    canUndo,
+    columns,
+    diagnostics,
+    fileName,
+    rowOrigins,
+    rows,
+    selectedCell,
+    sheetName,
+    sourceGrid,
+  ]);
   const sourceRows = sourceGrid?.rows.slice(0, 30) ?? [];
   const sourceColumnCount = Math.min(12, sourceGrid?.rows[0]?.length ?? 0);
   const health = diagnostics ? buildSheetHealth(diagnostics) : null;
@@ -140,11 +179,11 @@ export function ImportWorkbench({
                 <Button
                   size="sm"
                   variant={sourceSelection ? "default" : "outline"}
-                  onClick={
-                    sourceSelection
-                      ? () => setSelection(defaultSelection(rows))
-                      : enableSourceSelection
-                  }
+                  onClick={() => {
+                    setSelectedCell(null);
+                    if (sourceSelection) setSelection(defaultSelection(rows));
+                    else enableSourceSelection();
+                  }}
                 >
                   {sourceSelection ? "Voltar à leitura automática" : "Selecionar na grade original"}
                 </Button>
@@ -233,7 +272,7 @@ export function ImportWorkbench({
           <p className="mb-2 text-xs text-muted-foreground">
             {sourceSelection
               ? "Ajuste as coordenadas para escolher exatamente o cabeçalho e a tabela original."
-              : "Clique no nome de uma coluna para incluí-la ou ignorá-la."}
+              : "Clique no nome de uma coluna para incluí-la ou ignorá-la. Clique em uma célula para conferir sua origem."}
           </p>
           <div className="max-h-[25rem] w-full overflow-auto rounded-xl border border-border">
             <table className="min-w-max border-collapse text-xs">
@@ -376,7 +415,7 @@ export function ImportWorkbench({
                               <td
                                 key={column.key}
                                 className={cn(
-                                  "max-w-56 truncate border border-border px-3 py-1.5",
+                                  "max-w-56 border border-border p-0",
                                   outside || ignored.has(column.key)
                                     ? "bg-slate-100 text-slate-400 dark:bg-slate-900"
                                     : danger
@@ -384,10 +423,24 @@ export function ImportWorkbench({
                                       : problem
                                         ? "bg-amber-400/15"
                                         : "bg-emerald-500/10",
+                                  selectedCell?.rowIndex === rowIndex &&
+                                    selectedCell.columnKey === column.key &&
+                                    "ring-2 ring-inset ring-primary",
                                 )}
-                                title={String(value ?? "")}
                               >
-                                {fmt(value ?? null, column.kind) ?? "—"}
+                                <button
+                                  type="button"
+                                  className="block w-full truncate px-3 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                                  onClick={() =>
+                                    setSelectedCell({ rowIndex, columnKey: column.key })
+                                  }
+                                  title={`Ver origem de ${column.label}, linha ${rowIndex + 1}: ${String(
+                                    value ?? "",
+                                  )}`}
+                                  aria-label={`Ver origem de ${column.label}, linha ${rowIndex + 1}`}
+                                >
+                                  {fmt(value ?? null, column.kind) ?? "—"}
+                                </button>
                               </td>
                             );
                           })}
@@ -399,6 +452,12 @@ export function ImportWorkbench({
               )}
             </table>
           </div>
+          {selectedProvenance && !sourceSelection && (
+            <CellProvenancePanel
+              provenance={selectedProvenance}
+              close={() => setSelectedCell(null)}
+            />
+          )}
           {(rows.length > 30 || columns.length > 12) && (
             <p className="mt-2 text-xs text-muted-foreground">
               Prévia limitada a 30 linhas e 12 colunas para manter a navegação rápida. A seleção é
