@@ -15,7 +15,7 @@ export const Route = createFileRoute("/painel/$id")({
   component: RouteComponent,
 });
 
-function RouteComponent() {
+export function RouteComponent() {
   const { id } = Route.useParams();
   return <OliAm routeId={id} />;
 }
