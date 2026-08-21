@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { ArrowUpDown, CalendarRange, Eye, FileText, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -21,9 +21,13 @@ import {
 import {
   scheduleCellState,
   scheduleCriterionForRow,
+  scheduleFillMeaning,
   summarizeScheduleRows,
   type ScheduleCellState,
+  type ScheduleFillMeaning,
 } from "@/lib/schedule-normalizer";
+import { sourceRowIndexOf } from "@/lib/data-review";
+import type { SourceCellFill } from "@/lib/cell-fill-provenance";
 import {
   exploreScheduleRows,
   type ScheduleExplorerEntry,
@@ -44,11 +48,13 @@ import {
   WidgetHead,
   type WidgetDragProps,
 } from "./widget-support";
+import { WidgetConfigBar } from "./widget-config-context";
 
 export function ScheduleHeatmapWidgetBody({
   widget: w,
   data,
   columns,
+  sourceCellFills,
   filters,
   setFilters,
   onConfigure,
@@ -59,6 +65,7 @@ export function ScheduleHeatmapWidgetBody({
   widget: Widget;
   data: Row[];
   columns: Column[];
+  sourceCellFills: SourceCellFill[];
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
   onConfigure: (patch: Partial<Widget>) => void;
@@ -143,12 +150,33 @@ export function ScheduleHeatmapWidgetBody({
     value === undefined ||
     value === "" ||
     (typeof value === "string" && /^[-–—]$/.test(value.trim()));
+  const sourceScheduleFillByCell = useMemo(() => {
+    const byCell = new Map<string, ScheduleFillMeaning>();
+    for (const fill of sourceCellFills) {
+      const meaning = scheduleFillMeaning(fill.color);
+      if (meaning) byCell.set(`${fill.rowIndex}:${fill.columnKey}`, meaning);
+    }
+    return byCell;
+  }, [sourceCellFills]);
+  const fillMeaningFor = (row: Row, columnKey: string) => {
+    const sourceRowIndex = sourceRowIndexOf(row);
+    if (sourceRowIndex === null) return null;
+    return sourceScheduleFillByCell.get(`${sourceRowIndex}:${columnKey}`) ?? null;
+  };
+  const effectiveScheduleValue = (row: Row, columnKey: string) => {
+    const value = row[columnKey];
+    if (!isBlankScheduleValue(value)) return value ?? null;
+    return fillMeaningFor(row, columnKey)?.label ?? null;
+  };
   const scheduleRows = scheduleData.filter(
     (row) =>
       groupCol &&
       row[groupCol.key] !== null &&
       row[groupCol.key] !== "" &&
-      (periodCols.some((column) => !isBlankScheduleValue(row[column.key])) ||
+      (periodCols.some(
+        (column) =>
+          !isBlankScheduleValue(row[column.key]) || Boolean(fillMeaningFor(row, column.key)),
+      ) ||
         (statusCol && row[statusCol.key] !== null && row[statusCol.key] !== "") ||
         allDetailCols.some((column) => row[column.key] !== null && row[column.key] !== "")),
   );
@@ -170,10 +198,14 @@ export function ScheduleHeatmapWidgetBody({
         return isBlankScheduleValue(value) ? [] : [String(value)];
       }),
       periods: periodCols.flatMap((column) => {
-        const value = row[column.key];
+        const value = effectiveScheduleValue(row, column.key);
         return isBlankScheduleValue(value) ? [] : [String(value)];
       }),
-      states: periodCols.map((column) => scheduleCellState(row[column.key], status, criterion)),
+      states: periodCols.map((column) => {
+        const value = row[column.key];
+        const fillMeaning = isBlankScheduleValue(value) ? fillMeaningFor(row, column.key) : null;
+        return fillMeaning?.state ?? scheduleCellState(value, status, criterion);
+      }),
     };
   });
   const exploredEntries = exploreScheduleRows(explorerEntries, {
@@ -192,8 +224,14 @@ export function ScheduleHeatmapWidgetBody({
       `${column.key} ${column.label}`,
     ),
   );
+  const metricRows = exploredRows.map((row) => ({
+    ...row,
+    ...Object.fromEntries(
+      periodCols.map((column) => [column.key, effectiveScheduleValue(row, column.key)]),
+    ),
+  }));
   const scheduleStats = summarizeScheduleRows(
-    exploredRows,
+    metricRows,
     columns,
     periodCols.map((column) => column.key),
     statusCol?.key,
@@ -237,7 +275,7 @@ export function ScheduleHeatmapWidgetBody({
         ...Object.fromEntries(
           periodCols.map((column) => {
             const values = exploredRows.flatMap((row) => {
-              const value = row[column.key];
+              const value = effectiveScheduleValue(row, column.key);
               if (scheduleOp === "count") return isBlankScheduleValue(value) ? [] : [1];
               const numeric = parseNumericValue(value);
               return numeric !== null ? [numeric] : [];
@@ -281,10 +319,7 @@ export function ScheduleHeatmapWidgetBody({
         icon={<CalendarRange className="size-3.5 shrink-0 text-muted-foreground" />}
         {...dragProps}
       />
-      <div
-        className="oliam-widget-config-bar flex flex-wrap items-center gap-3 border-b border-border bg-muted/15 px-4 py-2"
-        data-export-controls
-      >
+      <WidgetConfigBar>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           Item
           <select
@@ -402,7 +437,7 @@ export function ScheduleHeatmapWidgetBody({
             </div>
           </div>
         )}
-      </div>
+      </WidgetConfigBar>
       {sizeControls}
       <div
         className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/10 px-4 py-2"
@@ -485,11 +520,7 @@ export function ScheduleHeatmapWidgetBody({
           type="button"
           className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
           onClick={() => setSortDirection((current) => (current === "asc" ? "desc" : "asc"))}
-          aria-label={
-            sortDirection === "asc"
-              ? "Ordenar em ordem decrescente"
-              : "Ordenar em ordem crescente"
-          }
+          aria-label={sortDirection === "asc" ? "Ordenar em ordem decrescente" : "Ordenar em ordem crescente"}
           title={sortDirection === "asc" ? "Ordem crescente" : "Ordem decrescente"}
         >
           <ArrowUpDown className="size-3.5" />
@@ -507,12 +538,8 @@ export function ScheduleHeatmapWidgetBody({
             Limpar filtros
           </button>
         )}
-        <span
-          className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground"
-          aria-live="polite"
-        >
-          {exploredRows.length.toLocaleString("pt-BR")} de{" "}
-          {scheduleRows.length.toLocaleString("pt-BR")}
+        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground" aria-live="polite">
+          {exploredRows.length.toLocaleString("pt-BR")} de {scheduleRows.length.toLocaleString("pt-BR")}
         </span>
       </div>
       <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-4 py-1.5 text-[10px] text-muted-foreground">
@@ -571,13 +598,23 @@ export function ScheduleHeatmapWidgetBody({
                 className: "text-primary",
               },
               {
-                label: "Dentro do limite",
+                label: "Realizados / dentro do limite",
                 value: scheduleStats.within,
                 suffix: "",
                 className: "text-emerald-700 dark:text-emerald-300",
               },
+              ...(scheduleStats.attention
+                ? [
+                    {
+                      label: "Reprogramados / atenção",
+                      value: scheduleStats.attention,
+                      suffix: "",
+                      className: "text-amber-700 dark:text-amber-300",
+                    },
+                  ]
+                : []),
               {
-                label: "Fora do limite",
+                label: "Não realizados / fora do limite",
                 value: scheduleStats.outside,
                 suffix: "",
                 className: "text-destructive",
@@ -742,9 +779,14 @@ export function ScheduleHeatmapWidgetBody({
                         })}
                         {periodCols.map((column) => {
                           const value = row[column.key];
-                          const state = scheduleCellState(value, status, criterion);
-                          const empty = isBlankScheduleValue(value);
-                          const label = empty ? "Sem registro" : String(value);
+                          const sourceEmpty = isBlankScheduleValue(value);
+                          const fillMeaning = sourceEmpty ? fillMeaningFor(row, column.key) : null;
+                          const state =
+                            fillMeaning?.state ?? scheduleCellState(value, status, criterion);
+                          const empty = sourceEmpty && !fillMeaning;
+                          const label = empty
+                            ? "Sem registro"
+                            : String(fillMeaning?.label ?? value);
                           const criterionLabel = criterion ? ` · Limite: ${criterion.label}` : "";
                           return (
                             <td
@@ -805,9 +847,12 @@ export function ScheduleHeatmapWidgetBody({
                               })}
                               {periodCols.map((column) => {
                                 const value = row[column.key];
-                                const label = isBlankScheduleValue(value)
+                                const fillMeaning = isBlankScheduleValue(value)
+                                  ? fillMeaningFor(row, column.key)
+                                  : null;
+                                const label = isBlankScheduleValue(value) && !fillMeaning
                                   ? "Sem registro"
-                                  : String(value);
+                                  : String(fillMeaning?.label ?? value);
                                 return (
                                   <div
                                     key={column.key}
@@ -866,9 +911,9 @@ export function ScheduleHeatmapWidgetBody({
             </span>
             {[
               ["planned", "Planejado"],
-              ["done", "Dentro do limite / conforme"],
-              ["warning", "Pendente / atenção"],
-              ["failed", "Fora do limite / não conforme"],
+              ["done", "Realizado / dentro do limite / conforme"],
+              ["warning", "Reprogramado / pendente / atenção"],
+              ["failed", "Não realizado / fora do limite / não conforme"],
               ["empty", "Sem registro"],
             ].map(([state, label]) => (
               <span key={state} className="inline-flex items-center gap-1.5">
