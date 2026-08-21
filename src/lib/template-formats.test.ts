@@ -13,8 +13,7 @@ import { readWorkbookBytes } from "@/lib/workbook-reader";
 const SOURCE_PATH = "test-fixtures/problematic-import.xlsx";
 const TEMPLATE_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml";
-const MACRO_TEMPLATE_CONTENT_TYPE =
-  "application/vnd.ms-excel.template.macroEnabled.main+xml";
+const MACRO_TEMPLATE_CONTENT_TYPE = "application/vnd.ms-excel.template.macroEnabled.main+xml";
 
 const fixtures = [
   {
