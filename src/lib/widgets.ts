@@ -415,7 +415,19 @@ export function createWidget(
       (qualifiedOps
         ? (qualifiedOps.find((op) => op === "sum" || op === "avg") ?? qualifiedOps[0] ?? "sum")
         : "sum");
-    widget.dataMode = widget.op === "count" ? "aggregate" : "raw";
+    // "Linha a linha" desenha uma marca por registro da planilha. Isso só é
+    // legível quando cada linha é uma categoria própria; quando a coluna de
+    // agrupamento se repete (600 vendas distribuídas em 6 canais), produz
+    // 600 barras empilhadas sobre 6 rótulos — ilegível, e pesado o bastante
+    // para travar o navegador. Nesse caso agregar não é preferência de
+    // estilo: é a única forma de o gráfico dizer alguma coisa.
+    //
+    // Sem repetição nenhuma, os dois modos desenham o mesmo número de
+    // marcas, então "raw" continua como padrão e preserva o comportamento
+    // anterior para planilhas de uma linha por item.
+    const distinctGroups = groupKey ? new Set(rows.map((row) => row[groupKey])).size : 0;
+    const groupsRepeat = Boolean(groupKey) && rows.length > distinctGroups;
+    widget.dataMode = widget.op === "count" || groupsRepeat ? "aggregate" : "raw";
     if (type === "ranking" || type === "radar") widget.topN = 5;
   }
   return widget;
