@@ -1,15 +1,7 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { WidgetConfigContext, useWidgetConfig } from "./widget-config-state";
 
-type WidgetConfigState = {
-  open: boolean;
-  toggle: () => void;
-  /** Widget ampliado em tela cheia. `null` quando o widget não pode ampliar. */
-  expanded: boolean | null;
-  toggleExpanded: () => void;
-};
-
-const WidgetConfigContext = createContext<WidgetConfigState | null>(null);
 
 /**
  * Estado de "configuração à mostra" de um widget.
@@ -45,21 +37,6 @@ export function WidgetConfigProvider({
     [open, expanded, onToggleExpanded],
   );
   return <WidgetConfigContext.Provider value={value}>{children}</WidgetConfigContext.Provider>;
-}
-
-export function useWidgetConfig(): WidgetConfigState {
-  // Sem provider (widget renderizado fora do cartão, como em testes), a
-  // configuração fica sempre visível: é o comportamento antigo, e nunca
-  // esconder um controle é mais seguro do que escondê-lo sem botão para
-  // trazê-lo de volta.
-  return (
-    useContext(WidgetConfigContext) ?? {
-      open: true,
-      toggle: () => {},
-      expanded: null,
-      toggleExpanded: () => {},
-    }
-  );
 }
 
 /**
