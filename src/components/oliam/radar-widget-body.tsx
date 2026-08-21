@@ -38,6 +38,7 @@ import {
   ChartReadingGuide,
   FieldDropSlot,
   FilterChip,
+  isCoarsePointer,
   SeriesComparisonPanel,
   truncateLabel,
   WidgetHead,
@@ -344,12 +345,23 @@ export function RadarWidgetBody({
                           outline: "none",
                         } as CSSProperties
                       }
-                      onMouseEnter={() => setActiveAxisIndex(index)}
-                      onMouseLeave={() => setActiveAxisIndex(null)}
-                      onFocus={() => setActiveAxisIndex(index)}
-                      onBlur={() => setActiveAxisIndex(null)}
+                      onMouseEnter={() => !isCoarsePointer() && setActiveAxisIndex(index)}
+                      // Em toque o navegador emula mouseleave/blur logo após o
+                      // toque; limpar aqui apagaria a seleção que o clique
+                      // acabou de fixar.
+                      onMouseLeave={() => !isCoarsePointer() && setActiveAxisIndex(null)}
+                      onFocus={() => !isCoarsePointer() && setActiveAxisIndex(index)}
+                      onBlur={() => !isCoarsePointer() && setActiveAxisIndex(null)}
                       onClick={() => {
-                        if (entry && groupCol) handleGroupClick(groupCol.key, String(entry.name));
+                        if (!entry || !groupCol) return;
+                        // No toque não há hover: o primeiro contato fixa o
+                        // eixo explicado no painel abaixo e o filtro sai do
+                        // botão de lá, como em barra/pizza/ranking.
+                        if (isCoarsePointer()) {
+                          setActiveAxisIndex((current) => (current === index ? null : index));
+                          return;
+                        }
+                        handleGroupClick(groupCol.key, String(entry.name));
                       }}
                       onKeyDown={(event) => {
                         if ((event.key === "Enter" || event.key === " ") && entry && groupCol) {
