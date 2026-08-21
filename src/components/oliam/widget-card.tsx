@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -47,6 +47,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DataTable } from "@/components/data-table-widget";
 import { FolderMonitorWidget } from "@/components/folder-monitor-widget";
 import { cn } from "@/lib/utils";
@@ -759,10 +760,60 @@ function WidgetCardBody({
  * do painel tem o seu próprio, e abrir a configuração de um não abre a dos
  * outros.
  */
+/** Tipos cujo conteúdo não ganha nada em tela cheia. */
+const NOT_EXPANDABLE: WidgetType[] = ["metric", "metric-trend", "rating", "folder-files"];
+
 export function WidgetCard(props: React.ComponentProps<typeof WidgetCardBody>) {
+  const [expanded, setExpanded] = useState(false);
+  const canExpand = !NOT_EXPANDABLE.includes(props.widget.type);
+  const toggleExpanded = useCallback(() => setExpanded((current) => !current), []);
+
+  // Ampliado, o widget é remontado no diálogo ocupando a largura inteira e a
+  // altura máxima. O da grade sai de cena enquanto isso: manter os dois
+  // montados duplicaria os `id` dos gradientes SVG (`area-${w.id}`), e dois
+  // elementos com o mesmo id fazem o navegador resolver a referência sempre
+  // para o primeiro — o gráfico do diálogo herdaria o preenchimento do outro.
+  const expandedWidget = { ...props.widget, span: 3 as const, size: "lg" as const };
+
   return (
-    <WidgetConfigProvider>
-      <WidgetCardBody {...props} />
-    </WidgetConfigProvider>
+    <>
+      <WidgetConfigProvider
+        expanded={canExpand ? expanded : null}
+        onToggleExpanded={toggleExpanded}
+      >
+        {expanded ? (
+          <article
+            className={cn(
+              "oliam-widget flex items-center justify-center bg-card text-xs text-muted-foreground",
+              spanClass(props.widget.span),
+              sizeClass(props.widget.size, props.widget.type),
+            )}
+          >
+            Ampliado em tela cheia
+          </article>
+        ) : (
+          <WidgetCardBody {...props} />
+        )}
+      </WidgetConfigProvider>
+      {/* Montado só enquanto aberto, em vez de ficar montado com `open=false`.
+          O corpo do widget traz suas próprias animações de entrada, e o
+          `animationend` delas borbulha até o conteúdo do diálogo — o
+          desmonte animado do Radix lia esse evento como se fosse o fim da
+          própria animação de saída e deixava o diálogo visível para sempre,
+          inclusive fechando pelo X nativo. */}
+      {canExpand && expanded && (
+        <Dialog open onOpenChange={setExpanded}>
+          <DialogContent
+            className="max-h-[92vh] w-[min(96vw,1400px)] max-w-none overflow-y-auto p-0 sm:max-w-none"
+            aria-describedby={undefined}
+          >
+            <DialogTitle className="sr-only">Widget ampliado</DialogTitle>
+            <WidgetConfigProvider expanded onToggleExpanded={toggleExpanded}>
+              <WidgetCardBody {...props} widget={expandedWidget} animationDelay={0} />
+            </WidgetConfigProvider>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }

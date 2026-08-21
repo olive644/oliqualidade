@@ -4,6 +4,9 @@ import { cn } from "@/lib/utils";
 type WidgetConfigState = {
   open: boolean;
   toggle: () => void;
+  /** Widget ampliado em tela cheia. `null` quando o widget não pode ampliar. */
+  expanded: boolean | null;
+  toggleExpanded: () => void;
 };
 
 const WidgetConfigContext = createContext<WidgetConfigState | null>(null);
@@ -21,9 +24,26 @@ const WidgetConfigContext = createContext<WidgetConfigState | null>(null);
  * widget. O estado é por widget: abrir a configuração de um não mexe nos
  * outros.
  */
-export function WidgetConfigProvider({ children }: { children: React.ReactNode }) {
+export function WidgetConfigProvider({
+  children,
+  expanded = null,
+  onToggleExpanded,
+}: {
+  children: React.ReactNode;
+  /** `null` desliga o botão de ampliar (widget sem versão em tela cheia). */
+  expanded?: boolean | null;
+  onToggleExpanded?: () => void;
+}) {
   const [open, setOpen] = useState(false);
-  const value = useMemo(() => ({ open, toggle: () => setOpen((current) => !current) }), [open]);
+  const value = useMemo(
+    () => ({
+      open,
+      toggle: () => setOpen((current) => !current),
+      expanded,
+      toggleExpanded: onToggleExpanded ?? (() => {}),
+    }),
+    [open, expanded, onToggleExpanded],
+  );
   return <WidgetConfigContext.Provider value={value}>{children}</WidgetConfigContext.Provider>;
 }
 
@@ -32,7 +52,14 @@ export function useWidgetConfig(): WidgetConfigState {
   // configuração fica sempre visível: é o comportamento antigo, e nunca
   // esconder um controle é mais seguro do que escondê-lo sem botão para
   // trazê-lo de volta.
-  return useContext(WidgetConfigContext) ?? { open: true, toggle: () => {} };
+  return (
+    useContext(WidgetConfigContext) ?? {
+      open: true,
+      toggle: () => {},
+      expanded: null,
+      toggleExpanded: () => {},
+    }
+  );
 }
 
 /**

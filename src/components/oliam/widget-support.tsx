@@ -19,6 +19,8 @@ import {
   LayoutGrid,
   ListOrdered,
   MapPin,
+  Maximize2,
+  Minimize2,
   PieChart as PieIcon,
   Radar as RadarIcon,
   ShieldAlert,
@@ -185,7 +187,7 @@ export function WidgetHead({
   icon?: React.ReactNode;
 }) {
   const interactive = !!(onRemove || onCopy || onPaste || onMoveBack || onMoveForward);
-  const { open: configOpen, toggle: toggleConfig } = useWidgetConfig();
+  const { open: configOpen, toggle: toggleConfig, expanded, toggleExpanded } = useWidgetConfig();
   return (
     <div
       className="flex h-12 flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 px-3 pointer-coarse:h-auto pointer-coarse:min-h-12 pointer-coarse:py-1.5"
@@ -225,6 +227,18 @@ export function WidgetHead({
           >
             <SlidersHorizontal className="size-3.5" />
           </Button>
+          {expanded !== null && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 pointer-coarse:size-12"
+              aria-label={expanded ? `Reduzir ${title}` : `Ampliar ${title}`}
+              title={expanded ? "Reduzir" : "Ampliar para ver em detalhe"}
+              onClick={toggleExpanded}
+            >
+              {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
