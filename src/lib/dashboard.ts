@@ -140,8 +140,66 @@ function migrateDeprecatedTimelineWidget(sheet: SheetData): SheetData {
   };
 }
 
+/**
+ * Tipos que desenham uma marca por linha quando o modo é "linha a linha".
+ * Tabela e cartões de número não entram: eles não multiplicam elementos com
+ * o tamanho da planilha.
+ */
+const ROW_PER_MARK_TYPES = new Set<Widget["type"]>([
+  "bar",
+  "pie",
+  "line",
+  "area",
+  "ranking",
+  "radar",
+  "insights",
+  "map",
+]);
+
+/**
+ * Converte para agregado os widgets salvos em "linha a linha" cuja coluna de
+ * agrupamento se repete.
+ *
+ * Painéis criados antes da correção guardaram `dataMode: "raw"` como padrão.
+ * Numa planilha de 600 vendas em 6 canais isso desenha 600 marcas empilhadas
+ * sobre 6 rótulos — ilegível, e pesado o bastante para travar o navegador. O
+ * widget novo já nasce certo, mas o painel salvo continuaria assim para
+ * sempre, porque nada reprocessa a escolha depois de gravada.
+ *
+ * Conservadora de propósito: só toca em widgets cuja coluna de agrupamento
+ * de fato se repete nas linhas atuais. Sem repetição, "linha a linha" e
+ * agregado desenham a mesma coisa, e a preferência salva é preservada — o
+ * mesmo critério que decide o padrão de um widget novo.
+ */
+function migrateRowPerMarkWidgets(sheet: SheetData): SheetData {
+  const widgets = sheet.widgets ?? [];
+  if (!widgets.length || !sheet.rows.length) return sheet;
+  const repeats = new Map<string, boolean>();
+  const groupRepeats = (groupKey: string) => {
+    const cached = repeats.get(groupKey);
+    if (cached !== undefined) return cached;
+    const seen = new Set<unknown>();
+    for (const row of sheet.rows) {
+      const value = row[groupKey];
+      if (value !== null && value !== undefined && value !== "") seen.add(value);
+    }
+    const result = sheet.rows.length > seen.size;
+    repeats.set(groupKey, result);
+    return result;
+  };
+  let changed = false;
+  const migrated = widgets.map((widget) => {
+    if (widget.dataMode !== "raw" || !ROW_PER_MARK_TYPES.has(widget.type)) return widget;
+    if (!widget.groupKey || !groupRepeats(widget.groupKey)) return widget;
+    changed = true;
+    return { ...widget, dataMode: "aggregate" as const };
+  });
+  return changed ? { ...sheet, widgets: migrated } : sheet;
+}
+
 function repairInvalidWidgets(sheet: SheetData): SheetData {
   sheet = migrateDeprecatedTimelineWidget(sheet);
+  sheet = migrateRowPerMarkWidgets(sheet);
   sheet = refreshAutomaticWidgets(sheet);
   if (!sheet.widgets?.some((widget) => !widgetCompatible(widget, sheet.columns))) return sheet;
   const plan = generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows });
