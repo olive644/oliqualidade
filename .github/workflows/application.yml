@@ -56,11 +56,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Audit for moderate/high/critical vulnerabilities
-        # A resolução forçada de uuid elimina os achados moderados do
-        # verificador independente ExcelJS. Moderate agora também bloqueia a
-        # CI para impedir que a vulnerabilidade transitiva volte no lockfile.
-        run: npm audit --audit-level=moderate
+      - name: Audit for high/critical vulnerabilities
+        # A resolução forçada de uuid elimina o achado moderado que vinha do
+        # verificador independente ExcelJS, mas o gate segue em high: um aviso
+        # moderado numa dependência transitiva sem correção disponível travaria
+        # PRs sem relação nenhuma com ele. Rodar `npm audit` local sem
+        # --audit-level quando precisar do quadro completo.
+        run: npm audit --audit-level=high
 
   secret-scan:
     name: Secret scan (gitleaks)
