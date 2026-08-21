@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
-import { resolveFormulaCell } from "@/lib/formula";
+import { excelSerialToday, isVolatileFormula, resolveFormulaCell } from "@/lib/formula";
 
 // Monta uma planilha e, pras células indicadas, sobrescreve pra virar uma
 // célula "stub" (fórmula sem valor calculado) — reproduz exatamente o que
@@ -170,5 +170,40 @@ describe("resolveFormulaCell", () => {
   it("retorna null pra célula inexistente ou vazia", () => {
     const ws = XLSX.utils.aoa_to_sheet([[1]]);
     expect(resolveFormulaCell(ws, "Z99")).toBeNull();
+  });
+});
+
+describe("fórmulas que dependem da data de hoje", () => {
+  it("reconhece TODAY e NOW, e ignora nomes que só as contêm", () => {
+    expect(isVolatileFormula("-(TODAY()-L67)")).toBe(true);
+    expect(isVolatileFormula("=NOW()")).toBe(true);
+    expect(isVolatileFormula("=today()-A1")).toBe(true);
+    expect(isVolatileFormula("=SUM(A1:A9)")).toBe(false);
+  });
+
+  it("recalcula prazo contra uma célula de data, ignorando o valor salvo", () => {
+    // Reproduz o cronograma de calibração real: a coluna de prazo é
+    // "-(TODAY()-vencimento)" e o arquivo guarda o resultado do dia em que
+    // foi salvo. A referência é uma célula de DATA, que o Excel trata como
+    // número de dias — sem isso a conta inteira falha.
+    const ws = XLSX.utils.aoa_to_sheet([["vencimento", "dias"]]);
+    const vencimento = new Date(Date.UTC(2024, 2, 16));
+    ws["A2"] = { t: "d", v: vencimento, w: "16/03/2024" };
+    ws["B2"] = { t: "n", v: -616, f: "-(TODAY()-A2)" };
+
+    // Sem forçar, devolve o valor congelado que veio do arquivo.
+    expect(resolveFormulaCell(ws, "B2")).toBe(-616);
+
+    // Forçando, recalcula para hoje.
+    const recalculado = resolveFormulaCell(ws, "B2", new Map(), new Set(), true);
+    const esperado = -(excelSerialToday() - 45367); // 45367 = 16/03/2024
+    expect(recalculado).toBe(esperado);
+    expect(recalculado).not.toBe(-616);
+  });
+
+  it("continua preferindo o valor salvo em fórmula que não é volátil", () => {
+    const ws = XLSX.utils.aoa_to_sheet([[10, 20]]);
+    ws["C1"] = { t: "n", v: 30, f: "A1+B1" };
+    expect(resolveFormulaCell(ws, "C1")).toBe(30);
   });
 });
