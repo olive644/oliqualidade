@@ -26,6 +26,7 @@ import {
   Sparkles,
   Star,
   Trash2,
+  TrendingDown,
   TrendingUp,
   X,
 } from "lucide-react";
@@ -893,6 +894,76 @@ export function SeriesComparisonPanel({
           {filterLabel}
         </Button>
       )}
+    </div>
+  );
+}
+
+export type WidgetMetric = {
+  label: string;
+  value: string;
+  /** Variação já formatada (ex.: "+12,5%"); só para métricas com tendência. */
+  change?: string;
+  /** Direção da variação. Ausente quando a métrica não tem tendência. */
+  up?: boolean;
+};
+
+/**
+ * Faixa de números-chave no topo de um widget: o valor que resume a série e,
+ * quando ela é temporal, a variação do período com a seta correspondente.
+ *
+ * Existe porque um gráfico responde "como está distribuído" mas não responde
+ * "quanto deu" sem o leitor somar de cabeça. A leitura fica na mesma altura
+ * em todos os widgets, então dá para comparar dois cartões lado a lado sem
+ * procurar onde cada um escondeu o total.
+ *
+ * Sem tendência (`change`), a métrica aparece sozinha — categorias não têm
+ * "antes e depois", e inventar uma variação ali seria comparar coisas que
+ * não estão em sequência.
+ */
+export function WidgetMetricStrip({ metrics }: { metrics: WidgetMetric[] }) {
+  if (!metrics.length) return null;
+  return (
+    <div
+      className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-border px-4 py-2"
+      data-widget-metrics
+    >
+      {metrics.map((metric, index) => (
+        <div key={metric.label} className="min-w-0 max-w-full">
+          <p
+            className="truncate text-[10px] uppercase leading-tight tracking-wide text-muted-foreground"
+            title={metric.label}
+          >
+            {metric.label}
+          </p>
+          <p className="flex items-center gap-1.5 leading-tight">
+            <span
+              className={cn(
+                "font-mono font-semibold tabular-nums",
+                index === 0 ? "text-base" : "text-sm text-muted-foreground",
+              )}
+            >
+              {metric.value}
+            </span>
+            {metric.change && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-mono text-[10px] tabular-nums",
+                  metric.up
+                    ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+                    : "bg-destructive/12 text-destructive",
+                )}
+              >
+                {metric.up ? (
+                  <TrendingUp className="size-3" aria-hidden="true" />
+                ) : (
+                  <TrendingDown className="size-3" aria-hidden="true" />
+                )}
+                {metric.change}
+              </span>
+            )}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }

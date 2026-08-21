@@ -41,6 +41,8 @@ import {
   isCoarsePointer,
   SeriesComparisonPanel,
   truncateLabel,
+  WidgetMetricStrip,
+  type WidgetMetric,
   WidgetHead,
   type WidgetDragProps,
 } from "./widget-support";
@@ -129,6 +131,26 @@ export function RadarWidgetBody({
   const selectedAxis = summaryAxisIndex !== null ? axes[summaryAxisIndex] : null;
   const selectedAxisComparison =
     summaryAxisIndex !== null ? pieComparisonFor(axes, summaryAxisIndex) : null;
+  // O radar compara categorias entre si, então não há "antes e depois" para
+  // uma variação: as métricas são o total dos eixos desenhados e o maior
+  // deles, que é o que o polígono destaca visualmente.
+  const radarMetrics: WidgetMetric[] =
+    valueCol && axes.length
+      ? [
+          {
+            label: "Total dos eixos",
+            value:
+              fmt(
+                axes.reduce((sum, axis) => sum + axis.total, 0),
+                valueCol.kind,
+              ) ?? "–",
+          },
+          {
+            label: `Maior · ${axes[0]!.name}`,
+            value: fmt(axes[0]!.total, valueCol.kind) ?? "–",
+          },
+        ]
+      : [];
 
   return (
     <article
@@ -144,6 +166,7 @@ export function RadarWidgetBody({
         icon={<RadarIcon className="size-3.5 shrink-0 text-muted-foreground" />}
         {...dragProps}
       />
+      {radarMetrics.length > 0 && <WidgetMetricStrip metrics={radarMetrics} />}
       <WidgetConfigBar>
         <FilterChip groupKey={groupCol?.key} filters={filters} setFilters={setFilters} />
         <FieldDropSlot

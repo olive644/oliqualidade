@@ -660,3 +660,52 @@ export function rankingCoverageFor(
     remainingCount: Math.max(0, all.length - shown.length),
   };
 }
+
+export type SeriesHeadline = {
+  /** Rótulo do número principal, já adaptado à operação de agregação. */
+  label: string;
+  total: number;
+  categoryCount: number;
+  /** Variação relativa do primeiro ao último ponto; só para séries temporais. */
+  relativeChange: number | null;
+  /** Último valor da série temporal, quando a ordem tem sentido cronológico. */
+  latest: number | null;
+  average: number;
+};
+
+/**
+ * Números-chave de uma série já agregada, para a faixa de métricas do topo do
+ * widget.
+ *
+ * `temporal` decide o que é o número principal: numa série cronológica o que
+ * importa é onde ela chegou (último ponto) e o quanto se moveu; numa
+ * comparação de categorias o que importa é o total e quantas categorias
+ * existem — pedir "variação" de uma lista de categorias compararia itens que
+ * não estão em sequência.
+ *
+ * Com uma soma total de zero a variação relativa fica `null` em vez de
+ * infinita ou 0%: sem base, não há percentual honesto a mostrar.
+ */
+export function seriesHeadline(
+  series: { name: string; total: number }[],
+  options: { temporal: boolean; operation: AggregationOp },
+): SeriesHeadline | null {
+  if (!series.length) return null;
+  const total = series.reduce((sum, entry) => sum + entry.total, 0);
+  const average = total / series.length;
+  const trend = options.temporal ? trendSummaryFor(series) : null;
+  const label =
+    options.operation === "count"
+      ? "Total de registros"
+      : options.operation === "avg"
+        ? "Média geral"
+        : "Total";
+  return {
+    label: options.temporal ? "Valor mais recente" : label,
+    total,
+    categoryCount: series.length,
+    relativeChange: trend?.relativeChange ?? null,
+    latest: options.temporal ? (series.at(-1)?.total ?? null) : null,
+    average,
+  };
+}
