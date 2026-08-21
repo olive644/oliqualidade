@@ -5,9 +5,7 @@ const resultDirectory = "test-results";
 const vitestPath = `${resultDirectory}/workbook-compatibility-vitest.json`;
 const jsonPath = `${resultDirectory}/workbook-compatibility-report.json`;
 const markdownPath = `${resultDirectory}/workbook-compatibility-report.md`;
-const matrix = JSON.parse(
-  readFileSync("test-fixtures/workbook-compatibility-matrix.json", "utf8"),
-);
+const matrix = JSON.parse(readFileSync("test-fixtures/workbook-compatibility-matrix.json", "utf8"));
 
 mkdirSync(resultDirectory, { recursive: true });
 const run = spawnSync(
@@ -99,17 +97,13 @@ const markdown = [
   ),
   "",
   ...(regressions.length
-    ? [
-        "## Regressões",
-        "",
-        ...regressions.map((regression) => `- ${regression.name}`),
-        "",
-      ]
+    ? ["## Regressões", "", ...regressions.map((regression) => `- ${regression.name}`), ""]
     : ["## Regressões", "", "Nenhuma regressão detectada.", ""]),
 ].join("\n");
 
 writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
 writeFileSync(markdownPath, `${markdown}\n`);
-if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`);
+if (process.env.GITHUB_STEP_SUMMARY)
+  appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`);
 console.log(`Relatório de compatibilidade salvo em ${markdownPath}`);
 if (!passed) process.exitCode = run.status || 1;
