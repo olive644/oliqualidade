@@ -77,6 +77,7 @@ import {
 } from "@/lib/data-pipeline";
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
 import { resolveSourceCellProvenance } from "@/lib/cell-provenance";
+import { analyzeQuestionCoverage, buildExecutiveSummary } from "@/lib/analytical-narrative";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type {
   WorkbookChartDiagnostic,
@@ -1436,6 +1437,29 @@ function Dashboard(p: {
       .slice(0, 8);
   }, [data, cat, primary]);
   const sidebarRankingMax = Math.max(1, ...sidebarRanking.map((r) => Math.abs(r.total)));
+  // Resumo executivo e cobertura de perguntas analíticas: frases
+  // determinísticas (nunca geradas por IA) a partir do que já foi calculado,
+  // e quantas das perguntas que a estrutura da planilha permite responder já
+  // têm um gráfico no painel atual.
+  const executiveSummary = useMemo(
+    () =>
+      sheet.autoDashboard
+        ? buildExecutiveSummary({
+            rows: data,
+            columns: sheet.columns,
+            classifications: sheet.autoDashboard.classifications,
+            exceptionCount: effectiveIntelligence.exceptions.length,
+          })
+        : [],
+    [sheet.autoDashboard, data, sheet.columns, effectiveIntelligence.exceptions],
+  );
+  const questionCoverage = useMemo(
+    () =>
+      sheet.autoDashboard
+        ? analyzeQuestionCoverage(sheet.autoDashboard.classifications, sheet.widgets ?? [])
+        : undefined,
+    [sheet.autoDashboard, sheet.widgets],
+  );
 
   // Modelo de widgets: painéis salvos antes desse recurso existir ainda não
   // têm "widgets" persistido, então reproduzimos o layout fixo antigo até o
@@ -2157,6 +2181,8 @@ function Dashboard(p: {
             data={data}
             rowCount={sheet.rows.length}
             autoDashboard={sheet.autoDashboard}
+            executiveSummary={executiveSummary}
+            questionCoverage={questionCoverage}
             nums={nums}
             versionDelta={versionDelta}
             sidebarRanking={sidebarRanking}
