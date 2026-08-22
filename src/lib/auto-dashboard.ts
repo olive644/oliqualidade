@@ -579,10 +579,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   if (primaryMetric) {
     const values = numericValues(input.rows, primaryMetric.key);
     const distinctValues = new Set(values).size;
-    if (
-      values.length >= MIN_HISTOGRAM_VALUES &&
-      distinctValues >= MIN_HISTOGRAM_DISTINCT_VALUES
-    ) {
+    if (values.length >= MIN_HISTOGRAM_VALUES && distinctValues >= MIN_HISTOGRAM_DISTINCT_VALUES) {
       recommendations.push(
         recommendation(input, {
           id: slug("histograma", primaryMetric.key),
@@ -727,8 +724,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
         const allGroupsSupportQuartiles =
           groups.size === cardinality &&
           [...groups.values()].every(
-            (values) =>
-              values.length >= MIN_BOX_GROUP_VALUES && new Set(values).size >= 2,
+            (values) => values.length >= MIN_BOX_GROUP_VALUES && new Set(values).size >= 2,
           );
         if (allGroupsSupportQuartiles) {
           const smallestGroup = Math.min(...[...groups.values()].map((values) => values.length));
