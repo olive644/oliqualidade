@@ -1,5 +1,7 @@
 import type { AutoDashboardPlan } from "@/lib/auto-dashboard";
-import { conditionalColor, conditionalStyle, fmt } from "@/lib/format";
+import type { QuestionCoverage } from "@/lib/analytical-narrative";
+import { aggregate } from "@/lib/data-pipeline";
+import { conditionalColor, conditionalStyle, fmt, parseNumericValue } from "@/lib/format";
 import type { Column, FilterRule, Row } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +10,8 @@ export function InsightSidebar(p: {
   data: Row[];
   rowCount: number;
   autoDashboard: AutoDashboardPlan | undefined;
+  executiveSummary: string[];
+  questionCoverage: QuestionCoverage | undefined;
   nums: Column[];
   versionDelta: Map<string, number | null> | null;
   sidebarRanking: { name: string; total: number }[];
@@ -30,6 +34,30 @@ export function InsightSidebar(p: {
           {p.data.length} de {p.rowCount} linhas na visão atual
         </p>
       </div>
+      {p.executiveSummary.length > 0 && (
+        <div className="border-b border-border p-4">
+          <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+            Resumo executivo
+          </p>
+          <ul className="mt-2 space-y-2">
+            {p.executiveSummary.map((sentence, i) => (
+              <li key={i} className="text-xs leading-relaxed text-foreground/90">
+                {sentence}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {p.questionCoverage && p.questionCoverage.questions.length > 0 && (
+        <div className="border-b border-border p-4">
+          <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+            Perguntas analíticas
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            {p.questionCoverage.summary}
+          </p>
+        </div>
+      )}
       {p.autoDashboard && (
         <div className="border-b border-border p-4">
           <div className="flex items-center justify-between gap-3">
@@ -72,7 +100,12 @@ export function InsightSidebar(p: {
           </p>
           <div className="grid grid-cols-2 gap-2">
             {p.nums.slice(0, 4).map((c) => {
-              const total = p.data.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
+              const total = aggregate(
+                p.data
+                  .map((r) => parseNumericValue(r[c.key]))
+                  .filter((v): v is number => v !== null),
+                "sum",
+              );
               const delta = p.versionDelta?.get(c.key) ?? null;
               const style = conditionalStyle(total, c.kind, c.conditionalFormat);
               return (

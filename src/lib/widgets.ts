@@ -159,6 +159,15 @@ const CARDINALITY_RANGE: Partial<Record<WidgetType, { min: number; max: number }
   pie: { min: 2, max: 6 },
   radar: { min: 3, max: 8 },
   ranking: { min: 6, max: Number.MAX_SAFE_INTEGER },
+  // Cada categoria vira uma caixa lado a lado; acima de ~10 a comparação
+  // visual de espalhamento entre elas fica tão apertada quanto a de uma
+  // barra com cardinalidade alta.
+  "box-plot": { min: 2, max: 10 },
+  // Pareto quer mostrar "poucas causas concentram a maior parte" — com
+  // menos de 3 categorias essa leitura não existe (não há "poucas" vs
+  // "muitas"), e acima de ~15 a curva acumulada fica difícil de acompanhar
+  // junto das barras.
+  pareto: { min: 3, max: 15 },
 };
 
 /**
@@ -234,7 +243,11 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "ranking" ||
     type === "map" ||
     type === "insights" ||
-    type === "image"
+    type === "image" ||
+    type === "histogram" ||
+    type === "box-plot" ||
+    type === "scatter" ||
+    type === "pareto"
   )
     return 2;
   return 3; // line, area, table
@@ -441,7 +454,8 @@ export function createWidget(
     type === "ranking" ||
     type === "radar" ||
     type === "map" ||
-    type === "insights"
+    type === "insights" ||
+    type === "pareto"
   ) {
     const groupKey =
       seed?.groupKey ??
@@ -505,6 +519,32 @@ export function createWidget(
     const groupsRepeat = Boolean(groupKey) && rows.length > distinctGroups;
     widget.dataMode = widget.op === "count" || groupsRepeat ? "aggregate" : "raw";
     if (type === "ranking" || type === "radar") widget.topN = 5;
+  } else if (type === "histogram") {
+    // Histograma não agrupa por categoria: mostra a distribuição de uma
+    // única coluna numérica, por isso não herda groupKey/op da faixa
+    // compartilhada acima.
+    const valueKey = seed?.valueKey ?? nums[0]?.key;
+    if (valueKey) widget.valueKey = valueKey;
+  } else if (type === "box-plot") {
+    // Box plot agrupa como bar/radar, mas compara quartis, não soma/média —
+    // não herda `op`/`dataMode` da faixa compartilhada acima.
+    const groupKey =
+      seed?.groupKey ??
+      pickGroupColumnForWidget(type, catCandidates, rows)?.key ??
+      pickGroupColumnForWidget(type, groupable, rows)?.key ??
+      cat?.key ??
+      groupableBest?.key;
+    const valueKey = seed?.valueKey ?? nums[0]?.key;
+    if (groupKey) widget.groupKey = groupKey;
+    if (valueKey) widget.valueKey = valueKey;
+  } else if (type === "scatter") {
+    // Dispersão não agrupa por categoria: cruza duas colunas numéricas
+    // (valueKey = eixo X, valueKey2 = eixo Y), a segunda diferente da
+    // primeira para não cruzar uma coluna consigo mesma por padrão.
+    const valueKey = seed?.valueKey ?? nums[0]?.key;
+    const valueKey2 = nums.find((c) => c.key !== valueKey)?.key;
+    if (valueKey) widget.valueKey = valueKey;
+    if (valueKey2) widget.valueKey2 = valueKey2;
   }
   return widget;
 }

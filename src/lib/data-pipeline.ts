@@ -1,6 +1,7 @@
 import type { ChartAggregationOp, Column, FilterRule, Row } from "@/lib/types";
 import { numericKinds } from "@/lib/types";
 import { parseDateValue, parseNumericValue } from "@/lib/format";
+import { sourceRowIndexOf } from "@/lib/data-review";
 
 /** Rótulo usado quando o valor de agrupamento está ausente. Usado também
  * para detectar esse caso na renderização dos gráficos (eixo, legenda,
@@ -11,6 +12,16 @@ function writtenGroupLabel(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "string" && !value.trim()) return null;
   return String(value);
+}
+
+/**
+ * Quantas linhas têm o valor de agrupamento vazio. Essas linhas nunca entram
+ * em `groupAndAggregate`/`chartSeries` (writtenGroupLabel devolve null e a
+ * linha é pulada) — este contador existe só para avisar quantas ficaram de
+ * fora, sem mudar esse comportamento de descarte.
+ */
+export function countMissingGroupRows(rows: Row[], groupKey: string): number {
+  return rows.filter((r) => writtenGroupLabel(r[groupKey]) === null).length;
 }
 
 export function sortAllBarCategories<T extends { total: number }>(series: T[]): T[] {
@@ -235,29 +246,88 @@ export function groupAndAggregate(
   groupKey: string,
   valueKey: string,
   op: AggregationOp,
-): { name: string; total: number }[] {
-  const buckets = new Map<string, { values: number[]; rowCount: number }>();
+): { name: string; total: number; sourceRowIndexes?: number[] }[] {
+  const buckets = new Map<
+    string,
+    { values: number[]; valueRowIndexes: number[]; rowCount: number; rowIndexes: number[] }
+  >();
   for (const r of rows) {
     const name = writtenGroupLabel(r[groupKey]);
     if (name === null) continue;
-    if (!buckets.has(name)) buckets.set(name, { values: [], rowCount: 0 });
+    if (!buckets.has(name))
+      buckets.set(name, { values: [], valueRowIndexes: [], rowCount: 0, rowIndexes: [] });
     const bucket = buckets.get(name);
     if (!bucket) continue;
     bucket.rowCount++;
+    // Índice estável em `sheet.rows` (sobrevive a cálculo, regra de dado
+    // ausente, filtro e ordenação — ver `markSourceRows`), null nas bases de
+    // teste que não passam pelo pipeline real. É o mesmo `rowIndex` que
+    // `traceImportedCell`/`resolveSourceCellProvenance` esperam, o que
+    // permite ir do balde agregado direto até a célula de origem.
+    const sourceRowIndex = sourceRowIndexOf(r);
+    if (sourceRowIndex !== null) bucket.rowIndexes.push(sourceRowIndex);
     const raw = r[valueKey];
     const v = parseNumericValue(raw);
-    if (v !== null) bucket.values.push(v);
+    if (v !== null) {
+      bucket.values.push(v);
+      if (sourceRowIndex !== null) bucket.valueRowIndexes.push(sourceRowIndex);
+    }
   }
-  const result: { name: string; total: number }[] = [];
+  const result: { name: string; total: number; sourceRowIndexes?: number[] }[] = [];
   for (const [name, bucket] of buckets) {
     if (op === "count") {
-      result.push({ name, total: bucket.rowCount });
+      result.push({
+        name,
+        total: bucket.rowCount,
+        ...(bucket.rowIndexes.length ? { sourceRowIndexes: bucket.rowIndexes } : {}),
+      });
       continue;
     }
     if (!bucket.values.length) continue;
-    result.push({ name, total: aggregate(bucket.values, op) });
+    result.push({
+      name,
+      total: aggregate(bucket.values, op),
+      ...(bucket.valueRowIndexes.length ? { sourceRowIndexes: bucket.valueRowIndexes } : {}),
+    });
   }
   return result;
+}
+
+export type ParetoEntry = {
+  name: string;
+  total: number;
+  /** Fração (0 a 1) do total acumulado até e incluindo esta categoria, com as categorias ordenadas da maior para a menor. */
+  cumulativeShare: number;
+  sourceRowIndexes?: number[];
+};
+
+/**
+ * Ordena as categorias da maior para a menor contribuição e acumula a
+ * participação de cada uma, para responder "poucas causas explicam a
+ * maior parte do problema?" — a leitura clássica de Pareto (80/20), que
+ * nem a barra (mostra tudo, mas não acumula) nem o ranking (top N, mas sem
+ * o percentual acumulado) respondem sozinhos.
+ *
+ * Categorias com total zero ou negativo ficam de fora: a lógica de "causa"
+ * pressupõe contribuição positiva, e misturá-las quebraria a leitura
+ * monótona do acumulado (a linha deixaria de subir de esquerda pra
+ * direita).
+ */
+export function paretoSeries(
+  rows: Row[],
+  groupKey: string,
+  valueKey: string,
+  op: AggregationOp,
+): ParetoEntry[] {
+  const sorted = groupAndAggregate(rows, groupKey, valueKey, op)
+    .filter((entry) => entry.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const grandTotal = sorted.reduce((sum, entry) => sum + entry.total, 0);
+  let running = 0;
+  return sorted.map((entry) => {
+    running += entry.total;
+    return { ...entry, cumulativeShare: grandTotal > 0 ? running / grandTotal : 0 };
+  });
 }
 
 /**
@@ -271,15 +341,249 @@ export function chartSeries(
   valueKey: string,
   op: AggregationOp,
   mode: "raw" | "aggregate",
-): Array<{ name: string; total: number; sourceRow?: number }> {
+): Array<{
+  name: string;
+  total: number;
+  sourceRow?: number;
+  sourceRowIndex?: number;
+  sourceRowIndexes?: number[];
+}> {
   if (mode === "aggregate") return groupAndAggregate(rows, groupKey, valueKey, op);
   return rows.flatMap((row, index) => {
     const name = writtenGroupLabel(row[groupKey]);
     if (name === null) return [];
-    if (op === "count") return [{ name, total: 1, sourceRow: index + 1 }];
+    // `sourceRow` (posição no array já filtrado/ordenado) segue existindo só
+    // pelo hover; `sourceRowIndex` é o índice estável em `sheet.rows` (null
+    // fora do pipeline real) que dá pra usar de fato pra buscar a célula de
+    // origem — os dois divergem sempre que há filtro, busca ou ordenação
+    // ativos.
+    const sourceRowIndex = sourceRowIndexOf(row);
+    const traceable = sourceRowIndex !== null ? { sourceRowIndex } : {};
+    if (op === "count") return [{ name, total: 1, sourceRow: index + 1, ...traceable }];
     const value = parseNumericValue(row[valueKey]);
-    return value !== null ? [{ name, total: value, sourceRow: index + 1 }] : [];
+    return value !== null ? [{ name, total: value, sourceRow: index + 1, ...traceable }] : [];
   });
+}
+
+export type HistogramBin = {
+  label: string;
+  rangeStart: number;
+  rangeEnd: number;
+  count: number;
+  sourceRowIndexes?: number[];
+};
+
+/**
+ * Menor teto (Sturges) e maior piso (nunca menos de 5) para o número de
+ * faixas quando o widget não fixa `binCount`: poucos valores em faixas
+ * demais criam barras de altura 0/1 sem dizer nada sobre a forma da
+ * distribuição; faixas demais numa base grande escondem o formato atrás de
+ * ruído. `Math.log2(n) + 1` é a regra clássica para número de faixas.
+ */
+const MIN_HISTOGRAM_BINS = 5;
+const MAX_HISTOGRAM_BINS = 20;
+
+function sturgesBinCount(sampleSize: number): number {
+  return Math.min(
+    MAX_HISTOGRAM_BINS,
+    Math.max(MIN_HISTOGRAM_BINS, Math.ceil(Math.log2(Math.max(sampleSize, 1)) + 1)),
+  );
+}
+
+/**
+ * Divide os valores numéricos de uma coluna em faixas de largura igual, para
+ * responder "como os valores estão distribuídos" — pergunta que soma/média
+ * por categoria não responde, e que agrupar por uma coluna categórica não
+ * serve para responder quando a distribuição é da própria métrica, não de
+ * uma dimensão.
+ *
+ * Valores ausentes ou não numéricos são excluídos silenciosamente (mesmo
+ * espírito de `groupAndAggregate`); a base fica sem nenhuma faixa quando não
+ * sobra nenhum valor válido, em vez de um histograma "zerado" enganoso.
+ */
+export function histogramBins(rows: Row[], valueKey: string, binCount?: number): HistogramBin[] {
+  const values: { value: number; sourceRowIndex: number | null }[] = [];
+  for (const row of rows) {
+    const value = parseNumericValue(row[valueKey]);
+    if (value !== null) values.push({ value, sourceRowIndex: sourceRowIndexOf(row) });
+  }
+  if (!values.length) return [];
+
+  const min = Math.min(...values.map((v) => v.value));
+  const max = Math.max(...values.map((v) => v.value));
+  const numberLabel = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
+  // Todo valor igual (inclusive base de 1 valor só): uma faixa só, sem
+  // largura para dividir.
+  if (min === max) {
+    const sourceRowIndexes = values
+      .map((v) => v.sourceRowIndex)
+      .filter((index): index is number => index !== null);
+    return [
+      {
+        label: numberLabel(min),
+        rangeStart: min,
+        rangeEnd: max,
+        count: values.length,
+        ...(sourceRowIndexes.length ? { sourceRowIndexes } : {}),
+      },
+    ];
+  }
+
+  const bins = Math.max(1, binCount ?? sturgesBinCount(values.length));
+  const width = (max - min) / bins;
+  const buckets = Array.from({ length: bins }, (_, i) => ({
+    rangeStart: min + i * width,
+    rangeEnd: i === bins - 1 ? max : min + (i + 1) * width,
+    count: 0,
+    sourceRowIndexes: [] as number[],
+  }));
+  for (const { value, sourceRowIndex } of values) {
+    // O valor máximo cairia numa faixa fantasma (bins) por arredondamento;
+    // fica na última faixa de verdade, como um intervalo fechado nas duas
+    // pontas ([min, max]) em vez de [min, max).
+    const index = Math.min(bins - 1, Math.max(0, Math.floor((value - min) / width)));
+    buckets[index]!.count++;
+    if (sourceRowIndex !== null) buckets[index]!.sourceRowIndexes.push(sourceRowIndex);
+  }
+  return buckets.map((bucket) => ({
+    label: `${numberLabel(bucket.rangeStart)}–${numberLabel(bucket.rangeEnd)}`,
+    rangeStart: bucket.rangeStart,
+    rangeEnd: bucket.rangeEnd,
+    count: bucket.count,
+    ...(bucket.sourceRowIndexes.length ? { sourceRowIndexes: bucket.sourceRowIndexes } : {}),
+  }));
+}
+
+export type BoxPlotStats = {
+  name: string;
+  /** Menor valor dentro da cerca inferior (não é necessariamente o mínimo bruto — valores abaixo da cerca são outliers, não whisker). */
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  /** Maior valor dentro da cerca superior. */
+  max: number;
+  /** Valores fora de [Q1 − 1.5×IQR, Q3 + 1.5×IQR] — o critério clássico de Tukey. */
+  outliers: number[];
+  count: number;
+  sourceRowIndexes?: number[];
+};
+
+/**
+ * Mediana de uma lista já ordenada. Extraída à parte porque `boxPlotStats`
+ * usa a mesma conta três vezes (mediana geral, Q1 da metade de baixo, Q3 da
+ * metade de cima).
+ */
+function medianOfSorted(sorted: number[]): number {
+  const n = sorted.length;
+  if (!n) return 0;
+  const mid = Math.floor(n / 2);
+  return n % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
+
+/**
+ * Resumo de cinco números (mínimo, quartis, mediana, máximo) por categoria,
+ * mais os valores fora da cerca de Tukey — para responder "como os valores
+ * estão distribuídos" com foco em espalhamento e valores fora da curva, o
+ * que média/soma por categoria esconde.
+ *
+ * Q1/Q3 pelo método clássico (Moore & McCabe): a mediana geral divide a
+ * série ordenada ao meio; com quantidade ímpar de valores, a própria mediana
+ * fica de fora das duas metades. Q1 é a mediana da metade de baixo, Q3 a da
+ * metade de cima.
+ */
+export function boxPlotStats(rows: Row[], groupKey: string, valueKey: string): BoxPlotStats[] {
+  const buckets = new Map<string, { value: number; sourceRowIndex: number | null }[]>();
+  for (const row of rows) {
+    const name = writtenGroupLabel(row[groupKey]);
+    if (name === null) continue;
+    const value = parseNumericValue(row[valueKey]);
+    if (value === null) continue;
+    if (!buckets.has(name)) buckets.set(name, []);
+    buckets.get(name)!.push({ value, sourceRowIndex: sourceRowIndexOf(row) });
+  }
+
+  const result: BoxPlotStats[] = [];
+  for (const [name, entries] of buckets) {
+    const sortedEntries = [...entries].sort((a, b) => a.value - b.value);
+    const values = sortedEntries.map((e) => e.value);
+    const half = Math.floor(values.length / 2);
+    const lowerHalf = values.slice(0, half);
+    const upperHalf = values.length % 2 === 0 ? values.slice(half) : values.slice(half + 1);
+    const q1 = medianOfSorted(lowerHalf.length ? lowerHalf : values);
+    const q3 = medianOfSorted(upperHalf.length ? upperHalf : values);
+    const iqr = q3 - q1;
+    const lowerFence = q1 - 1.5 * iqr;
+    const upperFence = q3 + 1.5 * iqr;
+    const inliers = sortedEntries.filter((e) => e.value >= lowerFence && e.value <= upperFence);
+    const outliers = sortedEntries.filter((e) => e.value < lowerFence || e.value > upperFence);
+    const sourceRowIndexes = entries
+      .map((e) => e.sourceRowIndex)
+      .filter((index): index is number => index !== null);
+    result.push({
+      name,
+      min: inliers.length ? inliers[0]!.value : values[0]!,
+      q1,
+      median: medianOfSorted(values),
+      q3,
+      max: inliers.length ? inliers[inliers.length - 1]!.value : values[values.length - 1]!,
+      outliers: outliers.map((e) => e.value),
+      count: values.length,
+      ...(sourceRowIndexes.length ? { sourceRowIndexes } : {}),
+    });
+  }
+  return result;
+}
+
+export type ScatterPoint = { x: number; y: number; sourceRowIndex: number | null };
+
+/** Um ponto por linha com as duas colunas numéricas preenchidas; linha com qualquer uma vazia/não numérica fica de fora (mesmo espírito de `groupAndAggregate`). */
+export function scatterPoints(rows: Row[], xKey: string, yKey: string): ScatterPoint[] {
+  const points: ScatterPoint[] = [];
+  for (const row of rows) {
+    const x = parseNumericValue(row[xKey]);
+    const y = parseNumericValue(row[yKey]);
+    if (x === null || y === null) continue;
+    points.push({ x, y, sourceRowIndex: sourceRowIndexOf(row) });
+  }
+  return points;
+}
+
+export type LinearTrend = { slope: number; intercept: number };
+
+/**
+ * Reta de melhor ajuste (mínimos quadrados) entre X e Y. `null` com menos de
+ * 2 pontos ou quando todo mundo tem o mesmo X (reta vertical — inclinação
+ * não é um número, não é zero).
+ */
+export function linearTrend(points: { x: number; y: number }[]): LinearTrend | null {
+  if (points.length < 2) return null;
+  const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+  const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  const varianceX = points.reduce((sum, p) => sum + (p.x - meanX) ** 2, 0);
+  if (varianceX === 0) return null;
+  const covariance = points.reduce((sum, p) => sum + (p.x - meanX) * (p.y - meanY), 0);
+  const slope = covariance / varianceX;
+  return { slope, intercept: meanY - slope * meanX };
+}
+
+/**
+ * Coeficiente de correlação de Pearson, de -1 (relação inversa perfeita) a 1
+ * (relação direta perfeita). `null` com menos de 2 pontos ou quando X ou Y
+ * não varia — correlação é indefinida nesse caso, não zero: dizer "0" faria
+ * parecer que foi medida e não há relação, quando na verdade não dá pra
+ * medir.
+ */
+export function pearsonCorrelation(points: { x: number; y: number }[]): number | null {
+  if (points.length < 2) return null;
+  const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+  const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  const varianceX = points.reduce((sum, p) => sum + (p.x - meanX) ** 2, 0);
+  const varianceY = points.reduce((sum, p) => sum + (p.y - meanY) ** 2, 0);
+  if (varianceX === 0 || varianceY === 0) return null;
+  const covariance = points.reduce((sum, p) => sum + (p.x - meanX) * (p.y - meanY), 0);
+  return covariance / Math.sqrt(varianceX * varianceY);
 }
 
 export const MAX_RENDERED_CHART_POINTS = 600;

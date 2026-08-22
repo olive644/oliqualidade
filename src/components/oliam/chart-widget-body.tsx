@@ -38,6 +38,7 @@ import {
   barChartPresentation,
   chartSeries,
   collapsePieSeries,
+  countMissingGroupRows,
   limitChartSeriesForRendering,
   pieComparisonFor,
   pieRoundnessFor,
@@ -63,6 +64,7 @@ import {
   isCoarsePointer,
   PieLegend,
   SeriesComparisonPanel,
+  sourceRowIndexesOf,
   TrendSummaryPanel,
   truncateLabel,
   WidgetMetricStrip,
@@ -84,6 +86,7 @@ export function ChartWidgetBody({
   filters,
   setFilters,
   onConfigure,
+  onShowSource,
   dragProps,
   sizeControls,
   animationDelay,
@@ -97,6 +100,7 @@ export function ChartWidgetBody({
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
   onConfigure: (patch: Partial<Widget>) => void;
+  onShowSource: (rowIndexes: number[], columnKey: string, title: string) => void;
   dragProps: WidgetDragProps;
   sizeControls: React.ReactNode;
   animationDelay: number;
@@ -188,6 +192,8 @@ export function ChartWidgetBody({
           name: g.name,
           total: g.total,
           ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
+          ...(g.sourceRowIndex !== undefined ? { sourceRowIndex: g.sourceRowIndex } : {}),
+          ...(g.sourceRowIndexes ? { sourceRowIndexes: g.sourceRowIndexes } : {}),
         }))
       : [];
   const completeSeries =
@@ -371,9 +377,11 @@ export function ChartWidgetBody({
       {groupCol && valueCol && (
         <ChartReadingGuide
           group={groupCol.label}
-          metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+          metric={valueCol.label}
           mode={dataMode}
-          operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+          op={op}
+          rowCount={data.length}
+          missingGroupCount={countMissingGroupRows(data, groupCol.key)}
         />
       )}
       {renderableSeries.omitted > 0 && (
@@ -583,6 +591,16 @@ export function ChartWidgetBody({
                 kind={valueCol.kind}
                 filterLabel="Filtrar por esta categoria"
                 onFilter={() => handleGroupClick(groupCol.key, selectedBar.name)}
+                {...(sourceRowIndexesOf(selectedBar).length
+                  ? {
+                      onShowSource: () =>
+                        onShowSource(
+                          sourceRowIndexesOf(selectedBar),
+                          valueCol.key,
+                          selectedBar.name,
+                        ),
+                    }
+                  : {})}
               />
             </div>
           )}
@@ -810,6 +828,16 @@ export function ChartWidgetBody({
                     ? () => handleGroupClick(groupCol.key, selectedPie.name)
                     : undefined
                 }
+                {...(sourceRowIndexesOf(selectedPie).length
+                  ? {
+                      onShowSource: () =>
+                        onShowSource(
+                          sourceRowIndexesOf(selectedPie),
+                          valueCol.key,
+                          selectedPie.name,
+                        ),
+                    }
+                  : {})}
               />
             </div>
           )}
@@ -956,6 +984,16 @@ export function ChartWidgetBody({
                   handleGroupClick(groupCol.key, String(selectedPoint.name));
                   setSelectedPointName(null);
                 }}
+                {...(sourceRowIndexesOf(selectedPoint).length
+                  ? {
+                      onShowSource: () =>
+                        onShowSource(
+                          sourceRowIndexesOf(selectedPoint),
+                          valueCol.key,
+                          String(selectedPoint.name),
+                        ),
+                    }
+                  : {})}
               />
             )}
           </div>
@@ -1071,6 +1109,16 @@ export function ChartWidgetBody({
                 handleGroupClick(groupCol.key, String(selectedPoint.name));
                 setSelectedPointName(null);
               }}
+              {...(sourceRowIndexesOf(selectedPoint).length
+                ? {
+                    onShowSource: () =>
+                      onShowSource(
+                        sourceRowIndexesOf(selectedPoint),
+                        valueCol.key,
+                        String(selectedPoint.name),
+                      ),
+                  }
+                : {})}
             />
           )}
         </>

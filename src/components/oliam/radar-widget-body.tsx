@@ -25,6 +25,7 @@ import { fmt } from "@/lib/format";
 import {
   aggregationLabels,
   chartSeries,
+  countMissingGroupRows,
   NOT_INFORMED,
   pieComparisonFor,
   relevantAggregationOps,
@@ -40,6 +41,7 @@ import {
   FilterChip,
   isCoarsePointer,
   SeriesComparisonPanel,
+  sourceRowIndexesOf,
   truncateLabel,
   WidgetMetricStrip,
   type WidgetMetric,
@@ -58,6 +60,7 @@ export function RadarWidgetBody({
   filters,
   setFilters,
   onConfigure,
+  onShowSource,
   dragProps,
   sizeControls,
   animationDelay,
@@ -71,6 +74,7 @@ export function RadarWidgetBody({
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
   onConfigure: (patch: Partial<Widget>) => void;
+  onShowSource: (rowIndexes: number[], columnKey: string, title: string) => void;
   dragProps: WidgetDragProps;
   sizeControls: React.ReactNode;
   animationDelay: number;
@@ -233,9 +237,11 @@ export function RadarWidgetBody({
       {groupCol && valueCol && (
         <ChartReadingGuide
           group={groupCol.label}
-          metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+          metric={valueCol.label}
           mode={dataMode}
-          operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+          op={op}
+          rowCount={data.length}
+          missingGroupCount={countMissingGroupRows(data, groupCol.key)}
         />
       )}
       {!groupCol || !valueCol || axes.length < 3 ? (
@@ -421,6 +427,16 @@ export function RadarWidgetBody({
             kind={valueCol?.kind ?? "number"}
             filterLabel="Filtrar por esta categoria"
             onFilter={() => groupCol && handleGroupClick(groupCol.key, String(selectedAxis.name))}
+            {...(valueCol && sourceRowIndexesOf(selectedAxis).length
+              ? {
+                  onShowSource: () =>
+                    onShowSource(
+                      sourceRowIndexesOf(selectedAxis),
+                      valueCol.key,
+                      String(selectedAxis.name),
+                    ),
+                }
+              : {})}
           />
         </div>
       )}

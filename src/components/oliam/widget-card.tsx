@@ -95,6 +95,7 @@ import {
   aggregationLabels,
   chartSeries,
   collapsePieSeries,
+  countMissingGroupRows,
   detectQualitySignals,
   groupAndAggregate,
   limitChartSeriesForRendering,
@@ -124,11 +125,15 @@ import type { ColorGroupLabel, SourceCellFill } from "@/lib/cell-fill-provenance
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { AnimatedNumber } from "./animated-number";
 import { ChartWidgetBody } from "./chart-widget-body";
+import { BoxPlotWidgetBody } from "./box-plot-widget-body";
 import { ExceptionPanelWidgetBody } from "./exception-panel-widget-body";
+import { HistogramWidgetBody } from "./histogram-widget-body";
+import { ParetoWidgetBody } from "./pareto-widget-body";
 import { InsightsWidgetBody } from "./insights-widget-body";
 import { PivotWidgetBody } from "./pivot-widget-body";
 import { RadarWidgetBody } from "./radar-widget-body";
 import { RankingWidgetBody } from "./ranking-widget-body";
+import { ScatterWidgetBody } from "./scatter-widget-body";
 import { MetricWidgetBody } from "./metric-widget-body";
 import { RatingWidgetBody } from "./rating-widget-body";
 import { ScheduleHeatmapWidgetBody } from "./schedule-heatmap-widget-body";
@@ -151,6 +156,7 @@ import {
   CalculationButton,
   PieLegend,
   SeriesComparisonPanel,
+  sourceRowIndexesOf,
   TrendSummaryPanel,
   ChartDot,
   type ChartDotProps,
@@ -194,6 +200,7 @@ function WidgetCardBody({
   onCorrectException,
   onEditCell,
   onTraceException,
+  onShowSource,
   focusedCell,
   folderMonitor,
   animationDelay,
@@ -233,6 +240,8 @@ function WidgetCardBody({
   onCorrectException: (exception: SpreadsheetException, value: string, reason: string) => void;
   onEditCell: (sourceRowIndex: number, columnKey: string, value: string, reason: string) => void;
   onTraceException: (exception: SpreadsheetException) => void;
+  /** Abre o painel de linhas de origem de um valor de gráfico (barra/fatia/ponto selecionado). */
+  onShowSource: (rowIndexes: number[], columnKey: string, title: string) => void;
   focusedCell: { rowIndex: number; columnKey?: string; address?: string } | null;
   folderMonitor: FolderMonitorView | undefined;
   animationDelay: number;
@@ -510,6 +519,7 @@ function WidgetCardBody({
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}
+        onShowSource={onShowSource}
         dragProps={dragProps}
         sizeControls={sizeControls}
         animationDelay={animationDelay}
@@ -529,6 +539,7 @@ function WidgetCardBody({
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}
+        onShowSource={onShowSource}
         dragProps={dragProps}
         sizeControls={sizeControls}
         animationDelay={animationDelay}
@@ -548,6 +559,79 @@ function WidgetCardBody({
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}
+        onShowSource={onShowSource}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
+    );
+  }
+
+  if (w.type === "histogram") {
+    return (
+      <HistogramWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
+        filters={filters}
+        setFilters={setFilters}
+        onConfigure={onConfigure}
+        onShowSource={onShowSource}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
+    );
+  }
+
+  if (w.type === "box-plot") {
+    return (
+      <BoxPlotWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
+        groupableCols={groupableCols}
+        filters={filters}
+        setFilters={setFilters}
+        onConfigure={onConfigure}
+        onShowSource={onShowSource}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
+    );
+  }
+
+  if (w.type === "scatter") {
+    return (
+      <ScatterWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        onConfigure={onConfigure}
+        onShowSource={onShowSource}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
+    );
+  }
+
+  if (w.type === "pareto") {
+    return (
+      <ParetoWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
+        groupableCols={groupableCols}
+        semanticProfiles={semanticProfiles}
+        filters={filters}
+        setFilters={setFilters}
+        onConfigure={onConfigure}
+        onShowSource={onShowSource}
         dragProps={dragProps}
         sizeControls={sizeControls}
         animationDelay={animationDelay}
@@ -674,9 +758,11 @@ function WidgetCardBody({
         {groupCol && valueCol && (
           <ChartReadingGuide
             group={groupCol.label}
-            metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+            metric={valueCol.label}
             mode={dataMode}
-            operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+            op={op}
+            rowCount={data.length}
+            missingGroupCount={countMissingGroupRows(data, groupCol.key)}
           />
         )}
         {!groupCol || !valueCol ? (
@@ -706,6 +792,16 @@ function WidgetCardBody({
                 kind={valueCol.kind}
                 filterLabel="Filtrar por este local"
                 onFilter={() => handleGroupClick(groupCol.key, leadingLocation.selected.name)}
+                {...(sourceRowIndexesOf(sortedByTotal[0]!).length
+                  ? {
+                      onShowSource: () =>
+                        onShowSource(
+                          sourceRowIndexesOf(sortedByTotal[0]!),
+                          valueCol.key,
+                          leadingLocation.selected.name,
+                        ),
+                    }
+                  : {})}
               />
             )}
           </>

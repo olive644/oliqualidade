@@ -3,11 +3,14 @@ import { toast } from "sonner";
 import {
   Activity,
   AlertTriangle,
+  AlignVerticalDistributeCenter,
   ArrowLeft,
   ArrowRight,
+  BarChart2,
   BarChart3,
   Calculator,
   CalendarRange,
+  ChartBarDecreasing as ParetoIcon,
   Check,
   Columns3,
   ClipboardPaste,
@@ -24,6 +27,7 @@ import {
   MoreHorizontal,
   PieChart as PieIcon,
   Radar as RadarIcon,
+  ScatterChart as ScatterIcon,
   ShieldAlert,
   SlidersHorizontal,
   Sparkles,
@@ -65,6 +69,7 @@ import {
 import type { ScheduleCellState } from "@/lib/schedule-normalizer";
 import { conditionalColor, fmt } from "@/lib/format";
 import {
+  aggregationLabels,
   NOT_INFORMED,
   type AggregationOp,
   type PieComparison,
@@ -316,6 +321,13 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
   area: "Destaca volume e evolução ao longo de um período.",
   ranking: "Ordena e exibe os maiores resultados.",
   radar: "Compara as maiores categorias em um gráfico de eixos radiais.",
+  histogram: "Mostra como os valores de uma coluna numérica estão distribuídos, em faixas.",
+  "box-plot":
+    "Compara a distribuição (mínimo, quartis, mediana, máximo e valores fora da curva) entre categorias.",
+  scatter:
+    "Cruza duas colunas numéricas para ver se existe relação entre elas, com reta e correlação.",
+  pareto:
+    "Ordena as categorias da maior para a menor e acumula a participação, para achar as poucas que concentram a maior parte do total.",
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
   insights:
@@ -343,6 +355,10 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "area") return <Activity className={className} />;
   if (type === "ranking") return <ListOrdered className={className} />;
   if (type === "radar") return <RadarIcon className={className} />;
+  if (type === "histogram") return <BarChart2 className={className} />;
+  if (type === "box-plot") return <AlignVerticalDistributeCenter className={className} />;
+  if (type === "scatter") return <ScatterIcon className={className} />;
+  if (type === "pareto") return <ParetoIcon className={className} />;
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
   if (type === "insights") return <Sparkles className={className} />;
@@ -549,39 +565,51 @@ export function exceptionGuidance(exception: SpreadsheetException): {
   return guidance[exception.kind];
 }
 
+/**
+ * Frase permanente de leitura do gráfico: o que foi calculado, a partir de
+ * quantas linhas, e quantas ficaram de fora por falta do dado de
+ * agrupamento. Antes só aparecia com a configuração do widget aberta — o
+ * usuário perdia essa explicação assim que fechava o painel de edição, e o
+ * gráfico voltava a ser só um desenho sem contexto.
+ */
 export function ChartReadingGuide({
   group,
   metric,
   mode,
-  operation,
+  op,
+  rowCount,
+  missingGroupCount,
 }: {
   group: string;
   metric: string;
   mode: ChartDataMode;
-  operation: string;
+  op: AggregationOp;
+  rowCount: number;
+  missingGroupCount: number;
 }) {
-  const { open } = useWidgetConfig();
-  // O guia repete, em palavras, o que os seletores de X, Y e cálculo já
-  // mostram — útil enquanto se configura o widget, ruído permanente depois.
-  // Passa a acompanhar a configuração em vez de ocupar uma faixa fixa em
-  // cada um dos widgets do painel.
-  if (!open) return null;
+  const rowsClause = `${rowCount.toLocaleString("pt-BR")} ${
+    rowCount === 1 ? "registro visível" : "registros visíveis"
+  }`;
+  const reading =
+    op === "count"
+      ? `Quantidade de registros por "${group}"`
+      : mode === "raw"
+        ? `"${metric}" linha a linha por "${group}"`
+        : `${aggregationLabels[op]} de "${metric}" por "${group}"`;
   return (
-    <div
-      className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border/70 bg-card px-4 py-1.5 text-[10px] text-muted-foreground"
-      title={`Eixo X: ${group}. Eixo Y: ${metric}. ${mode === "raw" ? "Cada linha do Excel" : operation}.`}
-    >
-      <span className="max-w-44 shrink-0 truncate rounded-full bg-muted/40 px-2 py-1">
-        <strong className="text-foreground">X</strong> · {group}
-      </span>
-      <span aria-hidden="true">→</span>
-      <span className="max-w-44 shrink-0 truncate rounded-full bg-muted/40 px-2 py-1">
-        <strong className="text-foreground">Y</strong> · {metric}
-      </span>
-      <span className="max-w-56 shrink-0 truncate px-1">
-        {mode === "raw" ? "linha a linha" : operation}
-      </span>
-    </div>
+    <p className="border-b border-border/70 bg-card px-4 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+      {reading}, considerando {rowsClause}.
+      {missingGroupCount > 0 && (
+        <>
+          {" "}
+          {missingGroupCount.toLocaleString("pt-BR")}{" "}
+          {missingGroupCount === 1
+            ? `linha sem "${group}" não entrou neste gráfico`
+            : `linhas sem "${group}" não entraram neste gráfico`}
+          .
+        </>
+      )}
+    </p>
   );
 }
 
@@ -802,18 +830,39 @@ export function PieLegend({
  * (bug real já corrigido para o pizza, ver `docs/CURRENT_STATE_AUDIT.md`,
  * seção 41). Qualquer novo uso deste componente herda a correção automaticamente.
  */
+/**
+ * Linhas que produziram um ponto/balde de gráfico, seja ele agregado
+ * (`sourceRowIndexes`, um por balde) ou bruto (`sourceRowIndex`, um por
+ * linha) — os dois nomes que `groupAndAggregate`/`chartSeries` usam. Vazio
+ * quando as linhas não vêm do pipeline real (`markSourceRows` nunca rodou),
+ * o que também é o sinal para esconder o botão "Ver linhas de origem".
+ */
+export function sourceRowIndexesOf(point: {
+  name: string;
+  total: number;
+  sourceRow?: number;
+  sourceRowIndex?: number;
+  sourceRowIndexes?: number[];
+}): number[] {
+  return (
+    point.sourceRowIndexes ?? (point.sourceRowIndex !== undefined ? [point.sourceRowIndex] : [])
+  );
+}
+
 export function SeriesComparisonPanel({
   selected,
   comparison,
   kind,
   onFilter,
   filterLabel,
+  onShowSource,
 }: {
   selected: { name: string; total: number };
   comparison: PieComparison | null;
   kind: Kind;
   onFilter?: (() => void) | undefined;
   filterLabel: string;
+  onShowSource?: (() => void) | undefined;
 }) {
   const shareLabel =
     comparison?.share !== null && comparison?.share !== undefined
@@ -913,6 +962,11 @@ export function SeriesComparisonPanel({
             : "Sem referência"}
         </p>
       </div>
+      {onShowSource && (
+        <Button size="sm" variant="outline" onClick={onShowSource}>
+          Ver linhas de origem
+        </Button>
+      )}
       {onFilter && (
         <Button size="sm" variant="outline" onClick={onFilter}>
           {filterLabel}

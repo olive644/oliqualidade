@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { traceImportedCell } from "@/lib/cell-provenance";
+import {
+  hydrateSourceCellProvenance,
+  resolveSourceCellProvenance,
+  traceImportedCell,
+  type SourceCellProvenance,
+} from "@/lib/cell-provenance";
 import type { SourceGrid } from "@/lib/import";
 
 const sourceGrid: SourceGrid = {
@@ -206,5 +211,116 @@ describe("traceImportedCell", () => {
     expect(provenance.status).toBe("unavailable");
     expect(provenance.sourceAddress).toBeNull();
     expect(provenance.reasons.join(" ")).toContain("índice de origem");
+  });
+});
+
+describe("resolveSourceCellProvenance", () => {
+  const rows = [
+    { Produto: "A", Valor: 1234.5 },
+    { Produto: "B", Valor: 900 },
+  ];
+  const columns = [
+    { key: "Produto", label: "Produto", kind: "category" as const },
+    { key: "Valor", label: "Valor", kind: "currency" as const },
+  ];
+
+  it("resolve a origem de cada célula vinculável, para todas as linhas e colunas", () => {
+    const result = resolveSourceCellProvenance(rows, columns, diagnostics, sourceGrid, [1, 2]);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rowIndex: 0,
+          columnKey: "Valor",
+          sourceAddress: "B2",
+          status: "exact",
+          rawValue: 1234.5,
+        }),
+        expect.objectContaining({
+          rowIndex: 1,
+          columnKey: "Produto",
+          sourceAddress: "A3",
+        }),
+      ]),
+    );
+  });
+
+  it("não inclui célula sem correspondência única (mesmo critério de traceImportedCell)", () => {
+    const result = resolveSourceCellProvenance(
+      [{ Resultado: 4 }],
+      [{ key: "Resultado", label: "Resultado", kind: "number" as const }],
+      { ...diagnostics, columns: [], sourceCellRepresentations: [], tableRegions: [] },
+      {
+        ...sourceGrid,
+        rows: [
+          ["A", "B"],
+          [4, 4],
+        ],
+      },
+      [1],
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("volta vazio sem grade original ou sem índice de origem preservado", () => {
+    expect(resolveSourceCellProvenance(rows, columns, diagnostics, undefined, [1, 2])).toEqual([]);
+    expect(resolveSourceCellProvenance(rows, columns, diagnostics, sourceGrid, undefined)).toEqual(
+      [],
+    );
+  });
+});
+
+describe("hydrateSourceCellProvenance", () => {
+  it("reconstrói o CellProvenance completo a partir da entrada compacta e do contexto ao vivo", () => {
+    const entry: SourceCellProvenance = {
+      rowIndex: 0,
+      columnKey: "Valor",
+      sourceAddress: "B2",
+      sourceRow: 2,
+      sourceColumn: 2,
+      rawValue: 1234.5,
+      displayValue: "R$ 1.234,50",
+      numberFormat: "R$ #,##0.00",
+      formula: "=SUM(B2)",
+      status: "exact",
+      mappingConfidence: 100,
+    };
+    const hydrated = hydrateSourceCellProvenance(entry, {
+      fileName: "vendas.xlsx",
+      sheetName: "Planilha1",
+      rows: [{ Valor: 1234.5 }],
+      column: { key: "Valor", label: "Valor", kind: "currency" },
+    });
+    expect(hydrated).toMatchObject({
+      fileName: "vendas.xlsx",
+      sheetName: "Planilha1",
+      sourceAddress: "B2",
+      importedValue: 1234.5,
+      inferredKind: "currency",
+      columnConfidence: null,
+      sheetConfidence: null,
+      normalized: false,
+      formula: "=SUM(B2)",
+    });
+  });
+
+  it("marca normalized quando o valor importado difere do valor bruto de origem", () => {
+    const entry: SourceCellProvenance = {
+      rowIndex: 0,
+      columnKey: "Status",
+      sourceAddress: "C2",
+      sourceRow: 2,
+      sourceColumn: 3,
+      rawValue: "Aprovado",
+      displayValue: "Aprovado",
+      status: "exact",
+      mappingConfidence: 100,
+    };
+    const hydrated = hydrateSourceCellProvenance(entry, {
+      fileName: "vendas.xlsx",
+      sheetName: "Planilha1",
+      rows: [{ Status: "aprovado" }], // import normalizou a caixa do texto
+      column: { key: "Status", label: "Status", kind: "text" },
+    });
+    expect(hydrated.normalized).toBe(true);
   });
 });

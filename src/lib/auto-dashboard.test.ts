@@ -167,13 +167,12 @@ describe("generateAutoDashboardPlan", () => {
     diagnostic("id_pedido", "id"),
   ]);
 
-  it("recomenda KPIs, série temporal, barras, ranking, mapa e tabela", () => {
+  it("recomenda KPIs, série temporal, barras, mapa e tabela", () => {
     const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
     const types = plan.recommendations.map((item) => item.widgetType);
     expect(types).toContain("metric-trend");
     expect(types).toContain("area");
     expect(types).toContain("bar");
-    expect(types).toContain("ranking");
     expect(types).toContain("map");
     expect(types).toContain("table");
     expect(plan.classifications.find((item) => item.key === "id_pedido")?.role).toBe("identifier");
@@ -204,6 +203,38 @@ describe("generateAutoDashboardPlan", () => {
         (item) => item.widgetType === "pie" && item.groupKey === "produto",
       ),
     ).toBe(false);
+  });
+
+  it("só recomenda ranking quando a barra sozinha ficaria longa demais para responder 'quem lidera'", () => {
+    // "produto" tem só 3 categorias no fixture: a barra já mostra as três
+    // ordenadas por valor, então um ranking ao lado seria a mesma informação
+    // duas vezes. Ranking só ganha uma pergunta própria ("o topo concentra
+    // quanto do restante?") quando sobra gente de fora do topN.
+    const lowCardinality = generateAutoDashboardPlan({
+      columns,
+      rows,
+      diagnostics: importDiagnostics,
+    });
+    expect(
+      lowCardinality.recommendations.some(
+        (item) => item.widgetType === "ranking" && item.groupKey === "produto",
+      ),
+    ).toBe(false);
+
+    const manyRows = Array.from({ length: 50 }, (_, index) => ({
+      ...rows[index % rows.length],
+      produto: `Produto ${index}`,
+    }));
+    const highCardinality = generateAutoDashboardPlan({
+      columns,
+      rows: manyRows,
+      diagnostics: importDiagnostics,
+    });
+    expect(
+      highCardinality.recommendations.some(
+        (item) => item.widgetType === "ranking" && item.groupKey === "produto",
+      ),
+    ).toBe(true);
   });
 
   it("reduz confiança e explica dados ausentes", () => {

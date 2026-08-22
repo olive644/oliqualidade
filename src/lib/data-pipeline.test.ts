@@ -6,8 +6,14 @@ import {
   barChartPresentation,
   chartSeries,
   collapsePieSeries,
+  boxPlotStats,
   detectQualitySignals,
   groupAndAggregate,
+  histogramBins,
+  linearTrend,
+  paretoSeries,
+  pearsonCorrelation,
+  scatterPoints,
   leftJoin,
   limitChartSeriesForRendering,
   matchesRange,
@@ -21,6 +27,7 @@ import {
   toggleClickFilter,
   trendSummaryFor,
 } from "@/lib/data-pipeline";
+import { markSourceRows } from "@/lib/data-review";
 
 describe("chartSeries", () => {
   const rows: Row[] = [
@@ -35,6 +42,21 @@ describe("chartSeries", () => {
       { name: "A", total: 20, sourceRow: 2 },
       { name: "B", total: 5, sourceRow: 3 },
     ]);
+  });
+
+  it("carrega o índice de origem estável de cada ponto, quando as linhas vêm do pipeline real", () => {
+    const traceable = markSourceRows(rows);
+    const series = chartSeries(traceable, "categoria", "valor", "sum", "raw");
+    expect(series.map((point) => point.sourceRowIndex)).toEqual([0, 1, 2]);
+    // sourceRow (posição no array atual) e sourceRowIndex (índice estável)
+    // coincidem aqui porque nada foi filtrado/reordenado; a diferença entre
+    // os dois só aparece quando há filtro, busca ou ordenação ativos.
+    expect(series.map((point) => point.sourceRow)).toEqual([1, 2, 3]);
+  });
+
+  it("não inclui sourceRowIndex fora do pipeline real (linhas sem markSourceRows)", () => {
+    const series = chartSeries(rows, "categoria", "valor", "sum", "raw");
+    expect(series.every((point) => !("sourceRowIndex" in point))).toBe(true);
   });
 
   it("combina categorias somente quando o modo agrupado é escolhido", () => {
@@ -330,6 +352,251 @@ describe("groupAndAggregate", () => {
         { name: "Empresa B", total: 2 },
       ]),
     );
+  });
+
+  it("carrega o índice de origem estável de cada linha que entrou no bucket, quando disponível", () => {
+    const rows = markSourceRows([
+      { categoria: "Bolo", valor: 50 },
+      { categoria: "Bolo", valor: "texto" }, // conta pra rowCount, não pro valor
+      { categoria: "Doce", valor: 10 },
+    ]);
+    const bySoma = groupAndAggregate(rows, "categoria", "valor", "sum");
+    expect(bySoma.find((g) => g.name === "Bolo")?.sourceRowIndexes).toEqual([0]);
+    expect(bySoma.find((g) => g.name === "Doce")?.sourceRowIndexes).toEqual([2]);
+
+    const porContagem = groupAndAggregate(rows, "categoria", "valor", "count");
+    expect(porContagem.find((g) => g.name === "Bolo")?.sourceRowIndexes).toEqual([0, 1]);
+  });
+
+  it("não inclui sourceRowIndexes quando as linhas não vêm do pipeline real (markSourceRows)", () => {
+    const rows: Row[] = [{ categoria: "Bolo", valor: 50 }];
+    const result = groupAndAggregate(rows, "categoria", "valor", "sum");
+    expect(result[0]).toEqual({ name: "Bolo", total: 50 });
+    expect(result[0]).not.toHaveProperty("sourceRowIndexes");
+  });
+});
+
+describe("histogramBins", () => {
+  it("divide valores em faixas de largura igual, cobrindo min e max", () => {
+    const rows: Row[] = Array.from({ length: 20 }, (_, i) => ({ valor: i })); // 0..19
+    const bins = histogramBins(rows, "valor", 4);
+    expect(bins).toHaveLength(4);
+    expect(bins[0]!.rangeStart).toBe(0);
+    expect(bins.at(-1)!.rangeEnd).toBe(19);
+    expect(bins.reduce((sum, b) => sum + b.count, 0)).toBe(20);
+    // Faixas contíguas: o fim de uma é o início da próxima.
+    for (let i = 1; i < bins.length; i++) {
+      expect(bins[i]!.rangeStart).toBe(bins[i - 1]!.rangeEnd);
+    }
+  });
+
+  it("ignora valores ausentes ou não numéricos", () => {
+    const rows: Row[] = [
+      { valor: 10 },
+      { valor: null },
+      { valor: "" },
+      { valor: "texto" },
+      { valor: 20 },
+    ];
+    const bins = histogramBins(rows, "valor", 2);
+    expect(bins.reduce((sum, b) => sum + b.count, 0)).toBe(2);
+  });
+
+  it("volta vazio quando não sobra nenhum valor numérico válido", () => {
+    const rows: Row[] = [{ valor: null }, { valor: "" }];
+    expect(histogramBins(rows, "valor")).toEqual([]);
+  });
+
+  it("produz uma única faixa quando todos os valores são iguais", () => {
+    const rows: Row[] = [{ valor: 5 }, { valor: 5 }, { valor: 5 }];
+    const bins = histogramBins(rows, "valor");
+    expect(bins).toHaveLength(1);
+    expect(bins[0]).toMatchObject({ rangeStart: 5, rangeEnd: 5, count: 3 });
+  });
+
+  it("usa a regra de Sturges quando binCount não é informado, com teto e piso", () => {
+    const oneRow: Row[] = [{ valor: 1 }, { valor: 2 }];
+    expect(histogramBins(oneRow, "valor").length).toBeGreaterThanOrEqual(1);
+
+    const manyRows: Row[] = Array.from({ length: 10_000 }, (_, i) => ({ valor: i }));
+    const bins = histogramBins(manyRows, "valor");
+    expect(bins.length).toBeLessThanOrEqual(20);
+    expect(bins.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("carrega o índice de origem estável de cada linha por faixa, quando disponível", () => {
+    const rows = markSourceRows([{ valor: 1 }, { valor: 2 }, { valor: 9 }, { valor: 10 }]);
+    const bins = histogramBins(rows, "valor", 2);
+    expect(bins[0]?.sourceRowIndexes).toEqual([0, 1]);
+    expect(bins[1]?.sourceRowIndexes).toEqual([2, 3]);
+  });
+});
+
+describe("boxPlotStats", () => {
+  it("calcula quartis pelo método clássico (mediana exclui as duas metades quando n é ímpar)", () => {
+    const rows: Row[] = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((valor) => ({ categoria: "A", valor }));
+    const [stats] = boxPlotStats(rows, "categoria", "valor");
+    expect(stats).toMatchObject({ min: 1, q1: 2.5, median: 5, q3: 7.5, max: 9, outliers: [] });
+  });
+
+  it("calcula quartis com quantidade par de valores", () => {
+    const rows: Row[] = [1, 2, 3, 4, 5, 6, 7, 8].map((valor) => ({ categoria: "A", valor }));
+    const [stats] = boxPlotStats(rows, "categoria", "valor");
+    expect(stats).toMatchObject({ min: 1, q1: 2.5, median: 4.5, q3: 6.5, max: 8 });
+  });
+
+  it("identifica valores fora da cerca de Tukey como outliers, sem contar no min/max do whisker", () => {
+    const rows: Row[] = [
+      { categoria: "A", valor: 1 },
+      { categoria: "A", valor: 2 },
+      { categoria: "A", valor: 3 },
+      { categoria: "A", valor: 4 },
+      { categoria: "A", valor: 5 },
+      { categoria: "A", valor: 6 },
+      { categoria: "A", valor: 7 },
+      { categoria: "A", valor: 100 }, // muito acima de Q3 + 1.5×IQR
+    ];
+    const [stats] = boxPlotStats(rows, "categoria", "valor");
+    expect(stats?.outliers).toEqual([100]);
+    expect(stats?.max).toBe(7); // whisker máximo é o maior valor que não é outlier
+    expect(stats?.count).toBe(8); // outlier continua contando na amostra
+  });
+
+  it("calcula uma caixa por categoria, ignorando linhas sem categoria ou sem valor numérico", () => {
+    const rows: Row[] = [
+      { categoria: "Bolo", valor: 10 },
+      { categoria: "Bolo", valor: 20 },
+      { categoria: "Doce", valor: 5 },
+      { categoria: null, valor: 99 },
+      { categoria: "Bolo", valor: null },
+    ];
+    const stats = boxPlotStats(rows, "categoria", "valor");
+    expect(stats).toHaveLength(2);
+    expect(stats.find((s) => s.name === "Bolo")?.count).toBe(2);
+    expect(stats.find((s) => s.name === "Doce")).toMatchObject({
+      min: 5,
+      q1: 5,
+      median: 5,
+      q3: 5,
+      max: 5,
+      count: 1,
+    });
+  });
+
+  it("carrega o índice de origem estável de cada linha por categoria, quando disponível", () => {
+    const rows = markSourceRows([
+      { categoria: "Bolo", valor: 10 },
+      { categoria: "Doce", valor: 5 },
+      { categoria: "Bolo", valor: 20 },
+    ]);
+    const stats = boxPlotStats(rows, "categoria", "valor");
+    expect(stats.find((s) => s.name === "Bolo")?.sourceRowIndexes).toEqual([0, 2]);
+  });
+});
+
+describe("paretoSeries", () => {
+  it("ordena da maior para a menor contribuição e acumula a participação", () => {
+    const rows: Row[] = [
+      { causa: "A", ocorrencias: 50 },
+      { causa: "B", ocorrencias: 30 },
+      { causa: "C", ocorrencias: 15 },
+      { causa: "D", ocorrencias: 5 },
+    ];
+    const series = paretoSeries(rows, "causa", "ocorrencias", "sum");
+    expect(series.map((e) => e.name)).toEqual(["A", "B", "C", "D"]);
+    expect(series.map((e) => e.total)).toEqual([50, 30, 15, 5]);
+    expect(series.map((e) => e.cumulativeShare)).toEqual([0.5, 0.8, 0.95, 1]);
+  });
+
+  it("descarta categorias com total zero ou negativo (não fazem sentido como 'causa')", () => {
+    const rows: Row[] = [
+      { causa: "A", ocorrencias: 10 },
+      { causa: "B", ocorrencias: 0 },
+      { causa: "C", ocorrencias: -5 },
+    ];
+    const series = paretoSeries(rows, "causa", "ocorrencias", "sum");
+    expect(series.map((e) => e.name)).toEqual(["A"]);
+    expect(series[0]?.cumulativeShare).toBe(1);
+  });
+
+  it("volta vazio sem nenhuma categoria com contribuição positiva", () => {
+    const rows: Row[] = [{ causa: "A", ocorrencias: 0 }];
+    expect(paretoSeries(rows, "causa", "ocorrencias", "sum")).toEqual([]);
+  });
+
+  it("carrega o índice de origem estável por categoria, quando disponível", () => {
+    const rows = markSourceRows([
+      { causa: "A", ocorrencias: 50 },
+      { causa: "B", ocorrencias: 10 },
+      { causa: "A", ocorrencias: 20 },
+    ]);
+    const series = paretoSeries(rows, "causa", "ocorrencias", "sum");
+    expect(series.find((e) => e.name === "A")?.sourceRowIndexes).toEqual([0, 2]);
+  });
+});
+
+describe("scatterPoints", () => {
+  it("emparelha as duas colunas numéricas, descartando linha com qualquer uma vazia", () => {
+    const rows: Row[] = [
+      { x: 1, y: 2 },
+      { x: 2, y: null },
+      { x: null, y: 4 },
+      { x: 3, y: 6 },
+    ];
+    const points = scatterPoints(rows, "x", "y");
+    expect(points).toEqual([
+      { x: 1, y: 2, sourceRowIndex: null },
+      { x: 3, y: 6, sourceRowIndex: null },
+    ]);
+  });
+
+  it("carrega o índice de origem estável, quando disponível", () => {
+    const rows = markSourceRows([
+      { x: 1, y: 2 },
+      { x: 2, y: 4 },
+    ]);
+    const points = scatterPoints(rows, "x", "y");
+    expect(points.map((p) => p.sourceRowIndex)).toEqual([0, 1]);
+  });
+});
+
+describe("linearTrend e pearsonCorrelation", () => {
+  it("acha a reta exata e correlação 1 para pontos perfeitamente alinhados (y = 2x + 1)", () => {
+    const points = [1, 2, 3, 4, 5].map((x) => ({ x, y: 2 * x + 1 }));
+    expect(linearTrend(points)).toMatchObject({ slope: 2, intercept: 1 });
+    expect(pearsonCorrelation(points)).toBeCloseTo(1, 10);
+  });
+
+  it("acha correlação -1 para relação inversa perfeita", () => {
+    const points = [1, 2, 3, 4].map((x) => ({ x, y: -3 * x + 10 }));
+    expect(pearsonCorrelation(points)).toBeCloseTo(-1, 10);
+    expect(linearTrend(points)).toMatchObject({ slope: -3, intercept: 10 });
+  });
+
+  it("volta null com menos de 2 pontos", () => {
+    expect(linearTrend([{ x: 1, y: 1 }])).toBeNull();
+    expect(pearsonCorrelation([])).toBeNull();
+  });
+
+  it("volta null (não zero) quando X não varia — inclinação/correlação indefinidas, não ausência de relação", () => {
+    const points = [
+      { x: 5, y: 1 },
+      { x: 5, y: 2 },
+      { x: 5, y: 3 },
+    ];
+    expect(linearTrend(points)).toBeNull();
+    expect(pearsonCorrelation(points)).toBeNull();
+  });
+
+  it("volta null quando Y não varia (correlação indefinida, ainda que X varie)", () => {
+    const points = [
+      { x: 1, y: 5 },
+      { x: 2, y: 5 },
+      { x: 3, y: 5 },
+    ];
+    expect(pearsonCorrelation(points)).toBeNull();
+    // A reta ainda é definida aqui (X varia): uma reta horizontal, slope 0.
+    expect(linearTrend(points)).toMatchObject({ slope: 0, intercept: 5 });
   });
 });
 

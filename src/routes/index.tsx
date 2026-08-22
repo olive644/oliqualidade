@@ -67,14 +67,17 @@ import {
   pickBestGroupColumn,
   schedulePeriodColumns,
 } from "@/lib/widgets";
-import { infer, withCalculatedColumns } from "@/lib/format";
+import { infer, parseNumericValue, withCalculatedColumns } from "@/lib/format";
 import {
+  aggregate,
   applyMissingRules,
   detectQualitySignals,
   groupAndAggregate,
   matchesRange,
 } from "@/lib/data-pipeline";
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
+import { resolveSourceCellProvenance } from "@/lib/cell-provenance";
+import { analyzeQuestionCoverage, buildExecutiveSummary } from "@/lib/analytical-narrative";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type {
   WorkbookChartDiagnostic,
@@ -144,6 +147,7 @@ import { Review } from "@/components/oliam/review";
 import { WidgetPickerIcon, widgetTypeDescriptions } from "@/components/oliam/widget-support";
 import { WidgetCard } from "@/components/oliam/widget-card";
 import { ImportDiagnosticsDialog } from "@/components/oliam/import-diagnostics-dialog";
+import { SourceRowsPanel } from "@/components/oliam/source-rows-panel";
 import { ShortcutsDialog } from "@/components/oliam/shortcuts-dialog";
 import { SourceNotesPanel } from "@/components/oliam/source-notes-panel";
 import { SourceVisualsPanel } from "@/components/oliam/source-visuals-panel";
@@ -520,6 +524,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.rowOrigins,
       );
       const colorGroupLabels = resolveColorGroupLabels(s.rows, columns, sourceCellFills);
+      const sourceCellProvenance = resolveSourceCellProvenance(
+        s.rows,
+        columns,
+        s.diagnostics,
+        s.sourceGrid,
+        s.rowOrigins,
+      );
       return {
         name: s.name,
         rows: s.rows,
@@ -533,6 +544,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics?.charts.length ? { sourceCharts: s.diagnostics.charts } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
         ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
+        ...(sourceCellProvenance.length ? { sourceCellProvenance } : {}),
       };
     });
 
@@ -923,6 +935,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.rowOrigins,
       );
       const colorGroupLabels = resolveColorGroupLabels(s.rows, s.columns, sourceCellFills);
+      const sourceCellProvenance = resolveSourceCellProvenance(
+        s.rows,
+        s.columns,
+        s.diagnostics,
+        s.sourceGrid,
+        s.rowOrigins,
+      );
       return {
         name: s.name,
         rows: s.rows,
@@ -942,6 +961,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.sourceCharts?.length ? { sourceCharts: s.sourceCharts } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
         ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
+        ...(sourceCellProvenance.length ? { sourceCellProvenance } : {}),
       };
     });
     if (reviewTarget === "new") {
@@ -1236,6 +1256,13 @@ function Dashboard(p: {
   const [importDiagnostics, setImportDiagnostics] = useState(false);
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
   const [insightOpen, setInsightOpen] = useState(true);
+  const [sourceRowsPanel, setSourceRowsPanel] = useState<{
+    title: string;
+    rowIndexes: number[];
+    columnKey: string;
+  } | null>(null);
+  const showSourceRows = (rowIndexes: number[], columnKey: string, title: string) =>
+    setSourceRowsPanel({ rowIndexes, columnKey, title });
   const { termHintBanner } = useTermHint(sheet.widgets);
   const backupInput = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1378,9 +1405,14 @@ function Dashboard(p: {
     if (!sheet.previousSnapshot) return null;
     const prevCalculated = withCalculatedColumns(sheet.previousSnapshot.rows, sheet.columns);
     const deltas = new Map<string, number | null>();
+    const totalOf = (rows: Row[], key: string) =>
+      aggregate(
+        rows.map((r) => parseNumericValue(r[key])).filter((v): v is number => v !== null),
+        "sum",
+      );
     for (const c of nums) {
-      const currentTotal = withCalculated.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
-      const previousTotal = prevCalculated.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
+      const currentTotal = totalOf(withCalculated, c.key);
+      const previousTotal = totalOf(prevCalculated, c.key);
       deltas.set(
         c.key,
         previousTotal === 0 ? null : (currentTotal - previousTotal) / previousTotal,
@@ -1405,6 +1437,29 @@ function Dashboard(p: {
       .slice(0, 8);
   }, [data, cat, primary]);
   const sidebarRankingMax = Math.max(1, ...sidebarRanking.map((r) => Math.abs(r.total)));
+  // Resumo executivo e cobertura de perguntas analíticas: frases
+  // determinísticas (nunca geradas por IA) a partir do que já foi calculado,
+  // e quantas das perguntas que a estrutura da planilha permite responder já
+  // têm um gráfico no painel atual.
+  const executiveSummary = useMemo(
+    () =>
+      sheet.autoDashboard
+        ? buildExecutiveSummary({
+            rows: data,
+            columns: sheet.columns,
+            classifications: sheet.autoDashboard.classifications,
+            exceptionCount: effectiveIntelligence.exceptions.length,
+          })
+        : [],
+    [sheet.autoDashboard, data, sheet.columns, effectiveIntelligence.exceptions],
+  );
+  const questionCoverage = useMemo(
+    () =>
+      sheet.autoDashboard
+        ? analyzeQuestionCoverage(sheet.autoDashboard.classifications, sheet.widgets ?? [])
+        : undefined,
+    [sheet.autoDashboard, sheet.widgets],
+  );
 
   // Modelo de widgets: painéis salvos antes desse recurso existir ainda não
   // têm "widgets" persistido, então reproduzimos o layout fixo antigo até o
@@ -1473,6 +1528,10 @@ function Dashboard(p: {
     area: nums.length > 0 && groupableCols.length > 0,
     ranking: nums.length > 0 && groupableCols.length > 0,
     radar: nums.length > 0 && groupableCols.length > 0,
+    histogram: nums.length > 0,
+    "box-plot": nums.length > 0 && groupableCols.length > 0,
+    scatter: nums.length >= 2,
+    pareto: nums.length > 0 && groupableCols.length > 0,
     rating: nums.length > 0,
     map: nums.length > 0 && groupableCols.length > 0,
     insights: nums.length > 0 && groupableCols.length > 0,
@@ -1636,6 +1695,7 @@ function Dashboard(p: {
               onCorrectException={correctException}
               onEditCell={editTableCell}
               onTraceException={traceException}
+              onShowSource={showSourceRows}
               focusedCell={focusedCell}
               folderMonitor={p.folderMonitor}
               animationDelay={Math.min(i, 8) * 40}
@@ -2121,6 +2181,8 @@ function Dashboard(p: {
             data={data}
             rowCount={sheet.rows.length}
             autoDashboard={sheet.autoDashboard}
+            executiveSummary={executiveSummary}
+            questionCoverage={questionCoverage}
             nums={nums}
             versionDelta={versionDelta}
             sidebarRanking={sidebarRanking}
@@ -2203,6 +2265,27 @@ function Dashboard(p: {
       {joinDialog}
       <ShortcutsDialog open={shortcuts} onOpenChange={setShortcuts} />
       <ImportDiagnosticsDialog open={importDiagnostics} onOpenChange={setImportDiagnostics} />
+      {sourceRowsPanel && (
+        <SourceRowsPanel
+          open={Boolean(sourceRowsPanel)}
+          onOpenChange={(next) => {
+            if (!next) setSourceRowsPanel(null);
+          }}
+          title={sourceRowsPanel.title}
+          rowIndexes={sourceRowsPanel.rowIndexes}
+          column={
+            sheet.columns.find((c) => c.key === sourceRowsPanel.columnKey) ?? {
+              key: sourceRowsPanel.columnKey,
+              label: sourceRowsPanel.columnKey,
+              kind: "text",
+            }
+          }
+          rows={sheet.rows}
+          sourceCellProvenance={sheet.sourceCellProvenance ?? []}
+          fileName={d.sourceFileName ?? d.name}
+          sheetName={sheet.name}
+        />
+      )}
       <GeminiChatPanel dashboard={d} sheet={sheet} liveRows={data} liveView={assistantContext} />
     </div>
   );

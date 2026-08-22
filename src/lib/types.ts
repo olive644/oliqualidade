@@ -60,6 +60,10 @@ export type WidgetType =
   | "area"
   | "ranking"
   | "radar"
+  | "histogram"
+  | "box-plot"
+  | "scatter"
+  | "pareto"
   | "rating"
   | "map"
   | "insights"
@@ -83,13 +87,15 @@ export type Widget = {
   type: WidgetType;
   title?: string; // título customizado; vazio usa um título calculado
   metricKey?: string; // metric/metric-trend/rating: coluna numérica exibida
-  groupKey?: string; // bar/pie/line/area/ranking/radar: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
-  valueKey?: string; // bar/pie/line/area/ranking/radar: coluna numérica agregada
-  op?: ChartAggregationOp; // bar/pie/line/area/ranking/radar: operação de agregação
+  groupKey?: string; // bar/pie/line/area/ranking/radar/box-plot/pareto: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
+  valueKey?: string; // bar/pie/line/area/ranking/radar/pareto: coluna numérica agregada; histogram: coluna numérica cuja distribuição é mostrada; box-plot: coluna numérica cuja distribuição é comparada entre categorias; scatter: coluna numérica do eixo X
+  valueKey2?: string; // scatter: segunda coluna numérica, eixo Y
+  op?: ChartAggregationOp; // bar/pie/line/area/ranking/radar/pareto: operação de agregação
   dataMode?: ChartDataMode; // raw: uma marca por linha do Excel; aggregate: combina categorias
   span: WidgetSpan;
   size: WidgetSize;
   topN?: number; // ranking/radar: quantos itens exibir (padrão 5)
+  binCount?: number | undefined; // histogram: quantidade de faixas (padrão: regra de Sturges, calculada a partir da quantidade de valores); `undefined` explícito volta ao automático
   scaleMax?: number; // rating: nota máxima da escala (padrão 5)
   periodKeys?: string[]; // schedule-heatmap: colunas exibidas horizontalmente
   statusKey?: string; // schedule-heatmap: coluna que distingue planejado/executado/status
@@ -111,6 +117,10 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   area: "Gráfico de área",
   ranking: "Ranking (Top N)",
   radar: "Gráfico radar",
+  histogram: "Histograma",
+  "box-plot": "Box plot (distribuição por categoria)",
+  scatter: "Dispersão (correlação)",
+  pareto: "Pareto (80/20)",
   rating: "Indicador de avaliação",
   map: "Mapa por localização",
   insights: "Insights automáticos",
@@ -157,6 +167,8 @@ export type SheetData = {
   sourceImages?: import("@/lib/workbook-metadata").WorkbookImageDiagnostic[];
   /** Cor de preenchimento original do Excel por (linha, coluna), só quando a aba é simples o bastante para resolver com segurança. */
   sourceCellFills?: import("@/lib/cell-fill-provenance").SourceCellFill[];
+  /** Endereço, valor bruto e fórmula original por (linha, coluna) — calculado uma vez na importação, enquanto a grade original ainda existe, para permitir abrir a célula de origem a partir de um valor agregado no dashboard depois que a grade é descartada. */
+  sourceCellProvenance?: import("@/lib/cell-provenance").SourceCellProvenance[];
   /** Rótulo inferido por banda de cor de preenchimento sem mesclagem real, só para exibição — nunca escreve em `rows`. */
   colorGroupLabels?: import("@/lib/cell-fill-provenance").ColorGroupLabel[];
   /** Formas nativas do Excel com texto, persistidas para exibição no painel (não só na revisão). */
