@@ -1,3 +1,4 @@
+import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
 import { useState } from "react";
 import { ListOrdered } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -33,7 +34,6 @@ import {
   FilterChip,
   isCoarsePointer,
   SeriesComparisonPanel,
-  sourceRowIndexesOf,
   WidgetHead,
   WidgetMetricStrip,
   type WidgetMetric,
