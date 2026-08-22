@@ -76,6 +76,7 @@ import {
   matchesRange,
 } from "@/lib/data-pipeline";
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
+import { resolveSourceCellProvenance } from "@/lib/cell-provenance";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type {
   WorkbookChartDiagnostic,
@@ -521,6 +522,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.rowOrigins,
       );
       const colorGroupLabels = resolveColorGroupLabels(s.rows, columns, sourceCellFills);
+      const sourceCellProvenance = resolveSourceCellProvenance(
+        s.rows,
+        columns,
+        s.diagnostics,
+        s.sourceGrid,
+        s.rowOrigins,
+      );
       return {
         name: s.name,
         rows: s.rows,
@@ -534,6 +542,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.diagnostics?.charts.length ? { sourceCharts: s.diagnostics.charts } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
         ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
+        ...(sourceCellProvenance.length ? { sourceCellProvenance } : {}),
       };
     });
 
@@ -924,6 +933,13 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.rowOrigins,
       );
       const colorGroupLabels = resolveColorGroupLabels(s.rows, s.columns, sourceCellFills);
+      const sourceCellProvenance = resolveSourceCellProvenance(
+        s.rows,
+        s.columns,
+        s.diagnostics,
+        s.sourceGrid,
+        s.rowOrigins,
+      );
       return {
         name: s.name,
         rows: s.rows,
@@ -943,6 +959,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
         ...(s.sourceCharts?.length ? { sourceCharts: s.sourceCharts } : {}),
         ...(sourceCellFills.length ? { sourceCellFills } : {}),
         ...(colorGroupLabels.length ? { colorGroupLabels } : {}),
+        ...(sourceCellProvenance.length ? { sourceCellProvenance } : {}),
       };
     });
     if (reviewTarget === "new") {

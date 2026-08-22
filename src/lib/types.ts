@@ -157,6 +157,8 @@ export type SheetData = {
   sourceImages?: import("@/lib/workbook-metadata").WorkbookImageDiagnostic[];
   /** Cor de preenchimento original do Excel por (linha, coluna), só quando a aba é simples o bastante para resolver com segurança. */
   sourceCellFills?: import("@/lib/cell-fill-provenance").SourceCellFill[];
+  /** Endereço, valor bruto e fórmula original por (linha, coluna) — calculado uma vez na importação, enquanto a grade original ainda existe, para permitir abrir a célula de origem a partir de um valor agregado no dashboard depois que a grade é descartada. */
+  sourceCellProvenance?: import("@/lib/cell-provenance").SourceCellProvenance[];
   /** Rótulo inferido por banda de cor de preenchimento sem mesclagem real, só para exibição — nunca escreve em `rows`. */
   colorGroupLabels?: import("@/lib/cell-fill-provenance").ColorGroupLabel[];
   /** Formas nativas do Excel com texto, persistidas para exibição no painel (não só na revisão). */

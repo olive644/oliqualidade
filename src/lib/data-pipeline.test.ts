@@ -21,6 +21,7 @@ import {
   toggleClickFilter,
   trendSummaryFor,
 } from "@/lib/data-pipeline";
+import { markSourceRows } from "@/lib/data-review";
 
 describe("chartSeries", () => {
   const rows: Row[] = [
@@ -35,6 +36,21 @@ describe("chartSeries", () => {
       { name: "A", total: 20, sourceRow: 2 },
       { name: "B", total: 5, sourceRow: 3 },
     ]);
+  });
+
+  it("carrega o índice de origem estável de cada ponto, quando as linhas vêm do pipeline real", () => {
+    const traceable = markSourceRows(rows);
+    const series = chartSeries(traceable, "categoria", "valor", "sum", "raw");
+    expect(series.map((point) => point.sourceRowIndex)).toEqual([0, 1, 2]);
+    // sourceRow (posição no array atual) e sourceRowIndex (índice estável)
+    // coincidem aqui porque nada foi filtrado/reordenado; a diferença entre
+    // os dois só aparece quando há filtro, busca ou ordenação ativos.
+    expect(series.map((point) => point.sourceRow)).toEqual([1, 2, 3]);
+  });
+
+  it("não inclui sourceRowIndex fora do pipeline real (linhas sem markSourceRows)", () => {
+    const series = chartSeries(rows, "categoria", "valor", "sum", "raw");
+    expect(series.every((point) => !("sourceRowIndex" in point))).toBe(true);
   });
 
   it("combina categorias somente quando o modo agrupado é escolhido", () => {
@@ -330,6 +346,27 @@ describe("groupAndAggregate", () => {
         { name: "Empresa B", total: 2 },
       ]),
     );
+  });
+
+  it("carrega o índice de origem estável de cada linha que entrou no bucket, quando disponível", () => {
+    const rows = markSourceRows([
+      { categoria: "Bolo", valor: 50 },
+      { categoria: "Bolo", valor: "texto" }, // conta pra rowCount, não pro valor
+      { categoria: "Doce", valor: 10 },
+    ]);
+    const bySoma = groupAndAggregate(rows, "categoria", "valor", "sum");
+    expect(bySoma.find((g) => g.name === "Bolo")?.sourceRowIndexes).toEqual([0]);
+    expect(bySoma.find((g) => g.name === "Doce")?.sourceRowIndexes).toEqual([2]);
+
+    const porContagem = groupAndAggregate(rows, "categoria", "valor", "count");
+    expect(porContagem.find((g) => g.name === "Bolo")?.sourceRowIndexes).toEqual([0, 1]);
+  });
+
+  it("não inclui sourceRowIndexes quando as linhas não vêm do pipeline real (markSourceRows)", () => {
+    const rows: Row[] = [{ categoria: "Bolo", valor: 50 }];
+    const result = groupAndAggregate(rows, "categoria", "valor", "sum");
+    expect(result[0]).toEqual({ name: "Bolo", total: 50 });
+    expect(result[0]).not.toHaveProperty("sourceRowIndexes");
   });
 });
 

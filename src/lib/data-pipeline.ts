@@ -1,6 +1,7 @@
 import type { ChartAggregationOp, Column, FilterRule, Row } from "@/lib/types";
 import { numericKinds } from "@/lib/types";
 import { parseDateValue, parseNumericValue } from "@/lib/format";
+import { sourceRowIndexOf } from "@/lib/data-review";
 
 /** Rótulo usado quando o valor de agrupamento está ausente. Usado também
  * para detectar esse caso na renderização dos gráficos (eixo, legenda,
@@ -245,27 +246,49 @@ export function groupAndAggregate(
   groupKey: string,
   valueKey: string,
   op: AggregationOp,
-): { name: string; total: number }[] {
-  const buckets = new Map<string, { values: number[]; rowCount: number }>();
+): { name: string; total: number; sourceRowIndexes?: number[] }[] {
+  const buckets = new Map<
+    string,
+    { values: number[]; valueRowIndexes: number[]; rowCount: number; rowIndexes: number[] }
+  >();
   for (const r of rows) {
     const name = writtenGroupLabel(r[groupKey]);
     if (name === null) continue;
-    if (!buckets.has(name)) buckets.set(name, { values: [], rowCount: 0 });
+    if (!buckets.has(name))
+      buckets.set(name, { values: [], valueRowIndexes: [], rowCount: 0, rowIndexes: [] });
     const bucket = buckets.get(name);
     if (!bucket) continue;
     bucket.rowCount++;
+    // Índice estável em `sheet.rows` (sobrevive a cálculo, regra de dado
+    // ausente, filtro e ordenação — ver `markSourceRows`), null nas bases de
+    // teste que não passam pelo pipeline real. É o mesmo `rowIndex` que
+    // `traceImportedCell`/`resolveSourceCellProvenance` esperam, o que
+    // permite ir do balde agregado direto até a célula de origem.
+    const sourceRowIndex = sourceRowIndexOf(r);
+    if (sourceRowIndex !== null) bucket.rowIndexes.push(sourceRowIndex);
     const raw = r[valueKey];
     const v = parseNumericValue(raw);
-    if (v !== null) bucket.values.push(v);
+    if (v !== null) {
+      bucket.values.push(v);
+      if (sourceRowIndex !== null) bucket.valueRowIndexes.push(sourceRowIndex);
+    }
   }
-  const result: { name: string; total: number }[] = [];
+  const result: { name: string; total: number; sourceRowIndexes?: number[] }[] = [];
   for (const [name, bucket] of buckets) {
     if (op === "count") {
-      result.push({ name, total: bucket.rowCount });
+      result.push({
+        name,
+        total: bucket.rowCount,
+        ...(bucket.rowIndexes.length ? { sourceRowIndexes: bucket.rowIndexes } : {}),
+      });
       continue;
     }
     if (!bucket.values.length) continue;
-    result.push({ name, total: aggregate(bucket.values, op) });
+    result.push({
+      name,
+      total: aggregate(bucket.values, op),
+      ...(bucket.valueRowIndexes.length ? { sourceRowIndexes: bucket.valueRowIndexes } : {}),
+    });
   }
   return result;
 }
@@ -281,14 +304,21 @@ export function chartSeries(
   valueKey: string,
   op: AggregationOp,
   mode: "raw" | "aggregate",
-): Array<{ name: string; total: number; sourceRow?: number }> {
+): Array<{ name: string; total: number; sourceRow?: number; sourceRowIndex?: number }> {
   if (mode === "aggregate") return groupAndAggregate(rows, groupKey, valueKey, op);
   return rows.flatMap((row, index) => {
     const name = writtenGroupLabel(row[groupKey]);
     if (name === null) return [];
-    if (op === "count") return [{ name, total: 1, sourceRow: index + 1 }];
+    // `sourceRow` (posição no array já filtrado/ordenado) segue existindo só
+    // pelo hover; `sourceRowIndex` é o índice estável em `sheet.rows` (null
+    // fora do pipeline real) que dá pra usar de fato pra buscar a célula de
+    // origem — os dois divergem sempre que há filtro, busca ou ordenação
+    // ativos.
+    const sourceRowIndex = sourceRowIndexOf(row);
+    const traceable = sourceRowIndex !== null ? { sourceRowIndex } : {};
+    if (op === "count") return [{ name, total: 1, sourceRow: index + 1, ...traceable }];
     const value = parseNumericValue(row[valueKey]);
-    return value !== null ? [{ name, total: value, sourceRow: index + 1 }] : [];
+    return value !== null ? [{ name, total: value, sourceRow: index + 1, ...traceable }] : [];
   });
 }
 
