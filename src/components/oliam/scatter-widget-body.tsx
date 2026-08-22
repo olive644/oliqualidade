@@ -52,7 +52,6 @@ export function ScatterWidgetBody({
   widget: w,
   data,
   columns,
-  numericCols,
   onConfigure,
   onShowSource,
   dragProps,
@@ -62,7 +61,6 @@ export function ScatterWidgetBody({
   widget: Widget;
   data: Row[];
   columns: Column[];
-  numericCols: Column[];
   onConfigure: (patch: Partial<Widget>) => void;
   onShowSource: (rowIndexes: number[], columnKey: string, title: string) => void;
   dragProps: WidgetDragProps;
@@ -71,9 +69,15 @@ export function ScatterWidgetBody({
 }) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
-  const xCol = columns.find((c) => c.key === w.valueKey) ?? numericCols[0];
+  // Dispersão nunca agrega (soma/média), então uma coluna "não agregável"
+  // (Meta, Conformidade — um alvo ou uma taxa) é tão válida no eixo X/Y
+  // quanto qualquer outra numérica; usa todas as colunas numéricas da aba,
+  // não o `numericCols` (que os demais widgets recebem já filtrado por
+  // agregabilidade — o filtro certo pra somar, errado pra cruzar pares).
+  const allNumericCols = columns.filter((c) => numericKinds.includes(c.kind));
+  const xCol = columns.find((c) => c.key === w.valueKey) ?? allNumericCols[0];
   const yCol =
-    columns.find((c) => c.key === w.valueKey2) ?? numericCols.find((c) => c.key !== xCol?.key);
+    columns.find((c) => c.key === w.valueKey2) ?? allNumericCols.find((c) => c.key !== xCol?.key);
 
   const points = xCol && yCol ? scatterPoints(data, xCol.key, yCol.key) : [];
   const trend = linearTrend(points);
@@ -126,7 +130,7 @@ export function ScatterWidgetBody({
               onChange={(e) => onConfigure({ valueKey: e.target.value })}
             >
               {!xCol && <option value="">Selecione…</option>}
-              {numericCols.map((c) => (
+              {allNumericCols.map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
                 </option>
@@ -147,7 +151,7 @@ export function ScatterWidgetBody({
               onChange={(e) => onConfigure({ valueKey2: e.target.value })}
             >
               {!yCol && <option value="">Selecione…</option>}
-              {numericCols.map((c) => (
+              {allNumericCols.map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
                 </option>

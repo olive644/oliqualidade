@@ -609,7 +609,6 @@ function WidgetCardBody({
         widget={w}
         data={data}
         columns={columns}
-        numericCols={numericCols}
         onConfigure={onConfigure}
         onShowSource={onShowSource}
         dragProps={dragProps}
