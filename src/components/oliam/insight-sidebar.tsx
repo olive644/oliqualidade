@@ -25,7 +25,6 @@ export function InsightSidebar(p: {
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
 }) {
-  if (!p.open) return null;
   const { cat, primary, dateCol } = p;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -46,6 +45,8 @@ export function InsightSidebar(p: {
       previouslyFocused?.focus();
     };
   }, [p.open, p.onOpenChange]);
+
+  if (!p.open) return null;
 
   const content = (
     <>
