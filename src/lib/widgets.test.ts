@@ -274,6 +274,19 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
     expect(w.dataMode).toBeUndefined();
   });
 
+  it("createWidget (scatter) escolhe duas colunas numéricas distintas, sem groupKey/op", () => {
+    const columns: Column[] = [
+      col("Turno", "category"),
+      col("Amostras", "number"),
+      col("Resultado", "number"),
+    ];
+    const w = createWidget("scatter", columns, undefined, [{ Amostras: 10, Resultado: 95 }]);
+    expect(w.valueKey).toBe("Amostras");
+    expect(w.valueKey2).toBe("Resultado");
+    expect(w.groupKey).toBeUndefined();
+    expect(w.op).toBeUndefined();
+  });
+
   it.each(["bar", "pie", "ranking", "line", "area", "map", "insights"] as const)(
     "createWidget (%s) evita coluna não agregável como métrica quando existe outra numérica somável",
     (type) => {
@@ -687,5 +700,12 @@ describe("widget de box plot", () => {
   it("nasce com span/size iguais aos demais gráficos de barra", () => {
     expect(defaultSpan("box-plot")).toBe(2);
     expect(defaultSize("box-plot")).toBe("md");
+  });
+});
+
+describe("widget de dispersão", () => {
+  it("nasce com span/size iguais aos demais gráficos de barra", () => {
+    expect(defaultSpan("scatter")).toBe(2);
+    expect(defaultSize("scatter")).toBe("md");
   });
 });

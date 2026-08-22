@@ -499,6 +499,56 @@ export function boxPlotStats(rows: Row[], groupKey: string, valueKey: string): B
   return result;
 }
 
+export type ScatterPoint = { x: number; y: number; sourceRowIndex: number | null };
+
+/** Um ponto por linha com as duas colunas numéricas preenchidas; linha com qualquer uma vazia/não numérica fica de fora (mesmo espírito de `groupAndAggregate`). */
+export function scatterPoints(rows: Row[], xKey: string, yKey: string): ScatterPoint[] {
+  const points: ScatterPoint[] = [];
+  for (const row of rows) {
+    const x = parseNumericValue(row[xKey]);
+    const y = parseNumericValue(row[yKey]);
+    if (x === null || y === null) continue;
+    points.push({ x, y, sourceRowIndex: sourceRowIndexOf(row) });
+  }
+  return points;
+}
+
+export type LinearTrend = { slope: number; intercept: number };
+
+/**
+ * Reta de melhor ajuste (mínimos quadrados) entre X e Y. `null` com menos de
+ * 2 pontos ou quando todo mundo tem o mesmo X (reta vertical — inclinação
+ * não é um número, não é zero).
+ */
+export function linearTrend(points: { x: number; y: number }[]): LinearTrend | null {
+  if (points.length < 2) return null;
+  const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+  const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  const varianceX = points.reduce((sum, p) => sum + (p.x - meanX) ** 2, 0);
+  if (varianceX === 0) return null;
+  const covariance = points.reduce((sum, p) => sum + (p.x - meanX) * (p.y - meanY), 0);
+  const slope = covariance / varianceX;
+  return { slope, intercept: meanY - slope * meanX };
+}
+
+/**
+ * Coeficiente de correlação de Pearson, de -1 (relação inversa perfeita) a 1
+ * (relação direta perfeita). `null` com menos de 2 pontos ou quando X ou Y
+ * não varia — correlação é indefinida nesse caso, não zero: dizer "0" faria
+ * parecer que foi medida e não há relação, quando na verdade não dá pra
+ * medir.
+ */
+export function pearsonCorrelation(points: { x: number; y: number }[]): number | null {
+  if (points.length < 2) return null;
+  const meanX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+  const meanY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  const varianceX = points.reduce((sum, p) => sum + (p.x - meanX) ** 2, 0);
+  const varianceY = points.reduce((sum, p) => sum + (p.y - meanY) ** 2, 0);
+  if (varianceX === 0 || varianceY === 0) return null;
+  const covariance = points.reduce((sum, p) => sum + (p.x - meanX) * (p.y - meanY), 0);
+  return covariance / Math.sqrt(varianceX * varianceY);
+}
+
 export const MAX_RENDERED_CHART_POINTS = 600;
 
 export type RenderableChartSeries<T> = {

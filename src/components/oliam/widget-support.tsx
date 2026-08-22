@@ -26,6 +26,7 @@ import {
   MoreHorizontal,
   PieChart as PieIcon,
   Radar as RadarIcon,
+  ScatterChart as ScatterIcon,
   ShieldAlert,
   SlidersHorizontal,
   Sparkles,
@@ -322,6 +323,8 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
   histogram: "Mostra como os valores de uma coluna numérica estão distribuídos, em faixas.",
   "box-plot":
     "Compara a distribuição (mínimo, quartis, mediana, máximo e valores fora da curva) entre categorias.",
+  scatter:
+    "Cruza duas colunas numéricas para ver se existe relação entre elas, com reta e correlação.",
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
   insights:
@@ -351,6 +354,7 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "radar") return <RadarIcon className={className} />;
   if (type === "histogram") return <BarChart2 className={className} />;
   if (type === "box-plot") return <AlignVerticalDistributeCenter className={className} />;
+  if (type === "scatter") return <ScatterIcon className={className} />;
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
   if (type === "insights") return <Sparkles className={className} />;

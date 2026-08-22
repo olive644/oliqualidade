@@ -10,6 +10,9 @@ import {
   detectQualitySignals,
   groupAndAggregate,
   histogramBins,
+  linearTrend,
+  pearsonCorrelation,
+  scatterPoints,
   leftJoin,
   limitChartSeriesForRendering,
   matchesRange,
@@ -487,6 +490,71 @@ describe("boxPlotStats", () => {
     ]);
     const stats = boxPlotStats(rows, "categoria", "valor");
     expect(stats.find((s) => s.name === "Bolo")?.sourceRowIndexes).toEqual([0, 2]);
+  });
+});
+
+describe("scatterPoints", () => {
+  it("emparelha as duas colunas numéricas, descartando linha com qualquer uma vazia", () => {
+    const rows: Row[] = [
+      { x: 1, y: 2 },
+      { x: 2, y: null },
+      { x: null, y: 4 },
+      { x: 3, y: 6 },
+    ];
+    const points = scatterPoints(rows, "x", "y");
+    expect(points).toEqual([
+      { x: 1, y: 2, sourceRowIndex: null },
+      { x: 3, y: 6, sourceRowIndex: null },
+    ]);
+  });
+
+  it("carrega o índice de origem estável, quando disponível", () => {
+    const rows = markSourceRows([
+      { x: 1, y: 2 },
+      { x: 2, y: 4 },
+    ]);
+    const points = scatterPoints(rows, "x", "y");
+    expect(points.map((p) => p.sourceRowIndex)).toEqual([0, 1]);
+  });
+});
+
+describe("linearTrend e pearsonCorrelation", () => {
+  it("acha a reta exata e correlação 1 para pontos perfeitamente alinhados (y = 2x + 1)", () => {
+    const points = [1, 2, 3, 4, 5].map((x) => ({ x, y: 2 * x + 1 }));
+    expect(linearTrend(points)).toMatchObject({ slope: 2, intercept: 1 });
+    expect(pearsonCorrelation(points)).toBeCloseTo(1, 10);
+  });
+
+  it("acha correlação -1 para relação inversa perfeita", () => {
+    const points = [1, 2, 3, 4].map((x) => ({ x, y: -3 * x + 10 }));
+    expect(pearsonCorrelation(points)).toBeCloseTo(-1, 10);
+    expect(linearTrend(points)).toMatchObject({ slope: -3, intercept: 10 });
+  });
+
+  it("volta null com menos de 2 pontos", () => {
+    expect(linearTrend([{ x: 1, y: 1 }])).toBeNull();
+    expect(pearsonCorrelation([])).toBeNull();
+  });
+
+  it("volta null (não zero) quando X não varia — inclinação/correlação indefinidas, não ausência de relação", () => {
+    const points = [
+      { x: 5, y: 1 },
+      { x: 5, y: 2 },
+      { x: 5, y: 3 },
+    ];
+    expect(linearTrend(points)).toBeNull();
+    expect(pearsonCorrelation(points)).toBeNull();
+  });
+
+  it("volta null quando Y não varia (correlação indefinida, ainda que X varie)", () => {
+    const points = [
+      { x: 1, y: 5 },
+      { x: 2, y: 5 },
+      { x: 3, y: 5 },
+    ];
+    expect(pearsonCorrelation(points)).toBeNull();
+    // A reta ainda é definida aqui (X varia): uma reta horizontal, slope 0.
+    expect(linearTrend(points)).toMatchObject({ slope: 0, intercept: 5 });
   });
 });
 

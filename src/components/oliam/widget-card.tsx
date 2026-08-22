@@ -132,6 +132,7 @@ import { InsightsWidgetBody } from "./insights-widget-body";
 import { PivotWidgetBody } from "./pivot-widget-body";
 import { RadarWidgetBody } from "./radar-widget-body";
 import { RankingWidgetBody } from "./ranking-widget-body";
+import { ScatterWidgetBody } from "./scatter-widget-body";
 import { MetricWidgetBody } from "./metric-widget-body";
 import { RatingWidgetBody } from "./rating-widget-body";
 import { ScheduleHeatmapWidgetBody } from "./schedule-heatmap-widget-body";
@@ -593,6 +594,22 @@ function WidgetCardBody({
         groupableCols={groupableCols}
         filters={filters}
         setFilters={setFilters}
+        onConfigure={onConfigure}
+        onShowSource={onShowSource}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
+    );
+  }
+
+  if (w.type === "scatter") {
+    return (
+      <ScatterWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
         onConfigure={onConfigure}
         onShowSource={onShowSource}
         dragProps={dragProps}

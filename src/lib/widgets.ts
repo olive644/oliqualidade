@@ -240,7 +240,8 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "insights" ||
     type === "image" ||
     type === "histogram" ||
-    type === "box-plot"
+    type === "box-plot" ||
+    type === "scatter"
   )
     return 2;
   return 3; // line, area, table
@@ -529,6 +530,14 @@ export function createWidget(
     const valueKey = seed?.valueKey ?? nums[0]?.key;
     if (groupKey) widget.groupKey = groupKey;
     if (valueKey) widget.valueKey = valueKey;
+  } else if (type === "scatter") {
+    // Dispersão não agrupa por categoria: cruza duas colunas numéricas
+    // (valueKey = eixo X, valueKey2 = eixo Y), a segunda diferente da
+    // primeira para não cruzar uma coluna consigo mesma por padrão.
+    const valueKey = seed?.valueKey ?? nums[0]?.key;
+    const valueKey2 = nums.find((c) => c.key !== valueKey)?.key;
+    if (valueKey) widget.valueKey = valueKey;
+    if (valueKey2) widget.valueKey2 = valueKey2;
   }
   return widget;
 }
