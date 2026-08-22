@@ -1,0 +1,280 @@
+import { useState } from "react";
+import { BarChart2 } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { cn } from "@/lib/utils";
+import { numericKinds, type Column, type FilterRule, type Row, type Widget } from "@/lib/types";
+import { sizeClass, spanClass } from "@/lib/widgets";
+import { parseNumericValue } from "@/lib/format";
+import { histogramBins, pieComparisonFor } from "@/lib/data-pipeline";
+import {
+  FieldDropSlot,
+  SeriesComparisonPanel,
+  sourceRowIndexesOf,
+  WidgetHead,
+  WidgetMetricStrip,
+  type WidgetDragProps,
+  type WidgetMetric,
+} from "./widget-support";
+import { WidgetConfigBar } from "./widget-config-context";
+
+const BIN_COUNT_OPTIONS = [5, 8, 10, 15, 20];
+
+export function HistogramWidgetBody({
+  widget: w,
+  data,
+  columns,
+  numericCols,
+  filters,
+  setFilters,
+  onConfigure,
+  onShowSource,
+  dragProps,
+  sizeControls,
+  animationDelay,
+}: {
+  widget: Widget;
+  data: Row[];
+  columns: Column[];
+  numericCols: Column[];
+  filters: FilterRule[];
+  setFilters: (filters: FilterRule[]) => void;
+  onConfigure: (patch: Partial<Widget>) => void;
+  onShowSource: (rowIndexes: number[], columnKey: string, title: string) => void;
+  dragProps: WidgetDragProps;
+  sizeControls: React.ReactNode;
+  animationDelay: number;
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const displayedIndex = activeIndex ?? selectedIndex;
+
+  const configuredValueCol = columns.find((c) => c.key === w.valueKey);
+  const valueCol =
+    configuredValueCol && numericKinds.includes(configuredValueCol.kind)
+      ? configuredValueCol
+      : numericCols[0];
+  const bins = valueCol ? histogramBins(data, valueCol.key, w.binCount) : [];
+  const series = bins.map((bin) => ({
+    name: bin.label,
+    total: bin.count,
+    rangeStart: bin.rangeStart,
+    rangeEnd: bin.rangeEnd,
+    ...(bin.sourceRowIndexes ? { sourceRowIndexes: bin.sourceRowIndexes } : {}),
+  }));
+  const validCount = series.reduce((sum, bin) => sum + bin.total, 0);
+  const missingCount = valueCol
+    ? data.length - data.filter((row) => parseNumericValue(row[valueCol.key]) !== null).length
+    : 0;
+
+  // Igual à barra/pizza/ranking: sem hover nem seleção, a faixa mais
+  // numerosa já vem explicada, em vez de o painel de detalhe nascer vazio.
+  const summaryIndex =
+    displayedIndex ??
+    (series.length
+      ? series.reduce((best, bin, index) => (bin.total > series[best]!.total ? index : best), 0)
+      : null);
+  const selectedBin = summaryIndex !== null ? series[summaryIndex] : null;
+  const selectedComparison = summaryIndex !== null ? pieComparisonFor(series, summaryIndex) : null;
+
+  const metrics: WidgetMetric[] = valueCol
+    ? [
+        { label: "Valores considerados", value: validCount.toLocaleString("pt-BR") },
+        { label: "Faixas", value: String(series.length) },
+        ...(missingCount > 0
+          ? [{ label: "Sem valor numérico", value: missingCount.toLocaleString("pt-BR") }]
+          : []),
+      ]
+    : [];
+
+  const isRangeFilterActive = (bin: { rangeStart: number; rangeEnd: number }) =>
+    filters.some(
+      (f) =>
+        f.key === valueCol?.key &&
+        f.min === String(bin.rangeStart) &&
+        f.max === String(bin.rangeEnd),
+    );
+
+  return (
+    <article
+      className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
+      style={{ animationDelay: `${animationDelay}ms` }}
+    >
+      <WidgetHead
+        title={`Distribuição de ${valueCol?.label ?? ""}`}
+        icon={<BarChart2 className="size-3.5 shrink-0 text-muted-foreground" />}
+        {...dragProps}
+      />
+      {metrics.length > 0 && <WidgetMetricStrip metrics={metrics} />}
+      <WidgetConfigBar>
+        <FieldDropSlot
+          accepts={numericKinds}
+          onDropColumn={(key) => onConfigure({ valueKey: key })}
+        >
+          <select
+            aria-label="Coluna numérica"
+            className="oliam-select"
+            value={valueCol?.key ?? ""}
+            onChange={(e) => onConfigure({ valueKey: e.target.value })}
+          >
+            {!valueCol && <option value="">Selecione…</option>}
+            {numericCols.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </FieldDropSlot>
+        <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          Faixas
+          <select
+            aria-label="Quantidade de faixas"
+            className="oliam-select h-7"
+            value={w.binCount ?? 0}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              onConfigure({ binCount: next || undefined });
+            }}
+          >
+            <option value={0}>Automático</option>
+            {BIN_COUNT_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </WidgetConfigBar>
+      {sizeControls}
+      {valueCol && (
+        <p className="border-b border-border/70 bg-card px-4 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+          Distribuição de &quot;{valueCol.label}&quot; em {series.length}{" "}
+          {series.length === 1 ? "faixa" : "faixas"}, considerando{" "}
+          {validCount.toLocaleString("pt-BR")}{" "}
+          {validCount === 1 ? "valor numérico válido" : "valores numéricos válidos"}.
+          {missingCount > 0 && (
+            <>
+              {" "}
+              {missingCount.toLocaleString("pt-BR")}{" "}
+              {missingCount === 1
+                ? "registro sem valor numérico não entrou"
+                : "registros sem valor numérico não entraram"}{" "}
+              nesta distribuição.
+            </>
+          )}
+        </p>
+      )}
+      {!valueCol || series.length === 0 ? (
+        <p className="p-6 text-center text-xs text-muted-foreground">
+          {!valueCol
+            ? "Escolha uma coluna numérica para este widget."
+            : "Nenhum valor numérico disponível para montar a distribuição."}
+        </p>
+      ) : (
+        <>
+          <div className="h-64 p-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 18 }}>
+                <CartesianGrid
+                  vertical={false}
+                  horizontal
+                  stroke="var(--border)"
+                  strokeOpacity={0.6}
+                />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "var(--border)" }}
+                  interval={0}
+                  angle={series.length > 6 ? -30 : 0}
+                  textAnchor={series.length > 6 ? "end" : "middle"}
+                  height={series.length > 6 ? 40 : 24}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                />
+                <ChartTooltip
+                  cursor={{ fill: "var(--muted)", opacity: 0.35 }}
+                  contentStyle={{
+                    background: "var(--popover)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    fontSize: 12,
+                  }}
+                  formatter={(value: number) => [
+                    `${value.toLocaleString("pt-BR")} registro(s)`,
+                    "Contagem",
+                  ]}
+                />
+                <Bar
+                  dataKey="total"
+                  radius={4}
+                  onClick={(_, i) => setSelectedIndex((current) => (current === i ? null : i))}
+                  onMouseEnter={(_, i) => setActiveIndex(i)}
+                  onMouseLeave={() => setActiveIndex(null)}
+                >
+                  {series.map((_, i) => (
+                    <Cell
+                      key={i}
+                      fill="var(--primary)"
+                      opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
+                      className="cursor-pointer"
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {selectedBin && (
+            <SeriesComparisonPanel
+              selected={selectedBin}
+              comparison={selectedComparison}
+              kind="number"
+              filterLabel={
+                isRangeFilterActive(selectedBin)
+                  ? "Remover filtro desta faixa"
+                  : "Filtrar por esta faixa"
+              }
+              onFilter={() => {
+                if (!valueCol) return;
+                const rest = filters.filter((f) => f.key !== valueCol.key);
+                setFilters(
+                  isRangeFilterActive(selectedBin)
+                    ? rest
+                    : [
+                        ...rest,
+                        {
+                          key: valueCol.key,
+                          value: "",
+                          min: String(selectedBin.rangeStart),
+                          max: String(selectedBin.rangeEnd),
+                        },
+                      ],
+                );
+              }}
+              {...(valueCol && sourceRowIndexesOf(selectedBin).length
+                ? {
+                    onShowSource: () =>
+                      onShowSource(sourceRowIndexesOf(selectedBin), valueCol.key, selectedBin.name),
+                  }
+                : {})}
+            />
+          )}
+        </>
+      )}
+    </article>
+  );
+}

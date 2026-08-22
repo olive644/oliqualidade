@@ -234,7 +234,8 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "ranking" ||
     type === "map" ||
     type === "insights" ||
-    type === "image"
+    type === "image" ||
+    type === "histogram"
   )
     return 2;
   return 3; // line, area, table
@@ -505,6 +506,12 @@ export function createWidget(
     const groupsRepeat = Boolean(groupKey) && rows.length > distinctGroups;
     widget.dataMode = widget.op === "count" || groupsRepeat ? "aggregate" : "raw";
     if (type === "ranking" || type === "radar") widget.topN = 5;
+  } else if (type === "histogram") {
+    // Histograma não agrupa por categoria: mostra a distribuição de uma
+    // única coluna numérica, por isso não herda groupKey/op da faixa
+    // compartilhada acima.
+    const valueKey = seed?.valueKey ?? nums[0]?.key;
+    if (valueKey) widget.valueKey = valueKey;
   }
   return widget;
 }

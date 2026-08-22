@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  BarChart2,
   BarChart3,
   Calculator,
   CalendarRange,
@@ -317,6 +318,7 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
   area: "Destaca volume e evolução ao longo de um período.",
   ranking: "Ordena e exibe os maiores resultados.",
   radar: "Compara as maiores categorias em um gráfico de eixos radiais.",
+  histogram: "Mostra como os valores de uma coluna numérica estão distribuídos, em faixas.",
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
   insights:
@@ -344,6 +346,7 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "area") return <Activity className={className} />;
   if (type === "ranking") return <ListOrdered className={className} />;
   if (type === "radar") return <RadarIcon className={className} />;
+  if (type === "histogram") return <BarChart2 className={className} />;
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
   if (type === "insights") return <Sparkles className={className} />;

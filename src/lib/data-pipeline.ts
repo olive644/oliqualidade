@@ -328,6 +328,96 @@ export function chartSeries(
   });
 }
 
+export type HistogramBin = {
+  label: string;
+  rangeStart: number;
+  rangeEnd: number;
+  count: number;
+  sourceRowIndexes?: number[];
+};
+
+/**
+ * Menor teto (Sturges) e maior piso (nunca menos de 5) para o número de
+ * faixas quando o widget não fixa `binCount`: poucos valores em faixas
+ * demais criam barras de altura 0/1 sem dizer nada sobre a forma da
+ * distribuição; faixas demais numa base grande escondem o formato atrás de
+ * ruído. `Math.log2(n) + 1` é a regra clássica para número de faixas.
+ */
+const MIN_HISTOGRAM_BINS = 5;
+const MAX_HISTOGRAM_BINS = 20;
+
+function sturgesBinCount(sampleSize: number): number {
+  return Math.min(
+    MAX_HISTOGRAM_BINS,
+    Math.max(MIN_HISTOGRAM_BINS, Math.ceil(Math.log2(Math.max(sampleSize, 1)) + 1)),
+  );
+}
+
+/**
+ * Divide os valores numéricos de uma coluna em faixas de largura igual, para
+ * responder "como os valores estão distribuídos" — pergunta que soma/média
+ * por categoria não responde, e que agrupar por uma coluna categórica não
+ * serve para responder quando a distribuição é da própria métrica, não de
+ * uma dimensão.
+ *
+ * Valores ausentes ou não numéricos são excluídos silenciosamente (mesmo
+ * espírito de `groupAndAggregate`); a base fica sem nenhuma faixa quando não
+ * sobra nenhum valor válido, em vez de um histograma "zerado" enganoso.
+ */
+export function histogramBins(rows: Row[], valueKey: string, binCount?: number): HistogramBin[] {
+  const values: { value: number; sourceRowIndex: number | null }[] = [];
+  for (const row of rows) {
+    const value = parseNumericValue(row[valueKey]);
+    if (value !== null) values.push({ value, sourceRowIndex: sourceRowIndexOf(row) });
+  }
+  if (!values.length) return [];
+
+  const min = Math.min(...values.map((v) => v.value));
+  const max = Math.max(...values.map((v) => v.value));
+  const numberLabel = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
+  // Todo valor igual (inclusive base de 1 valor só): uma faixa só, sem
+  // largura para dividir.
+  if (min === max) {
+    const sourceRowIndexes = values
+      .map((v) => v.sourceRowIndex)
+      .filter((index): index is number => index !== null);
+    return [
+      {
+        label: numberLabel(min),
+        rangeStart: min,
+        rangeEnd: max,
+        count: values.length,
+        ...(sourceRowIndexes.length ? { sourceRowIndexes } : {}),
+      },
+    ];
+  }
+
+  const bins = Math.max(1, binCount ?? sturgesBinCount(values.length));
+  const width = (max - min) / bins;
+  const buckets = Array.from({ length: bins }, (_, i) => ({
+    rangeStart: min + i * width,
+    rangeEnd: i === bins - 1 ? max : min + (i + 1) * width,
+    count: 0,
+    sourceRowIndexes: [] as number[],
+  }));
+  for (const { value, sourceRowIndex } of values) {
+    // O valor máximo cairia numa faixa fantasma (bins) por arredondamento;
+    // fica na última faixa de verdade, como um intervalo fechado nas duas
+    // pontas ([min, max]) em vez de [min, max).
+    const index = Math.min(bins - 1, Math.max(0, Math.floor((value - min) / width)));
+    buckets[index]!.count++;
+    if (sourceRowIndex !== null) buckets[index]!.sourceRowIndexes.push(sourceRowIndex);
+  }
+  return buckets.map((bucket) => ({
+    label: `${numberLabel(bucket.rangeStart)}–${numberLabel(bucket.rangeEnd)}`,
+    rangeStart: bucket.rangeStart,
+    rangeEnd: bucket.rangeEnd,
+    count: bucket.count,
+    ...(bucket.sourceRowIndexes.length ? { sourceRowIndexes: bucket.sourceRowIndexes } : {}),
+  }));
+}
+
 export const MAX_RENDERED_CHART_POINTS = 600;
 
 export type RenderableChartSeries<T> = {

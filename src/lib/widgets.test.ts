@@ -244,6 +244,22 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
     expect(w.op).not.toBe("count");
   });
 
+  it("createWidget (histogram) escolhe a primeira coluna numérica e não define groupKey/op", () => {
+    const columns: Column[] = [col("Turno", "category"), col("Resultado", "number")];
+    const w = createWidget("histogram", columns, undefined, [{ Turno: "Manhã", Resultado: 95 }]);
+    expect(w.valueKey).toBe("Resultado");
+    expect(w.groupKey).toBeUndefined();
+    expect(w.op).toBeUndefined();
+  });
+
+  it("createWidget (histogram) respeita a coluna numérica pedida (seed)", () => {
+    const columns: Column[] = [col("Amostras", "number"), col("Resultado", "number")];
+    const w = createWidget("histogram", columns, { valueKey: "Amostras" }, [
+      { Amostras: 10, Resultado: 95 },
+    ]);
+    expect(w.valueKey).toBe("Amostras");
+  });
+
   it.each(["bar", "pie", "ranking", "line", "area", "map", "insights"] as const)(
     "createWidget (%s) evita coluna não agregável como métrica quando existe outra numérica somável",
     (type) => {
@@ -643,5 +659,12 @@ describe("widget de imagem embutida", () => {
     expect(w.type).toBe("image");
     expect(defaultSpan("image")).toBe(2);
     expect(defaultSize("image")).toBe("lg");
+  });
+});
+
+describe("widget de histograma", () => {
+  it("nasce com span/size iguais aos demais gráficos de barra", () => {
+    expect(defaultSpan("histogram")).toBe(2);
+    expect(defaultSize("histogram")).toBe("md");
   });
 });

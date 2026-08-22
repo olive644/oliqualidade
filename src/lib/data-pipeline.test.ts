@@ -8,6 +8,7 @@ import {
   collapsePieSeries,
   detectQualitySignals,
   groupAndAggregate,
+  histogramBins,
   leftJoin,
   limitChartSeriesForRendering,
   matchesRange,
@@ -367,6 +368,62 @@ describe("groupAndAggregate", () => {
     const result = groupAndAggregate(rows, "categoria", "valor", "sum");
     expect(result[0]).toEqual({ name: "Bolo", total: 50 });
     expect(result[0]).not.toHaveProperty("sourceRowIndexes");
+  });
+});
+
+describe("histogramBins", () => {
+  it("divide valores em faixas de largura igual, cobrindo min e max", () => {
+    const rows: Row[] = Array.from({ length: 20 }, (_, i) => ({ valor: i })); // 0..19
+    const bins = histogramBins(rows, "valor", 4);
+    expect(bins).toHaveLength(4);
+    expect(bins[0]!.rangeStart).toBe(0);
+    expect(bins.at(-1)!.rangeEnd).toBe(19);
+    expect(bins.reduce((sum, b) => sum + b.count, 0)).toBe(20);
+    // Faixas contíguas: o fim de uma é o início da próxima.
+    for (let i = 1; i < bins.length; i++) {
+      expect(bins[i]!.rangeStart).toBe(bins[i - 1]!.rangeEnd);
+    }
+  });
+
+  it("ignora valores ausentes ou não numéricos", () => {
+    const rows: Row[] = [
+      { valor: 10 },
+      { valor: null },
+      { valor: "" },
+      { valor: "texto" },
+      { valor: 20 },
+    ];
+    const bins = histogramBins(rows, "valor", 2);
+    expect(bins.reduce((sum, b) => sum + b.count, 0)).toBe(2);
+  });
+
+  it("volta vazio quando não sobra nenhum valor numérico válido", () => {
+    const rows: Row[] = [{ valor: null }, { valor: "" }];
+    expect(histogramBins(rows, "valor")).toEqual([]);
+  });
+
+  it("produz uma única faixa quando todos os valores são iguais", () => {
+    const rows: Row[] = [{ valor: 5 }, { valor: 5 }, { valor: 5 }];
+    const bins = histogramBins(rows, "valor");
+    expect(bins).toHaveLength(1);
+    expect(bins[0]).toMatchObject({ rangeStart: 5, rangeEnd: 5, count: 3 });
+  });
+
+  it("usa a regra de Sturges quando binCount não é informado, com teto e piso", () => {
+    const oneRow: Row[] = [{ valor: 1 }, { valor: 2 }];
+    expect(histogramBins(oneRow, "valor").length).toBeGreaterThanOrEqual(1);
+
+    const manyRows: Row[] = Array.from({ length: 10_000 }, (_, i) => ({ valor: i }));
+    const bins = histogramBins(manyRows, "valor");
+    expect(bins.length).toBeLessThanOrEqual(20);
+    expect(bins.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("carrega o índice de origem estável de cada linha por faixa, quando disponível", () => {
+    const rows = markSourceRows([{ valor: 1 }, { valor: 2 }, { valor: 9 }, { valor: 10 }]);
+    const bins = histogramBins(rows, "valor", 2);
+    expect(bins[0]?.sourceRowIndexes).toEqual([0, 1]);
+    expect(bins[1]?.sourceRowIndexes).toEqual([2, 3]);
   });
 });
 
