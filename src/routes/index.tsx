@@ -146,6 +146,7 @@ import { Review } from "@/components/oliam/review";
 import { WidgetPickerIcon, widgetTypeDescriptions } from "@/components/oliam/widget-support";
 import { WidgetCard } from "@/components/oliam/widget-card";
 import { ImportDiagnosticsDialog } from "@/components/oliam/import-diagnostics-dialog";
+import { SourceRowsPanel } from "@/components/oliam/source-rows-panel";
 import { ShortcutsDialog } from "@/components/oliam/shortcuts-dialog";
 import { SourceNotesPanel } from "@/components/oliam/source-notes-panel";
 import { SourceVisualsPanel } from "@/components/oliam/source-visuals-panel";
@@ -1254,6 +1255,13 @@ function Dashboard(p: {
   const [importDiagnostics, setImportDiagnostics] = useState(false);
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
   const [insightOpen, setInsightOpen] = useState(true);
+  const [sourceRowsPanel, setSourceRowsPanel] = useState<{
+    title: string;
+    rowIndexes: number[];
+    columnKey: string;
+  } | null>(null);
+  const showSourceRows = (rowIndexes: number[], columnKey: string, title: string) =>
+    setSourceRowsPanel({ rowIndexes, columnKey, title });
   const { termHintBanner } = useTermHint(sheet.widgets);
   const backupInput = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1659,6 +1667,7 @@ function Dashboard(p: {
               onCorrectException={correctException}
               onEditCell={editTableCell}
               onTraceException={traceException}
+              onShowSource={showSourceRows}
               focusedCell={focusedCell}
               folderMonitor={p.folderMonitor}
               animationDelay={Math.min(i, 8) * 40}
@@ -2226,6 +2235,27 @@ function Dashboard(p: {
       {joinDialog}
       <ShortcutsDialog open={shortcuts} onOpenChange={setShortcuts} />
       <ImportDiagnosticsDialog open={importDiagnostics} onOpenChange={setImportDiagnostics} />
+      {sourceRowsPanel && (
+        <SourceRowsPanel
+          open={Boolean(sourceRowsPanel)}
+          onOpenChange={(next) => {
+            if (!next) setSourceRowsPanel(null);
+          }}
+          title={sourceRowsPanel.title}
+          rowIndexes={sourceRowsPanel.rowIndexes}
+          column={
+            sheet.columns.find((c) => c.key === sourceRowsPanel.columnKey) ?? {
+              key: sourceRowsPanel.columnKey,
+              label: sourceRowsPanel.columnKey,
+              kind: "text",
+            }
+          }
+          rows={sheet.rows}
+          sourceCellProvenance={sheet.sourceCellProvenance ?? []}
+          fileName={d.sourceFileName ?? d.name}
+          sheetName={sheet.name}
+        />
+      )}
       <GeminiChatPanel dashboard={d} sheet={sheet} liveRows={data} liveView={assistantContext} />
     </div>
   );

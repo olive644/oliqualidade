@@ -152,6 +152,7 @@ import {
   CalculationButton,
   PieLegend,
   SeriesComparisonPanel,
+  sourceRowIndexesOf,
   TrendSummaryPanel,
   ChartDot,
   type ChartDotProps,
@@ -195,6 +196,7 @@ function WidgetCardBody({
   onCorrectException,
   onEditCell,
   onTraceException,
+  onShowSource,
   focusedCell,
   folderMonitor,
   animationDelay,
@@ -234,6 +236,8 @@ function WidgetCardBody({
   onCorrectException: (exception: SpreadsheetException, value: string, reason: string) => void;
   onEditCell: (sourceRowIndex: number, columnKey: string, value: string, reason: string) => void;
   onTraceException: (exception: SpreadsheetException) => void;
+  /** Abre o painel de linhas de origem de um valor de gráfico (barra/fatia/ponto selecionado). */
+  onShowSource: (rowIndexes: number[], columnKey: string, title: string) => void;
   focusedCell: { rowIndex: number; columnKey?: string; address?: string } | null;
   folderMonitor: FolderMonitorView | undefined;
   animationDelay: number;
@@ -511,6 +515,7 @@ function WidgetCardBody({
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}
+        onShowSource={onShowSource}
         dragProps={dragProps}
         sizeControls={sizeControls}
         animationDelay={animationDelay}
@@ -530,6 +535,7 @@ function WidgetCardBody({
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}
+        onShowSource={onShowSource}
         dragProps={dragProps}
         sizeControls={sizeControls}
         animationDelay={animationDelay}
@@ -549,6 +555,7 @@ function WidgetCardBody({
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}
+        onShowSource={onShowSource}
         dragProps={dragProps}
         sizeControls={sizeControls}
         animationDelay={animationDelay}
@@ -709,6 +716,16 @@ function WidgetCardBody({
                 kind={valueCol.kind}
                 filterLabel="Filtrar por este local"
                 onFilter={() => handleGroupClick(groupCol.key, leadingLocation.selected.name)}
+                {...(sourceRowIndexesOf(sortedByTotal[0]!).length
+                  ? {
+                      onShowSource: () =>
+                        onShowSource(
+                          sourceRowIndexesOf(sortedByTotal[0]!),
+                          valueCol.key,
+                          leadingLocation.selected.name,
+                        ),
+                    }
+                  : {})}
               />
             )}
           </>

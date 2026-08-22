@@ -304,7 +304,13 @@ export function chartSeries(
   valueKey: string,
   op: AggregationOp,
   mode: "raw" | "aggregate",
-): Array<{ name: string; total: number; sourceRow?: number; sourceRowIndex?: number }> {
+): Array<{
+  name: string;
+  total: number;
+  sourceRow?: number;
+  sourceRowIndex?: number;
+  sourceRowIndexes?: number[];
+}> {
   if (mode === "aggregate") return groupAndAggregate(rows, groupKey, valueKey, op);
   return rows.flatMap((row, index) => {
     const name = writtenGroupLabel(row[groupKey]);

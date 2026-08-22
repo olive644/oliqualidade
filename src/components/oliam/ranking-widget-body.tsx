@@ -33,6 +33,7 @@ import {
   FilterChip,
   isCoarsePointer,
   SeriesComparisonPanel,
+  sourceRowIndexesOf,
   WidgetHead,
   WidgetMetricStrip,
   type WidgetMetric,
@@ -50,6 +51,7 @@ export function RankingWidgetBody({
   filters,
   setFilters,
   onConfigure,
+  onShowSource,
   dragProps,
   sizeControls,
   animationDelay,
@@ -63,6 +65,7 @@ export function RankingWidgetBody({
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
   onConfigure: (patch: Partial<Widget>) => void;
+  onShowSource: (rowIndexes: number[], columnKey: string, title: string) => void;
   dragProps: WidgetDragProps;
   sizeControls: React.ReactNode;
   animationDelay: number;
@@ -315,6 +318,16 @@ export function RankingWidgetBody({
             setFilters(toggleClickFilter(filters, groupCol.key, String(selectedEntry.name)));
             setSelectedIndex(null);
           }}
+          {...(sourceRowIndexesOf(selectedEntry).length
+            ? {
+                onShowSource: () =>
+                  onShowSource(
+                    sourceRowIndexesOf(selectedEntry),
+                    valueCol.key,
+                    String(selectedEntry.name),
+                  ),
+              }
+            : {})}
         />
       )}
     </article>
