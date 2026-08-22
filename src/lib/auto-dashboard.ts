@@ -83,6 +83,14 @@ const TEMPORAL_NAME =
 const GEO_NAME =
   /(cidade|munic[ií]pio|estado|\buf\b|regi[aã]o|pa[ií]s|local(idade)?|endere[cç]o|bairro|\bcep\b|territ[oó]rio|city|state|country|region|location|address)/i;
 
+/**
+ * Quantidade de líderes mostrados num widget de ranking. Mantido igual ao
+ * padrão de `w.topN ?? 5` em ranking-widget-body.tsx: abaixo dessa
+ * cardinalidade o ranking mostraria as mesmas categorias que a barra, na
+ * mesma ordem, então a recomendação automática nem chega a propor ranking.
+ */
+const RANKING_TOP_N = 5;
+
 function clampScore(value: number): number {
   return Math.round(Math.max(0, Math.min(100, value)));
 }
@@ -496,21 +504,31 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
         }),
       );
 
-      recommendations.push(
-        recommendation(input, {
-          id: slug("ranking", dimension.key, primaryMetric.key),
-          kind: "visualization",
-          title: `Ranking de ${dimension.label} por ${primaryMetric.label}`,
-          widgetType: "ranking",
-          groupKey: dimension.key,
-          valueKey: primaryMetric.key,
-          op: "sum",
-          topN: 5,
-          columns: [dimension.key, primaryMetric.key],
-          baseConfidence: 89,
-          reasons: ["O ranking destaca os grupos com maior contribuição para a métrica."],
-        }),
-      );
+      // A barra já mostra todas as categorias ordenadas pelo valor (ver
+      // sortAllBarCategories em chart-widget-body). O ranking só responde a
+      // uma pergunta diferente ("quem lidera, e quanto o topo concentra do
+      // restante") quando existe um "restante" de fato — ou seja, quando a
+      // cardinalidade passa do topN. Abaixo disso, ranking e barra mostram os
+      // mesmos grupos na mesma ordem, e recomendar os dois é redundante.
+      if (cardinality > RANKING_TOP_N) {
+        recommendations.push(
+          recommendation(input, {
+            id: slug("ranking", dimension.key, primaryMetric.key),
+            kind: "visualization",
+            title: `Ranking de ${dimension.label} por ${primaryMetric.label}`,
+            widgetType: "ranking",
+            groupKey: dimension.key,
+            valueKey: primaryMetric.key,
+            op: "sum",
+            topN: RANKING_TOP_N,
+            columns: [dimension.key, primaryMetric.key],
+            baseConfidence: 89,
+            reasons: [
+              `Destaca os líderes e mostra quanto eles concentram frente às demais ${cardinality} categorias.`,
+            ],
+          }),
+        );
+      }
 
       if (cardinality >= 2 && cardinality <= 8 && !isGeo) {
         recommendations.push(
