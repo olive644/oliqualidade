@@ -147,7 +147,7 @@ export function analyzeQuestionCoverage(
       ? `${covered.length} ${covered.length === 1 ? "já recebeu" : "já receberam"} uma visualização.`
       : "",
     ...uncovered.map(
-      (q) => `"${q.label}" ainda não tem gráfico — pode ser adicionado pelo botão "Widget".`,
+      (q) => `"${q.label}" ainda não tem gráfico. Você pode adicioná-lo pelo botão "Widget".`,
     ),
     ...unanswerable.map((q) => `Não foi possível responder "${q.label}" porque ${q.reason}.`),
   ].filter(Boolean);
