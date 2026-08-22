@@ -832,6 +832,7 @@ function WidgetCardBody({
       data-detailed-table
     >
       <WidgetHead title={`Base detalhada · ${data.length} linhas`} {...dragProps} />
+      {sizeControls}
       {totalRows !== data.length && (
         <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
           Mostrando {data.length.toLocaleString("pt-BR")} de {totalRows.toLocaleString("pt-BR")}{" "}
