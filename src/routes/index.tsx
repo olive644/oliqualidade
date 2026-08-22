@@ -2178,7 +2178,7 @@ function Dashboard(p: {
               totalRowCount={sheet.rows.length}
               periodLabel={periodLabel}
               filterCount={activeFilterCount}
-              confidence={sheet.autoDashboard?.confidence}
+              planConfidence={sheet.autoDashboard?.confidence}
             />
             {sourceNotesPanel}
             {sourceVisualsPanel}
@@ -2203,6 +2203,7 @@ function Dashboard(p: {
           </div>
           <InsightSidebar
             open={insightOpen}
+            onOpenChange={setInsightOpen}
             data={data}
             rowCount={sheet.rows.length}
             autoDashboard={sheet.autoDashboard}
