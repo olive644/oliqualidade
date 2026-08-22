@@ -116,7 +116,7 @@ export function useDashboardExport(p: {
         pdf.text(parts, margin + indent, y);
         y += parts.length * 11 + (bold ? 5 : 2);
       };
-      line(`Relatório de revisão — ${d.name}`, 0, true);
+      line(`Relatório de revisão: ${d.name}`, 0, true);
       line(
         `Origem: ${d.sourceFileName ?? d.name} · Gerado em ${new Date(report.generatedAt).toLocaleString("pt-BR")}`,
       );
