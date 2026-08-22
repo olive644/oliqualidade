@@ -375,7 +375,7 @@ export function ImportWorkbench({
                                 diagnostic
                                   ? `Confiança ${diagnostic.level}${
                                       diagnostic.warnings.length
-                                        ? ` — ${diagnostic.warnings.join("; ")}`
+                                        ? `. ${diagnostic.warnings.join("; ")}`
                                         : ""
                                     }`
                                   : undefined
