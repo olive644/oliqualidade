@@ -177,6 +177,8 @@ function widgetCoversQuestion(
       );
     }
   }
+
+  return false;
 }
 
 /**
