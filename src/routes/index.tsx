@@ -67,8 +67,9 @@ import {
   pickBestGroupColumn,
   schedulePeriodColumns,
 } from "@/lib/widgets";
-import { infer, withCalculatedColumns } from "@/lib/format";
+import { infer, parseNumericValue, withCalculatedColumns } from "@/lib/format";
 import {
+  aggregate,
   applyMissingRules,
   detectQualitySignals,
   groupAndAggregate,
@@ -1378,9 +1379,14 @@ function Dashboard(p: {
     if (!sheet.previousSnapshot) return null;
     const prevCalculated = withCalculatedColumns(sheet.previousSnapshot.rows, sheet.columns);
     const deltas = new Map<string, number | null>();
+    const totalOf = (rows: Row[], key: string) =>
+      aggregate(
+        rows.map((r) => parseNumericValue(r[key])).filter((v): v is number => v !== null),
+        "sum",
+      );
     for (const c of nums) {
-      const currentTotal = withCalculated.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
-      const previousTotal = prevCalculated.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
+      const currentTotal = totalOf(withCalculated, c.key);
+      const previousTotal = totalOf(prevCalculated, c.key);
       deltas.set(
         c.key,
         previousTotal === 0 ? null : (currentTotal - previousTotal) / previousTotal,
