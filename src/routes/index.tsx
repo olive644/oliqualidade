@@ -67,7 +67,7 @@ import {
   pickBestGroupColumn,
   schedulePeriodColumns,
 } from "@/lib/widgets";
-import { infer, parseNumericValue, withCalculatedColumns } from "@/lib/format";
+import { infer, parseDateValue, parseNumericValue, withCalculatedColumns } from "@/lib/format";
 import {
   aggregate,
   applyMissingRules,
@@ -78,6 +78,7 @@ import {
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
 import { resolveSourceCellProvenance } from "@/lib/cell-provenance";
 import { analyzeQuestionCoverage, buildExecutiveSummary } from "@/lib/analytical-narrative";
+import { AnalysisContextBanner } from "@/components/oliam/analysis-context-banner";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type {
   WorkbookChartDiagnostic,
@@ -1460,6 +1461,21 @@ function Dashboard(p: {
         : undefined,
     [sheet.autoDashboard, sheet.widgets],
   );
+  // "Contexto da análise": período coberto pela visão atual (já filtrada),
+  // a partir da coluna de data — não a planilha inteira, para o período
+  // exibido bater com as "N de M linhas" ao lado.
+  const periodLabel = useMemo(() => {
+    if (!dateCol) return null;
+    const timestamps = data
+      .map((row) => parseDateValue(row[dateCol.key] ?? null))
+      .filter((value): value is number => value !== null);
+    if (!timestamps.length) return null;
+    const format = (t: number) => new Date(t).toLocaleDateString("pt-BR");
+    const min = Math.min(...timestamps);
+    const max = Math.max(...timestamps);
+    return min === max ? format(min) : `${format(min)} – ${format(max)}`;
+  }, [data, dateCol]);
+  const activeFilterCount = sheet.filters.length + (search ? 1 : 0);
 
   // Modelo de widgets: painéis salvos antes desse recurso existir ainda não
   // têm "widgets" persistido, então reproduzimos o layout fixo antigo até o
@@ -2155,6 +2171,15 @@ function Dashboard(p: {
               </div>
             </div>
             <VersionDiffBanner diff={detailedVersionDiff} />
+            <AnalysisContextBanner
+              fileName={d.sourceFileName ?? d.name}
+              sheetName={sheet.name}
+              rowCount={data.length}
+              totalRowCount={sheet.rows.length}
+              periodLabel={periodLabel}
+              filterCount={activeFilterCount}
+              confidence={sheet.autoDashboard?.confidence}
+            />
             {sourceNotesPanel}
             {sourceVisualsPanel}
             {gridContent}
@@ -2224,6 +2249,15 @@ function Dashboard(p: {
         <div className="oliam-presentation fixed inset-0 z-50 flex flex-col bg-canvas">
           {presentationBar}
           <div className="oliam-presentation-content flex-1 overflow-auto p-4 md:p-6">
+            <AnalysisContextBanner
+              fileName={d.sourceFileName ?? d.name}
+              sheetName={sheet.name}
+              rowCount={data.length}
+              totalRowCount={sheet.rows.length}
+              periodLabel={periodLabel}
+              filterCount={activeFilterCount}
+              confidence={sheet.autoDashboard?.confidence}
+            />
             {sourceNotesPanel}
             {sourceVisualsPanel}
             {gridContent}
