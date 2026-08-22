@@ -600,7 +600,9 @@ describe("generateAutoDashboardPlan", () => {
         rows: constantAxis,
         diagnostics: importDiagnostics,
       });
-      expect(constantPlan.recommendations.some((item) => item.widgetType === "scatter")).toBe(false);
+      expect(constantPlan.recommendations.some((item) => item.widgetType === "scatter")).toBe(
+        false,
+      );
     });
 
     it("só recomenda box plot quando a categoria tem repetições suficientes para calcular quartis", () => {
