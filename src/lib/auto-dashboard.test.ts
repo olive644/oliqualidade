@@ -671,7 +671,7 @@ describe("generateAutoDashboardPlan", () => {
 
       const negativeRows = manyCategoryRows.map((row, index) => ({
         ...row,
-        faturamento: index === 0 ? -100 : row.faturamento,
+        faturamento: index === 0 ? -100 : (row["faturamento"] ?? 0),
       }));
       const negativePlan = generateAutoDashboardPlan({
         columns,
