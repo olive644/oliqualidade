@@ -10,6 +10,7 @@ import {
   BarChart3,
   Calculator,
   CalendarRange,
+  ChartBarDecreasing as ParetoIcon,
   Check,
   Columns3,
   ClipboardPaste,
@@ -325,6 +326,8 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
     "Compara a distribuição (mínimo, quartis, mediana, máximo e valores fora da curva) entre categorias.",
   scatter:
     "Cruza duas colunas numéricas para ver se existe relação entre elas, com reta e correlação.",
+  pareto:
+    "Ordena as categorias da maior para a menor e acumula a participação, para achar as poucas que concentram a maior parte do total.",
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
   insights:
@@ -355,6 +358,7 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "histogram") return <BarChart2 className={className} />;
   if (type === "box-plot") return <AlignVerticalDistributeCenter className={className} />;
   if (type === "scatter") return <ScatterIcon className={className} />;
+  if (type === "pareto") return <ParetoIcon className={className} />;
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
   if (type === "insights") return <Sparkles className={className} />;

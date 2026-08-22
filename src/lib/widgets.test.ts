@@ -274,6 +274,19 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
     expect(w.dataMode).toBeUndefined();
   });
 
+  it("createWidget (pareto) escolhe categoria e métrica somável, igual à faixa compartilhada da barra", () => {
+    const columns: Column[] = [col("Causa", "category"), col("Ocorrencias", "number")];
+    const rows: Row[] = [
+      { Causa: "Falha A", Ocorrencias: 10 },
+      { Causa: "Falha B", Ocorrencias: 5 },
+      { Causa: "Falha C", Ocorrencias: 2 },
+    ];
+    const w = createWidget("pareto", columns, undefined, rows);
+    expect(w.groupKey).toBe("Causa");
+    expect(w.valueKey).toBe("Ocorrencias");
+    expect(w.op).toBeDefined();
+  });
+
   it("createWidget (scatter) escolhe duas colunas numéricas distintas, sem groupKey/op", () => {
     const columns: Column[] = [
       col("Turno", "category"),
@@ -707,5 +720,12 @@ describe("widget de dispersão", () => {
   it("nasce com span/size iguais aos demais gráficos de barra", () => {
     expect(defaultSpan("scatter")).toBe(2);
     expect(defaultSize("scatter")).toBe("md");
+  });
+});
+
+describe("widget de Pareto", () => {
+  it("nasce com span/size iguais aos demais gráficos de barra", () => {
+    expect(defaultSpan("pareto")).toBe(2);
+    expect(defaultSize("pareto")).toBe("md");
   });
 });

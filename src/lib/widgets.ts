@@ -163,6 +163,11 @@ const CARDINALITY_RANGE: Partial<Record<WidgetType, { min: number; max: number }
   // visual de espalhamento entre elas fica tão apertada quanto a de uma
   // barra com cardinalidade alta.
   "box-plot": { min: 2, max: 10 },
+  // Pareto quer mostrar "poucas causas concentram a maior parte" — com
+  // menos de 3 categorias essa leitura não existe (não há "poucas" vs
+  // "muitas"), e acima de ~15 a curva acumulada fica difícil de acompanhar
+  // junto das barras.
+  pareto: { min: 3, max: 15 },
 };
 
 /**
@@ -241,7 +246,8 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "image" ||
     type === "histogram" ||
     type === "box-plot" ||
-    type === "scatter"
+    type === "scatter" ||
+    type === "pareto"
   )
     return 2;
   return 3; // line, area, table
@@ -448,7 +454,8 @@ export function createWidget(
     type === "ranking" ||
     type === "radar" ||
     type === "map" ||
-    type === "insights"
+    type === "insights" ||
+    type === "pareto"
   ) {
     const groupKey =
       seed?.groupKey ??

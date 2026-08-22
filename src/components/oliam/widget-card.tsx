@@ -128,6 +128,7 @@ import { ChartWidgetBody } from "./chart-widget-body";
 import { BoxPlotWidgetBody } from "./box-plot-widget-body";
 import { ExceptionPanelWidgetBody } from "./exception-panel-widget-body";
 import { HistogramWidgetBody } from "./histogram-widget-body";
+import { ParetoWidgetBody } from "./pareto-widget-body";
 import { InsightsWidgetBody } from "./insights-widget-body";
 import { PivotWidgetBody } from "./pivot-widget-body";
 import { RadarWidgetBody } from "./radar-widget-body";
@@ -609,6 +610,26 @@ function WidgetCardBody({
         widget={w}
         data={data}
         columns={columns}
+        onConfigure={onConfigure}
+        onShowSource={onShowSource}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
+    );
+  }
+
+  if (w.type === "pareto") {
+    return (
+      <ParetoWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
+        groupableCols={groupableCols}
+        semanticProfiles={semanticProfiles}
+        filters={filters}
+        setFilters={setFilters}
         onConfigure={onConfigure}
         onShowSource={onShowSource}
         dragProps={dragProps}

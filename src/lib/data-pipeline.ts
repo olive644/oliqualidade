@@ -293,6 +293,43 @@ export function groupAndAggregate(
   return result;
 }
 
+export type ParetoEntry = {
+  name: string;
+  total: number;
+  /** Fração (0 a 1) do total acumulado até e incluindo esta categoria, com as categorias ordenadas da maior para a menor. */
+  cumulativeShare: number;
+  sourceRowIndexes?: number[];
+};
+
+/**
+ * Ordena as categorias da maior para a menor contribuição e acumula a
+ * participação de cada uma, para responder "poucas causas explicam a
+ * maior parte do problema?" — a leitura clássica de Pareto (80/20), que
+ * nem a barra (mostra tudo, mas não acumula) nem o ranking (top N, mas sem
+ * o percentual acumulado) respondem sozinhos.
+ *
+ * Categorias com total zero ou negativo ficam de fora: a lógica de "causa"
+ * pressupõe contribuição positiva, e misturá-las quebraria a leitura
+ * monótona do acumulado (a linha deixaria de subir de esquerda pra
+ * direita).
+ */
+export function paretoSeries(
+  rows: Row[],
+  groupKey: string,
+  valueKey: string,
+  op: AggregationOp,
+): ParetoEntry[] {
+  const sorted = groupAndAggregate(rows, groupKey, valueKey, op)
+    .filter((entry) => entry.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const grandTotal = sorted.reduce((sum, entry) => sum + entry.total, 0);
+  let running = 0;
+  return sorted.map((entry) => {
+    running += entry.total;
+    return { ...entry, cumulativeShare: grandTotal > 0 ? running / grandTotal : 0 };
+  });
+}
+
 /**
  * Prepara a série de um gráfico sem esconder a diferença entre os dados
  * originais e uma agregação. No modo raw, cada valor numérico preenchido

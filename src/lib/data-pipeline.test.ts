@@ -11,6 +11,7 @@ import {
   groupAndAggregate,
   histogramBins,
   linearTrend,
+  paretoSeries,
   pearsonCorrelation,
   scatterPoints,
   leftJoin,
@@ -490,6 +491,47 @@ describe("boxPlotStats", () => {
     ]);
     const stats = boxPlotStats(rows, "categoria", "valor");
     expect(stats.find((s) => s.name === "Bolo")?.sourceRowIndexes).toEqual([0, 2]);
+  });
+});
+
+describe("paretoSeries", () => {
+  it("ordena da maior para a menor contribuição e acumula a participação", () => {
+    const rows: Row[] = [
+      { causa: "A", ocorrencias: 50 },
+      { causa: "B", ocorrencias: 30 },
+      { causa: "C", ocorrencias: 15 },
+      { causa: "D", ocorrencias: 5 },
+    ];
+    const series = paretoSeries(rows, "causa", "ocorrencias", "sum");
+    expect(series.map((e) => e.name)).toEqual(["A", "B", "C", "D"]);
+    expect(series.map((e) => e.total)).toEqual([50, 30, 15, 5]);
+    expect(series.map((e) => e.cumulativeShare)).toEqual([0.5, 0.8, 0.95, 1]);
+  });
+
+  it("descarta categorias com total zero ou negativo (não fazem sentido como 'causa')", () => {
+    const rows: Row[] = [
+      { causa: "A", ocorrencias: 10 },
+      { causa: "B", ocorrencias: 0 },
+      { causa: "C", ocorrencias: -5 },
+    ];
+    const series = paretoSeries(rows, "causa", "ocorrencias", "sum");
+    expect(series.map((e) => e.name)).toEqual(["A"]);
+    expect(series[0]?.cumulativeShare).toBe(1);
+  });
+
+  it("volta vazio sem nenhuma categoria com contribuição positiva", () => {
+    const rows: Row[] = [{ causa: "A", ocorrencias: 0 }];
+    expect(paretoSeries(rows, "causa", "ocorrencias", "sum")).toEqual([]);
+  });
+
+  it("carrega o índice de origem estável por categoria, quando disponível", () => {
+    const rows = markSourceRows([
+      { causa: "A", ocorrencias: 50 },
+      { causa: "B", ocorrencias: 10 },
+      { causa: "A", ocorrencias: 20 },
+    ]);
+    const series = paretoSeries(rows, "causa", "ocorrencias", "sum");
+    expect(series.find((e) => e.name === "A")?.sourceRowIndexes).toEqual([0, 2]);
   });
 });
 

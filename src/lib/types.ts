@@ -63,6 +63,7 @@ export type WidgetType =
   | "histogram"
   | "box-plot"
   | "scatter"
+  | "pareto"
   | "rating"
   | "map"
   | "insights"
@@ -86,10 +87,10 @@ export type Widget = {
   type: WidgetType;
   title?: string; // título customizado; vazio usa um título calculado
   metricKey?: string; // metric/metric-trend/rating: coluna numérica exibida
-  groupKey?: string; // bar/pie/line/area/ranking/radar/box-plot: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
-  valueKey?: string; // bar/pie/line/area/ranking/radar: coluna numérica agregada; histogram: coluna numérica cuja distribuição é mostrada; box-plot: coluna numérica cuja distribuição é comparada entre categorias; scatter: coluna numérica do eixo X
+  groupKey?: string; // bar/pie/line/area/ranking/radar/box-plot/pareto: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
+  valueKey?: string; // bar/pie/line/area/ranking/radar/pareto: coluna numérica agregada; histogram: coluna numérica cuja distribuição é mostrada; box-plot: coluna numérica cuja distribuição é comparada entre categorias; scatter: coluna numérica do eixo X
   valueKey2?: string; // scatter: segunda coluna numérica, eixo Y
-  op?: ChartAggregationOp; // bar/pie/line/area/ranking/radar: operação de agregação
+  op?: ChartAggregationOp; // bar/pie/line/area/ranking/radar/pareto: operação de agregação
   dataMode?: ChartDataMode; // raw: uma marca por linha do Excel; aggregate: combina categorias
   span: WidgetSpan;
   size: WidgetSize;
@@ -119,6 +120,7 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   histogram: "Histograma",
   "box-plot": "Box plot (distribuição por categoria)",
   scatter: "Dispersão (correlação)",
+  pareto: "Pareto (80/20)",
   rating: "Indicador de avaliação",
   map: "Mapa por localização",
   insights: "Insights automáticos",
