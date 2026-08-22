@@ -25,6 +25,7 @@ import { fmt } from "@/lib/format";
 import {
   aggregationLabels,
   chartSeries,
+  countMissingGroupRows,
   NOT_INFORMED,
   pieComparisonFor,
   relevantAggregationOps,
@@ -233,9 +234,11 @@ export function RadarWidgetBody({
       {groupCol && valueCol && (
         <ChartReadingGuide
           group={groupCol.label}
-          metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+          metric={valueCol.label}
           mode={dataMode}
-          operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+          op={op}
+          rowCount={data.length}
+          missingGroupCount={countMissingGroupRows(data, groupCol.key)}
         />
       )}
       {!groupCol || !valueCol || axes.length < 3 ? (

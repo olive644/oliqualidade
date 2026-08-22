@@ -13,6 +13,16 @@ function writtenGroupLabel(value: unknown): string | null {
   return String(value);
 }
 
+/**
+ * Quantas linhas têm o valor de agrupamento vazio. Essas linhas nunca entram
+ * em `groupAndAggregate`/`chartSeries` (writtenGroupLabel devolve null e a
+ * linha é pulada) — este contador existe só para avisar quantas ficaram de
+ * fora, sem mudar esse comportamento de descarte.
+ */
+export function countMissingGroupRows(rows: Row[], groupKey: string): number {
+  return rows.filter((r) => writtenGroupLabel(r[groupKey]) === null).length;
+}
+
 export function sortAllBarCategories<T extends { total: number }>(series: T[]): T[] {
   return [...series].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
 }

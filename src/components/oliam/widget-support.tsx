@@ -65,6 +65,7 @@ import {
 import type { ScheduleCellState } from "@/lib/schedule-normalizer";
 import { conditionalColor, fmt } from "@/lib/format";
 import {
+  aggregationLabels,
   NOT_INFORMED,
   type AggregationOp,
   type PieComparison,
@@ -549,39 +550,51 @@ export function exceptionGuidance(exception: SpreadsheetException): {
   return guidance[exception.kind];
 }
 
+/**
+ * Frase permanente de leitura do gráfico: o que foi calculado, a partir de
+ * quantas linhas, e quantas ficaram de fora por falta do dado de
+ * agrupamento. Antes só aparecia com a configuração do widget aberta — o
+ * usuário perdia essa explicação assim que fechava o painel de edição, e o
+ * gráfico voltava a ser só um desenho sem contexto.
+ */
 export function ChartReadingGuide({
   group,
   metric,
   mode,
-  operation,
+  op,
+  rowCount,
+  missingGroupCount,
 }: {
   group: string;
   metric: string;
   mode: ChartDataMode;
-  operation: string;
+  op: AggregationOp;
+  rowCount: number;
+  missingGroupCount: number;
 }) {
-  const { open } = useWidgetConfig();
-  // O guia repete, em palavras, o que os seletores de X, Y e cálculo já
-  // mostram — útil enquanto se configura o widget, ruído permanente depois.
-  // Passa a acompanhar a configuração em vez de ocupar uma faixa fixa em
-  // cada um dos widgets do painel.
-  if (!open) return null;
+  const rowsClause = `${rowCount.toLocaleString("pt-BR")} ${
+    rowCount === 1 ? "registro visível" : "registros visíveis"
+  }`;
+  const reading =
+    op === "count"
+      ? `Quantidade de registros por "${group}"`
+      : mode === "raw"
+        ? `"${metric}" linha a linha por "${group}"`
+        : `${aggregationLabels[op]} de "${metric}" por "${group}"`;
   return (
-    <div
-      className="flex min-w-0 items-center gap-1.5 overflow-x-auto border-b border-border/70 bg-card px-4 py-1.5 text-[10px] text-muted-foreground"
-      title={`Eixo X: ${group}. Eixo Y: ${metric}. ${mode === "raw" ? "Cada linha do Excel" : operation}.`}
-    >
-      <span className="max-w-44 shrink-0 truncate rounded-full bg-muted/40 px-2 py-1">
-        <strong className="text-foreground">X</strong> · {group}
-      </span>
-      <span aria-hidden="true">→</span>
-      <span className="max-w-44 shrink-0 truncate rounded-full bg-muted/40 px-2 py-1">
-        <strong className="text-foreground">Y</strong> · {metric}
-      </span>
-      <span className="max-w-56 shrink-0 truncate px-1">
-        {mode === "raw" ? "linha a linha" : operation}
-      </span>
-    </div>
+    <p className="border-b border-border/70 bg-card px-4 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+      {reading}, considerando {rowsClause}.
+      {missingGroupCount > 0 && (
+        <>
+          {" "}
+          {missingGroupCount.toLocaleString("pt-BR")}{" "}
+          {missingGroupCount === 1
+            ? `linha sem "${group}" não entrou neste gráfico`
+            : `linhas sem "${group}" não entraram neste gráfico`}
+          .
+        </>
+      )}
+    </p>
   );
 }
 

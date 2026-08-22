@@ -38,6 +38,7 @@ import {
   barChartPresentation,
   chartSeries,
   collapsePieSeries,
+  countMissingGroupRows,
   limitChartSeriesForRendering,
   pieComparisonFor,
   pieRoundnessFor,
@@ -371,9 +372,11 @@ export function ChartWidgetBody({
       {groupCol && valueCol && (
         <ChartReadingGuide
           group={groupCol.label}
-          metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+          metric={valueCol.label}
           mode={dataMode}
-          operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+          op={op}
+          rowCount={data.length}
+          missingGroupCount={countMissingGroupRows(data, groupCol.key)}
         />
       )}
       {renderableSeries.omitted > 0 && (

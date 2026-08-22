@@ -95,6 +95,7 @@ import {
   aggregationLabels,
   chartSeries,
   collapsePieSeries,
+  countMissingGroupRows,
   detectQualitySignals,
   groupAndAggregate,
   limitChartSeriesForRendering,
@@ -674,9 +675,11 @@ function WidgetCardBody({
         {groupCol && valueCol && (
           <ChartReadingGuide
             group={groupCol.label}
-            metric={op === "count" ? "Quantidade de linhas" : valueCol.label}
+            metric={valueCol.label}
             mode={dataMode}
-            operation={`${aggregationLabels[op]} por ${groupCol.label}`}
+            op={op}
+            rowCount={data.length}
+            missingGroupCount={countMissingGroupRows(data, groupCol.key)}
           />
         )}
         {!groupCol || !valueCol ? (
