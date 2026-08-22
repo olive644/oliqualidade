@@ -181,6 +181,37 @@ describe("generateAutoDashboardPlan", () => {
     ).toBe(true);
   });
 
+  it("marca a série temporal como gráfico principal (largura cheia) quando há coluna de data", () => {
+    const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
+    const areaRecommendation = plan.recommendations.find((item) => item.widgetType === "area");
+    expect(areaRecommendation?.primary).toBe(true);
+    const barRecommendations = plan.recommendations.filter((item) => item.widgetType === "bar");
+    expect(barRecommendations.every((item) => !item.primary)).toBe(true);
+
+    const widgets = buildRecommendedWidgets(plan, columns, rows);
+    const areaWidget = widgets.find((w) => w.type === "area");
+    expect(areaWidget?.span).toBe(3);
+  });
+
+  it("sem coluna de data, marca só a primeira dimensão como gráfico principal", () => {
+    const columnsWithoutDate = columns.filter((c) => c.key !== "data_venda");
+    const plan = generateAutoDashboardPlan({
+      columns: columnsWithoutDate,
+      rows,
+      diagnostics: importDiagnostics,
+    });
+    const barRecommendations = plan.recommendations.filter(
+      (item) => item.widgetType === "bar" || item.widgetType === "map",
+    );
+    expect(barRecommendations.filter((item) => item.primary)).toHaveLength(1);
+    expect(barRecommendations[0]?.primary).toBe(true);
+    expect(barRecommendations.slice(1).every((item) => !item.primary)).toBe(true);
+
+    const widgets = buildRecommendedWidgets(plan, columnsWithoutDate, rows);
+    const primaryWidget = widgets.find((w) => w.title === barRecommendations[0]?.title);
+    expect(primaryWidget?.span).toBe(3);
+  });
+
   it("só usa pizza quando a dimensão tem cardinalidade baixa", () => {
     const lowCardinality = generateAutoDashboardPlan({
       columns,

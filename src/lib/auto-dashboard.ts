@@ -38,6 +38,8 @@ export type DashboardRecommendation = {
   blockKey?: string;
   blockValue?: string;
   columnKey?: string;
+  /** "Gráfico principal" da estrutura de painel: a primeira visualização recomendada, que deve ocupar a largura cheia em vez do span padrão do tipo. */
+  primary?: boolean;
 };
 
 export type AutoDashboardPlan = {
@@ -473,12 +475,17 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
           "Uma coluna temporal e uma métrica foram identificadas.",
           "Gráficos de área preservam a ordem e evidenciam evolução no tempo.",
         ],
+        // "Como mudou no tempo" é a leitura mais completa que a base permite
+        // quando existe — vira o gráfico principal do painel, em largura
+        // cheia, em vez de dividir a linha com a primeira comparação por
+        // categoria.
+        primary: true,
       }),
     );
   }
 
   if (primaryMetric) {
-    for (const dimension of dimensions.slice(0, 2)) {
+    dimensions.slice(0, 2).forEach((dimension, index) => {
       const cardinality = distinctCount(input.rows, dimension.key);
       const isGeo = GEO_NAME.test(`${dimension.key} ${dimension.label}`);
       recommendations.push(
@@ -501,6 +508,10 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
             cardinality > 30
               ? [`A dimensão possui alta cardinalidade (${cardinality} valores).`]
               : [],
+          // Sem coluna temporal, esta é a primeira comparação por categoria
+          // — o gráfico principal da estrutura de painel — e só ela, não a
+          // segunda dimensão do loop.
+          ...(!primaryTime && index === 0 ? { primary: true } : {}),
         }),
       );
 
@@ -548,7 +559,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
           }),
         );
       }
-    }
+    });
   }
 
   // Bases operacionais frequentemente possuem apenas códigos, datas e
@@ -714,6 +725,9 @@ export function recommendationToWidget(
   };
   const widget = createWidget(item.widgetType, columns, seed, rows);
   widget.title = item.title;
+  // "Gráfico principal" da estrutura de painel: largura cheia em vez do
+  // span padrão do tipo, para se destacar de fato do resto do painel.
+  if (item.primary) widget.span = 3;
   if (item.metricKey) widget.metricKey = item.metricKey;
   if (item.topN) widget.topN = item.topN;
   if (item.blockKey && item.blockValue) {
