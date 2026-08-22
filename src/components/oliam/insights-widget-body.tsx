@@ -191,7 +191,7 @@ export function InsightsWidgetBody({
                   ` (${topComparison.share.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })} do total)`}
                 {topComparison.reference &&
                   topComparison.relativeDifference !== null &&
-                  ` — ${Math.abs(topComparison.relativeDifference).toLocaleString("pt-BR", {
+                  `. Está ${Math.abs(topComparison.relativeDifference).toLocaleString("pt-BR", {
                     style: "percent",
                     maximumFractionDigits: 0,
                   })} à frente de ${topComparison.reference.name}, a segunda colocada.`}
