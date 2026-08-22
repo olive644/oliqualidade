@@ -82,7 +82,7 @@ export function ImportDiagnosticsDialog({
             <DialogDescription>
               Histórico local de leitores usados, tempo por importação e divergências entre o leitor
               experimental (Rust/WASM) e o leitor padrão. Nada do conteúdo das planilhas fica
-              guardado aqui — só contagens, durações e bytes.
+              guardado aqui. São armazenadas apenas contagens, durações e bytes.
             </DialogDescription>
           </DialogHeader>
           {entries === null ? (
