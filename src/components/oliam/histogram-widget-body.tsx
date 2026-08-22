@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { BarChart2 } from "lucide-react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   ResponsiveContainer,
   Tooltip as ChartTooltip,
   XAxis,
@@ -13,8 +14,8 @@ import {
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type FilterRule, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
-import { parseNumericValue } from "@/lib/format";
-import { histogramBins, pieComparisonFor } from "@/lib/data-pipeline";
+import { conditionalColor, parseNumericValue } from "@/lib/format";
+import { barChartPresentation, histogramBins, pieComparisonFor } from "@/lib/data-pipeline";
 import {
   FieldDropSlot,
   SeriesComparisonPanel,
@@ -25,6 +26,7 @@ import {
   type WidgetMetric,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
+import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
 
 const BIN_COUNT_OPTIONS = [5, 8, 10, 15, 20];
 
@@ -56,6 +58,8 @@ export function HistogramWidgetBody({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const displayedIndex = activeIndex ?? selectedIndex;
+  const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
+    useChartHorizontalScroll();
 
   const configuredValueCol = columns.find((c) => c.key === w.valueKey);
   const valueCol =
@@ -84,6 +88,7 @@ export function HistogramWidgetBody({
       : null);
   const selectedBin = summaryIndex !== null ? series[summaryIndex] : null;
   const selectedComparison = summaryIndex !== null ? pieComparisonFor(series, summaryIndex) : null;
+  const barPresentation = barChartPresentation(series.length);
 
   const metrics: WidgetMetric[] = valueCol
     ? [
@@ -180,64 +185,117 @@ export function HistogramWidgetBody({
         </p>
       ) : (
         <>
-          <div className="h-64 p-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 18 }}>
-                <CartesianGrid
-                  vertical={false}
-                  horizontal
-                  stroke="var(--border)"
-                  strokeOpacity={0.6}
-                />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
-                  tickLine={false}
-                  axisLine={{ stroke: "var(--border)" }}
-                  interval={0}
-                  angle={series.length > 6 ? -30 : 0}
-                  textAnchor={series.length > 6 ? "end" : "middle"}
-                  height={series.length > 6 ? 40 : 24}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={36}
-                />
-                <ChartTooltip
-                  cursor={{ fill: "var(--muted)", opacity: 0.35 }}
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
-                    fontSize: 12,
-                  }}
-                  formatter={(value: number) => [
-                    `${value.toLocaleString("pt-BR")} registro(s)`,
-                    "Contagem",
-                  ]}
-                />
-                <Bar
-                  dataKey="total"
-                  radius={4}
-                  onClick={(_, i) => setSelectedIndex((current) => (current === i ? null : i))}
-                  onMouseEnter={(_, i) => setActiveIndex(i)}
-                  onMouseLeave={() => setActiveIndex(null)}
-                >
-                  {series.map((_, i) => (
-                    <Cell
-                      key={i}
-                      fill="var(--primary)"
-                      opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
-                      className="cursor-pointer"
+          <div className="relative">
+            <div
+              ref={barPresentation.scrollable ? chartScrollRef : undefined}
+              className={cn(
+                "h-64 overflow-x-auto overflow-y-hidden p-4",
+                barPresentation.scrollable && "oliam-chart-drag-scroll",
+              )}
+              onPointerDown={barPresentation.scrollable ? handleChartScrollPointerDown : undefined}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: barPresentation.scrollable ? barPresentation.contentWidth : "100%",
+                  minWidth: "100%",
+                }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 18 }}>
+                    <defs>
+                      <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
+                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.55} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      vertical={false}
+                      horizontal
+                      stroke="var(--border)"
+                      strokeOpacity={0.6}
                     />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+                      tickLine={false}
+                      axisLine={{ stroke: "var(--border)" }}
+                      interval={0}
+                      angle={series.length > 6 ? -30 : 0}
+                      textAnchor={series.length > 6 ? "end" : "middle"}
+                      height={series.length > 6 ? 40 : 24}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={36}
+                    />
+                    <ChartTooltip
+                      cursor={{ fill: "var(--muted)", opacity: 0.35 }}
+                      contentStyle={{
+                        background: "var(--popover)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        fontSize: 12,
+                      }}
+                      formatter={(value: number) => [
+                        `${value.toLocaleString("pt-BR")} registro(s)`,
+                        "Contagem",
+                      ]}
+                    />
+                    <Bar
+                      dataKey="total"
+                      fill={`url(#bar-grad-${w.id})`}
+                      radius={4}
+                      onClick={(_, i) => setSelectedIndex((current) => (current === i ? null : i))}
+                      onMouseEnter={(_, i) => setActiveIndex(i)}
+                      onMouseLeave={() => setActiveIndex(null)}
+                      cursor="pointer"
+                      isAnimationActive={false}
+                    >
+                      {series.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          className="oliam-chart-bar-cell"
+                          fill={
+                            conditionalColor(
+                              entry.total,
+                              valueCol!.kind,
+                              valueCol!.conditionalFormat,
+                            ) ?? `url(#bar-grad-${w.id})`
+                          }
+                          opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
+                          stroke={displayedIndex === i ? "var(--primary)" : "none"}
+                          strokeWidth={displayedIndex === i ? 1 : 0}
+                          style={
+                            {
+                              "--oliam-bar-delay": `${Math.min(i, 14) * 42}ms`,
+                              filter: displayedIndex === i ? "brightness(1.08)" : "none",
+                            } as CSSProperties
+                          }
+                        />
+                      ))}
+                      <LabelList
+                        dataKey="total"
+                        position="top"
+                        fontSize={10}
+                        fill="var(--muted-foreground)"
+                        formatter={(v: number) => v.toLocaleString("pt-BR")}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            {barPresentation.scrollable && <ChartScrollButtons label="histograma" />}
           </div>
+          {barPresentation.scrollable && (
+            <p className="border-t border-border/70 bg-card px-4 py-1 text-center text-[10px] text-muted-foreground">
+              {series.length} faixas · use as setas, arraste ou role para os lados para ver todas
+            </p>
+          )}
           {selectedBin && (
             <SeriesComparisonPanel
               selected={selectedBin}

@@ -33,6 +33,8 @@ export type DashboardRecommendation = {
   metricKey?: string;
   groupKey?: string;
   valueKey?: string;
+  /** Segunda coluna numérica — usada só pela dispersão (eixo Y), que cruza duas métricas em vez de agrupar uma. */
+  valueKey2?: string;
   op?: ChartAggregationOp;
   topN?: number;
   blockKey?: string;
@@ -484,6 +486,53 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
     );
   }
 
+  // A distribuição de uma métrica ("os valores estão concentrados ou
+  // espalhados?") é uma pergunta que nenhum KPI, barra ou pizza responde —
+  // eles só mostram totais e comparações entre grupos. Exige volume mínimo
+  // de linhas (20) para os intervalos do histograma terem alguma linha
+  // dentro; abaixo disso, cada faixa teria 0 ou 1 registro e o gráfico não
+  // diria nada que a tabela já não mostrasse.
+  if (primaryMetric && input.rows.length >= 20) {
+    recommendations.push(
+      recommendation(input, {
+        id: slug("histograma", primaryMetric.key),
+        kind: "visualization",
+        title: `Distribuição de ${primaryMetric.label}`,
+        widgetType: "histogram",
+        valueKey: primaryMetric.key,
+        columns: [primaryMetric.key],
+        baseConfidence: 80,
+        reasons: [
+          `"${primaryMetric.label}" tem volume suficiente de linhas para revelar como os valores se distribuem, não só o total ou a média.`,
+        ],
+      }),
+    );
+  }
+
+  // Duas métricas numéricas na mesma base permitem checar correlação — uma
+  // pergunta ("quando uma sobe, a outra também sobe?") que barra, pizza e
+  // ranking não respondem, já que cada um deles olha só uma métrica por vez.
+  if (metrics.length >= 2) {
+    const [first, second] = [...metrics].sort((a, b) => b.confidence - a.confidence);
+    if (first && second) {
+      recommendations.push(
+        recommendation(input, {
+          id: slug("dispersao", first.key, second.key),
+          kind: "visualization",
+          title: `${first.label} × ${second.label}`,
+          widgetType: "scatter",
+          valueKey: first.key,
+          valueKey2: second.key,
+          columns: [first.key, second.key],
+          baseConfidence: 76,
+          reasons: [
+            `"${first.label}" e "${second.label}" são duas métricas numéricas: a dispersão mostra se existe correlação entre elas.`,
+          ],
+        }),
+      );
+    }
+  }
+
   if (primaryMetric) {
     dimensions.slice(0, 2).forEach((dimension, index) => {
       const cardinality = distinctCount(input.rows, dimension.key);
@@ -539,6 +588,56 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
             ],
           }),
         );
+
+        // Pareto responde uma pergunta diferente do ranking: não "quem
+        // lidera" e sim "quantas causas concentram a maior parte do
+        // resultado". Só para a primeira dimensão (a que já ganhou
+        // ranking/barra), e com um teto de cardinalidade — acima disso o
+        // gráfico vira ruído mesmo com a rolagem horizontal.
+        if (index === 0 && cardinality <= 40) {
+          recommendations.push(
+            recommendation(input, {
+              id: slug("pareto", dimension.key, primaryMetric.key),
+              kind: "visualization",
+              title: `Pareto de ${primaryMetric.label} por ${dimension.label}`,
+              widgetType: "pareto",
+              groupKey: dimension.key,
+              valueKey: primaryMetric.key,
+              op: "sum",
+              columns: [dimension.key, primaryMetric.key],
+              baseConfidence: 78,
+              reasons: [
+                `Mostra quantas das ${cardinality} categorias de "${dimension.label}" concentram 80% de "${primaryMetric.label}" — a pergunta de causas dominantes, diferente do ranking (quem lidera).`,
+              ],
+            }),
+          );
+        }
+      }
+
+      // Box plot compara a variabilidade de uma métrica entre poucas
+      // categorias (mesma faixa de cardinalidade da pizza), mas só faz
+      // sentido quando cada categoria tem repetições suficientes para
+      // calcular quartis de verdade — com 1 ou 2 linhas por categoria, o
+      // "box" seria só um traço sem informação além do que a barra já mostra.
+      if (index === 0 && cardinality >= 2 && cardinality <= 8 && !isGeo) {
+        const avgRowsPerCategory = input.rows.length / cardinality;
+        if (avgRowsPerCategory >= 4) {
+          recommendations.push(
+            recommendation(input, {
+              id: slug("variabilidade", dimension.key, primaryMetric.key),
+              kind: "visualization",
+              title: `Variabilidade de ${primaryMetric.label} por ${dimension.label}`,
+              widgetType: "box-plot",
+              groupKey: dimension.key,
+              valueKey: primaryMetric.key,
+              columns: [dimension.key, primaryMetric.key],
+              baseConfidence: 80,
+              reasons: [
+                `Cada categoria de "${dimension.label}" tem repetições suficientes (~${Math.round(avgRowsPerCategory)} linhas) para comparar quartis e valores fora da curva, não só a soma.`,
+              ],
+            }),
+          );
+        }
       }
 
       if (cardinality >= 2 && cardinality <= 8 && !isGeo) {
@@ -721,6 +820,7 @@ export function recommendationToWidget(
   const seed = {
     ...(item.groupKey ? { groupKey: item.groupKey } : {}),
     ...((item.valueKey ?? item.metricKey) ? { valueKey: item.valueKey ?? item.metricKey } : {}),
+    ...(item.valueKey2 ? { valueKey2: item.valueKey2 } : {}),
     ...(item.op ? { op: item.op } : {}),
   };
   const widget = createWidget(item.widgetType, columns, seed, rows);
