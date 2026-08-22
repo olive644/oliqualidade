@@ -1,3 +1,4 @@
+import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
 import { useState, type CSSProperties } from "react";
 import { Radar as RadarIcon } from "lucide-react";
 import {
@@ -41,7 +42,6 @@ import {
   FilterChip,
   isCoarsePointer,
   SeriesComparisonPanel,
-  sourceRowIndexesOf,
   truncateLabel,
   WidgetMetricStrip,
   type WidgetMetric,
