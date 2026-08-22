@@ -1256,7 +1256,13 @@ function Dashboard(p: {
   const [shortcuts, setShortcuts] = useState(false);
   const [importDiagnostics, setImportDiagnostics] = useState(false);
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
-  const [insightOpen, setInsightOpen] = useState(true);
+  // No desktop, a visão geral funciona como coluna lateral e pode nascer
+  // aberta. No celular, ela é um drawer modal e começa fechada para não
+  // encobrir o dashboard logo após a geração do relatório.
+  const [insightOpen, setInsightOpen] = useState(false);
+  useEffect(() => {
+    setInsightOpen(window.matchMedia("(min-width: 1024px)").matches);
+  }, []);
   const [sourceRowsPanel, setSourceRowsPanel] = useState<{
     title: string;
     rowIndexes: number[];
