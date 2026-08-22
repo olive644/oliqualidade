@@ -529,6 +529,34 @@ describe("generateAutoDashboardPlan", () => {
       expect(histogram?.valueKey).toBe("faturamento");
     });
 
+    it("não recomenda histograma com muitos nulos ou sem variação", () => {
+      const mostlyMissing: Row[] = Array.from({ length: 30 }, (_, index) => ({
+        ...rows[index % rows.length],
+        faturamento: index < 19 ? 100 + index : null,
+      }));
+      const missingPlan = generateAutoDashboardPlan({
+        columns,
+        rows: mostlyMissing,
+        diagnostics: importDiagnostics,
+      });
+      expect(missingPlan.recommendations.some((item) => item.widgetType === "histogram")).toBe(
+        false,
+      );
+
+      const constantRows: Row[] = Array.from({ length: 24 }, (_, index) => ({
+        ...rows[index % rows.length],
+        faturamento: 100,
+      }));
+      const constantPlan = generateAutoDashboardPlan({
+        columns,
+        rows: constantRows,
+        diagnostics: importDiagnostics,
+      });
+      expect(constantPlan.recommendations.some((item) => item.widgetType === "histogram")).toBe(
+        false,
+      );
+    });
+
     it("recomenda dispersão entre as duas métricas quando há mais de uma disponível", () => {
       const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
       const scatter = plan.recommendations.find((item) => item.widgetType === "scatter");
@@ -551,6 +579,30 @@ describe("generateAutoDashboardPlan", () => {
       expect(plan.recommendations.some((item) => item.widgetType === "scatter")).toBe(false);
     });
 
+    it("não recomenda dispersão sem pares válidos ou sem variação nos dois eixos", () => {
+      const sparsePairs: Row[] = Array.from({ length: 20 }, (_, index) => ({
+        ...rows[index % rows.length],
+        custo: index < 7 ? 50 + index : null,
+      }));
+      const sparsePlan = generateAutoDashboardPlan({
+        columns,
+        rows: sparsePairs,
+        diagnostics: importDiagnostics,
+      });
+      expect(sparsePlan.recommendations.some((item) => item.widgetType === "scatter")).toBe(false);
+
+      const constantAxis: Row[] = Array.from({ length: 20 }, (_, index) => ({
+        ...rows[index % rows.length],
+        custo: 50,
+      }));
+      const constantPlan = generateAutoDashboardPlan({
+        columns,
+        rows: constantAxis,
+        diagnostics: importDiagnostics,
+      });
+      expect(constantPlan.recommendations.some((item) => item.widgetType === "scatter")).toBe(false);
+    });
+
     it("só recomenda box plot quando a categoria tem repetições suficientes para calcular quartis", () => {
       // "produto" no fixture principal tem 3 categorias em 12 linhas (média
       // de 4 por categoria) — o mínimo para o box plot valer a pena.
@@ -568,6 +620,20 @@ describe("generateAutoDashboardPlan", () => {
         diagnostics: importDiagnostics,
       });
       expect(sparsePlan.recommendations.some((item) => item.widgetType === "box-plot")).toBe(false);
+    });
+
+    it("não usa a média para esconder categoria sem amostra suficiente no box plot", () => {
+      const imbalancedRows: Row[] = Array.from({ length: 11 }, (_, index) => ({
+        ...rows[index % rows.length],
+        produto: index < 9 ? "A" : "B",
+        faturamento: 100 + index,
+      }));
+      const plan = generateAutoDashboardPlan({
+        columns,
+        rows: imbalancedRows,
+        diagnostics: importDiagnostics,
+      });
+      expect(plan.recommendations.some((item) => item.widgetType === "box-plot")).toBe(false);
     });
 
     it("só recomenda Pareto quando a dimensão tem categorias demais para o ranking sozinho explicar a concentração", () => {
@@ -600,6 +666,46 @@ describe("generateAutoDashboardPlan", () => {
       const pareto = highCardinality.recommendations.find((item) => item.widgetType === "pareto");
       expect(pareto?.groupKey).toBe("produto");
       expect(pareto?.valueKey).toBe("faturamento");
+
+      const negativeRows = manyCategoryRows.map((row, index) => ({
+        ...row,
+        faturamento: index === 0 ? -100 : row.faturamento,
+      }));
+      const negativePlan = generateAutoDashboardPlan({
+        columns,
+        rows: negativeRows,
+        diagnostics: manyCategoryDiagnostics,
+      });
+      expect(negativePlan.recommendations.some((item) => item.widgetType === "pareto")).toBe(false);
+    });
+
+    it("limita o painel automático sem perder perguntas analíticas distintas", () => {
+      const denseRows: Row[] = Array.from({ length: 48 }, (_, index) => ({
+        ...rows[index % rows.length],
+        produto: `Produto ${index % 6}`,
+      }));
+      const denseDiagnostics = diagnostics([
+        diagnostic("data_venda", "date"),
+        diagnostic("faturamento", "currency"),
+        diagnostic("custo", "currency"),
+        diagnostic("produto", "category", { unique: 6 }),
+        diagnostic("cidade", "category", { unique: 2 }),
+        diagnostic("id_pedido", "id"),
+      ]);
+      const plan = generateAutoDashboardPlan({
+        columns,
+        rows: denseRows,
+        diagnostics: denseDiagnostics,
+      });
+      const visualTypes = plan.recommendations
+        .filter((item) => item.kind === "visualization")
+        .map((item) => item.widgetType);
+
+      expect(visualTypes).toHaveLength(8);
+      expect(visualTypes).toEqual(
+        expect.arrayContaining(["histogram", "scatter", "box-plot", "pareto"]),
+      );
+      expect(plan.warnings.join(" ")).toContain("manter o painel legível");
     });
   });
 });
