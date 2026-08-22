@@ -17,11 +17,12 @@ const classification = (
   warnings: [],
 });
 
-const widget = (type: Widget["type"]): Widget => ({
+const widget = (type: Widget["type"], fields: Partial<Widget> = {}): Widget => ({
   id: `w_${type}`,
   type,
   span: 1,
   size: "md",
+  ...fields,
 });
 
 describe("analyzeQuestionCoverage", () => {
@@ -53,9 +54,32 @@ describe("analyzeQuestionCoverage", () => {
     expect(coverage.uncovered.length).toBe(coverage.answerable.length);
   });
 
-  it("marca como coberta a pergunta cujo tipo de widget já existe no painel", () => {
-    const coverage = analyzeQuestionCoverage(fullClassifications, [widget("bar"), widget("line")]);
+  it("marca como coberta só a pergunta cujo widget usa as colunas relevantes", () => {
+    const coverage = analyzeQuestionCoverage(fullClassifications, [
+      widget("bar", { groupKey: "unidade", valueKey: "resultado" }),
+      widget("line", { groupKey: "data", valueKey: "resultado" }),
+    ]);
     expect(coverage.covered.map((q) => q.id).sort()).toEqual(["trend-over-time", "who-is-bigger"]);
+  });
+
+  it("não trata um tipo de gráfico correto com a métrica errada como cobertura", () => {
+    const coverage = analyzeQuestionCoverage(fullClassifications, [
+      widget("bar", { groupKey: "unidade", valueKey: "amostras" }),
+      widget("line", { groupKey: "data", valueKey: "amostras" }),
+    ]);
+    expect(coverage.covered.map((q) => q.id)).not.toContain("who-is-bigger");
+    expect(coverage.covered.map((q) => q.id)).not.toContain("trend-over-time");
+  });
+
+  it("aceita dispersão das duas métricas primárias em qualquer ordem", () => {
+    const direct = analyzeQuestionCoverage(fullClassifications, [
+      widget("scatter", { valueKey: "resultado", valueKey2: "amostras" }),
+    ]);
+    const inverse = analyzeQuestionCoverage(fullClassifications, [
+      widget("scatter", { valueKey: "amostras", valueKey2: "resultado" }),
+    ]);
+    expect(direct.covered.map((q) => q.id)).toContain("correlation");
+    expect(inverse.covered.map((q) => q.id)).toContain("correlation");
   });
 
   it("explica por que 'como mudou no tempo' não é respondível sem coluna temporal", () => {
