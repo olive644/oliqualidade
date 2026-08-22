@@ -830,25 +830,6 @@ export function PieLegend({
  * (bug real já corrigido para o pizza, ver `docs/CURRENT_STATE_AUDIT.md`,
  * seção 41). Qualquer novo uso deste componente herda a correção automaticamente.
  */
-/**
- * Linhas que produziram um ponto/balde de gráfico, seja ele agregado
- * (`sourceRowIndexes`, um por balde) ou bruto (`sourceRowIndex`, um por
- * linha) — os dois nomes que `groupAndAggregate`/`chartSeries` usam. Vazio
- * quando as linhas não vêm do pipeline real (`markSourceRows` nunca rodou),
- * o que também é o sinal para esconder o botão "Ver linhas de origem".
- */
-export function sourceRowIndexesOf(point: {
-  name: string;
-  total: number;
-  sourceRow?: number;
-  sourceRowIndex?: number;
-  sourceRowIndexes?: number[];
-}): number[] {
-  return (
-    point.sourceRowIndexes ?? (point.sourceRowIndex !== undefined ? [point.sourceRowIndex] : [])
-  );
-}
-
 export function SeriesComparisonPanel({
   selected,
   comparison,
