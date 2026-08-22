@@ -41,7 +41,7 @@ test.describe("iPhone responsive shell", () => {
     await page.getByRole("button", { name: "Mostrar visão geral" }).click();
     const insightDialog = page.getByRole("dialog", { name: "Visão geral da análise" });
     await expect(insightDialog).toBeVisible();
-    await expect(insightDialog.getByText("Resumo executivo")).toBeVisible();
+    await expect(insightDialog.getByText("Visão geral", { exact: true })).toBeVisible();
     await insightDialog.getByRole("button", { name: "Fechar visão geral" }).click();
     await expect(insightDialog).toBeHidden();
 
