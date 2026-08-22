@@ -50,7 +50,7 @@ export function buildCorrectedWorkbook(dashboard: Dashboard): XLSX.WorkBook {
     );
   }
   workbook.Props = {
-    Title: `${dashboard.name} — cópia corrigida`,
+    Title: `${dashboard.name} (cópia corrigida)`,
     Subject:
       `Cópia reconstruída sem alteração do arquivo de origem ${dashboard.sourceFileName ?? ""}`.trim(),
     Author: "Oli.Qualidade",
