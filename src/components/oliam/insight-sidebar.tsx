@@ -25,18 +25,18 @@ export function InsightSidebar(p: {
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
 }) {
-  const { cat, primary, dateCol } = p;
+  const { cat, primary, dateCol, open, onOpenChange } = p;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!p.open || !window.matchMedia("(max-width: 1023px)").matches) return;
+    if (!open || !window.matchMedia("(max-width: 1023px)").matches) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") p.onOpenChange(false);
+      if (event.key === "Escape") onOpenChange(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -44,9 +44,9 @@ export function InsightSidebar(p: {
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus();
     };
-  }, [p.open, p.onOpenChange]);
+  }, [open, onOpenChange]);
 
-  if (!p.open) return null;
+  if (!open) return null;
 
   const content = (
     <>
@@ -268,7 +268,7 @@ export function InsightSidebar(p: {
         className="fixed inset-0 z-40 cursor-default bg-black/50 lg:hidden"
         aria-label="Fechar visão geral"
         tabIndex={-1}
-        onClick={() => p.onOpenChange(false)}
+        onClick={() => onOpenChange(false)}
       />
       <aside
         className="fixed inset-y-0 right-0 z-50 w-[min(92vw,24rem)] overflow-y-auto border-l border-border bg-background shadow-2xl lg:hidden"
@@ -288,7 +288,7 @@ export function InsightSidebar(p: {
           type="button"
           className="absolute right-2 top-2 z-10 grid size-11 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Fechar visão geral"
-          onClick={() => p.onOpenChange(false)}
+          onClick={() => onOpenChange(false)}
         >
           <X className="size-5" aria-hidden="true" />
         </button>
