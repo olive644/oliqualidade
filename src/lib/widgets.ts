@@ -159,6 +159,10 @@ const CARDINALITY_RANGE: Partial<Record<WidgetType, { min: number; max: number }
   pie: { min: 2, max: 6 },
   radar: { min: 3, max: 8 },
   ranking: { min: 6, max: Number.MAX_SAFE_INTEGER },
+  // Cada categoria vira uma caixa lado a lado; acima de ~10 a comparação
+  // visual de espalhamento entre elas fica tão apertada quanto a de uma
+  // barra com cardinalidade alta.
+  "box-plot": { min: 2, max: 10 },
 };
 
 /**
@@ -235,7 +239,8 @@ export function defaultSpan(type: WidgetType): WidgetSpan {
     type === "map" ||
     type === "insights" ||
     type === "image" ||
-    type === "histogram"
+    type === "histogram" ||
+    type === "box-plot"
   )
     return 2;
   return 3; // line, area, table
@@ -511,6 +516,18 @@ export function createWidget(
     // única coluna numérica, por isso não herda groupKey/op da faixa
     // compartilhada acima.
     const valueKey = seed?.valueKey ?? nums[0]?.key;
+    if (valueKey) widget.valueKey = valueKey;
+  } else if (type === "box-plot") {
+    // Box plot agrupa como bar/radar, mas compara quartis, não soma/média —
+    // não herda `op`/`dataMode` da faixa compartilhada acima.
+    const groupKey =
+      seed?.groupKey ??
+      pickGroupColumnForWidget(type, catCandidates, rows)?.key ??
+      pickGroupColumnForWidget(type, groupable, rows)?.key ??
+      cat?.key ??
+      groupableBest?.key;
+    const valueKey = seed?.valueKey ?? nums[0]?.key;
+    if (groupKey) widget.groupKey = groupKey;
     if (valueKey) widget.valueKey = valueKey;
   }
   return widget;

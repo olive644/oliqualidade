@@ -6,6 +6,7 @@ import {
   barChartPresentation,
   chartSeries,
   collapsePieSeries,
+  boxPlotStats,
   detectQualitySignals,
   groupAndAggregate,
   histogramBins,
@@ -424,6 +425,68 @@ describe("histogramBins", () => {
     const bins = histogramBins(rows, "valor", 2);
     expect(bins[0]?.sourceRowIndexes).toEqual([0, 1]);
     expect(bins[1]?.sourceRowIndexes).toEqual([2, 3]);
+  });
+});
+
+describe("boxPlotStats", () => {
+  it("calcula quartis pelo método clássico (mediana exclui as duas metades quando n é ímpar)", () => {
+    const rows: Row[] = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((valor) => ({ categoria: "A", valor }));
+    const [stats] = boxPlotStats(rows, "categoria", "valor");
+    expect(stats).toMatchObject({ min: 1, q1: 2.5, median: 5, q3: 7.5, max: 9, outliers: [] });
+  });
+
+  it("calcula quartis com quantidade par de valores", () => {
+    const rows: Row[] = [1, 2, 3, 4, 5, 6, 7, 8].map((valor) => ({ categoria: "A", valor }));
+    const [stats] = boxPlotStats(rows, "categoria", "valor");
+    expect(stats).toMatchObject({ min: 1, q1: 2.5, median: 4.5, q3: 6.5, max: 8 });
+  });
+
+  it("identifica valores fora da cerca de Tukey como outliers, sem contar no min/max do whisker", () => {
+    const rows: Row[] = [
+      { categoria: "A", valor: 1 },
+      { categoria: "A", valor: 2 },
+      { categoria: "A", valor: 3 },
+      { categoria: "A", valor: 4 },
+      { categoria: "A", valor: 5 },
+      { categoria: "A", valor: 6 },
+      { categoria: "A", valor: 7 },
+      { categoria: "A", valor: 100 }, // muito acima de Q3 + 1.5×IQR
+    ];
+    const [stats] = boxPlotStats(rows, "categoria", "valor");
+    expect(stats?.outliers).toEqual([100]);
+    expect(stats?.max).toBe(7); // whisker máximo é o maior valor que não é outlier
+    expect(stats?.count).toBe(8); // outlier continua contando na amostra
+  });
+
+  it("calcula uma caixa por categoria, ignorando linhas sem categoria ou sem valor numérico", () => {
+    const rows: Row[] = [
+      { categoria: "Bolo", valor: 10 },
+      { categoria: "Bolo", valor: 20 },
+      { categoria: "Doce", valor: 5 },
+      { categoria: null, valor: 99 },
+      { categoria: "Bolo", valor: null },
+    ];
+    const stats = boxPlotStats(rows, "categoria", "valor");
+    expect(stats).toHaveLength(2);
+    expect(stats.find((s) => s.name === "Bolo")?.count).toBe(2);
+    expect(stats.find((s) => s.name === "Doce")).toMatchObject({
+      min: 5,
+      q1: 5,
+      median: 5,
+      q3: 5,
+      max: 5,
+      count: 1,
+    });
+  });
+
+  it("carrega o índice de origem estável de cada linha por categoria, quando disponível", () => {
+    const rows = markSourceRows([
+      { categoria: "Bolo", valor: 10 },
+      { categoria: "Doce", valor: 5 },
+      { categoria: "Bolo", valor: 20 },
+    ]);
+    const stats = boxPlotStats(rows, "categoria", "valor");
+    expect(stats.find((s) => s.name === "Bolo")?.sourceRowIndexes).toEqual([0, 2]);
   });
 });
 

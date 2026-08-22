@@ -260,6 +260,20 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
     expect(w.valueKey).toBe("Amostras");
   });
 
+  it("createWidget (box-plot) escolhe categoria e coluna numérica, sem op/dataMode", () => {
+    const columns: Column[] = [col("Turno", "category"), col("Resultado", "number")];
+    const rows: Row[] = [
+      { Turno: "Manhã", Resultado: 95 },
+      { Turno: "Manhã", Resultado: 91 },
+      { Turno: "Tarde", Resultado: 88 },
+    ];
+    const w = createWidget("box-plot", columns, undefined, rows);
+    expect(w.groupKey).toBe("Turno");
+    expect(w.valueKey).toBe("Resultado");
+    expect(w.op).toBeUndefined();
+    expect(w.dataMode).toBeUndefined();
+  });
+
   it.each(["bar", "pie", "ranking", "line", "area", "map", "insights"] as const)(
     "createWidget (%s) evita coluna não agregável como métrica quando existe outra numérica somável",
     (type) => {
@@ -666,5 +680,12 @@ describe("widget de histograma", () => {
   it("nasce com span/size iguais aos demais gráficos de barra", () => {
     expect(defaultSpan("histogram")).toBe(2);
     expect(defaultSize("histogram")).toBe("md");
+  });
+});
+
+describe("widget de box plot", () => {
+  it("nasce com span/size iguais aos demais gráficos de barra", () => {
+    expect(defaultSpan("box-plot")).toBe(2);
+    expect(defaultSize("box-plot")).toBe("md");
   });
 });

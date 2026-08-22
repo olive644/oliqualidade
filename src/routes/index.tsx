@@ -1505,6 +1505,7 @@ function Dashboard(p: {
     ranking: nums.length > 0 && groupableCols.length > 0,
     radar: nums.length > 0 && groupableCols.length > 0,
     histogram: nums.length > 0,
+    "box-plot": nums.length > 0 && groupableCols.length > 0,
     rating: nums.length > 0,
     map: nums.length > 0 && groupableCols.length > 0,
     insights: nums.length > 0 && groupableCols.length > 0,

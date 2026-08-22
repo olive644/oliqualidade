@@ -61,6 +61,7 @@ export type WidgetType =
   | "ranking"
   | "radar"
   | "histogram"
+  | "box-plot"
   | "rating"
   | "map"
   | "insights"
@@ -84,8 +85,8 @@ export type Widget = {
   type: WidgetType;
   title?: string; // título customizado; vazio usa um título calculado
   metricKey?: string; // metric/metric-trend/rating: coluna numérica exibida
-  groupKey?: string; // bar/pie/line/area/ranking/radar: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
-  valueKey?: string; // bar/pie/line/area/ranking/radar: coluna numérica agregada; histogram: coluna numérica cuja distribuição é mostrada
+  groupKey?: string; // bar/pie/line/area/ranking/radar/box-plot: coluna de agrupamento (linha usa coluna de data); metric-trend: coluna de data opcional para o sparkline
+  valueKey?: string; // bar/pie/line/area/ranking/radar: coluna numérica agregada; histogram: coluna numérica cuja distribuição é mostrada; box-plot: coluna numérica cuja distribuição é comparada entre categorias
   op?: ChartAggregationOp; // bar/pie/line/area/ranking/radar: operação de agregação
   dataMode?: ChartDataMode; // raw: uma marca por linha do Excel; aggregate: combina categorias
   span: WidgetSpan;
@@ -114,6 +115,7 @@ export const widgetTypeLabels: Record<WidgetType, string> = {
   ranking: "Ranking (Top N)",
   radar: "Gráfico radar",
   histogram: "Histograma",
+  "box-plot": "Box plot (distribuição por categoria)",
   rating: "Indicador de avaliação",
   map: "Mapa por localização",
   insights: "Insights automáticos",

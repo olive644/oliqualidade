@@ -125,6 +125,7 @@ import type { ColorGroupLabel, SourceCellFill } from "@/lib/cell-fill-provenance
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
 import { AnimatedNumber } from "./animated-number";
 import { ChartWidgetBody } from "./chart-widget-body";
+import { BoxPlotWidgetBody } from "./box-plot-widget-body";
 import { ExceptionPanelWidgetBody } from "./exception-panel-widget-body";
 import { HistogramWidgetBody } from "./histogram-widget-body";
 import { InsightsWidgetBody } from "./insights-widget-body";
@@ -571,6 +572,25 @@ function WidgetCardBody({
         data={data}
         columns={columns}
         numericCols={numericCols}
+        filters={filters}
+        setFilters={setFilters}
+        onConfigure={onConfigure}
+        onShowSource={onShowSource}
+        dragProps={dragProps}
+        sizeControls={sizeControls}
+        animationDelay={animationDelay}
+      />
+    );
+  }
+
+  if (w.type === "box-plot") {
+    return (
+      <BoxPlotWidgetBody
+        widget={w}
+        data={data}
+        columns={columns}
+        numericCols={numericCols}
+        groupableCols={groupableCols}
         filters={filters}
         setFilters={setFilters}
         onConfigure={onConfigure}

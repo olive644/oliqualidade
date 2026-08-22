@@ -418,6 +418,87 @@ export function histogramBins(rows: Row[], valueKey: string, binCount?: number):
   }));
 }
 
+export type BoxPlotStats = {
+  name: string;
+  /** Menor valor dentro da cerca inferior (não é necessariamente o mínimo bruto — valores abaixo da cerca são outliers, não whisker). */
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  /** Maior valor dentro da cerca superior. */
+  max: number;
+  /** Valores fora de [Q1 − 1.5×IQR, Q3 + 1.5×IQR] — o critério clássico de Tukey. */
+  outliers: number[];
+  count: number;
+  sourceRowIndexes?: number[];
+};
+
+/**
+ * Mediana de uma lista já ordenada. Extraída à parte porque `boxPlotStats`
+ * usa a mesma conta três vezes (mediana geral, Q1 da metade de baixo, Q3 da
+ * metade de cima).
+ */
+function medianOfSorted(sorted: number[]): number {
+  const n = sorted.length;
+  if (!n) return 0;
+  const mid = Math.floor(n / 2);
+  return n % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
+
+/**
+ * Resumo de cinco números (mínimo, quartis, mediana, máximo) por categoria,
+ * mais os valores fora da cerca de Tukey — para responder "como os valores
+ * estão distribuídos" com foco em espalhamento e valores fora da curva, o
+ * que média/soma por categoria esconde.
+ *
+ * Q1/Q3 pelo método clássico (Moore & McCabe): a mediana geral divide a
+ * série ordenada ao meio; com quantidade ímpar de valores, a própria mediana
+ * fica de fora das duas metades. Q1 é a mediana da metade de baixo, Q3 a da
+ * metade de cima.
+ */
+export function boxPlotStats(rows: Row[], groupKey: string, valueKey: string): BoxPlotStats[] {
+  const buckets = new Map<string, { value: number; sourceRowIndex: number | null }[]>();
+  for (const row of rows) {
+    const name = writtenGroupLabel(row[groupKey]);
+    if (name === null) continue;
+    const value = parseNumericValue(row[valueKey]);
+    if (value === null) continue;
+    if (!buckets.has(name)) buckets.set(name, []);
+    buckets.get(name)!.push({ value, sourceRowIndex: sourceRowIndexOf(row) });
+  }
+
+  const result: BoxPlotStats[] = [];
+  for (const [name, entries] of buckets) {
+    const sortedEntries = [...entries].sort((a, b) => a.value - b.value);
+    const values = sortedEntries.map((e) => e.value);
+    const half = Math.floor(values.length / 2);
+    const lowerHalf = values.slice(0, half);
+    const upperHalf = values.length % 2 === 0 ? values.slice(half) : values.slice(half + 1);
+    const q1 = medianOfSorted(lowerHalf.length ? lowerHalf : values);
+    const q3 = medianOfSorted(upperHalf.length ? upperHalf : values);
+    const iqr = q3 - q1;
+    const lowerFence = q1 - 1.5 * iqr;
+    const upperFence = q3 + 1.5 * iqr;
+    const inliers = sortedEntries.filter((e) => e.value >= lowerFence && e.value <= upperFence);
+    const outliers = sortedEntries.filter((e) => e.value < lowerFence || e.value > upperFence);
+    const sourceRowIndexes = entries
+      .map((e) => e.sourceRowIndex)
+      .filter((index): index is number => index !== null);
+    result.push({
+      name,
+      min: inliers.length ? inliers[0]!.value : values[0]!,
+      q1,
+      median: medianOfSorted(values),
+      q3,
+      max: inliers.length ? inliers[inliers.length - 1]!.value : values[values.length - 1]!,
+      outliers: outliers.map((e) => e.value),
+      count: values.length,
+      ...(sourceRowIndexes.length ? { sourceRowIndexes } : {}),
+    });
+  }
+  return result;
+}
+
 export const MAX_RENDERED_CHART_POINTS = 600;
 
 export type RenderableChartSeries<T> = {

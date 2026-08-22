@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import {
   Activity,
   AlertTriangle,
+  AlignVerticalDistributeCenter,
   ArrowLeft,
   ArrowRight,
   BarChart2,
@@ -319,6 +320,8 @@ export const widgetTypeDescriptions: Record<WidgetType, string> = {
   ranking: "Ordena e exibe os maiores resultados.",
   radar: "Compara as maiores categorias em um gráfico de eixos radiais.",
   histogram: "Mostra como os valores de uma coluna numérica estão distribuídos, em faixas.",
+  "box-plot":
+    "Compara a distribuição (mínimo, quartis, mediana, máximo e valores fora da curva) entre categorias.",
   rating: "Transforma uma média numérica em uma nota visual.",
   map: "Distribui os resultados por cidade, estado ou país.",
   insights:
@@ -347,6 +350,7 @@ export function WidgetPickerIcon({ type }: { type: WidgetType }) {
   if (type === "ranking") return <ListOrdered className={className} />;
   if (type === "radar") return <RadarIcon className={className} />;
   if (type === "histogram") return <BarChart2 className={className} />;
+  if (type === "box-plot") return <AlignVerticalDistributeCenter className={className} />;
   if (type === "rating") return <Star className={className} />;
   if (type === "map") return <MapPin className={className} />;
   if (type === "insights") return <Sparkles className={className} />;
