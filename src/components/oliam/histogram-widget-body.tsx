@@ -1,3 +1,4 @@
+import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
 import { useState, type CSSProperties } from "react";
 import { BarChart2 } from "lucide-react";
 import {
@@ -19,7 +20,6 @@ import { barChartPresentation, histogramBins, pieComparisonFor } from "@/lib/dat
 import {
   FieldDropSlot,
   SeriesComparisonPanel,
-  sourceRowIndexesOf,
   WidgetHead,
   WidgetMetricStrip,
   type WidgetDragProps,
