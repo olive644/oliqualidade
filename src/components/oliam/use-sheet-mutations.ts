@@ -30,7 +30,13 @@ export function useSheetMutations(p: {
 
   const setColumns = (columns: Column[]) => {
     recordHistory();
-    updateSheet({ columns });
+    const intelligence = analyzeSpreadsheet(
+      sheet.rows,
+      columns,
+      undefined,
+      sheet.semanticOverrides,
+    );
+    updateSheet({ columns, intelligence });
   };
 
   const setSemanticOverride = (
