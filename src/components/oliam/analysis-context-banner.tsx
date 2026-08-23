@@ -6,6 +6,8 @@
  * exportação — só aparecia no PDF/PNG gerado, nunca durante o uso normal do
  * painel. Este componente é a versão que fica na tela o tempo todo.
  */
+import type { AnalysisTrustSummary } from "@/lib/analysis-trust";
+
 export function AnalysisContextBanner({
   fileName,
   sheetName,
@@ -13,7 +15,7 @@ export function AnalysisContextBanner({
   totalRowCount,
   periodLabel,
   filterCount,
-  planConfidence,
+  trust,
 }: {
   fileName: string;
   sheetName: string;
@@ -21,7 +23,7 @@ export function AnalysisContextBanner({
   totalRowCount: number;
   periodLabel: string | null;
   filterCount: number;
-  planConfidence: number | undefined;
+  trust: AnalysisTrustSummary;
 }) {
   const filtered = rowCount < totalRowCount;
   return (
@@ -40,11 +42,28 @@ export function AnalysisContextBanner({
           {filterCount} {filterCount === 1 ? "filtro ativo" : "filtros ativos"}
         </span>
       )}
-      {planConfidence !== undefined && (
-        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-          {planConfidence}% de confiança no painel sugerido
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 font-mono text-[10px] text-muted-foreground">
+        {trust.recommendationConfidence !== null && (
+          <span title="Adequação das visualizações recomendadas. Não é uma nota de qualidade dos dados.">
+            Sugestões: {trust.recommendationConfidence}%
+          </span>
+        )}
+        <span title="Confiança na identificação do papel e da unidade das colunas.">
+          Significados: {trust.semanticConfidence}%
         </span>
-      )}
+        <span
+          className={trust.pendingExceptionCount > 0 ? "text-amber-600" : undefined}
+          title="Inconsistências ainda não revisadas na leitura atual."
+        >
+          {trust.pendingExceptionCount === 0
+            ? "Sem pendências detectadas"
+            : `${trust.pendingExceptionCount} ${trust.pendingExceptionCount === 1 ? "pendência" : "pendências"}${
+                trust.criticalExceptionCount > 0
+                  ? `, ${trust.criticalExceptionCount} ${trust.criticalExceptionCount === 1 ? "crítica" : "críticas"}`
+                  : ""
+              }`}
+        </span>
+      </div>
     </div>
   );
 }
