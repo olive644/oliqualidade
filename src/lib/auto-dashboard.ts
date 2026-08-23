@@ -1,4 +1,5 @@
 import type { ColumnDiagnostic, ImportDiagnostics } from "@/lib/import-intelligence";
+import { parseNumericValue } from "@/lib/format";
 import type { ChartAggregationOp, Column, Row, Widget, WidgetType } from "@/lib/types";
 import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
@@ -33,6 +34,8 @@ export type DashboardRecommendation = {
   metricKey?: string;
   groupKey?: string;
   valueKey?: string;
+  /** Segunda coluna numérica — usada só pela dispersão (eixo Y), que cruza duas métricas em vez de agrupar uma. */
+  valueKey2?: string;
   op?: ChartAggregationOp;
   topN?: number;
   blockKey?: string;
@@ -92,6 +95,92 @@ const GEO_NAME =
  * mesma ordem, então a recomendação automática nem chega a propor ranking.
  */
 const RANKING_TOP_N = 5;
+const MIN_HISTOGRAM_VALUES = 20;
+const MIN_HISTOGRAM_DISTINCT_VALUES = 5;
+const MIN_SCATTER_PAIRS = 8;
+const MIN_SCATTER_DISTINCT_VALUES = 3;
+const MIN_BOX_GROUP_VALUES = 4;
+const MAX_AUTOMATIC_VISUALIZATIONS = 8;
+
+const VISUALIZATION_PRIORITY: Partial<Record<WidgetType, number>> = {
+  area: 100,
+  line: 100,
+  bar: 95,
+  map: 95,
+  histogram: 92,
+  scatter: 92,
+  "box-plot": 90,
+  pareto: 88,
+  "matrix-heatmap": 86,
+  ranking: 80,
+  pie: 70,
+};
+
+function numericValues(rows: Row[], key: string): number[] {
+  return rows
+    .map((row) => parseNumericValue(row[key]))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+}
+
+function scatterPairs(rows: Row[], firstKey: string, secondKey: string) {
+  return rows.flatMap((row) => {
+    const first = parseNumericValue(row[firstKey]);
+    const second = parseNumericValue(row[secondKey]);
+    return first !== null && second !== null && Number.isFinite(first) && Number.isFinite(second)
+      ? [{ first, second }]
+      : [];
+  });
+}
+
+function boxGroups(rows: Row[], groupKey: string, valueKey: string): Map<string, number[]> {
+  const groups = new Map<string, number[]>();
+  for (const row of rows) {
+    const group = row[groupKey];
+    const value = parseNumericValue(row[valueKey]);
+    if (group === null || group === undefined || group === "" || value === null) continue;
+    const key = String(group);
+    groups.set(key, [...(groups.get(key) ?? []), value]);
+  }
+  return groups;
+}
+
+function supportsPareto(rows: Row[], groupKey: string, valueKey: string): boolean {
+  const groups = boxGroups(rows, groupKey, valueKey);
+  const values = [...groups.values()].flat();
+  return (
+    groups.size > RANKING_TOP_N &&
+    values.length >= groups.size &&
+    values.some((value) => value > 0) &&
+    values.every((value) => value >= 0)
+  );
+}
+
+function limitAutomaticVisualizations(
+  recommendations: DashboardRecommendation[],
+): DashboardRecommendation[] {
+  const visualizations = recommendations
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.kind === "visualization");
+  if (visualizations.length <= MAX_AUTOMATIC_VISUALIZATIONS) return recommendations;
+
+  const keep = new Set(
+    [...visualizations]
+      .sort((a, b) => {
+        const primaryDelta = Number(b.item.primary) - Number(a.item.primary);
+        if (primaryDelta !== 0) return primaryDelta;
+        const priorityDelta =
+          (VISUALIZATION_PRIORITY[b.item.widgetType] ?? 50) -
+          (VISUALIZATION_PRIORITY[a.item.widgetType] ?? 50);
+        if (priorityDelta !== 0) return priorityDelta;
+        const confidenceDelta = b.item.confidence - a.item.confidence;
+        return confidenceDelta !== 0 ? confidenceDelta : a.index - b.index;
+      })
+      .slice(0, MAX_AUTOMATIC_VISUALIZATIONS)
+      .map(({ item }) => item.id),
+  );
+
+  return recommendations.filter((item) => item.kind !== "visualization" || keep.has(item.id));
+}
 
 function clampScore(value: number): number {
   return Math.round(Math.max(0, Math.min(100, value)));
@@ -484,6 +573,62 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
     );
   }
 
+  // O histograma só entra quando a própria métrica possui amostra numérica
+  // e variedade suficientes. Contar linhas da planilha incluía nulos/textos
+  // e criava histogramas vazios ou de uma única barra.
+  if (primaryMetric) {
+    const values = numericValues(input.rows, primaryMetric.key);
+    const distinctValues = new Set(values).size;
+    if (values.length >= MIN_HISTOGRAM_VALUES && distinctValues >= MIN_HISTOGRAM_DISTINCT_VALUES) {
+      recommendations.push(
+        recommendation(input, {
+          id: slug("histograma", primaryMetric.key),
+          kind: "visualization",
+          title: `Distribuição de ${primaryMetric.label}`,
+          widgetType: "histogram",
+          valueKey: primaryMetric.key,
+          columns: [primaryMetric.key],
+          baseConfidence: 80,
+          reasons: [
+            `"${primaryMetric.label}" tem ${values.length} valores numéricos válidos e ${distinctValues} valores distintos, volume suficiente para revelar a distribuição.`,
+          ],
+        }),
+      );
+    }
+  }
+
+  // A dispersão precisa de pares válidos na mesma linha e variação nos dois
+  // eixos; duas colunas numéricas, sozinhas, não garantem correlação legível.
+  if (metrics.length >= 2) {
+    const [first, second] = [...metrics].sort((a, b) => b.confidence - a.confidence);
+    if (first && second) {
+      const pairs = scatterPairs(input.rows, first.key, second.key);
+      const firstDistinct = new Set(pairs.map((pair) => pair.first)).size;
+      const secondDistinct = new Set(pairs.map((pair) => pair.second)).size;
+      if (
+        pairs.length >= MIN_SCATTER_PAIRS &&
+        firstDistinct >= MIN_SCATTER_DISTINCT_VALUES &&
+        secondDistinct >= MIN_SCATTER_DISTINCT_VALUES
+      ) {
+        recommendations.push(
+          recommendation(input, {
+            id: slug("dispersao", first.key, second.key),
+            kind: "visualization",
+            title: `${first.label} × ${second.label}`,
+            widgetType: "scatter",
+            valueKey: first.key,
+            valueKey2: second.key,
+            columns: [first.key, second.key],
+            baseConfidence: 76,
+            reasons: [
+              `"${first.label}" e "${second.label}" têm ${pairs.length} pares numéricos válidos e variação nos dois eixos para investigar correlação.`,
+            ],
+          }),
+        );
+      }
+    }
+  }
+
   if (primaryMetric) {
     dimensions.slice(0, 2).forEach((dimension, index) => {
       const cardinality = distinctCount(input.rows, dimension.key);
@@ -539,6 +684,66 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
             ],
           }),
         );
+
+        // Pareto responde uma pergunta diferente do ranking: não "quem
+        // lidera" e sim "quantas causas concentram a maior parte do
+        // resultado". Só para a primeira dimensão (a que já ganhou
+        // ranking/barra), e com um teto de cardinalidade — acima disso o
+        // gráfico vira ruído mesmo com a rolagem horizontal.
+        if (
+          index === 0 &&
+          cardinality <= 40 &&
+          supportsPareto(input.rows, dimension.key, primaryMetric.key)
+        ) {
+          recommendations.push(
+            recommendation(input, {
+              id: slug("pareto", dimension.key, primaryMetric.key),
+              kind: "visualization",
+              title: `Pareto de ${primaryMetric.label} por ${dimension.label}`,
+              widgetType: "pareto",
+              groupKey: dimension.key,
+              valueKey: primaryMetric.key,
+              op: "sum",
+              columns: [dimension.key, primaryMetric.key],
+              baseConfidence: 78,
+              reasons: [
+                `Mostra quantas das ${cardinality} categorias de "${dimension.label}" concentram 80% de "${primaryMetric.label}". Essa leitura destaca contribuições dominantes e difere do ranking, que mostra quem lidera.`,
+              ],
+            }),
+          );
+        }
+      }
+
+      // Box plot compara a variabilidade de uma métrica entre poucas
+      // categorias (mesma faixa de cardinalidade da pizza), mas só faz
+      // sentido quando cada categoria tem repetições suficientes para
+      // calcular quartis de verdade — com 1 ou 2 linhas por categoria, o
+      // "box" seria só um traço sem informação além do que a barra já mostra.
+      if (index === 0 && cardinality >= 2 && cardinality <= 8 && !isGeo) {
+        const groups = boxGroups(input.rows, dimension.key, primaryMetric.key);
+        const allGroupsSupportQuartiles =
+          groups.size === cardinality &&
+          [...groups.values()].every(
+            (values) => values.length >= MIN_BOX_GROUP_VALUES && new Set(values).size >= 2,
+          );
+        if (allGroupsSupportQuartiles) {
+          const smallestGroup = Math.min(...[...groups.values()].map((values) => values.length));
+          recommendations.push(
+            recommendation(input, {
+              id: slug("variabilidade", dimension.key, primaryMetric.key),
+              kind: "visualization",
+              title: `Variabilidade de ${primaryMetric.label} por ${dimension.label}`,
+              widgetType: "box-plot",
+              groupKey: dimension.key,
+              valueKey: primaryMetric.key,
+              columns: [dimension.key, primaryMetric.key],
+              baseConfidence: 80,
+              reasons: [
+                `Todas as ${cardinality} categorias de "${dimension.label}" têm ao menos ${smallestGroup} valores numéricos e variação para comparar quartis e pontos fora da curva.`,
+              ],
+            }),
+          );
+        }
       }
 
       if (cardinality >= 2 && cardinality <= 8 && !isGeo) {
@@ -695,15 +900,25 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
       `A importação possui confiança baixa (${input.diagnostics.confidence}%). Revise a estrutura antes de publicar o dashboard.`,
     );
   }
-  const confidence = recommendations.length
+  const limitedRecommendations = limitAutomaticVisualizations(recommendations);
+  const omittedVisualizationCount =
+    recommendations.filter((item) => item.kind === "visualization").length -
+    limitedRecommendations.filter((item) => item.kind === "visualization").length;
+  if (omittedVisualizationCount > 0) {
+    planWarnings.push(
+      `${omittedVisualizationCount} visualização(ões) complementar(es) não foi(ram) adicionada(s) automaticamente para manter o painel legível; elas continuam disponíveis no botão "Widget".`,
+    );
+  }
+  const confidence = limitedRecommendations.length
     ? clampScore(
-        recommendations.reduce((sum, item) => sum + item.confidence, 0) / recommendations.length,
+        limitedRecommendations.reduce((sum, item) => sum + item.confidence, 0) /
+          limitedRecommendations.length,
       )
     : 0;
 
   return {
     classifications,
-    recommendations,
+    recommendations: limitedRecommendations,
     confidence,
     reasons: [
       `${metrics.length} métrica(s), ${dimensions.length} dimensão(ões) e ${temporal.length} dimensão(ões) temporal(is) identificada(s).`,
@@ -721,6 +936,7 @@ export function recommendationToWidget(
   const seed = {
     ...(item.groupKey ? { groupKey: item.groupKey } : {}),
     ...((item.valueKey ?? item.metricKey) ? { valueKey: item.valueKey ?? item.metricKey } : {}),
+    ...(item.valueKey2 ? { valueKey2: item.valueKey2 } : {}),
     ...(item.op ? { op: item.op } : {}),
   };
   const widget = createWidget(item.widgetType, columns, seed, rows);

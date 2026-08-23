@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { ChartBarDecreasing as ParetoIcon } from "lucide-react";
 import {
   Bar,
   CartesianGrid,
   Cell,
   ComposedChart,
+  LabelList,
   Line,
   ReferenceLine,
   ResponsiveContainer,
@@ -16,9 +17,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type FilterRule, type Row, type Widget } from "@/lib/types";
 import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
-import { fmt } from "@/lib/format";
+import { conditionalColor, fmt } from "@/lib/format";
 import {
   aggregationLabels,
+  barChartPresentation,
   paretoSeries,
   relevantAggregationOps,
   semanticAggregationOps,
@@ -31,12 +33,14 @@ import {
   compactAxisValue,
   FieldDropSlot,
   FilterChip,
+  WidgetDetailStrip,
   WidgetHead,
   WidgetMetricStrip,
   type WidgetDragProps,
   type WidgetMetric,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
+import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
 
 const PARETO_THRESHOLD = 0.8;
 
@@ -72,6 +76,8 @@ export function ParetoWidgetBody({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const displayedIndex = activeIndex ?? selectedIndex;
+  const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
+    useChartHorizontalScroll();
 
   const groupCol = columns.find((c) => c.key === w.groupKey);
   const configuredValueCol = columns.find((c) => c.key === w.valueKey);
@@ -101,6 +107,7 @@ export function ParetoWidgetBody({
 
   const summaryIndex = displayedIndex ?? (series.length ? 0 : null);
   const selectedEntry = summaryIndex !== null ? series[summaryIndex] : null;
+  const barPresentation = barChartPresentation(series.length);
 
   const metrics: WidgetMetric[] =
     groupCol && valueCol && series.length
@@ -184,7 +191,7 @@ export function ParetoWidgetBody({
             ? `Nenhuma categoria de "${groupCol.label}" tem contribuição positiva para montar o Pareto.`
             : vitalFewCount > 0
               ? `${vitalFewCount} de ${series.length} categorias de "${groupCol.label}" concentram 80% de "${valueCol.label}".`
-              : `Nem somando todas as ${series.length} categorias de "${groupCol.label}" o acumulado chega a 80% de "${valueCol.label}" — a contribuição está bem distribuída, sem poucas causas dominantes.`}
+              : `Nem somando todas as ${series.length} categorias de "${groupCol.label}" o acumulado chega a 80% de "${valueCol.label}". A contribuição está bem distribuída e não há poucas categorias dominantes.`}
         </p>
       )}
       {!groupCol || !valueCol || series.length === 0 ? (
@@ -195,141 +202,191 @@ export function ParetoWidgetBody({
         </p>
       ) : (
         <>
-          <div className="h-64 p-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 24 }}>
-                <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.6} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
-                  tickLine={false}
-                  axisLine={{ stroke: "var(--border)" }}
-                  interval={0}
-                  angle={series.length > 6 ? -30 : 0}
-                  textAnchor={series.length > 6 ? "end" : "middle"}
-                  height={series.length > 6 ? 44 : 24}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={44}
-                  tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  domain={[0, 100]}
-                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={36}
-                  tickFormatter={(value: number) => `${value}%`}
-                />
-                <ChartTooltip
-                  cursor={{ fill: "var(--muted)", opacity: 0.35 }}
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
-                    fontSize: 12,
-                  }}
-                  formatter={(value: number, name: string) =>
-                    name === "cumulativePercent"
-                      ? [`${value.toFixed(1)}%`, "Acumulado"]
-                      : [fmt(value, valueCol.kind), aggregationLabels[op]]
-                  }
-                />
-                <ReferenceLine
-                  yAxisId="right"
-                  y={80}
-                  stroke="var(--destructive)"
-                  strokeDasharray="4 4"
-                  label={{
-                    value: "80%",
-                    position: "insideTopLeft",
-                    fontSize: 10,
-                    fill: "var(--destructive)",
-                  }}
-                />
-                <Bar
-                  yAxisId="left"
-                  dataKey="total"
-                  radius={4}
-                  onClick={(_, i) => setSelectedIndex((current) => (current === i ? null : i))}
-                  onMouseEnter={(_, i) => setActiveIndex(i)}
-                  onMouseLeave={() => setActiveIndex(null)}
-                >
-                  {series.map((_, i) => (
-                    <Cell
-                      key={i}
-                      fill="var(--primary)"
-                      opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
-                      className="cursor-pointer"
-                    />
-                  ))}
-                </Bar>
-                <Line
-                  yAxisId="right"
-                  dataKey="cumulativePercent"
-                  stroke="var(--secondary-accent)"
-                  strokeWidth={2}
-                  dot={{ r: 3, fill: "var(--secondary-accent)" }}
-                  isAnimationActive={false}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-          {selectedEntry && (
-            <div className="oliam-panel-enter flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
-              <div className="min-w-32 flex-[2] basis-40">
-                <p className="truncate text-sm font-semibold" title={selectedEntry.name}>
-                  {selectedEntry.name}
-                </p>
-                <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
-                  Posição {(summaryIndex ?? 0) + 1} de {series.length}
-                </p>
-              </div>
-              <div className="min-w-28 flex-1 basis-28">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {aggregationLabels[op]}
-                </p>
-                <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-                  {fmt(selectedEntry.total, valueCol.kind)}
-                </p>
-              </div>
-              <div className="min-w-28 flex-1 basis-28">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Acumulado até aqui
-                </p>
-                <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-                  {selectedEntry.cumulativePercent.toFixed(1)}%
-                </p>
-              </div>
-              {selectedEntry.sourceRowIndexes?.length ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    onShowSource(selectedEntry.sourceRowIndexes!, valueCol.key, selectedEntry.name)
-                  }
-                >
-                  Ver linhas de origem
-                </Button>
-              ) : null}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setFilters(toggleClickFilter(filters, groupCol.key, selectedEntry.name))
-                }
+          <div className="relative">
+            <div
+              ref={barPresentation.scrollable ? chartScrollRef : undefined}
+              className={cn(
+                "h-64 overflow-x-auto overflow-y-hidden p-4",
+                barPresentation.scrollable && "oliam-chart-drag-scroll",
+              )}
+              onPointerDown={barPresentation.scrollable ? handleChartScrollPointerDown : undefined}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: barPresentation.scrollable ? barPresentation.contentWidth : "100%",
+                  minWidth: "100%",
+                }}
               >
-                {isCategoryFilterActive(selectedEntry.name)
-                  ? "Remover filtro desta categoria"
-                  : "Filtrar por esta categoria"}
-              </Button>
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={series} margin={{ top: 20, right: 12, left: 4, bottom: 24 }}>
+                    <defs>
+                      <linearGradient id={`bar-grad-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={1} />
+                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.55} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.6} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+                      tickLine={false}
+                      axisLine={{ stroke: "var(--border)" }}
+                      interval={0}
+                      angle={series.length > 6 ? -30 : 0}
+                      textAnchor={series.length > 6 ? "end" : "middle"}
+                      height={series.length > 6 ? 44 : 24}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={44}
+                      tickFormatter={(value: number) => compactAxisValue(value, valueCol.kind)}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      domain={[0, 100]}
+                      tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={36}
+                      tickFormatter={(value: number) => `${value}%`}
+                    />
+                    <ChartTooltip
+                      cursor={{ fill: "var(--muted)", opacity: 0.35 }}
+                      contentStyle={{
+                        background: "var(--popover)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        fontSize: 12,
+                      }}
+                      formatter={(value: number, name: string) =>
+                        name === "cumulativePercent"
+                          ? [`${value.toFixed(1)}%`, "Acumulado"]
+                          : [fmt(value, valueCol.kind), aggregationLabels[op]]
+                      }
+                    />
+                    <ReferenceLine
+                      yAxisId="right"
+                      y={80}
+                      stroke="var(--destructive)"
+                      strokeDasharray="4 4"
+                      label={{
+                        value: "80%",
+                        position: "insideTopLeft",
+                        fontSize: 10,
+                        fill: "var(--destructive)",
+                      }}
+                    />
+                    <Bar
+                      yAxisId="left"
+                      dataKey="total"
+                      fill={`url(#bar-grad-${w.id})`}
+                      radius={4}
+                      onClick={(_, i) => setSelectedIndex((current) => (current === i ? null : i))}
+                      onMouseEnter={(_, i) => setActiveIndex(i)}
+                      onMouseLeave={() => setActiveIndex(null)}
+                      cursor="pointer"
+                      isAnimationActive={false}
+                    >
+                      {series.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          className="oliam-chart-bar-cell"
+                          fill={
+                            conditionalColor(
+                              entry.total,
+                              valueCol.kind,
+                              valueCol.conditionalFormat,
+                            ) ?? `url(#bar-grad-${w.id})`
+                          }
+                          opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
+                          stroke={displayedIndex === i ? "var(--primary)" : "none"}
+                          strokeWidth={displayedIndex === i ? 1 : 0}
+                          style={
+                            {
+                              "--oliam-bar-delay": `${Math.min(i, 14) * 42}ms`,
+                              filter: displayedIndex === i ? "brightness(1.08)" : "none",
+                            } as CSSProperties
+                          }
+                        />
+                      ))}
+                      <LabelList
+                        dataKey="total"
+                        position="top"
+                        fontSize={10}
+                        fill="var(--muted-foreground)"
+                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                      />
+                    </Bar>
+                    <Line
+                      yAxisId="right"
+                      dataKey="cumulativePercent"
+                      stroke="var(--secondary-accent)"
+                      strokeWidth={2}
+                      dot={{ r: 3, fill: "var(--secondary-accent)" }}
+                      isAnimationActive={false}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
+            {barPresentation.scrollable && <ChartScrollButtons label="gráfico de Pareto" />}
+          </div>
+          {barPresentation.scrollable && (
+            <p className="border-t border-border/70 bg-card px-4 py-1 text-center text-[10px] text-muted-foreground">
+              {series.length} categorias · use as setas, arraste ou role para os lados para ver
+              todas
+            </p>
+          )}
+          {selectedEntry && (
+            <WidgetDetailStrip
+              title={selectedEntry.name}
+              subtitle={`Posição ${(summaryIndex ?? 0) + 1} de ${series.length}`}
+              fields={[
+                {
+                  label: aggregationLabels[op],
+                  value: String(fmt(selectedEntry.total, valueCol.kind)),
+                },
+                {
+                  label: "Acumulado até aqui",
+                  value: `${selectedEntry.cumulativePercent.toFixed(1)}%`,
+                },
+              ]}
+              actions={
+                <>
+                  {selectedEntry.sourceRowIndexes?.length ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        onShowSource(
+                          selectedEntry.sourceRowIndexes!,
+                          valueCol.key,
+                          selectedEntry.name,
+                        )
+                      }
+                    >
+                      Ver linhas de origem
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setFilters(toggleClickFilter(filters, groupCol.key, selectedEntry.name))
+                    }
+                  >
+                    {isCategoryFilterActive(selectedEntry.name)
+                      ? "Remover filtro desta categoria"
+                      : "Filtrar por esta categoria"}
+                  </Button>
+                </>
+              }
+            />
           )}
         </>
       )}

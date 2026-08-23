@@ -4,17 +4,19 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type FilterRule, type Row, type Widget } from "@/lib/types";
 import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
-import { fmt } from "@/lib/format";
+import { conditionalColor, fmt } from "@/lib/format";
 import { boxPlotStats, countMissingGroupRows, toggleClickFilter } from "@/lib/data-pipeline";
 import {
   FieldDropSlot,
   FilterChip,
+  WidgetDetailStrip,
   WidgetHead,
   WidgetMetricStrip,
   type WidgetDragProps,
   type WidgetMetric,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
+import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
 
 const CHART_HEIGHT = 220;
 const TOP_PAD = 16;
@@ -22,6 +24,8 @@ const BOTTOM_PAD = 28;
 const LEFT_PAD = 44;
 const SLOT_WIDTH = 100;
 const BOX_WIDTH = 44;
+/** Acima disso, o SVG passa a ter largura fixa maior que o card e rola na horizontal — mesmo limiar usado pelo gráfico de barras (ver barChartPresentation). */
+const SCROLL_THRESHOLD = 8;
 
 export function BoxPlotWidgetBody({
   widget: w,
@@ -53,6 +57,8 @@ export function BoxPlotWidgetBody({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const displayedIndex = activeIndex ?? selectedIndex;
+  const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
+    useChartHorizontalScroll();
 
   const groupCol = columns.find((c) => c.key === w.groupKey);
   const configuredValueCol = columns.find((c) => c.key === w.valueKey);
@@ -165,173 +171,185 @@ export function BoxPlotWidgetBody({
         </p>
       ) : (
         <>
-          <div className="h-64 overflow-x-auto p-4">
-            <svg
-              viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}
-              width={Math.max(300, chartWidth)}
-              height={CHART_HEIGHT}
-              role="img"
-              aria-label={`Box plot de ${valueCol.label} por ${groupCol.label}`}
+          <div className="relative">
+            <div
+              ref={boxes.length > SCROLL_THRESHOLD ? chartScrollRef : undefined}
+              className={cn(
+                "h-64 overflow-x-auto p-4",
+                boxes.length > SCROLL_THRESHOLD && "oliam-chart-drag-scroll",
+              )}
+              onPointerDown={
+                boxes.length > SCROLL_THRESHOLD ? handleChartScrollPointerDown : undefined
+              }
             >
-              {tickValues.map((value, i) => (
-                <g key={i}>
-                  <line
-                    x1={LEFT_PAD}
-                    x2={chartWidth}
-                    y1={yFor(value)}
-                    y2={yFor(value)}
-                    stroke="var(--border)"
-                    strokeOpacity={0.5}
-                  />
-                  <text
-                    x={LEFT_PAD - 6}
-                    y={yFor(value)}
-                    textAnchor="end"
-                    dominantBaseline="middle"
-                    fontSize={9}
-                    fill="var(--muted-foreground)"
-                  >
-                    {fmt(value, valueCol.kind)}
-                  </text>
-                </g>
-              ))}
-              {boxes.map((box, i) => {
-                const slotX = LEFT_PAD + i * SLOT_WIDTH + SLOT_WIDTH / 2;
-                const isDisplayed = displayedIndex === null || displayedIndex === i;
-                return (
-                  <g
-                    key={box.name}
-                    opacity={isDisplayed ? 1 : 0.4}
-                    className="cursor-pointer"
-                    onMouseEnter={() => setActiveIndex(i)}
-                    onMouseLeave={() => setActiveIndex(null)}
-                    onClick={() => setSelectedIndex((current) => (current === i ? null : i))}
-                  >
+              <svg
+                viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}
+                width={Math.max(300, chartWidth)}
+                height={CHART_HEIGHT}
+                role="img"
+                aria-label={`Box plot de ${valueCol.label} por ${groupCol.label}`}
+              >
+                {tickValues.map((value, i) => (
+                  <g key={i}>
                     <line
-                      x1={slotX}
-                      x2={slotX}
-                      y1={yFor(box.max)}
-                      y2={yFor(box.min)}
-                      stroke="var(--muted-foreground)"
-                      strokeWidth={1.5}
+                      x1={LEFT_PAD}
+                      x2={chartWidth}
+                      y1={yFor(value)}
+                      y2={yFor(value)}
+                      stroke="var(--border)"
+                      strokeOpacity={0.5}
                     />
-                    <line
-                      x1={slotX - BOX_WIDTH / 4}
-                      x2={slotX + BOX_WIDTH / 4}
-                      y1={yFor(box.max)}
-                      y2={yFor(box.max)}
-                      stroke="var(--muted-foreground)"
-                      strokeWidth={1.5}
-                    />
-                    <line
-                      x1={slotX - BOX_WIDTH / 4}
-                      x2={slotX + BOX_WIDTH / 4}
-                      y1={yFor(box.min)}
-                      y2={yFor(box.min)}
-                      stroke="var(--muted-foreground)"
-                      strokeWidth={1.5}
-                    />
-                    <rect
-                      x={slotX - BOX_WIDTH / 2}
-                      y={yFor(box.q3)}
-                      width={BOX_WIDTH}
-                      height={Math.max(1, yFor(box.q1) - yFor(box.q3))}
-                      fill="var(--primary)"
-                      fillOpacity={0.25}
-                      stroke="var(--primary)"
-                      strokeWidth={1.5}
-                      rx={2}
-                    />
-                    <line
-                      x1={slotX - BOX_WIDTH / 2}
-                      x2={slotX + BOX_WIDTH / 2}
-                      y1={yFor(box.median)}
-                      y2={yFor(box.median)}
-                      stroke="var(--primary)"
-                      strokeWidth={2}
-                    />
-                    {box.outliers.map((value, oi) => (
-                      <circle
-                        key={oi}
-                        cx={slotX}
-                        cy={yFor(value)}
-                        r={2.5}
-                        fill="var(--destructive)"
-                        fillOpacity={0.75}
-                      />
-                    ))}
                     <text
-                      x={slotX}
-                      y={CHART_HEIGHT - BOTTOM_PAD + 16}
-                      textAnchor="middle"
+                      x={LEFT_PAD - 6}
+                      y={yFor(value)}
+                      textAnchor="end"
+                      dominantBaseline="middle"
                       fontSize={9}
                       fill="var(--muted-foreground)"
                     >
-                      {box.name.length > 12 ? `${box.name.slice(0, 11)}…` : box.name}
+                      {fmt(value, valueCol.kind)}
                     </text>
                   </g>
-                );
-              })}
-            </svg>
-          </div>
-          {selectedBox && (
-            <div className="oliam-panel-enter flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
-              <div className="min-w-32 flex-[2] basis-40">
-                <p className="truncate text-sm font-semibold" title={selectedBox.name}>
-                  {selectedBox.name}
-                </p>
-                <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
-                  {selectedBox.count.toLocaleString("pt-BR")}{" "}
-                  {selectedBox.count === 1 ? "registro" : "registros"}
-                  {selectedBox.outliers.length > 0 &&
-                    ` · ${selectedBox.outliers.length} fora da curva`}
-                </p>
-              </div>
-              <div className="min-w-24 flex-1 basis-24">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Mín · Q1
-                </p>
-                <p className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                  {fmt(selectedBox.min, valueCol.kind)} · {fmt(selectedBox.q1, valueCol.kind)}
-                </p>
-              </div>
-              <div className="min-w-24 flex-1 basis-24">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Mediana</p>
-                <p className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                  {fmt(selectedBox.median, valueCol.kind)}
-                </p>
-              </div>
-              <div className="min-w-24 flex-1 basis-24">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Q3 · Máx
-                </p>
-                <p className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                  {fmt(selectedBox.q3, valueCol.kind)} · {fmt(selectedBox.max, valueCol.kind)}
-                </p>
-              </div>
-              {selectedBox.sourceRowIndexes?.length ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    onShowSource(selectedBox.sourceRowIndexes!, valueCol.key, selectedBox.name)
-                  }
-                >
-                  Ver linhas de origem
-                </Button>
-              ) : null}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setFilters(toggleClickFilter(filters, groupCol.key, selectedBox.name))
-                }
-              >
-                {isCategoryFilterActive(selectedBox.name)
-                  ? "Remover filtro desta categoria"
-                  : "Filtrar por esta categoria"}
-              </Button>
+                ))}
+                {boxes.map((box, i) => {
+                  const slotX = LEFT_PAD + i * SLOT_WIDTH + SLOT_WIDTH / 2;
+                  const isDisplayed = displayedIndex === null || displayedIndex === i;
+                  // A mediana é o valor mais representativo da caixa — a cor
+                  // condicional (quando o usuário configurou uma regra pra
+                  // esta coluna) segue o mesmo critério que barra/pizza/ranking
+                  // já usam para colorir por valor, em vez de deixar as caixas
+                  // sempre na cor neutra do tema.
+                  const boxColor =
+                    conditionalColor(box.median, valueCol.kind, valueCol.conditionalFormat) ??
+                    "var(--primary)";
+                  return (
+                    <g
+                      key={box.name}
+                      opacity={isDisplayed ? 1 : 0.4}
+                      className="cursor-pointer"
+                      onMouseEnter={() => setActiveIndex(i)}
+                      onMouseLeave={() => setActiveIndex(null)}
+                      onClick={() => setSelectedIndex((current) => (current === i ? null : i))}
+                    >
+                      <line
+                        x1={slotX}
+                        x2={slotX}
+                        y1={yFor(box.max)}
+                        y2={yFor(box.min)}
+                        stroke="var(--muted-foreground)"
+                        strokeWidth={1.5}
+                      />
+                      <line
+                        x1={slotX - BOX_WIDTH / 4}
+                        x2={slotX + BOX_WIDTH / 4}
+                        y1={yFor(box.max)}
+                        y2={yFor(box.max)}
+                        stroke="var(--muted-foreground)"
+                        strokeWidth={1.5}
+                      />
+                      <line
+                        x1={slotX - BOX_WIDTH / 4}
+                        x2={slotX + BOX_WIDTH / 4}
+                        y1={yFor(box.min)}
+                        y2={yFor(box.min)}
+                        stroke="var(--muted-foreground)"
+                        strokeWidth={1.5}
+                      />
+                      <rect
+                        x={slotX - BOX_WIDTH / 2}
+                        y={yFor(box.q3)}
+                        width={BOX_WIDTH}
+                        height={Math.max(1, yFor(box.q1) - yFor(box.q3))}
+                        fill={boxColor}
+                        fillOpacity={0.25}
+                        stroke={boxColor}
+                        strokeWidth={1.5}
+                        rx={2}
+                      />
+                      <line
+                        x1={slotX - BOX_WIDTH / 2}
+                        x2={slotX + BOX_WIDTH / 2}
+                        y1={yFor(box.median)}
+                        y2={yFor(box.median)}
+                        stroke={boxColor}
+                        strokeWidth={2}
+                      />
+                      {box.outliers.map((value, oi) => (
+                        <circle
+                          key={oi}
+                          cx={slotX}
+                          cy={yFor(value)}
+                          r={2.5}
+                          fill="var(--destructive)"
+                          fillOpacity={0.75}
+                        />
+                      ))}
+                      <text
+                        x={slotX}
+                        y={CHART_HEIGHT - BOTTOM_PAD + 16}
+                        textAnchor="middle"
+                        fontSize={9}
+                        fill="var(--muted-foreground)"
+                      >
+                        {box.name.length > 12 ? `${box.name.slice(0, 11)}…` : box.name}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
             </div>
+            {boxes.length > SCROLL_THRESHOLD && <ChartScrollButtons label="box plot" />}
+          </div>
+          {boxes.length > SCROLL_THRESHOLD && (
+            <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+              {boxes.length.toLocaleString("pt-BR")} categorias · use as setas, arraste ou role para
+              os lados para ver todas
+            </p>
+          )}
+          {selectedBox && (
+            <WidgetDetailStrip
+              title={selectedBox.name}
+              subtitle={`${selectedBox.count.toLocaleString("pt-BR")} ${
+                selectedBox.count === 1 ? "registro" : "registros"
+              }${selectedBox.outliers.length > 0 ? ` · ${selectedBox.outliers.length} fora da curva` : ""}`}
+              fields={[
+                {
+                  label: "Mín · Q1",
+                  value: `${fmt(selectedBox.min, valueCol.kind)} · ${fmt(selectedBox.q1, valueCol.kind)}`,
+                },
+                { label: "Mediana", value: String(fmt(selectedBox.median, valueCol.kind)) },
+                {
+                  label: "Q3 · Máx",
+                  value: `${fmt(selectedBox.q3, valueCol.kind)} · ${fmt(selectedBox.max, valueCol.kind)}`,
+                },
+              ]}
+              actions={
+                <>
+                  {selectedBox.sourceRowIndexes?.length ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        onShowSource(selectedBox.sourceRowIndexes!, valueCol.key, selectedBox.name)
+                      }
+                    >
+                      Ver linhas de origem
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setFilters(toggleClickFilter(filters, groupCol.key, selectedBox.name))
+                    }
+                  >
+                    {isCategoryFilterActive(selectedBox.name)
+                      ? "Remover filtro desta categoria"
+                      : "Filtrar por esta categoria"}
+                  </Button>
+                </>
+              }
+            />
           )}
         </>
       )}

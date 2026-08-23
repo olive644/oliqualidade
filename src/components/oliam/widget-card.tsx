@@ -1,3 +1,4 @@
+import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
 import { Fragment, lazy, Suspense, useCallback, useRef, useState } from "react";
 import {
   Area,
@@ -156,7 +157,6 @@ import {
   CalculationButton,
   PieLegend,
   SeriesComparisonPanel,
-  sourceRowIndexesOf,
   TrendSummaryPanel,
   ChartDot,
   type ChartDotProps,

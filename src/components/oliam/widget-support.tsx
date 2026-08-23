@@ -830,25 +830,6 @@ export function PieLegend({
  * (bug real já corrigido para o pizza, ver `docs/CURRENT_STATE_AUDIT.md`,
  * seção 41). Qualquer novo uso deste componente herda a correção automaticamente.
  */
-/**
- * Linhas que produziram um ponto/balde de gráfico, seja ele agregado
- * (`sourceRowIndexes`, um por balde) ou bruto (`sourceRowIndex`, um por
- * linha) — os dois nomes que `groupAndAggregate`/`chartSeries` usam. Vazio
- * quando as linhas não vêm do pipeline real (`markSourceRows` nunca rodou),
- * o que também é o sinal para esconder o botão "Ver linhas de origem".
- */
-export function sourceRowIndexesOf(point: {
-  name: string;
-  total: number;
-  sourceRow?: number;
-  sourceRowIndex?: number;
-  sourceRowIndexes?: number[];
-}): number[] {
-  return (
-    point.sourceRowIndexes ?? (point.sourceRowIndex !== undefined ? [point.sourceRowIndex] : [])
-  );
-}
-
 export function SeriesComparisonPanel({
   selected,
   comparison,
@@ -972,6 +953,47 @@ export function SeriesComparisonPanel({
           {filterLabel}
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Painel de detalhe para widgets cujos campos não cabem na forma fixa de
+ * `SeriesComparisonPanel` (seleção/comparação com "o total") — box plot
+ * (cinco números), dispersão (X/Y de um ponto), Pareto (posição/acumulado).
+ * Mesma casca visual (classes, proporções, tipografia) que `SeriesComparisonPanel`
+ * já usa, só com uma lista de campos livre em vez de um formato fixo — os
+ * três continuam parecendo a mesma família de painel em vez de três
+ * variações levemente diferentes.
+ */
+export function WidgetDetailStrip({
+  title,
+  subtitle,
+  fields,
+  actions,
+}: {
+  title: string;
+  subtitle?: string;
+  fields: { label: string; value: string }[];
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="oliam-panel-enter flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
+      <div className="min-w-32 flex-[2] basis-40">
+        <p className="truncate text-sm font-semibold" title={title}>
+          {title}
+        </p>
+        {subtitle && (
+          <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">{subtitle}</p>
+        )}
+      </div>
+      {fields.map((field) => (
+        <div key={field.label} className="min-w-24 flex-1 basis-24">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{field.label}</p>
+          <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">{field.value}</p>
+        </div>
+      ))}
+      {actions}
     </div>
   );
 }

@@ -14,11 +14,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
-import { fmt } from "@/lib/format";
+import { conditionalColor, fmt } from "@/lib/format";
 import { linearTrend, pearsonCorrelation, scatterPoints } from "@/lib/data-pipeline";
 import {
   compactAxisValue,
   FieldDropSlot,
+  WidgetDetailStrip,
   WidgetHead,
   WidgetMetricStrip,
   type WidgetDragProps,
@@ -249,50 +250,71 @@ export function ScatterWidgetBody({
                 )}
                 <Scatter
                   data={points}
-                  fill="var(--primary)"
-                  fillOpacity={0.7}
                   onClick={(_, index) =>
                     setSelectedIndex((current) => (current === index ? null : index))
                   }
                   cursor="pointer"
+                  isAnimationActive={false}
+                  shape={(props: {
+                    cx?: number;
+                    cy?: number;
+                    payload?: { y?: number };
+                    index?: number;
+                  }) => {
+                    if (props.cx === undefined || props.cy === undefined) return <g />;
+                    // Mesmo critério de barra/pizza/ranking/box plot: a cor
+                    // condicional da coluna do eixo Y (o "resultado" que se
+                    // está avaliando), quando o usuário configurou uma regra
+                    // para ela.
+                    const color =
+                      conditionalColor(
+                        props.payload?.y ?? null,
+                        yCol.kind,
+                        yCol.conditionalFormat,
+                      ) ?? "var(--primary)";
+                    const isSelected = selectedIndex === props.index;
+                    return (
+                      <circle
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={isSelected ? 5 : 4}
+                        fill={color}
+                        fillOpacity={0.75}
+                        stroke={isSelected ? "var(--foreground)" : "none"}
+                        strokeWidth={isSelected ? 1.5 : 0}
+                      />
+                    );
+                  }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
           {selectedPoint && (
-            <div className="oliam-panel-enter flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
-              <div className="min-w-32 flex-1 basis-32">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {xCol.label}
-                </p>
-                <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-                  {fmt(selectedPoint.x, xCol.kind)}
-                </p>
-              </div>
-              <div className="min-w-32 flex-1 basis-32">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {yCol.label}
-                </p>
-                <p className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-                  {fmt(selectedPoint.y, yCol.kind)}
-                </p>
-              </div>
-              {selectedPoint.sourceRowIndex !== null && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    onShowSource(
-                      [selectedPoint.sourceRowIndex!],
-                      xCol.key,
-                      `${fmt(selectedPoint.x, xCol.kind)} / ${fmt(selectedPoint.y, yCol.kind)}`,
-                    )
-                  }
-                >
-                  Ver linhas de origem
-                </Button>
-              )}
-            </div>
+            <WidgetDetailStrip
+              title={`${fmt(selectedPoint.x, xCol.kind)} / ${fmt(selectedPoint.y, yCol.kind)}`}
+              subtitle="Ponto selecionado"
+              fields={[
+                { label: xCol.label, value: String(fmt(selectedPoint.x, xCol.kind)) },
+                { label: yCol.label, value: String(fmt(selectedPoint.y, yCol.kind)) },
+              ]}
+              actions={
+                selectedPoint.sourceRowIndex !== null ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      onShowSource(
+                        [selectedPoint.sourceRowIndex!],
+                        xCol.key,
+                        `${fmt(selectedPoint.x, xCol.kind)} / ${fmt(selectedPoint.y, yCol.kind)}`,
+                      )
+                    }
+                  >
+                    Ver linhas de origem
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
         </>
       )}

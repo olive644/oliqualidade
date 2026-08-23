@@ -379,7 +379,7 @@ export function scheduleItemColumn(
 export function createWidget(
   type: WidgetType,
   columns: Column[],
-  seed?: { groupKey?: string; valueKey?: string; op?: Widget["op"] },
+  seed?: { groupKey?: string; valueKey?: string; valueKey2?: string; op?: Widget["op"] },
   rows: Row[] = [],
   semanticProfiles: ColumnSemanticProfile[] = [],
 ): Widget {
@@ -542,7 +542,7 @@ export function createWidget(
     // (valueKey = eixo X, valueKey2 = eixo Y), a segunda diferente da
     // primeira para não cruzar uma coluna consigo mesma por padrão.
     const valueKey = seed?.valueKey ?? nums[0]?.key;
-    const valueKey2 = nums.find((c) => c.key !== valueKey)?.key;
+    const valueKey2 = seed?.valueKey2 ?? nums.find((c) => c.key !== valueKey)?.key;
     if (valueKey) widget.valueKey = valueKey;
     if (valueKey2) widget.valueKey2 = valueKey2;
   }

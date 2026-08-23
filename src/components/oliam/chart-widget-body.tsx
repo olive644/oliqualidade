@@ -1,3 +1,4 @@
+import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
 import { useState, type CSSProperties } from "react";
 import {
   Area,
@@ -64,7 +65,6 @@ import {
   isCoarsePointer,
   PieLegend,
   SeriesComparisonPanel,
-  sourceRowIndexesOf,
   TrendSummaryPanel,
   truncateLabel,
   WidgetMetricStrip,
