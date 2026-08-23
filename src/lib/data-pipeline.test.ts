@@ -8,6 +8,7 @@ import {
   collapsePieSeries,
   boxPlotStats,
   detectQualitySignals,
+  filterDashboardRows,
   groupAndAggregate,
   histogramBins,
   histogramBinsWithData,
@@ -1016,5 +1017,50 @@ describe("matchesRange", () => {
 
   it("rejeita valor não numérico quando há filtro numérico ativo", () => {
     expect(matchesRange("N/A", "10", "20", false)).toBe(false);
+  });
+});
+
+describe("filterDashboardRows", () => {
+  const columns: Column[] = [
+    { key: "cliente", label: "Cliente", kind: "category", visible: true, description: "" },
+    {
+      key: "observacao",
+      label: "Observação",
+      kind: "text",
+      visible: true,
+      description: "",
+    },
+    { key: "valor", label: "Valor", kind: "number", visible: true, description: "" },
+  ];
+  const rows: Row[] = [
+    { cliente: "Ana", observacao: "Equipe Norte", valor: 10 },
+    { cliente: "Anabela", observacao: "Equipe Sul", valor: 20 },
+    { cliente: "Bruno", observacao: "Apoio no norte", valor: 30 },
+  ];
+
+  it("exige correspondência exata em filtros categóricos", () => {
+    expect(
+      filterDashboardRows(rows, columns, [{ key: "cliente", value: "ana", min: "", max: "" }]),
+    ).toEqual([rows[0]]);
+  });
+
+  it("preserva a busca parcial em colunas textuais", () => {
+    expect(
+      filterDashboardRows(rows, columns, [{ key: "observacao", value: "norte", min: "", max: "" }]),
+    ).toEqual([rows[0], rows[2]]);
+  });
+
+  it("combina categoria, intervalo e busca no mesmo recorte", () => {
+    expect(
+      filterDashboardRows(
+        rows,
+        columns,
+        [
+          { key: "cliente", value: "Anabela", min: "", max: "" },
+          { key: "valor", value: "", min: "15", max: "25" },
+        ],
+        "sul",
+      ),
+    ).toEqual([rows[1]]);
   });
 });
