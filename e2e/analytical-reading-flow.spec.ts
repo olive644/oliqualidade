@@ -88,7 +88,29 @@ test.describe("fluxo de leitura analítica", () => {
     await expect(area.getByText("Resultado observado", { exact: true })).toBeVisible();
     await expect(area.getByText("Acima da referência", { exact: true })).toBeVisible();
     await expect(area.getByText("Abaixo da referência", { exact: true })).toBeVisible();
-    await expect(area.getByText(/^Meta:/)).toBeVisible();
+    await expect(area.locator('.recharts-line-curve[stroke="#22d3ee"]')).toBeVisible();
+    await expect(
+      area.locator('.recharts-area-curve[stroke="var(--secondary-accent)"]'),
+    ).toBeVisible();
+    await expect(area.locator('.recharts-area-curve[stroke="#d59b32"]')).toBeVisible();
+    await area
+      .getByRole("button", { name: "Mostrar configuração de Evolução de Resultado (área)" })
+      .click();
+    await expect(area.getByRole("combobox", { name: "Referência do gráfico de área" })).toHaveValue(
+      "goal",
+    );
+    await expect
+      .poll(() =>
+        area.evaluate((widget) => {
+          const svg = widget.querySelector("svg.recharts-surface")?.getBoundingClientRect();
+          const ticks = [...widget.querySelectorAll(".recharts-xAxis text")].map((tick) =>
+            tick.getBoundingClientRect(),
+          );
+          if (!svg || ticks.length < 2) return false;
+          return ticks[0]!.left >= svg.left && ticks.at(-1)!.right <= svg.right;
+        }),
+      )
+      .toBe(true);
     await expect(area.getByLabel("Origem e cálculo desta visualização")).toContainText(
       "Filtros ativos: 1",
     );

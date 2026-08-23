@@ -2,11 +2,11 @@ import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
 import { useState, type CSSProperties } from "react";
 import {
   Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Label,
   LabelList,
   Line,
@@ -890,17 +890,9 @@ export function ChartWidgetBody({
           <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/30">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-1 pt-4 text-[11px] text-muted-foreground">
               {[
-                ["var(--primary)", "Resultado observado"],
+                ["#22d3ee", "Resultado observado"],
                 ["var(--secondary-accent)", "Acima da referência"],
                 ["#d59b32", "Abaixo da referência"],
-                [
-                  "var(--muted-foreground)",
-                  areaReference === "goal"
-                    ? `Meta: ${areaGoalCol?.label ?? "configurada"}`
-                    : areaReference === "moving-average"
-                      ? "Média móvel"
-                      : "Período anterior",
-                ],
               ].map(([color, label]) => (
                 <span key={label} className="inline-flex items-center gap-1.5">
                   <span
@@ -933,9 +925,9 @@ export function ChartWidgetBody({
                   }}
                 >
                   <ResponsiveContainer>
-                    <AreaChart
+                    <ComposedChart
                       data={areaSeries}
-                      margin={{ top: 20, right: 12, left: 0, bottom: 14 }}
+                      margin={{ top: 20, right: 28, left: 16, bottom: 18 }}
                     >
                       <defs>
                         <linearGradient id={`area-above-${w.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -956,6 +948,7 @@ export function ChartWidgetBody({
                         dataKey="name"
                         tick={(props) => <AxisTick {...props} />}
                         interval={0}
+                        padding={{ left: 20, right: 20 }}
                       />
                       <YAxis
                         yAxisId="observed"
@@ -1029,8 +1022,8 @@ export function ChartWidgetBody({
                         yAxisId="observed"
                         dataKey="total"
                         name="Resultado observado"
-                        stroke={seriesColor}
-                        strokeWidth={2.5}
+                        stroke="#22d3ee"
+                        strokeWidth={3.5}
                         dot={(dotProps: ChartDotProps) => {
                           const { key, ...rest } = dotProps as ChartDotProps & {
                             key?: string | number;
@@ -1071,7 +1064,7 @@ export function ChartWidgetBody({
                         dot={false}
                         activeDot={false}
                       />
-                    </AreaChart>
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </div>

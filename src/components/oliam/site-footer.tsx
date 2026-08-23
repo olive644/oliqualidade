@@ -33,12 +33,7 @@ export function SiteFooter() {
   return (
     <footer className="border-t border-border/70 bg-canvas px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center">
-        <div className="text-center" aria-label="José Oliver, fundador da aplicação">
-          <strong className="block font-display text-sm font-semibold">joséoliver</strong>
-          <span className="mt-0.5 block text-xs text-muted-foreground">Fundador da aplicação</span>
-        </div>
-
-        <nav className="mt-5 flex items-center gap-3" aria-label="Redes sociais do OliQualidade">
+        <nav className="flex items-center gap-3" aria-label="Redes sociais do OliQualidade">
           {socialLinks.map((social) => (
             <a
               key={social.label}
