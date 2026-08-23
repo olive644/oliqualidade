@@ -48,6 +48,7 @@ import { ConfidenceDot } from "./confidence-dot";
 import { Mark } from "./mark";
 import { OliLoader } from "./oli-loader";
 import { ImportWorkbench } from "./import-workbench";
+import { UpdateCenter } from "./update-center";
 
 export function Review(p: {
   sheets: {
@@ -300,9 +301,12 @@ export function Review(p: {
           <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
           <span className="text-muted-foreground">/ Revisão de estrutura</span>
         </div>
-        <Button variant="ghost" onClick={p.back}>
-          Cancelar
-        </Button>
+        <div className="flex items-center gap-1">
+          <UpdateCenter />
+          <Button variant="ghost" onClick={p.back}>
+            Cancelar
+          </Button>
+        </div>
       </header>
       <div className="mx-auto max-w-5xl px-5 py-10">
         {p.importWarning && (

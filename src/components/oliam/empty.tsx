@@ -18,6 +18,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { OliLoader } from "./oli-loader";
 import { OliWelcomeScene } from "./oli-welcome-scene";
 import { SiteFooter } from "./site-footer";
+import { UpdateCenter } from "./update-center";
 
 export function Empty(p: {
   onUpload: () => void;
@@ -97,7 +98,10 @@ export function Empty(p: {
             <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
           </button>
         </div>
-        <ThemeToggle theme={p.theme} toggle={p.toggleTheme} disabled={!p.hydrated} />
+        <div className="flex items-center gap-1">
+          <UpdateCenter disabled={!p.hydrated} />
+          <ThemeToggle theme={p.theme} toggle={p.toggleTheme} disabled={!p.hydrated} />
+        </div>
       </header>
       <main className="oli-welcome">
         <section className="oli-welcome-hero">

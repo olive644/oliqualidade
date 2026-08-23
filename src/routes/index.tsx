@@ -86,6 +86,7 @@ import {
 } from "@/lib/analytical-narrative";
 import { buildAnalysisTrustSummary } from "@/lib/analysis-trust";
 import { AnalysisContextBanner } from "@/components/oliam/analysis-context-banner";
+import { UpdateCenter } from "@/components/oliam/update-center";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type {
   WorkbookChartDiagnostic,
@@ -1963,6 +1964,7 @@ function Dashboard(p: {
                 </button>
               </div>
             )}
+            <UpdateCenter />
             <ThemeToggle theme={p.theme} toggle={p.toggleTheme} />
             <Button
               variant="ghost"

@@ -17,6 +17,7 @@ import type { Dashboard } from "@/lib/types";
 import { Mark } from "./mark";
 import { ThemeToggle } from "./theme-toggle";
 import { SiteFooter } from "./site-footer";
+import { UpdateCenter } from "./update-center";
 
 export function Home(p: {
   dashboards: Dashboard[];
@@ -63,6 +64,7 @@ export function Home(p: {
           <strong className="font-display text-lg tracking-tight">Oli.Qualidade</strong>
         </div>
         <div className="flex items-center gap-2">
+          <UpdateCenter />
           <ThemeToggle theme={p.theme} toggle={p.toggleTheme} />
           <Button onClick={p.newDash} className="shadow-sm">
             <Plus />

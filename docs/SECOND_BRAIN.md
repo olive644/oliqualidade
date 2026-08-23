@@ -717,6 +717,23 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   `src/components/oliam/investigation-panel.tsx`. Decisão e limites completos
   em [[CURRENT_STATE_AUDIT#113. Modo de investigação guiada conecta roteiro, causas e registros]].
 
+## Centro de atualizações
+
+- O sino nos cabeçalhos principais abre um histórico de mudanças escrito para
+  quem usa o produto, sem exigir que a pessoa acompanhe commits ou PRs.
+- `src/lib/product-updates.ts` é a fonte única. As entradas ficam da mais nova
+  para a mais antiga e `CURRENT_UPDATE_ID` sempre aponta para a primeira.
+- Para publicar uma novidade, adicione uma entrada no topo com `id` estável,
+  data, resumo e benefícios explícitos. Isso faz o sino voltar ao estado não
+  lido automaticamente.
+- A leitura é salva em `localStorage` pela chave
+  `oliam-last-read-update`. O conteúdo continua acessível depois que a
+  notificação deixa de estar acesa.
+- O indicador usa a cor primária e nunca vermelho. O botão mantém rótulos
+  acessíveis diferentes para novidade disponível e histórico já lido.
+- Implementação visual: `src/components/oliam/update-center.tsx`. Decisão e
+  cobertura completas em [[CURRENT_STATE_AUDIT#114. Centro de atualizações torna as entregas visíveis no produto]].
+
 ## Checklist antes de publicar
 
 1. Adicionar ou atualizar um teste que reproduza a mudança.

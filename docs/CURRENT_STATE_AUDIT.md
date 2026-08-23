@@ -6267,3 +6267,27 @@ posterior, sem inventar vínculo.
 
 Cobertura adicionada para mudança entre períodos, fallback sem data, valores
 negativos e fluxo mobile completo com abertura da investigação e registros.
+
+## 114. Centro de atualizações torna as entregas visíveis no produto
+
+O produto ganhou um sino de atualizações nos cabeçalhos da entrada, da lista de
+painéis, da revisão de importação e do painel analítico. O mesmo componente abre
+um histórico cronológico com título, resumo e benefícios de cada entrega. O
+texto é orientado ao usuário e não expõe detalhes de commit como se fossem uma
+explicação de produto.
+
+`src/lib/product-updates.ts` funciona como fonte única e mantém as entradas da
+mais nova para a mais antiga. `CURRENT_UPDATE_ID` deriva da primeira entrada.
+Quando esse identificador não coincide com o último lido no navegador, o sino
+recebe um indicador na cor primária e o rótulo acessível muda para `Novidades
+disponíveis`. Abrir o painel grava o identificador em
+`oliam-last-read-update`; o histórico permanece disponível, mas o indicador é
+apagado. Uma nova entrada no topo reativa o aviso sem migração de estado.
+
+O estado de leitura é deliberadamente local ao navegador. Não existe conta de
+usuário nem sincronização remota que justifique transmitir esse dado. Falhas ou
+ausência de `localStorage` não impedem a abertura do histórico.
+
+Há teste unitário para vínculo da versão atual, unicidade, conteúdo e detecção
+de não lido. O E2E abre o histórico, verifica as novidades atuais, recarrega a
+página e confirma que a leitura foi preservada.
