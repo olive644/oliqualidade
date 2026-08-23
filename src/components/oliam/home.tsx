@@ -16,6 +16,7 @@ import { fmt, hue } from "@/lib/format";
 import type { Dashboard } from "@/lib/types";
 import { Mark } from "./mark";
 import { ThemeToggle } from "./theme-toggle";
+import { SiteFooter } from "./site-footer";
 
 export function Home(p: {
   dashboards: Dashboard[];
@@ -272,6 +273,7 @@ export function Home(p: {
           )}
         </div>
       </section>
+      <SiteFooter />
       <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
