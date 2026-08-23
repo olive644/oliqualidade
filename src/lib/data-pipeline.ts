@@ -803,6 +803,42 @@ export function matchesRange(
   return true;
 }
 
+/** Aplica busca e filtros com a mesma regra em todos os consumidores do painel. */
+export function filterDashboardRows(
+  rows: Row[],
+  columns: Column[],
+  filters: FilterRule[],
+  search = "",
+): Row[] {
+  const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
+  return rows.filter((row) => {
+    if (
+      normalizedSearch &&
+      !columns.some((column) =>
+        String(row[column.key] ?? "")
+          .toLocaleLowerCase("pt-BR")
+          .includes(normalizedSearch),
+      )
+    ) {
+      return false;
+    }
+
+    return filters.every((filter) => {
+      const column = columns.find((candidate) => candidate.key === filter.key);
+      if (column && (numericKinds.includes(column.kind) || column.kind === "date")) {
+        return matchesRange(row[filter.key], filter.min, filter.max, column.kind === "date");
+      }
+
+      const actual = String(row[filter.key] ?? "")
+        .trim()
+        .toLocaleLowerCase("pt-BR");
+      const expected = filter.value.trim().toLocaleLowerCase("pt-BR");
+      if (!expected) return true;
+      return column?.kind === "category" ? actual === expected : actual.includes(expected);
+    });
+  });
+}
+
 export type JoinResult = { rows: Row[]; addedKeys: string[] };
 
 /**
