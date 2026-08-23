@@ -77,6 +77,15 @@ export function HistogramWidgetBody({
     rangeEnd: bin.rangeEnd,
     ...(bin.sourceRowIndexes ? { sourceRowIndexes: bin.sourceRowIndexes } : {}),
   }));
+  const showsExactValues =
+    series.length > 1 && series.every((bin) => bin.rangeStart === bin.rangeEnd);
+  const distributionUnit = showsExactValues
+    ? series.length === 1
+      ? "valor distinto"
+      : "valores distintos"
+    : series.length === 1
+      ? "faixa"
+      : "faixas";
   const validCount = series.reduce((sum, bin) => sum + bin.total, 0);
   const missingCount = valueCol
     ? data.length - data.filter((row) => parseNumericValue(row[valueCol.key]) !== null).length
@@ -96,7 +105,10 @@ export function HistogramWidgetBody({
   const metrics: WidgetMetric[] = valueCol
     ? [
         { label: "Valores considerados", value: validCount.toLocaleString("pt-BR") },
-        { label: "Faixas", value: String(series.length) },
+        {
+          label: showsExactValues ? "Valores distintos" : "Faixas",
+          value: String(series.length),
+        },
         ...(missingCount > 0
           ? [{ label: "Sem valor numérico", value: missingCount.toLocaleString("pt-BR") }]
           : []),
@@ -152,7 +164,7 @@ export function HistogramWidgetBody({
               onConfigure({ binCount: next || undefined });
             }}
           >
-            <option value={0}>Automático</option>
+            <option value={0}>{showsExactValues ? "Automático por valor" : "Automático"}</option>
             {BIN_COUNT_OPTIONS.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -164,9 +176,8 @@ export function HistogramWidgetBody({
       {sizeControls}
       {valueCol && (
         <p className="border-b border-border/70 bg-card px-4 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
-          Distribuição de &quot;{valueCol.label}&quot; em {series.length}{" "}
-          {series.length === 1 ? "faixa" : "faixas"}, considerando{" "}
-          {validCount.toLocaleString("pt-BR")}{" "}
+          Distribuição de &quot;{valueCol.label}&quot; em {series.length} {distributionUnit},
+          considerando {validCount.toLocaleString("pt-BR")}{" "}
           {validCount === 1 ? "valor numérico válido" : "valores numéricos válidos"}.
           {missingCount > 0 && (
             <>
@@ -285,7 +296,7 @@ export function HistogramWidgetBody({
                         position="top"
                         fontSize={10}
                         fill="var(--muted-foreground)"
-                        formatter={(v: number) => v.toLocaleString("pt-BR")}
+                        formatter={(v: number) => (v > 0 ? v.toLocaleString("pt-BR") : "")}
                       />
                     </Bar>
                   </BarChart>
@@ -296,7 +307,8 @@ export function HistogramWidgetBody({
           </div>
           {barPresentation.scrollable && (
             <p className="border-t border-border/70 bg-card px-4 py-1 text-center text-[10px] text-muted-foreground">
-              {series.length} faixas · use as setas, arraste ou role para os lados para ver todas
+              {series.length} {showsExactValues ? "valores" : "faixas"}. Use as setas, arraste ou
+              role para os lados para ver todos.
             </p>
           )}
           {selectedBin && (
@@ -306,8 +318,8 @@ export function HistogramWidgetBody({
               kind="number"
               filterLabel={
                 isRangeFilterActive(selectedBin)
-                  ? "Remover filtro desta faixa"
-                  : "Filtrar por esta faixa"
+                  ? `Remover filtro ${showsExactValues ? "deste valor" : "desta faixa"}`
+                  : `Filtrar ${showsExactValues ? "por este valor" : "por esta faixa"}`
               }
               onFilter={() => {
                 if (!valueCol) return;
