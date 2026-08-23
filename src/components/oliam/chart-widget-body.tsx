@@ -207,8 +207,12 @@ export function ChartWidgetBody({
       ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
       : limitChartSeriesForRendering(orderedSeries);
   const series = renderableSeries.items;
-  const goalColumns = numericCols.filter(
+  // Metas podem ser classificadas como referência semântica, não como métrica
+  // agregável. Por isso a detecção precisa considerar todas as colunas
+  // numéricas do painel, e não apenas `numericCols`.
+  const goalColumns = columns.filter(
     (column) =>
+      numericKinds.includes(column.kind) &&
       column.key !== valueCol?.key &&
       /\bmeta(s)?\b|\balvo\b|\bobjetivo\b|\btarget\b|\bgoal\b/i.test(
         `${column.label} ${column.key}`,
