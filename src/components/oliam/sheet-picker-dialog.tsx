@@ -37,8 +37,8 @@ export function SheetPickerDialog({
         <DialogHeader>
           <DialogTitle>Escolher aba para importar</DialogTitle>
           <DialogDescription>
-            {fileName} tem {sheets.length} abas com dados. Escolha qual você quer importar. As demais
-            ficarão de fora por enquanto.
+            {fileName} tem {sheets.length} abas com dados. Escolha qual você quer importar. As
+            demais ficarão de fora por enquanto.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
