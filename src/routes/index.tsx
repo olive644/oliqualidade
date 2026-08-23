@@ -83,6 +83,7 @@ import {
   buildExecutiveSummary,
   resolveAnalysisOperation,
 } from "@/lib/analytical-narrative";
+import { buildAnalysisTrustSummary } from "@/lib/analysis-trust";
 import { AnalysisContextBanner } from "@/components/oliam/analysis-context-banner";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
 import type {
@@ -1295,6 +1296,19 @@ function Dashboard(p: {
         : (sheet.intelligence ?? analyzeSpreadsheet(sheet.rows, sheet.columns))),
     [backgroundReview, sheet.rows, sheet.columns, sheet.intelligence, sheet.semanticOverrides],
   );
+  const currentAutoDashboard = useMemo(
+    () => generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows }),
+    [sheet.columns, sheet.rows],
+  );
+  const analysisTrust = useMemo(
+    () =>
+      buildAnalysisTrustSummary(
+        currentAutoDashboard,
+        effectiveIntelligence,
+        sheet.exceptionDecisions,
+      ),
+    [currentAutoDashboard, effectiveIntelligence, sheet.exceptionDecisions],
+  );
   const semanticProfilesByKey = useMemo(
     () => new Map(effectiveIntelligence.columns.map((profile) => [profile.key, profile])),
     [effectiveIntelligence.columns],
@@ -1486,31 +1500,31 @@ function Dashboard(p: {
   // têm um gráfico no painel atual.
   const executiveSummary = useMemo(
     () =>
-      sheet.autoDashboard
+      currentAutoDashboard
         ? buildExecutiveSummary({
             rows: data,
             columns: sheet.columns,
-            classifications: sheet.autoDashboard.classifications,
-            exceptionCount: effectiveIntelligence.exceptions.length,
+            classifications: currentAutoDashboard.classifications,
+            exceptionCount: analysisTrust.pendingExceptionCount,
             semanticProfiles: effectiveIntelligence.columns,
             widgets: analyticalWidgets,
           })
         : [],
     [
+      analysisTrust.pendingExceptionCount,
       analyticalWidgets,
-      sheet.autoDashboard,
+      currentAutoDashboard,
       data,
-      sheet.columns,
       effectiveIntelligence.columns,
-      effectiveIntelligence.exceptions,
+      sheet.columns,
     ],
   );
   const questionCoverage = useMemo(
     () =>
-      sheet.autoDashboard
-        ? analyzeQuestionCoverage(sheet.autoDashboard.classifications, analyticalWidgets)
+      currentAutoDashboard
+        ? analyzeQuestionCoverage(currentAutoDashboard.classifications, analyticalWidgets)
         : undefined,
-    [analyticalWidgets, sheet.autoDashboard],
+    [analyticalWidgets, currentAutoDashboard],
   );
   // "Contexto da análise": período coberto pela visão atual (já filtrada),
   // a partir da coluna de data — não a planilha inteira, para o período
@@ -2231,7 +2245,7 @@ function Dashboard(p: {
               totalRowCount={sheet.rows.length}
               periodLabel={periodLabel}
               filterCount={activeFilterCount}
-              planConfidence={sheet.autoDashboard?.confidence}
+              trust={analysisTrust}
             />
             {sourceNotesPanel}
             {sourceVisualsPanel}
@@ -2259,7 +2273,8 @@ function Dashboard(p: {
             onOpenChange={setInsightOpen}
             data={data}
             rowCount={sheet.rows.length}
-            autoDashboard={sheet.autoDashboard}
+            autoDashboard={currentAutoDashboard}
+            analysisTrust={analysisTrust}
             executiveSummary={executiveSummary}
             questionCoverage={questionCoverage}
             nums={nums}
@@ -2312,7 +2327,7 @@ function Dashboard(p: {
               totalRowCount={sheet.rows.length}
               periodLabel={periodLabel}
               filterCount={activeFilterCount}
-              planConfidence={sheet.autoDashboard?.confidence}
+              trust={analysisTrust}
             />
             {sourceNotesPanel}
             {sourceVisualsPanel}
