@@ -36,6 +36,7 @@ export function Home(p: {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
   const selectedCount = selectedIds.size;
+  const selectedPanelLabel = selectedCount === 1 ? "painel" : "painéis";
   const allSelected = selectedCount === sorted.length;
   const leaveSelectionMode = () => {
     setSelectionMode(false);
@@ -132,7 +133,7 @@ export function Home(p: {
                   <p className="text-sm font-medium" aria-live="polite">
                     {selectedCount === 0
                       ? "Selecione os painéis que deseja apagar"
-                      : `${selectedCount} painel${selectedCount === 1 ? "" : "is"} selecionado${selectedCount === 1 ? "" : "s"}`}
+                      : `${selectedCount} ${selectedPanelLabel} selecionado${selectedCount === 1 ? "" : "s"}`}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -298,7 +299,7 @@ export function Home(p: {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Apagar {selectedCount} painel{selectedCount === 1 ? "" : "is"}?
+              Apagar {selectedCount} {selectedPanelLabel}?
             </AlertDialogTitle>
             <AlertDialogDescription>
               Os painéis selecionados e todos os seus dados, filtros e gráficos serão apagados
@@ -314,7 +315,7 @@ export function Home(p: {
                 leaveSelectionMode();
               }}
             >
-              Apagar {selectedCount} painel{selectedCount === 1 ? "" : "is"}
+              Apagar {selectedCount} {selectedPanelLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
