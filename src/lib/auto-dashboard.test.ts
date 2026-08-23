@@ -290,6 +290,32 @@ describe("generateAutoDashboardPlan", () => {
     expect(widgets.every((item) => Boolean(item.title))).toBe(true);
   });
 
+  it("preenche completamente todas as linhas do painel automático", () => {
+    const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
+    const widgets = buildRecommendedWidgets(plan, columns, rows);
+    let occupied = 0;
+
+    for (const widget of widgets) {
+      if (widget.span === 3) {
+        expect(occupied).toBe(0);
+        continue;
+      }
+      occupied += widget.span;
+      expect(occupied).toBeLessThanOrEqual(3);
+      if (occupied === 3) occupied = 0;
+    }
+    expect(occupied).toBe(0);
+  });
+
+  it("inclui radar quando a dimensão possui de três a oito categorias", () => {
+    const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
+    const radar = plan.recommendations.find((item) => item.widgetType === "radar");
+
+    expect(radar?.groupKey).toBe("produto");
+    expect(radar?.valueKey).toBe("faturamento");
+    expect(radar?.topN).toBe(3);
+  });
+
   it("escolhe as dimensões por confiança/qualidade, não pela ordem da planilha", () => {
     // As duas primeiras colunas categóricas da planilha ("setor", "turno")
     // têm qualidade ruim (baixa confiança do diagnóstico, qualityScore
@@ -703,9 +729,9 @@ describe("generateAutoDashboardPlan", () => {
         .filter((item) => item.kind === "visualization")
         .map((item) => item.widgetType);
 
-      expect(visualTypes).toHaveLength(8);
+      expect(visualTypes).toHaveLength(10);
       expect(visualTypes).toEqual(
-        expect.arrayContaining(["histogram", "scatter", "box-plot", "pareto"]),
+        expect.arrayContaining(["histogram", "scatter", "box-plot", "pareto", "radar"]),
       );
       expect(plan.warnings.join(" ")).toContain("manter o painel legível");
     });
