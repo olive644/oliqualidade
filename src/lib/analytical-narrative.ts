@@ -9,8 +9,17 @@
  * resultado melhorou"), o texto diz o que falta em vez de arriscar.
  */
 import type { AutoDashboardPlan, DashboardColumnClassification } from "@/lib/auto-dashboard";
-import { groupAndAggregate, pieComparisonFor, trendSummaryFor } from "@/lib/data-pipeline";
+import {
+  aggregationLabels,
+  groupAndAggregate,
+  pieComparisonFor,
+  relevantAggregationOps,
+  resolveSemanticAggregationOp,
+  trendSummaryFor,
+  type AggregationOp,
+} from "@/lib/data-pipeline";
 import { fmt, sortChronologically } from "@/lib/format";
+import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import type { Column, Row, Widget, WidgetType } from "@/lib/types";
 
 export type AnalyticalQuestionId =
@@ -35,6 +44,47 @@ export type AnalyticalQuestion = {
 
 /** Nomes de coluna que sugerem uma meta/alvo cadastrado, para a ressalva de "sem meta para comparar". */
 const GOAL_NAME = /\bmeta(s)?\b|\balvo\b|\bobjetivo\b|\btarget\b|\bgoal\b/i;
+const ANALYTICAL_OPERATIONS: AggregationOp[] = ["sum", "avg", "count", "min", "max"];
+
+/**
+ * Encontra a operacao usada pelo widget que responde a uma leitura e aplica
+ * as mesmas restricoes semanticas usadas na renderizacao dos graficos. Sem
+ * widget correspondente, escolhe o padrao seguro para a coluna.
+ */
+export function resolveAnalysisOperation(input: {
+  rows: Row[];
+  columns: Column[];
+  semanticProfiles?: ColumnSemanticProfile[];
+  widgets?: Widget[];
+  metricKey: string;
+  groupKey?: string;
+  widgetTypes?: WidgetType[];
+}): AggregationOp {
+  const { rows, columns, metricKey, groupKey } = input;
+  const column = columns.find((item) => item.key === metricKey);
+  if (!column) return "sum";
+  const matchingWidget = (input.widgets ?? []).find((widget) => {
+    if (input.widgetTypes && !input.widgetTypes.includes(widget.type)) return false;
+    const usesMetric = widget.metricKey === metricKey || widget.valueKey === metricKey;
+    const usesGroup = !groupKey || widget.groupKey === groupKey;
+    return usesMetric && usesGroup;
+  });
+  const operations = groupKey
+    ? relevantAggregationOps(rows, groupKey, metricKey)
+    : ANALYTICAL_OPERATIONS;
+  return resolveSemanticAggregationOp(
+    operations,
+    column,
+    input.semanticProfiles?.find((profile) => profile.key === metricKey),
+    matchingWidget?.op ?? "sum",
+  );
+}
+
+function operationSubject(operation: AggregationOp, metricLabel: string): string {
+  return operation === "count"
+    ? "contagem de registros"
+    : `${aggregationLabels[operation].toLocaleLowerCase("pt-BR")} de "${metricLabel}"`;
+}
 
 function analyticalQuestions(
   classifications: DashboardColumnClassification[],
@@ -230,6 +280,8 @@ export function buildExecutiveSummary(input: {
   columns: Column[];
   classifications: DashboardColumnClassification[];
   exceptionCount: number;
+  semanticProfiles?: ColumnSemanticProfile[];
+  widgets?: Widget[];
 }): string[] {
   const { rows, columns, classifications, exceptionCount } = input;
   const metrics = classifications.filter((c) => c.role === "metric");
@@ -246,8 +298,17 @@ export function buildExecutiveSummary(input: {
   const sentences: string[] = [];
 
   if (primaryMetric && primaryDimension) {
+    const operation = resolveAnalysisOperation({
+      rows,
+      columns,
+      metricKey: primaryMetric.key,
+      groupKey: primaryDimension.key,
+      widgetTypes: ["pie", "pareto", "bar", "ranking", "radar", "insights"],
+      ...(input.semanticProfiles ? { semanticProfiles: input.semanticProfiles } : {}),
+      ...(input.widgets ? { widgets: input.widgets } : {}),
+    });
     const grouped = [
-      ...groupAndAggregate(rows, primaryDimension.key, primaryMetric.key, "sum"),
+      ...groupAndAggregate(rows, primaryDimension.key, primaryMetric.key, operation),
     ].sort((a, b) => b.total - a.total);
     const comparison = grouped.length ? pieComparisonFor(grouped, 0) : null;
     if (comparison && comparison.share !== null) {
@@ -263,7 +324,7 @@ export function buildExecutiveSummary(input: {
             })} ${comparison.relativeDifference >= 0 ? "acima" : "abaixo"} de "${comparison.reference.name}"`
           : "";
       sentences.push(
-        `"${comparison.selected.name}" concentra ${shareLabel} de "${primaryMetric.label}"${referenceClause}, entre ${grouped.length} categorias de "${primaryDimension.label}".`,
+        `"${comparison.selected.name}" concentra ${shareLabel} da ${operationSubject(operation, primaryMetric.label)}${referenceClause}, entre ${grouped.length} categorias de "${primaryDimension.label}".`,
       );
       if (!hasGoalColumn) {
         sentences.push(
@@ -274,8 +335,17 @@ export function buildExecutiveSummary(input: {
   }
 
   if (primaryMetric && primaryTemporal) {
+    const operation = resolveAnalysisOperation({
+      rows,
+      columns,
+      metricKey: primaryMetric.key,
+      groupKey: primaryTemporal.key,
+      widgetTypes: ["line", "area", "metric-trend"],
+      ...(input.semanticProfiles ? { semanticProfiles: input.semanticProfiles } : {}),
+      ...(input.widgets ? { widgets: input.widgets } : {}),
+    });
     const grouped = sortChronologically(
-      groupAndAggregate(rows, primaryTemporal.key, primaryMetric.key, "sum"),
+      groupAndAggregate(rows, primaryTemporal.key, primaryMetric.key, operation),
     );
     const trend = trendSummaryFor(grouped);
     if (trend) {
@@ -287,7 +357,7 @@ export function buildExecutiveSummary(input: {
             })}`
           : null;
       sentences.push(
-        `"${primaryMetric.label}" foi de ${fmt(trend.first.total, metricKind)} em ${trend.first.name} para ${fmt(trend.last.total, metricKind)} em ${trend.last.name}${
+        `A ${operationSubject(operation, primaryMetric.label)} foi de ${fmt(trend.first.total, metricKind)} em ${trend.first.name} para ${fmt(trend.last.total, metricKind)} em ${trend.last.name}${
           changeLabel ? ` (${changeLabel})` : ""
         }, ao longo de ${trend.pointCount} períodos.`,
       );

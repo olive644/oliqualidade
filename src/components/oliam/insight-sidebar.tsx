@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import type { AutoDashboardPlan } from "@/lib/auto-dashboard";
 import type { QuestionCoverage } from "@/lib/analytical-narrative";
-import { aggregate } from "@/lib/data-pipeline";
+import { aggregate, aggregationLabels, type AggregationOp } from "@/lib/data-pipeline";
 import { conditionalColor, conditionalStyle, fmt, parseNumericValue } from "@/lib/format";
 import type { Column, FilterRule, Row } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -16,9 +16,11 @@ export function InsightSidebar(p: {
   executiveSummary: string[];
   questionCoverage: QuestionCoverage | undefined;
   nums: Column[];
+  metricOperations: ReadonlyMap<string, AggregationOp>;
   versionDelta: Map<string, number | null> | null;
   sidebarRanking: { name: string; total: number }[];
   sidebarRankingMax: number;
+  sidebarRankingOperation: AggregationOp;
   cat: Column | undefined;
   primary: Column | undefined;
   dateCol: Column | undefined;
@@ -124,11 +126,12 @@ export function InsightSidebar(p: {
           </p>
           <div className="grid grid-cols-2 gap-2">
             {p.nums.slice(0, 4).map((c) => {
+              const operation = p.metricOperations.get(c.key) ?? "sum";
               const total = aggregate(
                 p.data
                   .map((r) => parseNumericValue(r[c.key]))
                   .filter((v): v is number => v !== null),
-                "sum",
+                operation,
               );
               const delta = p.versionDelta?.get(c.key) ?? null;
               const style = conditionalStyle(total, c.kind, c.conditionalFormat);
@@ -138,7 +141,12 @@ export function InsightSidebar(p: {
                   className="rounded-xl border border-border bg-card p-2.5 shadow-sm"
                   style={style ?? undefined}
                 >
-                  <p className="truncate text-[11px] text-muted-foreground">{c.label}</p>
+                  <p
+                    className="truncate text-[11px] text-muted-foreground"
+                    title={`${aggregationLabels[operation]} de ${c.label}`}
+                  >
+                    {aggregationLabels[operation]} de {c.label}
+                  </p>
                   <p className="font-mono text-base font-semibold" style={{ color: style?.color }}>
                     {fmt(total, c.kind)}
                   </p>
@@ -165,8 +173,11 @@ export function InsightSidebar(p: {
       )}
       {p.sidebarRanking.length > 0 && cat && primary && (
         <div className="border-b border-border p-4">
-          <p className="mb-3 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+          <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
             Ranking por {cat.label}
+          </p>
+          <p className="mb-3 mt-1 text-[11px] text-muted-foreground">
+            {aggregationLabels[p.sidebarRankingOperation]} de {primary.label}
           </p>
           <div className="space-y-0.5">
             {p.sidebarRanking.map((r, i) => {

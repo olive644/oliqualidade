@@ -21,6 +21,7 @@ import {
   pieRoundnessFor,
   rankingCoverageFor,
   relevantAggregationOps,
+  resolveSemanticAggregationOp,
   semanticAggregationOps,
   sortAllBarCategories,
   timeSeriesChartPresentation,
@@ -690,6 +691,25 @@ describe("semanticAggregationOps", () => {
         { role: "identifier", unitFamily: "count", aggregable: false },
       ),
     ).toEqual(["count"]);
+  });
+
+  it("resolve a operação solicitada com a mesma proteção semântica usada pelos gráficos", () => {
+    expect(
+      resolveSemanticAggregationOp(
+        [...operations],
+        { kind: "percentage", label: "Taxa de aprovação" },
+        { role: "result", unitFamily: "percentage", aggregable: true },
+        "sum",
+      ),
+    ).toBe("avg");
+    expect(
+      resolveSemanticAggregationOp(
+        [...operations],
+        { kind: "currency", label: "Receita total" },
+        { role: "total", unitFamily: "currency", aggregable: true },
+        "sum",
+      ),
+    ).toBe("sum");
   });
 });
 
