@@ -4,12 +4,14 @@ import {
   chartSeries,
   groupAndAggregate,
   relevantAggregationOps,
+  resolveSemanticAggregationOp,
   sortAllBarCategories,
   type AggregationOp,
 } from "@/lib/data-pipeline";
 import { sourceRowIndexOf } from "@/lib/data-review";
 import { fmt, sortChronologically } from "@/lib/format";
 import type { FolderMonitorView } from "@/lib/folder-monitor";
+import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import {
   buildAttendanceStats,
   buildControlSeries,
@@ -101,6 +103,7 @@ type BuildLiveDashboardContextInput = {
   rows: Row[];
   totalRows: number;
   widgets: Widget[];
+  semanticProfiles?: ColumnSemanticProfile[];
   filters: FilterRule[];
   search: string;
   sort: { key: string; dir: "asc" | "desc" } | null;
@@ -148,10 +151,20 @@ function resolvedValueColumn(widget: Widget, columns: Column[], numericColumns: 
   );
 }
 
-function resolvedOperation(widget: Widget, rows: Row[], group: Column, value: Column) {
+function resolvedOperation(
+  widget: Widget,
+  rows: Row[],
+  group: Column,
+  value: Column,
+  semanticProfiles: ColumnSemanticProfile[] = [],
+) {
   const operations = relevantAggregationOps(rows, group.key, value.key);
-  const requested = widget.op ?? "sum";
-  return operations.includes(requested) ? requested : (operations[0] ?? "sum");
+  return resolveSemanticAggregationOp(
+    operations,
+    value,
+    semanticProfiles.find((profile) => profile.key === value.key),
+    widget.op ?? "sum",
+  );
 }
 
 function emptyWidget(widget: Widget, title = widgetTypeLabels[widget.type]): LiveWidgetSnapshot {
@@ -162,6 +175,7 @@ function metricWidget(
   widget: Widget,
   columns: Column[],
   rows: Row[],
+  semanticProfiles: ColumnSemanticProfile[] = [],
   versionDelta?: ReadonlyMap<string, number | null> | null,
 ): LiveWidgetSnapshot {
   const numericColumns = columns.filter((column) => numericKinds.includes(column.kind));
@@ -171,7 +185,12 @@ function metricWidget(
     ) ?? numericColumns[0];
   if (!column) return emptyWidget(widget, "Métrica");
   const metricOperations: AggregationOp[] = ["sum", "avg", "count", "min", "max"];
-  const operation = metricOperations.includes(widget.op ?? "sum") ? (widget.op ?? "sum") : "sum";
+  const operation = resolveSemanticAggregationOp(
+    metricOperations,
+    column,
+    semanticProfiles.find((profile) => profile.key === column.key),
+    widget.op ?? "sum",
+  );
   const value = aggregate(
     rows.map((row) => Number(row[column.key])).filter((number) => Number.isFinite(number)),
     operation,
@@ -226,12 +245,17 @@ function metricWidget(
   return snapshot;
 }
 
-function groupedWidget(widget: Widget, columns: Column[], rows: Row[]): LiveWidgetSnapshot {
+function groupedWidget(
+  widget: Widget,
+  columns: Column[],
+  rows: Row[],
+  semanticProfiles: ColumnSemanticProfile[] = [],
+): LiveWidgetSnapshot {
   const numericColumns = columns.filter((column) => numericKinds.includes(column.kind));
   const group = columns.find((column) => column.key === widget.groupKey);
   const value = resolvedValueColumn(widget, columns, numericColumns);
   if (!group || !value) return emptyWidget(widget);
-  const operation = resolvedOperation(widget, rows, group, value);
+  const operation = resolvedOperation(widget, rows, group, value, semanticProfiles);
   const dataMode = widget.dataMode ?? (operation === "count" ? "aggregate" : "raw");
   let grouped: Array<{ name: string; total: number; count?: number }> = chartSeries(
     rows,
@@ -283,13 +307,14 @@ function snapshotWidget(
   widget: Widget,
   columns: Column[],
   rows: Row[],
+  semanticProfiles: ColumnSemanticProfile[] = [],
   versionDelta?: ReadonlyMap<string, number | null> | null,
   folderMonitor?: FolderMonitorView,
 ): LiveWidgetSnapshot {
   if (widget.type === "metric" || widget.type === "metric-trend")
-    return metricWidget(widget, columns, rows, versionDelta);
+    return metricWidget(widget, columns, rows, semanticProfiles, versionDelta);
   if (["bar", "pie", "line", "area", "ranking", "map", "radar"].includes(widget.type))
-    return groupedWidget(widget, columns, rows);
+    return groupedWidget(widget, columns, rows, semanticProfiles);
   if (widget.type === "rating") {
     const numericColumns = columns.filter((column) => numericKinds.includes(column.kind));
     const column =
@@ -432,7 +457,14 @@ export function buildLiveDashboardContext(
 ): LiveDashboardContext {
   const columnByKey = new Map(input.columns.map((column) => [column.key, column]));
   const widgets = input.widgets.map((widget) =>
-    snapshotWidget(widget, input.columns, input.rows, input.versionDelta, input.folderMonitor),
+    snapshotWidget(
+      widget,
+      input.columns,
+      input.rows,
+      input.semanticProfiles,
+      input.versionDelta,
+      input.folderMonitor,
+    ),
   );
   const focusedWidget = input.focus?.widgetId
     ? widgets.find((widget) => widget.id === input.focus?.widgetId)
