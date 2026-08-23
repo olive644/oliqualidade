@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import type { AutoDashboardPlan } from "@/lib/auto-dashboard";
+import type { AnalysisTrustSummary } from "@/lib/analysis-trust";
 import type { QuestionCoverage } from "@/lib/analytical-narrative";
 import { aggregate } from "@/lib/data-pipeline";
 import { conditionalColor, conditionalStyle, fmt, parseNumericValue } from "@/lib/format";
@@ -13,6 +14,7 @@ export function InsightSidebar(p: {
   data: Row[];
   rowCount: number;
   autoDashboard: AutoDashboardPlan | undefined;
+  analysisTrust: AnalysisTrustSummary;
   executiveSummary: string[];
   questionCoverage: QuestionCoverage | undefined;
   nums: Column[];
@@ -86,22 +88,50 @@ export function InsightSidebar(p: {
         <div className="border-b border-border p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-              Dashboard sugerido
+              Leitura automática atual
             </p>
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-              {p.autoDashboard.confidence}% confiança
-            </span>
+            {p.analysisTrust.recommendationConfidence !== null && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {p.analysisTrust.recommendationConfidence}% sugestões
+              </span>
+            )}
           </div>
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            Criado automaticamente a partir dos tipos, preenchimento e qualidade das colunas.
+            Avalia a adequação das sugestões e a leitura do significado das colunas. As porcentagens
+            não são uma nota de qualidade dos dados.
           </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+            <div className="rounded-lg bg-muted/60 p-2">
+              <p className="text-muted-foreground">Significados</p>
+              <p className="mt-0.5 font-mono font-semibold">
+                {p.analysisTrust.semanticConfidence}%
+              </p>
+            </div>
+            <div className="rounded-lg bg-muted/60 p-2">
+              <p className="text-muted-foreground">Pendências</p>
+              <p
+                className={cn(
+                  "mt-0.5 font-mono font-semibold",
+                  p.analysisTrust.pendingExceptionCount > 0 && "text-amber-600",
+                )}
+              >
+                {p.analysisTrust.pendingExceptionCount}
+              </p>
+              {p.analysisTrust.criticalExceptionCount > 0 && (
+                <p className="mt-0.5 text-[10px] text-amber-600">
+                  {p.analysisTrust.criticalExceptionCount}{" "}
+                  {p.analysisTrust.criticalExceptionCount === 1 ? "crítica" : "críticas"}
+                </p>
+              )}
+            </div>
+          </div>
           <div className="mt-3 space-y-2">
             {p.autoDashboard.recommendations.slice(0, 5).map((item) => (
               <div key={item.id} className="rounded-xl border border-border bg-card p-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-xs font-medium leading-snug">{item.title}</p>
                   <span className="shrink-0 font-mono text-[10px] text-primary">
-                    {item.confidence}%
+                    {item.confidence}% adequação
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
