@@ -2,11 +2,11 @@ import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
 import { useState, type CSSProperties } from "react";
 import {
   Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Label,
   LabelList,
   Line,
@@ -925,7 +925,7 @@ export function ChartWidgetBody({
                   }}
                 >
                   <ResponsiveContainer>
-                    <AreaChart
+                    <ComposedChart
                       data={areaSeries}
                       margin={{ top: 20, right: 28, left: 16, bottom: 18 }}
                     >
@@ -1064,7 +1064,7 @@ export function ChartWidgetBody({
                         dot={false}
                         activeDot={false}
                       />
-                    </AreaChart>
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </div>
