@@ -437,12 +437,12 @@ export function histogramBins(rows: Row[], valueKey: string, binCount?: number):
   const automaticBinCount = sturgesBinCount(values.length);
 
   // Uma coluna discreta com poucos valores, como Quantidade = 1, 2, 3, 4 e
-  // 5, não deve receber mais intervalos do que valores possíveis. Nesse caso
-  // a regra de Sturges criaria faixas vazias entre os inteiros e faria o
-  // gráfico parecer incompleto. No modo automático, cada valor observado vira
-  // uma barra de frequência exata. Uma quantidade de faixas escolhida pelo
-  // usuário continua sendo respeitada para análises de intervalos.
-  if (binCount === undefined && distinctValues.length <= automaticBinCount) {
+  // 5, não deve receber mais intervalos do que valores possíveis. Isso também
+  // corrige widgets antigos que salvaram 20 faixas para uma coluna com apenas
+  // 5 valores distintos. Uma escolha manual menor que a quantidade de valores
+  // continua agrupando a distribuição em intervalos.
+  const requestedBinCount = binCount ?? automaticBinCount;
+  if (distinctValues.length <= requestedBinCount) {
     const frequencies = new Map<number, { count: number; sourceRowIndexes: number[] }>();
     for (const { value, sourceRowIndex } of values) {
       const frequency = frequencies.get(value) ?? { count: 0, sourceRowIndexes: [] };
@@ -464,7 +464,7 @@ export function histogramBins(rows: Row[], valueKey: string, binCount?: number):
     });
   }
 
-  const bins = Math.max(1, binCount ?? automaticBinCount);
+  const bins = Math.max(1, requestedBinCount);
   const width = (max - min) / bins;
   const buckets = Array.from({ length: bins }, (_, i) => ({
     rangeStart: min + i * width,
