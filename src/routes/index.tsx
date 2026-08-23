@@ -72,8 +72,8 @@ import {
   aggregate,
   applyMissingRules,
   detectQualitySignals,
+  filterDashboardRows,
   groupAndAggregate,
-  matchesRange,
   type AggregationOp,
 } from "@/lib/data-pipeline";
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
@@ -124,7 +124,7 @@ import {
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { buildLiveDashboardContext } from "@/lib/assistant-context";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
-import { markSourceRows } from "@/lib/data-review";
+import { markSourceRows, sourceRowIndexOf } from "@/lib/data-review";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
@@ -1393,25 +1393,12 @@ function Dashboard(p: {
     () => applyMissingRules(withCalculated, sheet.columns),
     [withCalculated, sheet.columns],
   );
+  const filteredData = useMemo(
+    () => filterDashboardRows(rulesApplied, sheet.columns, sheet.filters, search),
+    [rulesApplied, search, sheet.columns, sheet.filters],
+  );
   const data = useMemo(() => {
-    let r = rulesApplied.filter(
-      (row) =>
-        (!search ||
-          sheet.columns.some((c) =>
-            String(row[c.key] ?? "")
-              .toLowerCase()
-              .includes(search.toLowerCase()),
-          )) &&
-        sheet.filters.every((f) => {
-          const col = sheet.columns.find((c) => c.key === f.key);
-          if (col && (numericKinds.includes(col.kind) || col.kind === "date")) {
-            return matchesRange(row[f.key], f.min, f.max, col.kind === "date");
-          }
-          return String(row[f.key] ?? "")
-            .toLowerCase()
-            .includes(f.value.toLowerCase());
-        }),
-    );
+    let r = filteredData;
     if (sort)
       r = [...r].sort(
         (a, b) =>
@@ -1420,7 +1407,7 @@ function Dashboard(p: {
           }) * (sort.dir === "asc" ? 1 : -1),
       );
     return r;
-  }, [rulesApplied, sheet.columns, sheet.filters, search, sort]);
+  }, [filteredData, sort]);
   const qualitySignals = useMemo(
     () => detectQualitySignals(data, sheet.columns),
     [data, sheet.columns],
@@ -1446,11 +1433,17 @@ function Dashboard(p: {
       ),
     [analyticalWidgets, data, effectiveIntelligence.columns, nums, sheet.columns],
   );
-  // Delta real vs. a versão anterior dos dados (comparação de reimportação),
-  // calculado sobre o total do painel inteiro, sem os filtros da visão atual.
+  const previousFilteredData = useMemo(() => {
+    if (!sheet.previousSnapshot) return [];
+    const previousTraceable = markSourceRows(sheet.previousSnapshot.rows);
+    const previousCalculated = withCalculatedColumns(previousTraceable, sheet.columns);
+    const previousRulesApplied = applyMissingRules(previousCalculated, sheet.columns).rows;
+    return filterDashboardRows(previousRulesApplied, sheet.columns, sheet.filters, search);
+  }, [search, sheet.columns, sheet.filters, sheet.previousSnapshot]);
+
+  // A tendência compara a versão atual e a anterior usando exatamente o mesmo recorte.
   const versionDelta = useMemo(() => {
     if (!sheet.previousSnapshot) return null;
-    const prevCalculated = withCalculatedColumns(sheet.previousSnapshot.rows, sheet.columns);
     const deltas = new Map<string, number | null>();
     const totalOf = (rows: Row[], key: string, operation: AggregationOp) =>
       aggregate(
@@ -1459,18 +1452,46 @@ function Dashboard(p: {
       );
     for (const c of nums) {
       const operation = metricOperations.get(c.key) ?? "sum";
-      const currentTotal = totalOf(withCalculated, c.key, operation);
-      const previousTotal = totalOf(prevCalculated, c.key, operation);
+      const currentTotal = totalOf(filteredData, c.key, operation);
+      const previousTotal = totalOf(previousFilteredData, c.key, operation);
       deltas.set(
         c.key,
         previousTotal === 0 ? null : (currentTotal - previousTotal) / previousTotal,
       );
     }
     return deltas;
-  }, [sheet.previousSnapshot, sheet.columns, withCalculated, nums, metricOperations]);
-  const detailedVersionDiff = useMemo(
-    () => (sheet.previousSnapshot ? (backgroundReview?.versionDiff ?? null) : null),
-    [backgroundReview, sheet.previousSnapshot],
+  }, [filteredData, metricOperations, nums, previousFilteredData, sheet.previousSnapshot]);
+  const detailedVersionDiff = useMemo(() => {
+    if (!sheet.previousSnapshot) return null;
+    if (sheet.filters.length > 0 || search.trim()) {
+      return compareVersions(previousFilteredData, filteredData);
+    }
+    return backgroundReview?.versionDiff ?? compareVersions(previousFilteredData, filteredData);
+  }, [
+    backgroundReview,
+    filteredData,
+    previousFilteredData,
+    search,
+    sheet.filters.length,
+    sheet.previousSnapshot,
+  ]);
+  const visibleSourceRows = useMemo(
+    () =>
+      new Set(
+        filteredData
+          .map((row) => sourceRowIndexOf(row))
+          .filter((rowIndex): rowIndex is number => rowIndex !== null)
+          .map((rowIndex) => rowIndex + 1),
+      ),
+    [filteredData],
+  );
+  const visibleExceptions = useMemo(
+    () =>
+      effectiveIntelligence.exceptions.filter(
+        (exception) =>
+          exception.rowIndex === undefined || visibleSourceRows.has(exception.rowIndex),
+      ),
+    [effectiveIntelligence.exceptions, visibleSourceRows],
   );
   const primary = nums[0];
   // Colunas candidatas a agrupamento: categoria, texto ou data.
@@ -1773,7 +1794,7 @@ function Dashboard(p: {
               setSort={setSort}
               versionDelta={versionDelta}
               versionDiff={detailedVersionDiff}
-              exceptions={effectiveIntelligence.exceptions}
+              exceptions={visibleExceptions}
               semanticProfiles={effectiveIntelligence.columns}
               sourceSheetName={sheet.name}
               sourceCellProvenance={sheet.sourceCellProvenance ?? []}
