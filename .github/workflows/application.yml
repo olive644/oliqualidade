@@ -11,7 +11,9 @@ permissions:
 
 concurrency:
   group: application-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PRs da mesma branch podem substituir a execução anterior. Na main, cada
+  # commit entra na fila para não aparecer como cancelado no histórico.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   quality:
