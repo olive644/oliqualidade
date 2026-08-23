@@ -40,6 +40,12 @@ export type AnalyticalQuestion = {
   reason?: string;
   /** Tipos candidatos; a cobertura também exige que o widget use as colunas relevantes. */
   widgetTypes: WidgetType[];
+  /** Colunas centrais usadas para responder ou criar a visualização desta pergunta. */
+  metricKey?: string;
+  groupKey?: string;
+  metricKey2?: string;
+  /** Widget que já responde à pergunta no painel atual. */
+  coveredByWidgetId?: string;
 };
 
 /** Nomes de coluna que sugerem uma meta/alvo cadastrado, para a ressalva de "sem meta para comparar". */
@@ -93,6 +99,13 @@ function analyticalQuestions(
   const hasMetric = metricCount > 0;
   const hasDimension = classifications.some((c) => c.role === "dimension");
   const hasTemporal = classifications.some((c) => c.role === "temporal-dimension");
+  const metrics = classifications.filter((c) => c.role === "metric");
+  const dimensions = classifications.filter((c) => c.role === "dimension");
+  const temporal = classifications.filter((c) => c.role === "temporal-dimension");
+  const metricKey = metrics[0]?.key;
+  const metricKey2 = metrics[1]?.key;
+  const dimensionKey = dimensions[0]?.key;
+  const temporalKey = temporal[0]?.key;
   const noMetricReason = "nenhuma coluna foi classificada como métrica";
   const noDimensionPairReason = "faltam colunas de categoria e métrica juntas";
 
@@ -102,6 +115,7 @@ function analyticalQuestions(
       label: "Qual é o resultado atual?",
       answerable: hasMetric,
       widgetTypes: ["metric", "metric-trend"],
+      ...(metricKey ? { metricKey } : {}),
       ...(hasMetric ? {} : { reason: noMetricReason }),
     },
     {
@@ -109,6 +123,8 @@ function analyticalQuestions(
       label: "Como mudou no tempo?",
       answerable: hasMetric && hasTemporal,
       widgetTypes: ["line", "area", "metric-trend"],
+      ...(metricKey ? { metricKey } : {}),
+      ...(temporalKey ? { groupKey: temporalKey } : {}),
       ...(hasMetric && hasTemporal
         ? {}
         : {
@@ -122,6 +138,8 @@ function analyticalQuestions(
       label: "Quem é maior ou menor?",
       answerable: hasMetric && hasDimension,
       widgetTypes: ["bar", "ranking"],
+      ...(metricKey ? { metricKey } : {}),
+      ...(dimensionKey ? { groupKey: dimensionKey } : {}),
       ...(hasMetric && hasDimension ? {} : { reason: noDimensionPairReason }),
     },
     {
@@ -129,6 +147,8 @@ function analyticalQuestions(
       label: "Qual é a participação no total?",
       answerable: hasMetric && hasDimension,
       widgetTypes: ["pie"],
+      ...(metricKey ? { metricKey } : {}),
+      ...(dimensionKey ? { groupKey: dimensionKey } : {}),
       ...(hasMetric && hasDimension ? {} : { reason: noDimensionPairReason }),
     },
     {
@@ -136,6 +156,7 @@ function analyticalQuestions(
       label: "Como os valores estão distribuídos?",
       answerable: hasMetric,
       widgetTypes: ["histogram", "box-plot"],
+      ...(metricKey ? { metricKey } : {}),
       ...(hasMetric ? {} : { reason: noMetricReason }),
     },
     {
@@ -143,6 +164,8 @@ function analyticalQuestions(
       label: "Existem valores fora da curva?",
       answerable: hasMetric && hasDimension,
       widgetTypes: ["box-plot", "control-chart", "exception-panel"],
+      ...(metricKey ? { metricKey } : {}),
+      ...(dimensionKey ? { groupKey: dimensionKey } : {}),
       ...(hasMetric && hasDimension ? {} : { reason: noDimensionPairReason }),
     },
     {
@@ -150,6 +173,8 @@ function analyticalQuestions(
       label: "Duas variáveis têm relação?",
       answerable: metricCount >= 2,
       widgetTypes: ["scatter"],
+      ...(metricKey ? { metricKey } : {}),
+      ...(metricKey2 ? { metricKey2 } : {}),
       ...(metricCount >= 2 ? {} : { reason: "só há uma coluna classificada como métrica" }),
     },
     {
@@ -157,6 +182,8 @@ function analyticalQuestions(
       label: "O que mais contribui para o total?",
       answerable: hasMetric && hasDimension,
       widgetTypes: ["pareto"],
+      ...(metricKey ? { metricKey } : {}),
+      ...(dimensionKey ? { groupKey: dimensionKey } : {}),
       ...(hasMetric && hasDimension ? {} : { reason: noDimensionPairReason }),
     },
   ];
@@ -244,11 +271,14 @@ export function analyzeQuestionCoverage(
   const questions = analyticalQuestions(classifications);
   const answerable = questions.filter((q) => q.answerable);
   const roles = classifiedRoles(classifications);
-  const covered = answerable.filter((question) =>
-    widgets.some((widget) => widgetCoversQuestion(question, widget, roles)),
-  );
-  const uncovered = answerable.filter((q) => !covered.includes(q));
-  const unanswerable = questions.filter((q) => !q.answerable);
+  const analyzedQuestions = questions.map((question) => {
+    const matchingWidget = widgets.find((widget) => widgetCoversQuestion(question, widget, roles));
+    return matchingWidget ? { ...question, coveredByWidgetId: matchingWidget.id } : question;
+  });
+  const analyzedAnswerable = analyzedQuestions.filter((q) => q.answerable);
+  const covered = analyzedAnswerable.filter((question) => question.coveredByWidgetId);
+  const analyzedUncovered = analyzedAnswerable.filter((q) => !q.coveredByWidgetId);
+  const unanswerable = analyzedQuestions.filter((q) => !q.answerable);
 
   const sentences = [
     `Foram identificadas ${answerable.length} ${
@@ -257,13 +287,19 @@ export function analyzeQuestionCoverage(
     answerable.length > 0
       ? `${covered.length} ${covered.length === 1 ? "já recebeu" : "já receberam"} uma visualização.`
       : "",
-    ...uncovered.map(
+    ...analyzedUncovered.map(
       (q) => `"${q.label}" ainda não tem gráfico. Você pode adicioná-lo pelo botão "Widget".`,
     ),
     ...unanswerable.map((q) => `Não foi possível responder "${q.label}" porque ${q.reason}.`),
   ].filter(Boolean);
 
-  return { questions, answerable, covered, uncovered, summary: sentences.join(" ") };
+  return {
+    questions: analyzedQuestions,
+    answerable: analyzedAnswerable,
+    covered,
+    uncovered: analyzedUncovered,
+    summary: sentences.join(" "),
+  };
 }
 
 /**

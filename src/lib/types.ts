@@ -43,6 +43,7 @@ export type FilterRule = {
 
 export type ChartAggregationOp = "sum" | "avg" | "count" | "min" | "max" | "multiply" | "divide";
 export type ChartDataMode = "raw" | "aggregate";
+export type AreaReferenceMode = "previous" | "moving-average" | "goal";
 
 export type ChartConfig = {
   groupKey: string;
@@ -92,6 +93,8 @@ export type Widget = {
   valueKey2?: string; // scatter: segunda coluna numérica, eixo Y
   op?: ChartAggregationOp; // bar/pie/line/area/ranking/radar/pareto: operação de agregação
   dataMode?: ChartDataMode; // raw: uma marca por linha do Excel; aggregate: combina categorias
+  areaReference?: AreaReferenceMode; // area: referência para separar variações acima/abaixo
+  areaGoalKey?: string; // area: coluna de meta usada quando areaReference = goal
   span: WidgetSpan;
   size: WidgetSize;
   topN?: number; // ranking/radar: quantos itens exibir (padrão 5)

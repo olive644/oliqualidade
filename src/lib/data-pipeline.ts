@@ -993,6 +993,50 @@ export function trendSummaryFor(series: { name: string; total: number }[]): Tren
   return { first, last, change, relativeChange, min, max, average, pointCount: series.length };
 }
 
+export type AreaComparisonPoint = {
+  name: string;
+  total: number;
+  reference: number;
+  aboveReference: number;
+  belowReference: number;
+  difference: number;
+};
+
+/**
+ * Converte a série observada em uma leitura divergente. "Acima" e "abaixo"
+ * descrevem apenas a posição em relação à referência, nunca se o resultado é
+ * bom ou ruim. Isso é importante para métricas em que cair é desejável, como
+ * defeitos, custo ou atraso.
+ */
+export function buildAreaComparisonSeries(
+  series: { name: string; total: number }[],
+  mode: "previous" | "moving-average" | "goal",
+  goals: ReadonlyMap<string, number> = new Map(),
+): AreaComparisonPoint[] {
+  return series.map((point, index) => {
+    const previous = series[Math.max(0, index - 1)]?.total ?? point.total;
+    const movingWindow = series.slice(Math.max(0, index - 3), index);
+    const movingAverage = movingWindow.length
+      ? movingWindow.reduce((sum, entry) => sum + entry.total, 0) / movingWindow.length
+      : point.total;
+    const reference =
+      mode === "goal"
+        ? (goals.get(point.name) ?? previous)
+        : mode === "moving-average"
+          ? movingAverage
+          : previous;
+    const difference = point.total - reference;
+    return {
+      name: point.name,
+      total: point.total,
+      reference,
+      aboveReference: Math.max(0, difference),
+      belowReference: Math.min(0, difference),
+      difference,
+    };
+  });
+}
+
 /**
  * Reduz qualquer série (agregada ou "linha a linha") para no máximo 6 fatias
  * antes de chegar num gráfico de pizza: as 5 maiores mais um agrupador

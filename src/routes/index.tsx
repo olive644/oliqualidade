@@ -82,6 +82,7 @@ import {
   analyzeQuestionCoverage,
   buildExecutiveSummary,
   resolveAnalysisOperation,
+  type AnalyticalQuestion,
 } from "@/lib/analytical-narrative";
 import { buildAnalysisTrustSummary } from "@/lib/analysis-trust";
 import { AnalysisContextBanner } from "@/components/oliam/analysis-context-banner";
@@ -1602,6 +1603,55 @@ function Dashboard(p: {
     setFilters,
     setFocusedCell,
   });
+  const openQuestionWidget = (widgetId: string) => {
+    setTimeout(() => {
+      const wrapper = document.querySelector<HTMLElement>(
+        `[data-assistant-widget-id="${widgetId}"]`,
+      );
+      const target = (wrapper?.firstElementChild as HTMLElement | null) ?? wrapper;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.animate(
+        [
+          { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
+          { boxShadow: "0 0 0 5px color-mix(in oklab, var(--primary) 35%, transparent)" },
+          { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
+        ],
+        { duration: 1200, easing: "ease-out" },
+      );
+    });
+  };
+  const createQuestionWidget = (question: AnalyticalQuestion) => {
+    const preferredType: WidgetType = {
+      "current-value": "metric",
+      "trend-over-time": "area",
+      "who-is-bigger": "bar",
+      "share-of-total": "pie",
+      distribution: "histogram",
+      anomalies: "box-plot",
+      correlation: "scatter",
+      "root-causes": "pareto",
+    }[question.id] as WidgetType;
+    const created = createWidget(
+      preferredType,
+      sheet.columns,
+      undefined,
+      sheet.rows,
+      sheet.intelligence?.columns,
+    );
+    const configured: Widget = {
+      ...created,
+      ...(question.metricKey
+        ? preferredType === "metric" || preferredType === "metric-trend"
+          ? { metricKey: question.metricKey }
+          : { valueKey: question.metricKey }
+        : {}),
+      ...(question.groupKey ? { groupKey: question.groupKey } : {}),
+      ...(question.metricKey2 ? { valueKey2: question.metricKey2 } : {}),
+    };
+    setWidgets([...widgets, configured]);
+    toast.success("Visualização adicionada ao roteiro de análise.");
+    openQuestionWidget(configured.id);
+  };
   const assistantContext = useMemo(
     () =>
       buildLiveDashboardContext({
@@ -2326,6 +2376,8 @@ function Dashboard(p: {
             dateCol={dateCol}
             filters={sheet.filters}
             setFilters={setFilters}
+            onOpenQuestionWidget={openQuestionWidget}
+            onCreateQuestionWidget={createQuestionWidget}
           />
         </div>
         {d.sheets.length > 1 && (
