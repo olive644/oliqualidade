@@ -6,6 +6,7 @@ import { numericKinds, type Column, type FilterRule, type Row, type Widget } fro
 import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, fmt } from "@/lib/format";
 import { boxPlotStats, countMissingGroupRows, toggleClickFilter } from "@/lib/data-pipeline";
+import { boxPlotChartValidity, groupedNumericValues } from "@/lib/chart-validity";
 import {
   FieldDropSlot,
   FilterChip,
@@ -63,6 +64,11 @@ export function BoxPlotWidgetBody({
   const groupCol = columns.find((c) => c.key === w.groupKey);
   const configuredValueCol = columns.find((c) => c.key === w.valueKey);
   const valueCol = configuredValueCol ?? numericCols[0];
+  const groupedValues =
+    groupCol && valueCol
+      ? groupedNumericValues(data, groupCol.key, valueCol.key)
+      : new Map<string, number[]>();
+  const chartValidity = groupCol && valueCol ? boxPlotChartValidity(groupedValues) : null;
   const boxes = groupCol && valueCol ? boxPlotStats(data, groupCol.key, valueCol.key) : [];
   const totalCount = boxes.reduce((sum, box) => sum + box.count, 0);
   const missingCount = groupCol ? countMissingGroupRows(data, groupCol.key) : 0;
@@ -163,11 +169,11 @@ export function BoxPlotWidgetBody({
           )}
         </p>
       )}
-      {!groupCol || !valueCol || boxes.length === 0 ? (
+      {!groupCol || !valueCol || !chartValidity?.valid ? (
         <p className="p-6 text-center text-xs text-muted-foreground">
           {!groupCol || !valueCol
             ? "Escolha uma coluna de categoria e uma numérica para este widget."
-            : "Dados insuficientes para montar a distribuição."}
+            : chartValidity.reason}
         </p>
       ) : (
         <>
