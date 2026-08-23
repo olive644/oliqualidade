@@ -61,7 +61,6 @@ test("normaliza as faixas de um histograma persistido para os valores reais", as
   );
 
   await page.goto(`/painel/${dashboardId}`);
-  await page.waitForLoadState("networkidle");
 
   const histogram = page.locator("article.oliam-widget").filter({
     has: page.getByRole("heading", { name: "Distribuição de Quantidade" }),
