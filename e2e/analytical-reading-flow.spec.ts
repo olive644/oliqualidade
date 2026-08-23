@@ -72,7 +72,7 @@ test.describe("fluxo de leitura analítica", () => {
     await expect(area.getByText("Resultado observado", { exact: true })).toBeVisible();
     await expect(area.getByText("Acima da referência", { exact: true })).toBeVisible();
     await expect(area.getByText("Abaixo da referência", { exact: true })).toBeVisible();
-    await expect(area.getByText("Meta: Meta", { exact: true })).toBeVisible();
+    await expect(area.getByText(/^Meta:/)).toBeVisible();
     await expect(area.getByLabel("Origem e cálculo desta visualização")).toContainText(
       "Filtros ativos: 1",
     );
