@@ -155,7 +155,7 @@ export function Review(p: {
         active?.diagnostics
           ? `Detectado na linha ${active.diagnostics.header.row}, com ${Math.round(active.diagnostics.header.confidence * 100)}% de confiança.`
           : "Confirme que a primeira linha da tabela é o cabeçalho correto."
-      }${needsConfirmation ? " Confiança baixa — revise com atenção." : ""}`,
+      }${needsConfirmation ? " Confiança baixa. Revise com atenção." : ""}`,
     },
     {
       id: "range",
@@ -624,9 +624,9 @@ export function Review(p: {
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               O modo de compatibilidade ignora a detecção automática e usa a primeira linha com dado
-              da planilha como cabeçalho, com todo o restante como dado — útil quando a estrutura é
-              simples, mas a formatação confundiu a leitura automática. Você pode ajustar
-              manualmente depois, na Bancada de importação abaixo.
+              da planilha como cabeçalho e considera todo o restante como dado. Isso é útil quando a
+              estrutura é simples, mas a formatação confundiu a leitura automática. Você pode
+              ajustar manualmente depois, na Bancada de importação abaixo.
             </p>
             <Button size="sm" variant="outline" className="mt-2" onClick={applyCompatibilityMode}>
               Tentar modo de compatibilidade
@@ -833,7 +833,7 @@ export function Review(p: {
             </summary>
             <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
               Construídos no arquivo original a partir de referências de célula. Não são
-              recalculados nem reproduzidos no painel — os dados de origem continuam disponíveis nos
+              recalculados nem reproduzidos no painel. Os dados de origem continuam disponíveis nos
               widgets que você criar aqui.
             </p>
             <ul className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
@@ -864,7 +864,8 @@ export function Review(p: {
             </summary>
             <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
               Só cor sólida com RGB direto é lida; sombreamento por cor de tema do Excel não é
-              resolvido. Ainda não é usada para colorir nenhum widget — inventário por enquanto.
+              resolvido. Essa informação ainda não é usada para colorir os widgets. Por enquanto,
+              ela serve apenas como inventário.
             </p>
             <ul className="grid max-h-64 gap-2 overflow-y-auto border-t border-border p-3 sm:grid-cols-3">
               {active.diagnostics.cellFills.slice(0, 200).map((fill, index) => (
@@ -1199,7 +1200,7 @@ export function Review(p: {
                       ? undefined
                       : `Confiança ${sheetConfidence.level}: ${sheetConfidence.confidence}%${
                           sheetConfidence.reasons.length
-                            ? ` — ${sheetConfidence.reasons.join("; ")}`
+                            ? `. ${sheetConfidence.reasons.join("; ")}`
                             : ""
                         }`
                   }

@@ -59,7 +59,7 @@ export function SourceRowsPanel({
     >
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Linhas de origem — {title}</DialogTitle>
+          <DialogTitle>Linhas de origem: {title}</DialogTitle>
           <DialogDescription>
             {rowIndexes.length === 1
               ? "1 linha contribuiu para este valor."
@@ -98,8 +98,8 @@ export function SourceRowsPanel({
                     />
                   ) : (
                     <p className="mt-2 rounded-xl border border-border bg-muted p-3 text-xs text-muted-foreground">
-                      Origem na planilha não disponível para esta célula — o formato do arquivo não
-                      preserva a grade original, ou não foi possível vincular esta célula com
+                      A origem desta célula não está disponível. O formato do arquivo pode não ter
+                      preservado a grade original, ou não foi possível vincular a célula com
                       segurança.
                     </p>
                   ))}
