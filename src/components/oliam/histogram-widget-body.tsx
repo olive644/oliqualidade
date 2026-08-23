@@ -16,7 +16,12 @@ import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type FilterRule, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, parseNumericValue } from "@/lib/format";
-import { barChartPresentation, histogramBins, pieComparisonFor } from "@/lib/data-pipeline";
+import {
+  barChartPresentation,
+  histogramBins,
+  histogramBinsWithData,
+  pieComparisonFor,
+} from "@/lib/data-pipeline";
 import { histogramChartValidity, numericValuesFor } from "@/lib/chart-validity";
 import {
   FieldDropSlot,
@@ -70,7 +75,8 @@ export function HistogramWidgetBody({
   const validValues = valueCol ? numericValuesFor(data, valueCol.key) : [];
   const chartValidity = valueCol ? histogramChartValidity(validValues) : null;
   const bins = valueCol ? histogramBins(data, valueCol.key, w.binCount) : [];
-  const series = bins.map((bin) => ({
+  const emptyBinCount = bins.filter((bin) => bin.count === 0).length;
+  const series = histogramBinsWithData(bins).map((bin) => ({
     name: bin.label,
     total: bin.count,
     rangeStart: bin.rangeStart,
@@ -115,6 +121,9 @@ export function HistogramWidgetBody({
         },
         ...(missingCount > 0
           ? [{ label: "Sem valor numérico", value: missingCount.toLocaleString("pt-BR") }]
+          : []),
+        ...(emptyBinCount > 0
+          ? [{ label: "Faixas vazias omitidas", value: emptyBinCount.toLocaleString("pt-BR") }]
           : []),
       ]
     : [];
@@ -194,6 +203,14 @@ export function HistogramWidgetBody({
                 ? "registro sem valor numérico não entrou"
                 : "registros sem valor numérico não entraram"}{" "}
               nesta distribuição.
+            </>
+          )}
+          {emptyBinCount > 0 && (
+            <>
+              {" "}
+              {emptyBinCount.toLocaleString("pt-BR")}{" "}
+              {emptyBinCount === 1 ? "faixa sem" : "faixas sem"} registros{" "}
+              {emptyBinCount === 1 ? "foi omitida" : "foram omitidas"} do gráfico.
             </>
           )}
         </p>

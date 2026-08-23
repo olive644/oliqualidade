@@ -103,7 +103,7 @@ const GEO_NAME =
  * mesma ordem, então a recomendação automática nem chega a propor ranking.
  */
 const RANKING_TOP_N = 5;
-const MAX_AUTOMATIC_VISUALIZATIONS = 8;
+const MAX_AUTOMATIC_VISUALIZATIONS = 10;
 
 const VISUALIZATION_PRIORITY: Partial<Record<WidgetType, number>> = {
   area: 100,
@@ -113,6 +113,7 @@ const VISUALIZATION_PRIORITY: Partial<Record<WidgetType, number>> = {
   histogram: 92,
   scatter: 92,
   "box-plot": 90,
+  radar: 89,
   pareto: 88,
   "matrix-heatmap": 86,
   ranking: 80,
@@ -132,21 +133,37 @@ function limitAutomaticVisualizations(
     .filter(({ item }) => item.kind === "visualization");
   if (visualizations.length <= MAX_AUTOMATIC_VISUALIZATIONS) return recommendations;
 
-  const keep = new Set(
-    [...visualizations]
-      .sort((a, b) => {
-        const primaryDelta = Number(b.item.primary) - Number(a.item.primary);
-        if (primaryDelta !== 0) return primaryDelta;
-        const priorityDelta =
-          (VISUALIZATION_PRIORITY[b.item.widgetType] ?? 50) -
-          (VISUALIZATION_PRIORITY[a.item.widgetType] ?? 50);
-        if (priorityDelta !== 0) return priorityDelta;
-        const confidenceDelta = b.item.confidence - a.item.confidence;
-        return confidenceDelta !== 0 ? confidenceDelta : a.index - b.index;
-      })
-      .slice(0, MAX_AUTOMATIC_VISUALIZATIONS)
-      .map(({ item }) => item.id),
-  );
+  const ordered = [...visualizations].sort((a, b) => {
+    const primaryDelta = Number(b.item.primary) - Number(a.item.primary);
+    if (primaryDelta !== 0) return primaryDelta;
+    const priorityDelta =
+      (VISUALIZATION_PRIORITY[b.item.widgetType] ?? 50) -
+      (VISUALIZATION_PRIORITY[a.item.widgetType] ?? 50);
+    if (priorityDelta !== 0) return priorityDelta;
+    const confidenceDelta = b.item.confidence - a.item.confidence;
+    return confidenceDelta !== 0 ? confidenceDelta : a.index - b.index;
+  });
+  const selected: typeof ordered = [];
+  const selectedIds = new Set<string>();
+  const selectedTypes = new Set<WidgetType>();
+
+  // Primeiro preserva perguntas visuais diferentes. Sem essa passagem, duas
+  // barras de alta confiança podiam expulsar radar, matriz ou ranking mesmo
+  // quando esses formatos respondiam perguntas distintas sobre a planilha.
+  for (const candidate of ordered) {
+    if (selectedTypes.has(candidate.item.widgetType)) continue;
+    selected.push(candidate);
+    selectedIds.add(candidate.item.id);
+    selectedTypes.add(candidate.item.widgetType);
+    if (selected.length === MAX_AUTOMATIC_VISUALIZATIONS) break;
+  }
+  for (const candidate of ordered) {
+    if (selected.length === MAX_AUTOMATIC_VISUALIZATIONS) break;
+    if (selectedIds.has(candidate.item.id)) continue;
+    selected.push(candidate);
+    selectedIds.add(candidate.item.id);
+  }
+  const keep = new Set(selected.map(({ item }) => item.id));
 
   return recommendations.filter((item) => item.kind !== "visualization" || keep.has(item.id));
 }
@@ -722,6 +739,26 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
           }),
         );
       }
+
+      if (index === 0 && cardinality >= 3 && cardinality <= 8 && !isGeo) {
+        recommendations.push(
+          recommendation(input, {
+            id: slug("radar", dimension.key, primaryMetric.key),
+            kind: "visualization",
+            title: `Perfil de ${primaryMetric.label} por ${dimension.label}`,
+            widgetType: "radar",
+            groupKey: dimension.key,
+            valueKey: primaryMetric.key,
+            op: "sum",
+            topN: cardinality,
+            columns: [dimension.key, primaryMetric.key],
+            baseConfidence: 84,
+            reasons: [
+              `As ${cardinality} categorias permitem comparar o perfil relativo de "${primaryMetric.label}" sem sobrecarregar os eixos do radar.`,
+            ],
+          }),
+        );
+      }
     });
   }
 
@@ -795,6 +832,25 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
             columns: [dimension.key, countKey],
             baseConfidence: 84,
             reasons: ["Poucas categorias permitem comparar a distribuição por contagem."],
+          }),
+        );
+      }
+      if (dimension === dimensions[0] && cardinality >= 3 && cardinality <= 8) {
+        recommendations.push(
+          recommendation(input, {
+            id: slug("radar-contagem", dimension.key, countKey),
+            kind: "visualization",
+            title: `Perfil de registros por ${dimension.label}`,
+            widgetType: "radar",
+            groupKey: dimension.key,
+            valueKey: countKey,
+            op: "count",
+            topN: cardinality,
+            columns: [dimension.key, countKey],
+            baseConfidence: 82,
+            reasons: [
+              `As ${cardinality} categorias permitem comparar visualmente o perfil das contagens.`,
+            ],
           }),
         );
       }
@@ -918,5 +974,43 @@ export function buildRecommendedWidgets(
   columns: Column[],
   rows: Row[] = [],
 ): Widget[] {
-  return plan.recommendations.map((item) => recommendationToWidget(item, columns, rows));
+  const widgets = plan.recommendations.map((item) => recommendationToWidget(item, columns, rows));
+  let rowStart = 0;
+  let occupied = 0;
+  const fillRow = (end: number) => {
+    let missing = 3 - occupied;
+    for (let index = end - 1; index >= rowStart && missing > 0; index -= 1) {
+      const widget = widgets[index];
+      if (!widget) continue;
+      const growth = Math.min(missing, 3 - widget.span);
+      widget.span = (widget.span + growth) as Widget["span"];
+      missing -= growth;
+    }
+  };
+
+  // A grade desktop possui três colunas. Quando a sequência automática não
+  // fecha exatamente uma linha, amplia o último cartão disponível antes de
+  // começar a próxima. Assim nenhuma linha automática termina com um espaço
+  // vazio, sem alterar os dados nem a ordem analítica dos widgets.
+  widgets.forEach((widget, index) => {
+    if (widget.span === 3) {
+      if (occupied > 0) fillRow(index);
+      rowStart = index + 1;
+      occupied = 0;
+      return;
+    }
+    if (occupied + widget.span > 3) {
+      fillRow(index);
+      rowStart = index;
+      occupied = widget.span;
+      return;
+    }
+    occupied += widget.span;
+    if (occupied === 3) {
+      rowStart = index + 1;
+      occupied = 0;
+    }
+  });
+  if (occupied > 0) fillRow(widgets.length);
+  return widgets;
 }

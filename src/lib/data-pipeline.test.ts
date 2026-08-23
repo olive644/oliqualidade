@@ -10,6 +10,7 @@ import {
   detectQualitySignals,
   groupAndAggregate,
   histogramBins,
+  histogramBinsWithData,
   linearTrend,
   paretoSeries,
   pearsonCorrelation,
@@ -451,6 +452,17 @@ describe("histogramBins", () => {
   it("respeita uma quantidade manual menor que os valores distintos", () => {
     const rows: Row[] = Array.from({ length: 80 }, (_, index) => ({ valor: (index % 8) + 1 }));
     expect(histogramBins(rows, "valor", 5)).toHaveLength(5);
+  });
+
+  it("omite faixas vazias somente da apresentação do histograma", () => {
+    const bins = histogramBins(
+      [{ valor: 0 }, { valor: 1 }, { valor: 2 }, { valor: 8 }, { valor: 9 }, { valor: 10 }],
+      "valor",
+      5,
+    );
+
+    expect(bins.some((bin) => bin.count === 0)).toBe(true);
+    expect(histogramBinsWithData(bins).every((bin) => bin.count > 0)).toBe(true);
   });
 
   it("carrega o índice de origem estável de cada linha por faixa, quando disponível", () => {
