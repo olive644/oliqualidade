@@ -985,7 +985,6 @@ export function ChartWidgetBody({
                         ]}
                       />
                       <Area
-                        className="oliam-area-above-reference"
                         type="monotone"
                         yAxisId="variation"
                         dataKey="aboveReference"
@@ -997,7 +996,6 @@ export function ChartWidgetBody({
                         activeDot={{ r: 4 }}
                       />
                       <Area
-                        className="oliam-area-below-reference"
                         type="monotone"
                         yAxisId="variation"
                         dataKey="belowReference"
@@ -1009,7 +1007,6 @@ export function ChartWidgetBody({
                         activeDot={{ r: 4 }}
                       />
                       <Line
-                        className="oliam-area-reference"
                         type="monotone"
                         yAxisId="observed"
                         dataKey="reference"
@@ -1021,7 +1018,6 @@ export function ChartWidgetBody({
                         activeDot={false}
                       />
                       <Line
-                        className="oliam-area-observed"
                         type="monotone"
                         yAxisId="observed"
                         dataKey="total"
