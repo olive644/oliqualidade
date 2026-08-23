@@ -156,4 +156,62 @@ describe("contexto vivo do assistente", () => {
     });
     expect(context.widgets[0]?.series?.items).toHaveLength(100);
   });
+
+  it("usa a mesma operação semântica dos gráficos no contexto do assistente", () => {
+    const context = buildLiveDashboardContext({
+      dashboardName: "Qualidade",
+      sheetName: "Taxas",
+      columns: [
+        {
+          key: "Taxa",
+          label: "Taxa de aprovação",
+          kind: "percentage",
+          visible: true,
+          description: "",
+        },
+        {
+          key: "Equipe",
+          label: "Equipe",
+          kind: "category",
+          visible: true,
+          description: "",
+        },
+      ],
+      rows: [
+        { Taxa: 0.8, Equipe: "A" },
+        { Taxa: 1, Equipe: "A" },
+      ],
+      totalRows: 2,
+      widgets: [
+        {
+          id: "metric-percentage",
+          type: "metric",
+          title: "Taxa de aprovação",
+          metricKey: "Taxa",
+          op: "sum",
+          span: 1,
+          size: "md",
+        },
+      ],
+      semanticProfiles: [
+        {
+          key: "Taxa",
+          label: "Taxa de aprovação",
+          role: "result",
+          unit: "%",
+          unitFamily: "percentage",
+          aggregable: true,
+          confidence: 95,
+          reasons: [],
+          warnings: [],
+        },
+      ],
+      filters: [],
+      search: "",
+      sort: null,
+    });
+
+    expect(context.widgets[0]?.operation?.key).toBe("avg");
+    expect(context.widgets[0]?.displayedValue?.value).toBeCloseTo(0.9);
+  });
 });
