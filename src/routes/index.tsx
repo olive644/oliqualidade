@@ -1061,6 +1061,16 @@ export function OliAm({ routeId }: { routeId?: string }) {
       void navigate({ to: "/" });
     }
   };
+  const deleteDashboards = (ids: string[]) => {
+    const selectedIds = new Set(ids);
+    const list = dashboards.filter((dashboard) => !selectedIds.has(dashboard.id));
+    persist(list);
+    if (currentId && selectedIds.has(currentId)) {
+      setCurrentId(null);
+      void navigate({ to: "/" });
+    }
+    setStage(list.length ? "home" : "empty");
+  };
   const togglePin = (id: string) =>
     persist(dashboards.map((d) => (d.id === id ? { ...d, pinned: !d.pinned } : d)));
   const renameDash = (id: string, newName: string) =>
@@ -1119,6 +1129,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
             newDash={startNew}
             duplicateDash={duplicateDash}
             deleteDash={deleteDash}
+            deleteDashboards={deleteDashboards}
             togglePin={togglePin}
             theme={theme}
             toggleTheme={toggle}
