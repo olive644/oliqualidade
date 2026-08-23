@@ -74,10 +74,15 @@ import {
   detectQualitySignals,
   groupAndAggregate,
   matchesRange,
+  type AggregationOp,
 } from "@/lib/data-pipeline";
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
 import { resolveSourceCellProvenance } from "@/lib/cell-provenance";
-import { analyzeQuestionCoverage, buildExecutiveSummary } from "@/lib/analytical-narrative";
+import {
+  analyzeQuestionCoverage,
+  buildExecutiveSummary,
+  resolveAnalysisOperation,
+} from "@/lib/analytical-narrative";
 import { buildAnalysisTrustSummary } from "@/lib/analysis-trust";
 import { AnalysisContextBanner } from "@/components/oliam/analysis-context-banner";
 import type { ImportDiagnostics, SourceNote } from "@/lib/import-intelligence";
@@ -1420,27 +1425,46 @@ function Dashboard(p: {
   const visibleSignals = qualitySignals.filter(
     (s) => !dismissedSignals.has(`${s.kind}-${s.columnKey}`),
   );
+  const analyticalWidgets = useMemo(() => sheet.widgets ?? [], [sheet.widgets]);
+  const metricOperations = useMemo(
+    () =>
+      new Map<string, AggregationOp>(
+        nums.map((column) => [
+          column.key,
+          resolveAnalysisOperation({
+            rows: data,
+            columns: sheet.columns,
+            semanticProfiles: effectiveIntelligence.columns,
+            widgets: analyticalWidgets,
+            metricKey: column.key,
+            widgetTypes: ["metric", "metric-trend"],
+          }),
+        ]),
+      ),
+    [analyticalWidgets, data, effectiveIntelligence.columns, nums, sheet.columns],
+  );
   // Delta real vs. a versão anterior dos dados (comparação de reimportação),
   // calculado sobre o total do painel inteiro, sem os filtros da visão atual.
   const versionDelta = useMemo(() => {
     if (!sheet.previousSnapshot) return null;
     const prevCalculated = withCalculatedColumns(sheet.previousSnapshot.rows, sheet.columns);
     const deltas = new Map<string, number | null>();
-    const totalOf = (rows: Row[], key: string) =>
+    const totalOf = (rows: Row[], key: string, operation: AggregationOp) =>
       aggregate(
         rows.map((r) => parseNumericValue(r[key])).filter((v): v is number => v !== null),
-        "sum",
+        operation,
       );
     for (const c of nums) {
-      const currentTotal = totalOf(withCalculated, c.key);
-      const previousTotal = totalOf(prevCalculated, c.key);
+      const operation = metricOperations.get(c.key) ?? "sum";
+      const currentTotal = totalOf(withCalculated, c.key, operation);
+      const previousTotal = totalOf(prevCalculated, c.key, operation);
       deltas.set(
         c.key,
         previousTotal === 0 ? null : (currentTotal - previousTotal) / previousTotal,
       );
     }
     return deltas;
-  }, [sheet.previousSnapshot, sheet.columns, withCalculated, nums]);
+  }, [sheet.previousSnapshot, sheet.columns, withCalculated, nums, metricOperations]);
   const detailedVersionDiff = useMemo(
     () => (sheet.previousSnapshot ? (backgroundReview?.versionDiff ?? null) : null),
     [backgroundReview, sheet.previousSnapshot],
@@ -1451,12 +1475,24 @@ function Dashboard(p: {
   // Dados da sidebar fixa de visão geral: KPIs (mesmas colunas numéricas dos
   // cartões de métrica) e um ranking rápido por categoria, sempre a partir
   // da coluna categórica e numérica mais relevantes do painel.
+  const sidebarRankingOperation = useMemo<AggregationOp>(() => {
+    if (!cat || !primary) return "sum";
+    return resolveAnalysisOperation({
+      rows: data,
+      columns: sheet.columns,
+      semanticProfiles: effectiveIntelligence.columns,
+      widgets: analyticalWidgets,
+      metricKey: primary.key,
+      groupKey: cat.key,
+      widgetTypes: ["ranking", "bar", "pie", "pareto", "radar", "insights"],
+    });
+  }, [analyticalWidgets, cat, data, effectiveIntelligence.columns, primary, sheet.columns]);
   const sidebarRanking = useMemo(() => {
     if (!cat || !primary) return [];
-    return groupAndAggregate(data, cat.key, primary.key, "sum")
+    return groupAndAggregate(data, cat.key, primary.key, sidebarRankingOperation)
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
-  }, [data, cat, primary]);
+  }, [data, cat, primary, sidebarRankingOperation]);
   const sidebarRankingMax = Math.max(1, ...sidebarRanking.map((r) => Math.abs(r.total)));
   // Resumo executivo e cobertura de perguntas analíticas: frases
   // determinísticas (nunca geradas por IA) a partir do que já foi calculado,
@@ -1470,16 +1506,25 @@ function Dashboard(p: {
             columns: sheet.columns,
             classifications: currentAutoDashboard.classifications,
             exceptionCount: analysisTrust.pendingExceptionCount,
+            semanticProfiles: effectiveIntelligence.columns,
+            widgets: analyticalWidgets,
           })
         : [],
-    [analysisTrust.pendingExceptionCount, currentAutoDashboard, data, sheet.columns],
+    [
+      analysisTrust.pendingExceptionCount,
+      analyticalWidgets,
+      currentAutoDashboard,
+      data,
+      effectiveIntelligence.columns,
+      sheet.columns,
+    ],
   );
   const questionCoverage = useMemo(
     () =>
       currentAutoDashboard
-        ? analyzeQuestionCoverage(currentAutoDashboard.classifications, sheet.widgets ?? [])
+        ? analyzeQuestionCoverage(currentAutoDashboard.classifications, analyticalWidgets)
         : undefined,
-    [currentAutoDashboard, sheet.widgets],
+    [analyticalWidgets, currentAutoDashboard],
   );
   // "Contexto da análise": período coberto pela visão atual (já filtrada),
   // a partir da coluna de data — não a planilha inteira, para o período
@@ -1531,6 +1576,7 @@ function Dashboard(p: {
         rows: data,
         totalRows: sheet.rows.length,
         widgets,
+        semanticProfiles: effectiveIntelligence.columns,
         filters: sheet.filters,
         search,
         sort,
@@ -1546,6 +1592,7 @@ function Dashboard(p: {
       sheet.filters,
       data,
       widgets,
+      effectiveIntelligence.columns,
       search,
       sort,
       versionDelta,
@@ -2231,9 +2278,11 @@ function Dashboard(p: {
             executiveSummary={executiveSummary}
             questionCoverage={questionCoverage}
             nums={nums}
+            metricOperations={metricOperations}
             versionDelta={versionDelta}
             sidebarRanking={sidebarRanking}
             sidebarRankingMax={sidebarRankingMax}
+            sidebarRankingOperation={sidebarRankingOperation}
             cat={cat}
             primary={primary}
             dateCol={dateCol}

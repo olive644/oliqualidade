@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeQuestionCoverage, buildExecutiveSummary } from "@/lib/analytical-narrative";
+import {
+  analyzeQuestionCoverage,
+  buildExecutiveSummary,
+  resolveAnalysisOperation,
+} from "@/lib/analytical-narrative";
 import type { DashboardColumnClassification } from "@/lib/auto-dashboard";
+import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import type { Column, Row, Widget } from "@/lib/types";
 
 const classification = (
@@ -181,5 +186,62 @@ describe("buildExecutiveSummary", () => {
       exceptionCount: 0,
     });
     expect(sentences).toEqual([]);
+  });
+
+  it("usa a operação semântica do gráfico em vez de somar percentuais no resumo", () => {
+    const percentageColumns: Column[] = [
+      columns[0]!,
+      { ...columns[1]!, kind: "percentage", label: "Taxa de aprovação" },
+    ];
+    const semanticProfiles: ColumnSemanticProfile[] = [
+      {
+        key: "resultado",
+        label: "Taxa de aprovação",
+        role: "result",
+        unit: "%",
+        unitFamily: "percentage",
+        aggregable: true,
+        confidence: 95,
+        reasons: [],
+        warnings: [],
+      },
+    ];
+    const rows: Row[] = [
+      { unidade: "A", resultado: 1 },
+      { unidade: "A", resultado: 1 },
+      { unidade: "B", resultado: 0.9 },
+    ];
+    const sentences = buildExecutiveSummary({
+      rows,
+      columns: percentageColumns,
+      classifications: classifications.filter((item) => item.key !== "data"),
+      exceptionCount: 0,
+      semanticProfiles,
+      widgets: [widget("bar", { groupKey: "unidade", valueKey: "resultado", op: "sum" })],
+    });
+    expect(sentences[0]).toContain('média de "resultado"');
+    expect(sentences[0]).toContain("52,6%");
+  });
+});
+
+describe("resolveAnalysisOperation", () => {
+  it("preserva a operação configurada quando ela é segura para a métrica", () => {
+    const rows: Row[] = [
+      { unidade: "A", resultado: 10 },
+      { unidade: "A", resultado: 20 },
+    ];
+    expect(
+      resolveAnalysisOperation({
+        rows,
+        columns: [
+          { key: "unidade", label: "Unidade", kind: "category", visible: true, description: "" },
+          { key: "resultado", label: "Resultado", kind: "number", visible: true, description: "" },
+        ],
+        widgets: [widget("bar", { groupKey: "unidade", valueKey: "resultado", op: "avg" })],
+        metricKey: "resultado",
+        groupKey: "unidade",
+        widgetTypes: ["bar"],
+      }),
+    ).toBe("avg");
   });
 });
