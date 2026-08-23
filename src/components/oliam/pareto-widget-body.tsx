@@ -191,7 +191,7 @@ export function ParetoWidgetBody({
             ? `Nenhuma categoria de "${groupCol.label}" tem contribuição positiva para montar o Pareto.`
             : vitalFewCount > 0
               ? `${vitalFewCount} de ${series.length} categorias de "${groupCol.label}" concentram 80% de "${valueCol.label}".`
-              : `Nem somando todas as ${series.length} categorias de "${groupCol.label}" o acumulado chega a 80% de "${valueCol.label}" — a contribuição está bem distribuída, sem poucas causas dominantes.`}
+              : `Nem somando todas as ${series.length} categorias de "${groupCol.label}" o acumulado chega a 80% de "${valueCol.label}". A contribuição está bem distribuída e não há poucas categorias dominantes.`}
         </p>
       )}
       {!groupCol || !valueCol || series.length === 0 ? (
