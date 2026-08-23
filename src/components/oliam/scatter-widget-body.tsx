@@ -198,7 +198,7 @@ export function ScatterWidgetBody({
         <p className="p-6 text-center text-xs text-muted-foreground">
           {!xCol || !yCol
             ? "Escolha duas colunas numéricas para este widget."
-            : chartValidity.reason}
+            : (chartValidity?.reason ?? "Dados insuficientes para montar a dispersão.")}
         </p>
       ) : (
         <>
