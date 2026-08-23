@@ -403,14 +403,17 @@ function sturgesBinCount(sampleSize: number): number {
  */
 export function histogramBins(rows: Row[], valueKey: string, binCount?: number): HistogramBin[] {
   const values: { value: number; sourceRowIndex: number | null }[] = [];
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
   for (const row of rows) {
     const value = parseNumericValue(row[valueKey]);
-    if (value !== null) values.push({ value, sourceRowIndex: sourceRowIndexOf(row) });
+    if (value === null) continue;
+    values.push({ value, sourceRowIndex: sourceRowIndexOf(row) });
+    min = Math.min(min, value);
+    max = Math.max(max, value);
   }
   if (!values.length) return [];
 
-  const min = Math.min(...values.map((v) => v.value));
-  const max = Math.max(...values.map((v) => v.value));
   const numberLabel = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 
   // Todo valor igual (inclusive base de 1 valor só): uma faixa só, sem
@@ -430,7 +433,38 @@ export function histogramBins(rows: Row[], valueKey: string, binCount?: number):
     ];
   }
 
-  const bins = Math.max(1, binCount ?? sturgesBinCount(values.length));
+  const distinctValues = [...new Set(values.map(({ value }) => value))].sort((a, b) => a - b);
+  const automaticBinCount = sturgesBinCount(values.length);
+
+  // Uma coluna discreta com poucos valores, como Quantidade = 1, 2, 3, 4 e
+  // 5, não deve receber mais intervalos do que valores possíveis. Nesse caso
+  // a regra de Sturges criaria faixas vazias entre os inteiros e faria o
+  // gráfico parecer incompleto. No modo automático, cada valor observado vira
+  // uma barra de frequência exata. Uma quantidade de faixas escolhida pelo
+  // usuário continua sendo respeitada para análises de intervalos.
+  if (binCount === undefined && distinctValues.length <= automaticBinCount) {
+    const frequencies = new Map<number, { count: number; sourceRowIndexes: number[] }>();
+    for (const { value, sourceRowIndex } of values) {
+      const frequency = frequencies.get(value) ?? { count: 0, sourceRowIndexes: [] };
+      frequency.count++;
+      if (sourceRowIndex !== null) frequency.sourceRowIndexes.push(sourceRowIndex);
+      frequencies.set(value, frequency);
+    }
+    return distinctValues.map((value) => {
+      const frequency = frequencies.get(value)!;
+      return {
+        label: numberLabel(value),
+        rangeStart: value,
+        rangeEnd: value,
+        count: frequency.count,
+        ...(frequency.sourceRowIndexes.length
+          ? { sourceRowIndexes: frequency.sourceRowIndexes }
+          : {}),
+      };
+    });
+  }
+
+  const bins = Math.max(1, binCount ?? automaticBinCount);
   const width = (max - min) / bins;
   const buckets = Array.from({ length: bins }, (_, i) => ({
     rangeStart: min + i * width,

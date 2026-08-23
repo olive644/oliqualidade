@@ -425,6 +425,25 @@ describe("histogramBins", () => {
     expect(bins.length).toBeGreaterThanOrEqual(5);
   });
 
+  it("não intercala faixas zeradas quando a coluna automática tem poucos valores discretos", () => {
+    const frequencies = [30, 25, 27, 31, 37];
+    const rows: Row[] = frequencies.flatMap((frequency, index) =>
+      Array.from({ length: frequency }, () => ({ valor: index + 1 })),
+    );
+
+    const bins = histogramBins(rows, "valor");
+
+    expect(bins.map((bin) => bin.label)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(bins.map((bin) => bin.count)).toEqual(frequencies);
+    expect(bins.every((bin) => bin.count > 0 && bin.rangeStart === bin.rangeEnd)).toBe(true);
+    expect(bins.reduce((sum, bin) => sum + bin.count, 0)).toBe(150);
+  });
+
+  it("respeita uma quantidade manual de faixas mesmo com poucos valores discretos", () => {
+    const rows: Row[] = Array.from({ length: 20 }, (_, index) => ({ valor: (index % 5) + 1 }));
+    expect(histogramBins(rows, "valor", 8)).toHaveLength(8);
+  });
+
   it("carrega o índice de origem estável de cada linha por faixa, quando disponível", () => {
     const rows = markSourceRows([{ valor: 1 }, { valor: 2 }, { valor: 9 }, { valor: 10 }]);
     const bins = histogramBins(rows, "valor", 2);
