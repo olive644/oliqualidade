@@ -5,7 +5,11 @@ import { diagnoseImportedSheet, type ImportDiagnostics } from "@/lib/import-inte
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 import { scheduleToLong, type LongScheduleRow } from "@/lib/schedule-normalizer";
 import { isPeriodColumnLabel } from "@/lib/widgets";
-import { sliceAdvancedMetadata, type WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
+import {
+  sliceAdvancedMetadata,
+  type AdvancedMetadataRangeRemapper,
+  type WorksheetWithAdvancedMetadata,
+} from "@/lib/workbook-metadata";
 
 export type SheetImportResult = {
   rows: Row[];
@@ -2431,6 +2435,37 @@ function independentRegionWorksheet(
   if (ws["!rows"]) sliced["!rows"] = ws["!rows"].map((row) => (row ? { ...row } : row));
   const advanced = (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"];
   if (advanced) {
+    const remapRange: AdvancedMetadataRangeRemapper = (source, mode) => {
+      let decoded: XLSX.Range;
+      try {
+        decoded = XLSX.utils.decode_range(source.replaceAll("$", ""));
+      } catch {
+        return null;
+      }
+      const clipped = {
+        s: {
+          r: Math.max(decoded.s.r, range.s.r),
+          c: Math.max(decoded.s.c, range.s.c),
+        },
+        e: {
+          r: Math.min(decoded.e.r, range.e.r),
+          c: Math.min(decoded.e.c, range.e.c),
+        },
+      };
+      if (clipped.s.r > clipped.e.r || clipped.s.c > clipped.e.c) return null;
+      if (
+        mode === "contained" &&
+        (clipped.s.r !== decoded.s.r ||
+          clipped.s.c !== decoded.s.c ||
+          clipped.e.r !== decoded.e.r ||
+          clipped.e.c !== decoded.e.c)
+      )
+        return null;
+      return XLSX.utils.encode_range({
+        s: { r: clipped.s.r - range.s.r, c: clipped.s.c - range.s.c },
+        e: { r: clipped.e.r - range.s.r, c: clipped.e.c - range.s.c },
+      });
+    };
     (sliced as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = sliceAdvancedMetadata(
       advanced,
       (address) => {
@@ -2439,6 +2474,7 @@ function independentRegionWorksheet(
           return null;
         return XLSX.utils.encode_cell({ r: cell.r - range.s.r, c: cell.c - range.s.c });
       },
+      remapRange,
     );
   }
   return sliced;
@@ -2540,6 +2576,44 @@ function independentSectionWorksheet(
   if (advanced) {
     const sourceStartColumn = used.s.c + section.startColumn - 1;
     const sourceEndColumn = used.s.c + section.endColumn - 1;
+    const remapRange: AdvancedMetadataRangeRemapper = (source, mode) => {
+      let decoded: XLSX.Range;
+      try {
+        decoded = XLSX.utils.decode_range(source.replaceAll("$", ""));
+      } catch {
+        return null;
+      }
+      const startColumn = Math.max(decoded.s.c, sourceStartColumn);
+      const endColumn = Math.min(decoded.e.c, sourceEndColumn);
+      if (startColumn > endColumn) return null;
+      if (mode === "contained" && (startColumn !== decoded.s.c || endColumn !== decoded.e.c))
+        return null;
+
+      const mappedRows: number[] = [];
+      for (let row = decoded.s.r; row <= decoded.e.r; row++) {
+        const destination = sourceToDestination.get(row);
+        if (destination !== undefined) mappedRows.push(destination);
+      }
+      if (!mappedRows.length) return null;
+      if (mode === "contained" && mappedRows.length !== decoded.e.r - decoded.s.r + 1) return null;
+
+      mappedRows.sort((left, right) => left - right);
+      const runs: Array<{ start: number; end: number }> = [];
+      for (const row of mappedRows) {
+        const current = runs.at(-1);
+        if (current && row === current.end + 1) current.end = row;
+        else runs.push({ start: row, end: row });
+      }
+      if (mode === "contained" && runs.length !== 1) return null;
+      return runs
+        .map((run) =>
+          XLSX.utils.encode_range({
+            s: { r: run.start, c: startColumn - sourceStartColumn },
+            e: { r: run.end, c: endColumn - sourceStartColumn },
+          }),
+        )
+        .join(" ");
+    };
     (sliced as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = sliceAdvancedMetadata(
       advanced,
       (address) => {
@@ -2549,6 +2623,7 @@ function independentSectionWorksheet(
           return null;
         return XLSX.utils.encode_cell({ r: destinationRow, c: cell.c - sourceStartColumn });
       },
+      remapRange,
     );
   }
   return sliced;

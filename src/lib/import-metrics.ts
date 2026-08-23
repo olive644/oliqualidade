@@ -23,8 +23,11 @@ export type ImportMetricEntry = {
   elapsedMs: number;
   parseMs: number;
   verificationMs: number;
+  analysisMs: number;
   sourceBytes: number;
   expandedBytes: number;
+  visitedCells: number;
+  estimatedPeakMemoryBytes: number;
   sheets: number;
   repairedCells: number;
   divergentCells: number;
@@ -57,8 +60,11 @@ export function buildImportMetricEntry(
     elapsedMs: report.elapsedMs,
     parseMs: report.parseMs,
     verificationMs: report.verificationMs,
+    analysisMs: report.analysisMs,
     sourceBytes: report.sourceBytes,
     expandedBytes: report.expandedBytes,
+    visitedCells: report.visitedCells,
+    estimatedPeakMemoryBytes: report.estimatedPeakMemoryBytes,
     sheets: report.sheets,
     repairedCells: report.repairedCells,
     divergentCells: report.divergentCells,
@@ -88,8 +94,11 @@ export function buildFailedImportMetricEntry(
     elapsedMs: 0,
     parseMs: 0,
     verificationMs: 0,
+    analysisMs: 0,
     sourceBytes: 0,
     expandedBytes: 0,
+    visitedCells: 0,
+    estimatedPeakMemoryBytes: 0,
     sheets: 0,
     repairedCells: 0,
     divergentCells: 0,
@@ -129,6 +138,11 @@ export type ImportMetricsSummary = {
   wasmShadowDiverged: number;
   wasmShadowFailed: number;
   avgElapsedMsByReader: Partial<Record<WorkbookReaderId, number>>;
+  avgVisitedCells: number;
+  maxEstimatedPeakMemoryBytes: number;
+  avgParseMs: number;
+  avgVerificationMs: number;
+  avgAnalysisMs: number;
 };
 
 /**
@@ -174,5 +188,21 @@ export function summarizeImportMetrics(entries: ImportMetricEntry[]): ImportMetr
     wasmShadowDiverged,
     wasmShadowFailed,
     avgElapsedMsByReader,
+    avgVisitedCells: successful.length
+      ? successful.reduce((sum, entry) => sum + (entry.visitedCells ?? 0), 0) / successful.length
+      : 0,
+    maxEstimatedPeakMemoryBytes: Math.max(
+      0,
+      ...successful.map((entry) => entry.estimatedPeakMemoryBytes ?? 0),
+    ),
+    avgParseMs: successful.length
+      ? successful.reduce((sum, entry) => sum + (entry.parseMs ?? 0), 0) / successful.length
+      : 0,
+    avgVerificationMs: successful.length
+      ? successful.reduce((sum, entry) => sum + (entry.verificationMs ?? 0), 0) / successful.length
+      : 0,
+    avgAnalysisMs: successful.length
+      ? successful.reduce((sum, entry) => sum + (entry.analysisMs ?? 0), 0) / successful.length
+      : 0,
   };
 }

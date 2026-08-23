@@ -20,7 +20,6 @@ import {
 import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import {
   CalculationButton,
-  calculationCopy,
   EmptyWidget,
   FieldDropSlot,
   WidgetHead,
@@ -167,11 +166,6 @@ export function MetricWidgetBody({
           </FieldDropSlot>
         )}
       </WidgetConfigBar>
-      <div className="border-b border-border bg-card px-4 py-2 text-[11px] text-muted-foreground">
-        <strong className="text-foreground">Cálculo atual:</strong>{" "}
-        {calculationCopy[metricOp].action} para as {data.length.toLocaleString("pt-BR")} linhas
-        visíveis. Toque na calculadora para alterar.
-      </div>
       <div className="p-5">
         <p
           className="font-display text-4xl font-extrabold tracking-tight"

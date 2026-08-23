@@ -34,4 +34,10 @@ test("carrega dados de demonstração e chega a um painel com widgets", async ({
   await expect(page.getByRole("button", { name: /adicionar widget|widget/i }).first()).toBeVisible({
     timeout: 15_000,
   });
+  const evidence = page.getByLabel("Origem e cálculo desta visualização").first();
+  await expect(evidence).toBeVisible();
+  await expect(evidence).toContainText("Fonte:");
+  await expect(evidence).toContainText("Registros válidos:");
+  await expect(evidence).toContainText("Filtros ativos:");
+  await expect(evidence).toContainText("Fórmula:");
 });

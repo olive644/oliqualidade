@@ -76,6 +76,7 @@ import {
   type TrendSummary,
 } from "@/lib/data-pipeline";
 import type { SpreadsheetException } from "@/lib/spreadsheet-intelligence";
+import { useWidgetEvidence } from "./widget-evidence-state";
 
 /**
  * Em toque (sem hover confiável), tocar direto numa fatia/barra pra filtrar
@@ -194,113 +195,150 @@ export function WidgetHead({
 }) {
   const interactive = !!(onRemove || onCopy || onPaste || onMoveBack || onMoveForward);
   const { open: configOpen, toggle: toggleConfig, expanded, toggleExpanded } = useWidgetConfig();
+  const evidence = useWidgetEvidence();
   return (
-    <div
-      className="flex h-12 flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 px-3 pointer-coarse:h-auto pointer-coarse:min-h-12 pointer-coarse:py-1.5"
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-    >
-      <div className="flex min-w-0 items-center gap-2 px-1">
-        <GripVertical
-          data-export-controls
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-muted-foreground",
-            draggable && "cursor-grab",
-          )}
-          aria-hidden="true"
-        />
-        {icon && <span className="shrink-0 text-primary [&_svg]:size-4">{icon}</span>}
-        <h2 className="truncate font-display text-[13px] font-semibold tracking-tight">{title}</h2>
-      </div>
-      {interactive && (
-        <div
-          className="flex shrink-0 items-center gap-0.5 pointer-coarse:gap-1"
-          data-export-controls
-        >
-          <Button
-            variant="ghost"
-            size="icon"
+    <>
+      <div
+        className="flex h-12 flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 px-3 pointer-coarse:h-auto pointer-coarse:min-h-12 pointer-coarse:py-1.5"
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+      >
+        <div className="flex min-w-0 items-center gap-2 px-1">
+          <GripVertical
+            data-export-controls
             className={cn(
-              "size-7 pointer-coarse:size-12",
-              configOpen && "bg-muted text-foreground",
+              "size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-muted-foreground",
+              draggable && "cursor-grab",
             )}
-            aria-label={`${configOpen ? "Ocultar" : "Mostrar"} configuração de ${title}`}
-            aria-expanded={configOpen}
-            title={configOpen ? "Ocultar configuração" : "Configurar widget"}
-            onClick={toggleConfig}
+            aria-hidden="true"
+          />
+          {icon && <span className="shrink-0 text-primary [&_svg]:size-4">{icon}</span>}
+          <h2 className="truncate font-display text-[13px] font-semibold tracking-tight">
+            {title}
+          </h2>
+        </div>
+        {interactive && (
+          <div
+            className="flex shrink-0 items-center gap-0.5 pointer-coarse:gap-1"
+            data-export-controls
           >
-            <SlidersHorizontal className="size-3.5" />
-          </Button>
-          {expanded !== null && (
-            // Ícone com rótulo: "ampliar" é a ação nova e a que mais se
-            // procura ao explorar um gráfico apertado na grade. Sozinho entre
-            // ícones mudos ela desaparecia; a palavra ao lado é o que a torna
-            // encontrável. Em telas estreitas volta a ser só o ícone, onde
-            // não há largura para o texto.
             <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 px-2 pointer-coarse:h-12 pointer-coarse:px-3"
-              aria-label={expanded ? `Reduzir ${title}` : `Ampliar ${title}`}
-              title={expanded ? "Reduzir" : "Ampliar para ver em detalhe"}
-              onClick={toggleExpanded}
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "size-7 pointer-coarse:size-12",
+                configOpen && "bg-muted text-foreground",
+              )}
+              aria-label={`${configOpen ? "Ocultar" : "Mostrar"} configuração de ${title}`}
+              aria-expanded={configOpen}
+              title={configOpen ? "Ocultar configuração" : "Configurar widget"}
+              onClick={toggleConfig}
             >
-              {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-              <span className="hidden text-[11px] sm:inline">
-                {expanded ? "Reduzir" : "Ampliar"}
-              </span>
+              <SlidersHorizontal className="size-3.5" />
             </Button>
-          )}
-          {/* Copiar, colar, reordenar e remover são ações de arrumação do
+            {expanded !== null && (
+              // Ícone com rótulo: "ampliar" é a ação nova e a que mais se
+              // procura ao explorar um gráfico apertado na grade. Sozinho entre
+              // ícones mudos ela desaparecia; a palavra ao lado é o que a torna
+              // encontrável. Em telas estreitas volta a ser só o ícone, onde
+              // não há largura para o texto.
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2 pointer-coarse:h-12 pointer-coarse:px-3"
+                aria-label={expanded ? `Reduzir ${title}` : `Ampliar ${title}`}
+                title={expanded ? "Reduzir" : "Ampliar para ver em detalhe"}
+                onClick={toggleExpanded}
+              >
+                {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                <span className="hidden text-[11px] sm:inline">
+                  {expanded ? "Reduzir" : "Ampliar"}
+                </span>
+              </Button>
+            )}
+            {/* Copiar, colar, reordenar e remover são ações de arrumação do
               painel, não de leitura. Enfileiradas como ícones soltos, viravam
               cinco alvos cinza idênticos que empurravam configurar e ampliar
               para o meio da fila e escondiam as duas ações que a pessoa
               realmente procura enquanto explora os dados. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 pointer-coarse:size-12"
-                aria-label={`Mais ações para ${title}`}
-                title="Mais ações"
-              >
-                <MoreHorizontal className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={() => onCopy?.()}>
-                <Copy className="size-3.5" />
-                Copiar widget
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={!canPaste} onSelect={() => onPaste?.()}>
-                <ClipboardPaste className="size-3.5" />
-                {canPaste ? "Colar widget após este" : "Copie um widget primeiro"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={!!disableBack} onSelect={() => onMoveBack?.()}>
-                <ArrowLeft className="size-3.5" />
-                Mover para trás
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={!!disableForward} onSelect={() => onMoveForward?.()}>
-                <ArrowRight className="size-3.5" />
-                Mover para frente
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => onRemove?.()}
-              >
-                <Trash2 className="size-3.5" />
-                Remover widget
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 pointer-coarse:size-12"
+                  aria-label={`Mais ações para ${title}`}
+                  title="Mais ações"
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onSelect={() => onCopy?.()}>
+                  <Copy className="size-3.5" />
+                  Copiar widget
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!canPaste} onSelect={() => onPaste?.()}>
+                  <ClipboardPaste className="size-3.5" />
+                  {canPaste ? "Colar widget após este" : "Copie um widget primeiro"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={!!disableBack} onSelect={() => onMoveBack?.()}>
+                  <ArrowLeft className="size-3.5" />
+                  Mover para trás
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!!disableForward} onSelect={() => onMoveForward?.()}>
+                  <ArrowRight className="size-3.5" />
+                  Mover para frente
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => onRemove?.()}
+                >
+                  <Trash2 className="size-3.5" />
+                  Remover widget
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+      </div>
+      {evidence && (
+        <div
+          className="flex flex-wrap gap-x-3 gap-y-1 border-b border-border/70 bg-card px-4 py-2 text-[10px] leading-relaxed text-muted-foreground"
+          aria-label="Origem e cálculo desta visualização"
+        >
+          <span>
+            <strong className="text-foreground">Fonte:</strong> {evidence.source}
+          </span>
+          <span>
+            <strong className="text-foreground">Cálculo:</strong> {evidence.operation}
+          </span>
+          <span>
+            <strong className="text-foreground">Registros válidos:</strong>{" "}
+            {evidence.validRecords.toLocaleString("pt-BR")} de{" "}
+            {evidence.visibleRecords.toLocaleString("pt-BR")}
+          </span>
+          <span>
+            <strong className="text-foreground">Filtros ativos:</strong>{" "}
+            {evidence.activeFilters.toLocaleString("pt-BR")}
+          </span>
+          <span>
+            <strong className="text-foreground">Unidade:</strong> {evidence.unit}
+          </span>
+          <span>
+            <strong className="text-foreground">Confiança:</strong>{" "}
+            {evidence.confidence === null ? "não calculada" : `${evidence.confidence}%`}
+          </span>
+          <span className="min-w-0 break-words">
+            <strong className="text-foreground">Fórmula:</strong> {evidence.formula}
+          </span>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

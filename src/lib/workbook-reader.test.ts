@@ -23,7 +23,10 @@ describe("leitor universal de planilhas", () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
     const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
 
-    const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx");
+    const progress: string[] = [];
+    const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", (phase) =>
+      progress.push(phase),
+    );
 
     expect(result.sheets[0]?.rows).toEqual([{ Produto: "Bolo", Valor: 42 }]);
     expect(result.report).toMatchObject({
@@ -33,6 +36,10 @@ describe("leitor universal de planilhas", () => {
       fallbackUsed: false,
     });
     expect(result.report.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(result.report.analysisMs).toBeGreaterThanOrEqual(0);
+    expect(result.report.visitedCells).toBe(4);
+    expect(result.report.estimatedPeakMemoryBytes).toBeGreaterThan(result.report.expandedBytes);
+    expect(progress).toEqual(["decoding", "parsing", "verifying", "analyzing", "complete"]);
   });
 
   it("descompacta o pacote OOXML uma única vez, compartilhada entre metadados e verificação independente", async () => {

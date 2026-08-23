@@ -27,6 +27,8 @@ export type FormulaDiagnostic = {
   reason?: string;
   referencesOtherSheet: boolean;
   containsRange: boolean;
+  /** Indica exatamente de onde pode vir o resultado sem prometer recálculo inexistente. */
+  resolution: "local-compatible" | "stored-value" | "unavailable";
 };
 
 export type DetectedFieldKind =
@@ -138,7 +140,7 @@ export type ImportDiagnostics = {
   shapes: WorkbookShapeDiagnostic[];
   /** Gráficos nativos do Excel (construídos no próprio arquivo, não os que o app gera a partir dos dados). */
   charts: WorkbookChartDiagnostic[];
-  /** Cor de preenchimento sólido por célula, só RGB direto resolvido (ver `parseCellFills`). */
+  /** Cor de preenchimento sólido por célula, resolvida por RGB direto ou tema do workbook. */
   cellFills: WorkbookCellFillDiagnostic[];
   calculatedColumns: string[];
   autofilterRange: string | null;
@@ -373,6 +375,11 @@ function analyzeFormulas(ws: XLSX.WorkSheet): FormulaDiagnostic[] {
         ...(reason ? { reason } : {}),
         referencesOtherSheet,
         containsRange,
+        resolution: supported
+          ? "local-compatible"
+          : cell.v !== undefined && cell.v !== null
+            ? "stored-value"
+            : "unavailable",
       });
       if (result.length >= 200) return result;
     }
@@ -745,11 +752,21 @@ export function diagnoseImportedSheet(ws: XLSX.WorkSheet, rows: Row[]): ImportDi
   const warnings: string[] = [];
   if (meta.formulaCells) warnings.push(`${meta.formulaCells} célula(s) com fórmula detectada(s)`);
   const unsupportedFormulaCount = formulaDiagnostics.filter((f) => !f.supported).length;
-  if (unsupportedFormulaCount) {
+  const storedFormulaCount = formulaDiagnostics.filter(
+    (formula) => formula.resolution === "stored-value",
+  ).length;
+  const unavailableFormulaCount = formulaDiagnostics.filter(
+    (formula) => formula.resolution === "unavailable",
+  ).length;
+  if (storedFormulaCount) {
     warnings.push(
-      `${unsupportedFormulaCount} fórmula(s) precisam de cálculo pelo Excel/serviço externo ou de suporte adicional`,
+      `${storedFormulaCount} fórmula(s) não são recalculadas localmente; o valor armazenado no arquivo foi mantido`,
     );
   }
+  if (unavailableFormulaCount)
+    warnings.push(
+      `${unavailableFormulaCount} fórmula(s) não têm cálculo local compatível nem valor armazenado no arquivo`,
+    );
   if (meta.mergedRanges)
     warnings.push(`${meta.mergedRanges} intervalo(s) de células mescladas detectado(s)`);
   if (meta.hiddenRows || meta.hiddenColumns) warnings.push("existem linhas ou colunas ocultas");
@@ -1100,11 +1117,19 @@ export function getFormulaSummary(diagnostics: ImportDiagnostics) {
     (item) => item.referencesOtherSheet,
   ).length;
   const ranges = diagnostics.formulaDiagnostics.filter((item) => item.containsRange).length;
+  const storedValues = diagnostics.formulaDiagnostics.filter(
+    (item) => item.resolution === "stored-value",
+  ).length;
+  const unavailableValues = diagnostics.formulaDiagnostics.filter(
+    (item) => item.resolution === "unavailable",
+  ).length;
   return {
     total: diagnostics.formulaDiagnostics.length,
     supported,
     unsupported,
     crossSheet,
     ranges,
+    storedValues,
+    unavailableValues,
   };
 }
