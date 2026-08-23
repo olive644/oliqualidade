@@ -29,7 +29,7 @@ export type AnalyticalQuestion = {
   answerable: boolean;
   /** Por que a pergunta não dá pra responder com segurança — só presente quando `answerable` é falso. */
   reason?: string;
-  /** Tipos de widget que respondem a essa pergunta, usados só para checar se o painel já tem um. */
+  /** Tipos candidatos; a cobertura também exige que o widget use as colunas relevantes. */
   widgetTypes: WidgetType[];
 };
 
@@ -121,12 +121,71 @@ export type QuestionCoverage = {
   summary: string;
 };
 
+type AnalyticalRoles = {
+  metrics: DashboardColumnClassification[];
+  dimensions: DashboardColumnClassification[];
+  temporal: DashboardColumnClassification[];
+};
+
+function classifiedRoles(classifications: DashboardColumnClassification[]): AnalyticalRoles {
+  const byConfidence = (a: DashboardColumnClassification, b: DashboardColumnClassification) =>
+    b.confidence - a.confidence;
+  return {
+    metrics: classifications.filter((c) => c.role === "metric").sort(byConfidence),
+    dimensions: classifications.filter((c) => c.role === "dimension").sort(byConfidence),
+    temporal: classifications.filter((c) => c.role === "temporal-dimension").sort(byConfidence),
+  };
+}
+
+function widgetCoversQuestion(
+  question: AnalyticalQuestion,
+  widget: Widget,
+  roles: AnalyticalRoles,
+): boolean {
+  if (!question.widgetTypes.includes(widget.type)) return false;
+
+  const metric = roles.metrics[0]?.key;
+  const dimension = roles.dimensions[0]?.key;
+  const temporal = roles.temporal[0]?.key;
+  if (!metric) return false;
+
+  switch (question.id) {
+    case "current-value":
+      return widget.metricKey === metric;
+    case "trend-over-time":
+      return widget.type === "metric-trend"
+        ? widget.metricKey === metric && widget.groupKey === temporal
+        : widget.valueKey === metric && widget.groupKey === temporal;
+    case "who-is-bigger":
+    case "share-of-total":
+    case "root-causes":
+      return widget.valueKey === metric && widget.groupKey === dimension;
+    case "distribution":
+      return widget.valueKey === metric;
+    case "anomalies":
+      if (widget.type === "exception-panel") return true;
+      return (
+        (widget.valueKey === metric || widget.metricKey === metric) &&
+        (widget.type !== "box-plot" || widget.groupKey === dimension)
+      );
+    case "correlation": {
+      const secondMetric = roles.metrics[1]?.key;
+      if (!secondMetric) return false;
+      return (
+        (widget.valueKey === metric && widget.valueKey2 === secondMetric) ||
+        (widget.valueKey === secondMetric && widget.valueKey2 === metric)
+      );
+    }
+  }
+
+  return false;
+}
+
 /**
  * Cruza as perguntas que a estrutura da planilha permite responder com os
- * widgets que já existem no painel (checagem por tipo — presença de um
- * `WidgetType` compatível, não uma correspondência exata de colunas), para
- * dizer quantas perguntas identificadas já viraram gráfico e quais ainda
- * não, com o motivo de cada lacuna.
+ * widgets que já existem no painel. Um tipo de gráfico compatível só conta
+ * como cobertura quando usa as colunas relevantes (métrica, dimensão e/ou
+ * data primárias); assim um gráfico de outra variável não mascara uma lacuna.
  */
 export function analyzeQuestionCoverage(
   classifications: DashboardColumnClassification[],
@@ -134,8 +193,10 @@ export function analyzeQuestionCoverage(
 ): QuestionCoverage {
   const questions = analyticalQuestions(classifications);
   const answerable = questions.filter((q) => q.answerable);
-  const presentTypes = new Set(widgets.map((w) => w.type));
-  const covered = answerable.filter((q) => q.widgetTypes.some((type) => presentTypes.has(type)));
+  const roles = classifiedRoles(classifications);
+  const covered = answerable.filter((question) =>
+    widgets.some((widget) => widgetCoversQuestion(question, widget, roles)),
+  );
   const uncovered = answerable.filter((q) => !covered.includes(q));
   const unanswerable = questions.filter((q) => !q.answerable);
 
@@ -147,7 +208,7 @@ export function analyzeQuestionCoverage(
       ? `${covered.length} ${covered.length === 1 ? "já recebeu" : "já receberam"} uma visualização.`
       : "",
     ...uncovered.map(
-      (q) => `"${q.label}" ainda não tem gráfico — pode ser adicionado pelo botão "Widget".`,
+      (q) => `"${q.label}" ainda não tem gráfico. Você pode adicioná-lo pelo botão "Widget".`,
     ),
     ...unanswerable.map((q) => `Não foi possível responder "${q.label}" porque ${q.reason}.`),
   ].filter(Boolean);

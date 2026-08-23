@@ -13,7 +13,7 @@ export function AnalysisContextBanner({
   totalRowCount,
   periodLabel,
   filterCount,
-  confidence,
+  planConfidence,
 }: {
   fileName: string;
   sheetName: string;
@@ -21,7 +21,7 @@ export function AnalysisContextBanner({
   totalRowCount: number;
   periodLabel: string | null;
   filterCount: number;
-  confidence: number | undefined;
+  planConfidence: number | undefined;
 }) {
   const filtered = rowCount < totalRowCount;
   return (
@@ -40,9 +40,9 @@ export function AnalysisContextBanner({
           {filterCount} {filterCount === 1 ? "filtro ativo" : "filtros ativos"}
         </span>
       )}
-      {confidence !== undefined && (
+      {planConfidence !== undefined && (
         <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-          {confidence}% de confiança na leitura
+          {planConfidence}% de confiança no painel sugerido
         </span>
       )}
     </div>

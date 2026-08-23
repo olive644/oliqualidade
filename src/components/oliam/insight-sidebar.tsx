@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import { X } from "lucide-react";
 import type { AutoDashboardPlan } from "@/lib/auto-dashboard";
 import type { QuestionCoverage } from "@/lib/analytical-narrative";
 import { aggregate } from "@/lib/data-pipeline";
@@ -7,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 export function InsightSidebar(p: {
   open: boolean;
+  onOpenChange: (open: boolean) => void;
   data: Row[];
   rowCount: number;
   autoDashboard: AutoDashboardPlan | undefined;
@@ -22,10 +25,31 @@ export function InsightSidebar(p: {
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
 }) {
-  if (!p.open) return null;
-  const { cat, primary, dateCol } = p;
-  return (
-    <aside className="oliam-insight-sidebar hidden shrink-0 overflow-auto lg:block">
+  const { cat, primary, dateCol, open, onOpenChange } = p;
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open || !window.matchMedia("(max-width: 1023px)").matches) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [open, onOpenChange]);
+
+  if (!open) return null;
+
+  const content = (
+    <>
       <div className="border-b border-border p-4">
         <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
           Visão geral
@@ -231,6 +255,45 @@ export function InsightSidebar(p: {
           })()}
         </div>
       )}
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <aside className="oliam-insight-sidebar hidden shrink-0 overflow-auto lg:block">
+        {content}
+      </aside>
+      <button
+        type="button"
+        className="fixed inset-0 z-40 cursor-default bg-black/50 lg:hidden"
+        aria-label="Fechar visão geral"
+        tabIndex={-1}
+        onClick={() => onOpenChange(false)}
+      />
+      <aside
+        className="fixed inset-y-0 right-0 z-50 w-[min(92vw,24rem)] overflow-y-auto border-l border-border bg-background shadow-2xl lg:hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="insight-sidebar-mobile-title"
+        aria-describedby="insight-sidebar-mobile-description"
+      >
+        <h2 id="insight-sidebar-mobile-title" className="sr-only">
+          Visão geral da análise
+        </h2>
+        <p id="insight-sidebar-mobile-description" className="sr-only">
+          Resumo executivo, perguntas analíticas, indicadores e filtros do painel.
+        </p>
+        <button
+          ref={closeButtonRef}
+          type="button"
+          className="absolute right-2 top-2 z-10 grid size-11 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Fechar visão geral"
+          onClick={() => onOpenChange(false)}
+        >
+          <X className="size-5" aria-hidden="true" />
+        </button>
+        <div className="pt-10">{content}</div>
+      </aside>
+    </>
   );
 }
