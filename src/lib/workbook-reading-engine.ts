@@ -17,10 +17,15 @@ export type WorkbookReadReport = {
   elapsedMs: number;
   parseMs: number;
   verificationMs: number;
+  analysisMs: number;
   /** Tamanho em bytes do arquivo como recebido (compactado, para ZIP/OOXML). */
   sourceBytes: number;
   /** Tamanho descompactado estimado a partir do diretório central do ZIP; igual a `sourceBytes` para formatos sem compressão (CSV/TXT). */
   expandedBytes: number;
+  /** Quantidade de posições percorridas dentro dos intervalos usados das abas. */
+  visitedCells: number;
+  /** Estimativa conservadora do pico de memória, nunca apresentada como medição real. */
+  estimatedPeakMemoryBytes: number;
   sheets: number;
   repairedCells: number;
   divergentCells: number;
@@ -40,6 +45,23 @@ export type WorkbookReadReport = {
   wasmDivergentSheets: number;
   wasmSchemaVersion: string | null;
 };
+
+export function estimateWorkbookPeakMemoryBytes({
+  sourceBytes,
+  expandedBytes,
+  visitedCells,
+}: {
+  sourceBytes: number;
+  expandedBytes: number;
+  visitedCells: number;
+}): number {
+  // O pacote de origem, até duas representações descompactadas e uma margem
+  // de 160 bytes por célula cobrem XML, objetos do parser e dados normalizados.
+  // É uma estimativa de planejamento, não uma leitura da memória do navegador.
+  return Math.round(
+    Math.max(0, sourceBytes) + Math.max(0, expandedBytes) * 2 + Math.max(0, visitedCells) * 160,
+  );
+}
 
 export type WorkbookReadResult = {
   sheets: SheetOption[];

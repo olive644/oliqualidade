@@ -1,5 +1,5 @@
 import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
-import { Fragment, lazy, Suspense, useCallback, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -96,7 +96,6 @@ import {
   aggregationLabels,
   chartSeries,
   collapsePieSeries,
-  countMissingGroupRows,
   detectQualitySignals,
   groupAndAggregate,
   limitChartSeriesForRendering,
@@ -123,7 +122,9 @@ import {
 import { parseEditedValue, suggestCorrection, type AuditEntry } from "@/lib/data-review";
 import type { FolderMonitorView } from "@/lib/folder-monitor";
 import type { ColorGroupLabel, SourceCellFill } from "@/lib/cell-fill-provenance";
+import type { SourceCellProvenance } from "@/lib/cell-provenance";
 import type { WorkbookImageDiagnostic } from "@/lib/workbook-metadata";
+import { buildWidgetEvidence } from "@/lib/widget-evidence";
 import { AnimatedNumber } from "./animated-number";
 import { ChartWidgetBody } from "./chart-widget-body";
 import { BoxPlotWidgetBody } from "./box-plot-widget-body";
@@ -152,8 +153,6 @@ import {
   AxisTick,
   compactAxisValue,
   exceptionGuidance,
-  ChartReadingGuide,
-  calculationCopy,
   CalculationButton,
   PieLegend,
   SeriesComparisonPanel,
@@ -162,6 +161,7 @@ import {
   type ChartDotProps,
 } from "./widget-support";
 import { WidgetConfigBar, WidgetConfigProvider } from "./widget-config-context";
+import { WidgetEvidenceProvider } from "./widget-evidence-context";
 // Carregado sob demanda: Leaflet só entra no bundle quando um widget de mapa
 // é realmente exibido, em vez de pesar no chunk compartilhado por qualquer
 // painel (mesmo os que nunca usam mapa). Ver seção 63 do CURRENT_STATE_AUDIT.md.
@@ -755,16 +755,6 @@ function WidgetCardBody({
           />
         </WidgetConfigBar>
         {sizeControls}
-        {groupCol && valueCol && (
-          <ChartReadingGuide
-            group={groupCol.label}
-            metric={valueCol.label}
-            mode={dataMode}
-            op={op}
-            rowCount={data.length}
-            missingGroupCount={countMissingGroupRows(data, groupCol.key)}
-          />
-        )}
         {!groupCol || !valueCol ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
             Escolha uma coluna com nome de local (cidade, estado ou país) e uma coluna numérica para
@@ -871,10 +861,42 @@ function WidgetCardBody({
  */
 const EXPANDABLE: WidgetType[] = ["area"];
 
-export function WidgetCard(props: React.ComponentProps<typeof WidgetCardBody>) {
+type WidgetCardProps = React.ComponentProps<typeof WidgetCardBody> & {
+  sourceSheetName: string;
+  sourceCellProvenance: SourceCellProvenance[];
+  activeFilterCount: number;
+};
+
+export function WidgetCard({
+  sourceSheetName,
+  sourceCellProvenance,
+  activeFilterCount,
+  ...props
+}: WidgetCardProps) {
   const [expanded, setExpanded] = useState(false);
   const canExpand = EXPANDABLE.includes(props.widget.type);
   const toggleExpanded = useCallback(() => setExpanded((current) => !current), []);
+  const evidence = useMemo(
+    () =>
+      buildWidgetEvidence({
+        widget: props.widget,
+        data: props.data,
+        columns: props.columns,
+        semanticProfiles: props.semanticProfiles,
+        sourceSheetName,
+        sourceCellProvenance,
+        activeFilterCount,
+      }),
+    [
+      activeFilterCount,
+      props.columns,
+      props.data,
+      props.semanticProfiles,
+      props.widget,
+      sourceCellProvenance,
+      sourceSheetName,
+    ],
+  );
 
   // Ampliado, o widget é remontado no diálogo ocupando a largura inteira e a
   // altura máxima. O da grade sai de cena enquanto isso: manter os dois
@@ -884,44 +906,46 @@ export function WidgetCard(props: React.ComponentProps<typeof WidgetCardBody>) {
   const expandedWidget = { ...props.widget, span: 3 as const, size: "lg" as const };
 
   return (
-    <>
-      <WidgetConfigProvider
-        expanded={canExpand ? expanded : null}
-        onToggleExpanded={toggleExpanded}
-      >
-        {expanded ? (
-          <article
-            className={cn(
-              "oliam-widget flex items-center justify-center bg-card text-xs text-muted-foreground",
-              spanClass(props.widget.span),
-              sizeClass(props.widget.size, props.widget.type),
-            )}
-          >
-            Ampliado em tela cheia
-          </article>
-        ) : (
-          <WidgetCardBody {...props} />
-        )}
-      </WidgetConfigProvider>
-      {/* Montado só enquanto aberto, em vez de ficar montado com `open=false`.
+    <WidgetEvidenceProvider evidence={evidence}>
+      <>
+        <WidgetConfigProvider
+          expanded={canExpand ? expanded : null}
+          onToggleExpanded={toggleExpanded}
+        >
+          {expanded ? (
+            <article
+              className={cn(
+                "oliam-widget flex items-center justify-center bg-card text-xs text-muted-foreground",
+                spanClass(props.widget.span),
+                sizeClass(props.widget.size, props.widget.type),
+              )}
+            >
+              Ampliado em tela cheia
+            </article>
+          ) : (
+            <WidgetCardBody {...props} />
+          )}
+        </WidgetConfigProvider>
+        {/* Montado só enquanto aberto, em vez de ficar montado com `open=false`.
           O corpo do widget traz suas próprias animações de entrada, e o
           `animationend` delas borbulha até o conteúdo do diálogo — o
           desmonte animado do Radix lia esse evento como se fosse o fim da
           própria animação de saída e deixava o diálogo visível para sempre,
           inclusive fechando pelo X nativo. */}
-      {canExpand && expanded && (
-        <Dialog open onOpenChange={setExpanded}>
-          <DialogContent
-            className="max-h-[92vh] w-[min(96vw,1400px)] max-w-none overflow-y-auto p-0 sm:max-w-none"
-            aria-describedby={undefined}
-          >
-            <DialogTitle className="sr-only">Widget ampliado</DialogTitle>
-            <WidgetConfigProvider expanded onToggleExpanded={toggleExpanded}>
-              <WidgetCardBody {...props} widget={expandedWidget} animationDelay={0} />
-            </WidgetConfigProvider>
-          </DialogContent>
-        </Dialog>
-      )}
-    </>
+        {canExpand && expanded && (
+          <Dialog open onOpenChange={setExpanded}>
+            <DialogContent
+              className="max-h-[92vh] w-[min(96vw,1400px)] max-w-none overflow-y-auto p-0 sm:max-w-none"
+              aria-describedby={undefined}
+            >
+              <DialogTitle className="sr-only">Widget ampliado</DialogTitle>
+              <WidgetConfigProvider expanded onToggleExpanded={toggleExpanded}>
+                <WidgetCardBody {...props} widget={expandedWidget} animationDelay={0} />
+              </WidgetConfigProvider>
+            </DialogContent>
+          </Dialog>
+        )}
+      </>
+    </WidgetEvidenceProvider>
   );
 }

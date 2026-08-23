@@ -4,6 +4,7 @@ import {
   canUseWasmCandidate,
   compareWasmInventory,
   describeReaderOutcome,
+  estimateWorkbookPeakMemoryBytes,
   normalizeWasmCandidateFormats,
   normalizeWasmReaderMode,
   normalizeWasmSampleRate,
@@ -23,8 +24,11 @@ function baseReport(overrides: Partial<WorkbookReadReport> = {}): WorkbookReadRe
     elapsedMs: 10,
     parseMs: 5,
     verificationMs: 5,
+    analysisMs: 0,
     sourceBytes: 1000,
     expandedBytes: 1000,
+    visitedCells: 10,
+    estimatedPeakMemoryBytes: 4600,
     sheets: 1,
     repairedCells: 0,
     divergentCells: 0,
@@ -48,6 +52,16 @@ function baseReport(overrides: Partial<WorkbookReadReport> = {}): WorkbookReadRe
 }
 
 describe("contrato do Reading Engine v2", () => {
+  it("estima a memória com uma fórmula explícita e determinística", () => {
+    expect(
+      estimateWorkbookPeakMemoryBytes({
+        sourceBytes: 1_000,
+        expandedBytes: 2_000,
+        visitedCells: 10,
+      }),
+    ).toBe(6_600);
+  });
+
   it("reconhece o formato sem depender do nome completo", () => {
     expect(workbookFormat("Plano de Produção.XLSX")).toBe("xlsx");
     expect(workbookFormat("sem-extensao")).toBe("sem-extensao");

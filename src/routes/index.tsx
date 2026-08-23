@@ -406,7 +406,10 @@ export function OliAm({ routeId }: { routeId?: string }) {
     const labels = {
       decoding: "Identificando formato e codificação…",
       parsing: "Lendo células, fórmulas e formatação…",
+      verifying: "Conferindo valores com o XML original…",
       analyzing: "Analisando cabeçalhos e regiões de dados…",
+      comparing: "Comparando os leitores disponíveis…",
+      complete: "Finalizando a importação…",
     };
     let result: Awaited<ReturnType<typeof readWorkbookFileWithReport>>;
     try {
@@ -1772,6 +1775,9 @@ function Dashboard(p: {
               versionDiff={detailedVersionDiff}
               exceptions={effectiveIntelligence.exceptions}
               semanticProfiles={effectiveIntelligence.columns}
+              sourceSheetName={sheet.name}
+              sourceCellProvenance={sheet.sourceCellProvenance ?? []}
+              activeFilterCount={sheet.filters.length + (search ? 1 : 0)}
               exceptionDecisions={sheet.exceptionDecisions ?? {}}
               auditTrail={sheet.auditTrail ?? []}
               onExceptionDecision={setExceptionDecision}

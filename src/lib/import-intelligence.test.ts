@@ -486,6 +486,32 @@ it("classifica condições e agregações condicionais locais como compatíveis"
   expect(summary).toMatchObject({ total: 2, supported: 2, unsupported: 0 });
 });
 
+it("separa fórmula incompatível com valor armazenado de resultado realmente indisponível", () => {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["Código", "Tabela", "Busca", "Outra aba"],
+    ["A", 42, null, null],
+  ]);
+  ws["C2"] = { f: "VLOOKUP(A2,A1:B2,2,FALSE)", v: 42, t: "n" };
+  ws["D2"] = { f: "Resumo!A1" };
+  ws["!ref"] = "A1:D2";
+  const diagnostics = diagnoseImportedSheet(ws, [
+    { Código: "A", Tabela: 42, Busca: 42, "Outra aba": null },
+  ]);
+
+  expect(diagnostics.formulaDiagnostics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ address: "C2", resolution: "stored-value" }),
+      expect.objectContaining({ address: "D2", resolution: "unavailable" }),
+    ]),
+  );
+  expect(getFormulaSummary(diagnostics)).toMatchObject({
+    total: 2,
+    unsupported: 2,
+    storedValues: 1,
+    unavailableValues: 1,
+  });
+});
+
 describe("matriz de confiança por aba", () => {
   it("classifica cada aba em alta/média/baixa a partir da confiança já calculada, sem recalcular nada", () => {
     const wsAlta = sheet([

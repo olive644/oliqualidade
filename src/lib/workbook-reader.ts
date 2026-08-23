@@ -15,6 +15,7 @@ import {
   configuredWasmCandidateFormats,
   configuredWasmReaderMode,
   configuredWasmSampleRate,
+  estimateWorkbookPeakMemoryBytes,
   normalizeWasmSampleRate,
   registeredWasmWorkbookReader,
   shouldSampleWasm,
@@ -43,7 +44,8 @@ export const MAX_ZIP_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024;
 export const MAX_ZIP_ENTRY_BYTES = 512 * 1024 * 1024;
 export const MAX_SUSPICIOUS_COMPRESSION_RATIO = 1_000;
 
-export type WorkbookReadProgress = "decoding" | "parsing" | "analyzing";
+export type WorkbookReadProgress =
+  "decoding" | "parsing" | "verifying" | "analyzing" | "comparing" | "complete";
 
 export type WorksheetWithReaderDiagnostics = XLSX.WorkSheet & {
   "!oliReaderDivergences"?: ReaderDivergence[];
@@ -106,7 +108,7 @@ export function validateZipWorkbook(bytes: Uint8Array): { totalUncompressedBytes
   return { totalUncompressedBytes: totalUncompressed };
 }
 
-export function validateWorkbookComplexity(workbook: XLSX.WorkBook): void {
+export function validateWorkbookComplexity(workbook: XLSX.WorkBook): number {
   if (workbook.SheetNames.length > MAX_WORKBOOK_SHEETS)
     throw new Error(`A planilha possui mais de ${MAX_WORKBOOK_SHEETS} abas.`);
   let cells = 0;
@@ -120,6 +122,7 @@ export function validateWorkbookComplexity(workbook: XLSX.WorkBook): void {
         "A planilha ultrapassa 2 milhões de células. Divida o arquivo para evitar travamentos e perda de dados.",
       );
   }
+  return cells;
 }
 
 function decodeText(bytes: Uint8Array): string {
@@ -342,11 +345,12 @@ export async function readWorkbookBytesWithEngine(
     for (const sheet of Object.values(wb.Sheets))
       (sheet as WorksheetWithReaderDiagnostics)["!oliOoxmlFallback"] = true;
   }
-  validateWorkbookComplexity(wb);
+  const visitedCells = validateWorkbookComplexity(wb);
   const parseMs = Math.round(performance.now() - parseStartedAt);
   let repairedCells = 0;
   let divergentCells = 0;
   let independentInspection: OoxmlInspection | undefined;
+  onProgress?.("verifying");
   const verificationStartedAt = performance.now();
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
     const archive = sharedOoxmlArchive(bytes);
@@ -367,8 +371,11 @@ export async function readWorkbookBytesWithEngine(
       // verificação e nunca pode impedir a importação de um arquivo legível.
     }
   }
+  const verificationMs = Math.round(performance.now() - verificationStartedAt);
   onProgress?.("analyzing");
+  const analysisStartedAt = performance.now();
   let sheets = sheetsWithData(wb);
+  const analysisMs = Math.round(performance.now() - analysisStartedAt);
   const format = workbookFormat(fileName);
   const wasmReaderMode = options.wasmReaderMode ?? configuredWasmReaderMode();
   const wasmCandidateFormats = options.wasmCandidateFormats ?? configuredWasmCandidateFormats();
@@ -402,6 +409,7 @@ export async function readWorkbookBytesWithEngine(
     candidateEligible && !registeredReader ? "unavailable" : null;
   let wasmOutputUsed = false;
   if (wasmReader) {
+    onProgress?.("comparing");
     const wasmStartedAt = performance.now();
     try {
       const inventory = await wasmReader.inventory(bytes);
@@ -444,6 +452,7 @@ export async function readWorkbookBytesWithEngine(
       wasmShadowMs = Math.round(performance.now() - wasmStartedAt);
     }
   }
+  onProgress?.("complete");
   return {
     sheets,
     report: {
@@ -457,9 +466,16 @@ export async function readWorkbookBytesWithEngine(
       format,
       elapsedMs: Math.round(performance.now() - startedAt),
       parseMs,
-      verificationMs: Math.round(performance.now() - verificationStartedAt),
+      verificationMs,
+      analysisMs,
       sourceBytes: bytes.length,
       expandedBytes: zipInfo?.totalUncompressedBytes ?? bytes.length,
+      visitedCells,
+      estimatedPeakMemoryBytes: estimateWorkbookPeakMemoryBytes({
+        sourceBytes: bytes.length,
+        expandedBytes: zipInfo?.totalUncompressedBytes ?? bytes.length,
+        visitedCells,
+      }),
       sheets: sheets.length,
       repairedCells,
       divergentCells,
@@ -524,6 +540,7 @@ export function readWorkbookBytes(
       (sheet as WorksheetWithReaderDiagnostics)["!oliOoxmlFallback"] = true;
   }
   validateWorkbookComplexity(wb);
+  onProgress?.("verifying");
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
     const archive = sharedOoxmlArchive(bytes);
     attachWorkbookFeatures(wb, archive);
@@ -541,5 +558,7 @@ export function readWorkbookBytes(
     }
   }
   onProgress?.("analyzing");
-  return sheetsWithData(wb);
+  const sheets = sheetsWithData(wb);
+  onProgress?.("complete");
+  return sheets;
 }

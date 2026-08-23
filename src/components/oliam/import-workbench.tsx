@@ -508,13 +508,19 @@ export function ImportWorkbench({
                     ? "Estrutura consistente. Você pode confirmar ou revisar a grade original."
                     : "Há pontos de atenção. Revise as células marcadas antes de confirmar."}
                 </p>
-                {diagnostics.formulaDiagnostics.length > 0 && (
+                {diagnostics.formulaDiagnostics.some((formula) => !formula.supported) && (
                   <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
-                    {diagnostics.formulaDiagnostics.slice(0, 3).map((formula, index) => (
-                      <li key={`${formula.address}-${index}`}>
-                        • {formula.address}: {formula.reason}
-                      </li>
-                    ))}
+                    {diagnostics.formulaDiagnostics
+                      .filter((formula) => !formula.supported)
+                      .slice(0, 3)
+                      .map((formula, index) => (
+                        <li key={`${formula.address}-${index}`}>
+                          • {formula.address}: {formula.reason}.{" "}
+                          {formula.resolution === "stored-value"
+                            ? "Valor calculado armazenado no arquivo."
+                            : "Resultado indisponível sem abrir no Excel ou ampliar o resolvedor."}
+                        </li>
+                      ))}
                   </ul>
                 )}
               </div>

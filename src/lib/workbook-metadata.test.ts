@@ -17,7 +17,7 @@ function advancedWorkbookPackage() {
       '<workbook xmlns:r="r"><sheets><sheet name="Vendas" r:id="rId1"/><sheet name="Resumo" r:id="rId2"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Vendas!$A$1:$C$5</definedName><definedName name="PrecoBase">Vendas!$D$1</definedName><definedName name="MetaLocal" localSheetId="0">Vendas!$E$1</definedName></definedNames><externalReferences><externalReference r:id="rIdExternal"/></externalReferences></workbook>',
     ),
     "xl/_rels/workbook.xml.rels": xml(
-      '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rIdExternal" Type="externalLink" Target="externalLinks/externalLink1.xml"/></Relationships>',
+      '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rIdExternal" Type="externalLink" Target="externalLinks/externalLink1.xml"/><Relationship Id="rIdTheme" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/></Relationships>',
     ),
     "xl/externalLinks/_rels/externalLink1.xml.rels": xml(
       '<Relationships><Relationship Id="rId1" Type="externalLinkPath" Target="https://exemplo.com/planilha-externa.xlsx" TargetMode="External"/></Relationships>',
@@ -53,7 +53,10 @@ function advancedWorkbookPackage() {
     ),
     "xl/vbaProject.bin": new Uint8Array([1, 2, 3]),
     "xl/styles.xml": xml(
-      '<styleSheet><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor theme="0" tint="-0.15"/><bgColor indexed="64"/></patternFill></fill></fills><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="1" borderId="0" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/></cellXfs></styleSheet>',
+      '<styleSheet><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor theme="4" tint="-0.15"/><bgColor indexed="64"/></patternFill></fill></fills><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="1" borderId="0" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/></cellXfs></styleSheet>',
+    ),
+    "xl/theme/theme1.xml": xml(
+      '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="5B9BD5"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="4472C4"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme></a:themeElements></a:theme>',
     ),
   });
 }
@@ -101,8 +104,10 @@ describe("metadados avançados de XLSX", () => {
       { name: "Nota", anchor: "A11", text: "Revisar totais antes de enviar" },
     ]);
     expect(metadata?.charts).toEqual([{ type: "bar", title: "Tendência mensal", anchor: "E1" }]);
-    // D1 tem cor de tema (fillId 2): não resolvida, fica de fora.
-    expect(metadata?.cellFills).toEqual([{ address: "C1", color: "#FF0000" }]);
+    expect(metadata?.cellFills).toEqual([
+      { address: "C1", color: "#FF0000" },
+      { address: "D1", color: "#4D84B5" },
+    ]);
   });
 
   it("detecta ausência de macros VBA quando xl/vbaProject.bin não está no pacote", () => {
@@ -315,6 +320,23 @@ describe("sliceAdvancedMetadata", () => {
     expect(sliced.images).toEqual([]);
     expect(sliced.shapes).toEqual([]);
     expect(sliced.charts).toEqual([]);
+  });
+
+  it("preserva intervalos confirmados e recorta validações só para as células mantidas", () => {
+    const sliced = sliceAdvancedMetadata(
+      base,
+      (address) => address,
+      (range, mode) => {
+        if (range === "A1:A1") return "A1:A1";
+        if (range === "A1:C5") return "A1:C5";
+        if (range === "B2:B10" && mode === "intersection") return "B2:B5";
+        return null;
+      },
+    );
+    expect(sliced.structuredTables).toEqual(base.structuredTables);
+    expect(sliced.pivotTables).toEqual(base.pivotTables);
+    expect(sliced.autoFilterRange).toBe("A1:C5");
+    expect(sliced.dataValidations).toEqual([{ range: "B2:B5", type: "list", allowBlank: true }]);
   });
 
   it("um item fora do intervalo (remap devolve null) some, não vaza pra outra região", () => {

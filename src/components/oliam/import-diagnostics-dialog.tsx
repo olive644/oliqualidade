@@ -33,6 +33,12 @@ const readerLabels: Record<WorkbookReaderId, string> = {
   "ooxml-recovery": "Recuperação OOXML (fallback)",
 };
 
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+};
+
 /**
  * Consome o histórico local de `import-metrics.ts` (coletado em toda
  * importação desde a etapa anterior, mas até agora sem nenhum consumidor de
@@ -118,6 +124,43 @@ export function ImportDiagnosticsDialog({
                       {summary.wasmShadowFailed} falhou
                     </strong>
                   </div>
+                </div>
+                <div className="mt-3 rounded-lg border border-border px-3 py-2">
+                  <div className="text-xs font-medium">Carga e etapas observadas</div>
+                  <dl className="mt-2 grid gap-x-5 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+                    <div>
+                      <dt className="text-muted-foreground">Células percorridas, média</dt>
+                      <dd className="font-mono font-medium">
+                        {Math.round(summary.avgVisitedCells).toLocaleString("pt-BR")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Pico estimado de memória</dt>
+                      <dd className="font-mono font-medium">
+                        {formatBytes(summary.maxEstimatedPeakMemoryBytes)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Leitura, média</dt>
+                      <dd className="font-mono font-medium">{Math.round(summary.avgParseMs)} ms</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Verificação, média</dt>
+                      <dd className="font-mono font-medium">
+                        {Math.round(summary.avgVerificationMs)} ms
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Análise, média</dt>
+                      <dd className="font-mono font-medium">
+                        {Math.round(summary.avgAnalysisMs)} ms
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                    A memória é uma estimativa conservadora baseada no arquivo compactado, no
+                    conteúdo expandido e nas células percorridas. Não é uma medição do navegador.
+                  </p>
                 </div>
                 {readerRows.length > 0 && (
                   <div className="mt-3 overflow-hidden rounded-lg border border-border">

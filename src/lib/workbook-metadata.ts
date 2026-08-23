@@ -32,7 +32,7 @@ export type AdvancedSheetMetadata = {
   shapes: WorkbookShapeDiagnostic[];
   /** Gráficos nativos do Excel (não os que o app gera a partir dos dados importados). */
   charts: WorkbookChartDiagnostic[];
-  /** Cor de preenchimento sólido por célula, só quando resolvida por RGB direto (ver `parseCellFills`). */
+  /** Cor de preenchimento sólido por célula, resolvida por RGB direto ou tema do workbook. */
   cellFills: WorkbookCellFillDiagnostic[];
 };
 
@@ -120,9 +120,15 @@ export type WorkbookChartDiagnostic = {
 
 export type WorkbookCellFillDiagnostic = {
   address: string;
-  /** Cor em `#RRGGBB`, resolvida do canal RGB direto do XML (o alfa do ARGB de 8 dígitos é descartado). */
+  /** Cor em `#RRGGBB`, resolvida do RGB direto ou do tema do workbook. */
   color: string;
 };
+
+export type AdvancedMetadataRangeRemapMode = "contained" | "intersection";
+export type AdvancedMetadataRangeRemapper = (
+  range: string,
+  mode: AdvancedMetadataRangeRemapMode,
+) => string | null;
 
 export type WorksheetWithAdvancedMetadata = XLSX.WorkSheet & {
   "!oliAdvanced"?: AdvancedSheetMetadata;
@@ -523,15 +529,55 @@ function parseCharts(
   return charts;
 }
 
-// Só cor RGB direta (`<fgColor rgb="FFRRGGBB">`) é resolvida. Cor de tema
-// (`theme="N"`) e paleta indexada legada (`indexed="N"`) não são resolvidas —
-// exigiriam ler `xl/theme/theme1.xml` (mapeamento de índice de tema para RGB
-// não é 1:1 óbvio com a ordem de `<clrScheme>`) ou embutir a paleta fixa de
-// 64 cores do Excel, e o risco de resolver errado silenciosamente pesa mais
-// que o ganho aqui: cor de tema é tipicamente sombreamento decorativo de
-// cabeçalho, não a cor de negócio que motivou este recurso (ver seção 79 do
-// CURRENT_STATE_AUDIT.md).
-function parseFillRgbByFillId(stylesXml: string): (string | undefined)[] {
+const THEME_COLOR_ORDER = [
+  "dk1",
+  "lt1",
+  "dk2",
+  "lt2",
+  "accent1",
+  "accent2",
+  "accent3",
+  "accent4",
+  "accent5",
+  "accent6",
+  "hlink",
+  "folHlink",
+] as const;
+
+function parseThemeColors(themeXml: string): (string | undefined)[] {
+  const scheme = themeXml.match(/<a:clrScheme\b[^>]*>([\s\S]*?)<\/a:clrScheme>/i)?.[1] ?? "";
+  return THEME_COLOR_ORDER.map((name) => {
+    const body = scheme.match(
+      new RegExp(`<a:${name}\\b[^>]*>([\\s\\S]*?)<\\/a:${name}>`, "i"),
+    )?.[1];
+    if (!body) return undefined;
+    const srgb = body.match(/<a:srgbClr\b[^>]*\bval="([0-9a-fA-F]{6})"/i)?.[1];
+    const system = body.match(/<a:sysClr\b[^>]*\blastClr="([0-9a-fA-F]{6})"/i)?.[1];
+    return (srgb ?? system)?.toUpperCase();
+  });
+}
+
+function tintColor(rgb: string, tint: number): string {
+  const boundedTint = Math.max(-1, Math.min(1, tint));
+  const channel = (offset: number) => {
+    const value = Number.parseInt(rgb.slice(offset, offset + 2), 16);
+    const adjusted =
+      boundedTint < 0 ? value * (1 + boundedTint) : value * (1 - boundedTint) + 255 * boundedTint;
+    return Math.round(Math.max(0, Math.min(255, adjusted)))
+      .toString(16)
+      .padStart(2, "0")
+      .toUpperCase();
+  };
+  return `${channel(0)}${channel(2)}${channel(4)}`;
+}
+
+// Resolve o canal RGB direto e as cores do tema do workbook. A paleta
+// indexada legada continua fora porque depende de uma tabela histórica fixa;
+// quando ela aparece, a cor fica ausente em vez de ser inferida incorretamente.
+function parseFillRgbByFillId(
+  stylesXml: string,
+  themeColors: (string | undefined)[],
+): (string | undefined)[] {
   const fillsBody =
     stylesXml.match(new RegExp(`<${NS}fills\\b[^>]*>([\\s\\S]*?)<\\/${NS}fills>`, "i"))?.[1] ?? "";
   return [...fillsBody.matchAll(new RegExp(`<${NS}fill>([\\s\\S]*?)<\\/${NS}fill>`, "gi"))].map(
@@ -543,8 +589,13 @@ function parseFillRgbByFillId(stylesXml: string): (string | undefined)[] {
       if (!/patternType="solid"/.test(match[1]!)) return undefined;
       const fgColor = pattern.match(new RegExp(`<${NS}fgColor\\b[^>]*\\/?\\s*>`, "i"))?.[0] ?? "";
       const argb = attr(fgColor, "rgb");
-      // ARGB de 8 dígitos hex; os 2 primeiros são o canal alfa, descartado.
-      return argb && /^[0-9a-fA-F]{8}$/.test(argb) ? `#${argb.slice(2).toUpperCase()}` : undefined;
+      if (argb && /^[0-9a-fA-F]{8}$/.test(argb)) return `#${argb.slice(2).toUpperCase()}`;
+      if (argb && /^[0-9a-fA-F]{6}$/.test(argb)) return `#${argb.toUpperCase()}`;
+      const themeIndex = attr(fgColor, "theme");
+      const themeColor = themeIndex === null ? undefined : themeColors[Number(themeIndex)];
+      if (!themeColor) return undefined;
+      const tint = Number(attr(fgColor, "tint") ?? 0);
+      return `#${tintColor(themeColor, Number.isFinite(tint) ? tint : 0)}`;
     },
   );
 }
@@ -622,22 +673,40 @@ function parsePivot(xml: string): PivotTableDiagnostic {
  * endereço já traduzido pras coordenadas do worksheet fatiado; `null` remove
  * o item.
  *
- * Deliberadamente conservador: `dataValidations`, `structuredTables` e
- * `pivotTables` usam intervalos (`range`), não um único endereço — fatiar um
- * intervalo corretamente é mais arriscado que vale a pena aqui, então saem
- * vazios em vez de arriscar mostrar um intervalo errado. `definedNames`/
- * `externalLinks`/`hasVbaMacros` são do workbook inteiro, não de uma célula:
- * passam sem alteração.
+ * Intervalos só são mantidos quando o chamador também fornece `remapRange`,
+ * calculado a partir da geometria real do recorte. Tabelas, pivôs e filtros
+ * exigem contenção completa. Validações podem ser recortadas para a interseção
+ * porque a mesma regra continua válida nas células preservadas.
  */
 export function sliceAdvancedMetadata(
   advanced: AdvancedSheetMetadata,
   remap: (address: string) => string | null,
+  remapRange?: AdvancedMetadataRangeRemapper,
 ): AdvancedSheetMetadata {
+  const remapSqref = (sqref: string) => {
+    if (!remapRange) return null;
+    const mapped = sqref
+      .trim()
+      .split(/\s+/)
+      .flatMap((range) => remapRange(range, "intersection")?.split(/\s+/) ?? []);
+    return mapped.length ? mapped.join(" ") : null;
+  };
   return {
-    structuredTables: [],
-    pivotTables: [],
-    autoFilterRange: null,
-    dataValidations: [],
+    structuredTables: advanced.structuredTables.flatMap((table) => {
+      const range = table.range ? remapRange?.(table.range, "contained") : null;
+      return range ? [{ ...table, range }] : [];
+    }),
+    pivotTables: advanced.pivotTables.flatMap((pivot) => {
+      const range = pivot.range ? remapRange?.(pivot.range, "contained") : null;
+      return range ? [{ ...pivot, range }] : [];
+    }),
+    autoFilterRange: advanced.autoFilterRange
+      ? (remapRange?.(advanced.autoFilterRange, "contained") ?? null)
+      : null,
+    dataValidations: advanced.dataValidations.flatMap((validation) => {
+      const range = remapSqref(validation.range);
+      return range ? [{ ...validation, range }] : [];
+    }),
     comments: advanced.comments.flatMap((comment) => {
       const address = remap(comment.address);
       return address ? [{ ...comment, address }] : [];
@@ -689,7 +758,11 @@ export function inspectWorkbookFeatures(data: ArrayBuffer | Uint8Array | OoxmlAr
   const externalLinks = parseExternalLinks(workbookXml, workbookRels, text);
   const hasVbaMacros = Boolean(zip["xl/vbaProject.bin"]);
   const stylesXml = text("xl/styles.xml");
-  const fillRgbByFillId = parseFillRgbByFillId(stylesXml);
+  const themeRelationship = [...workbookRels.values()].find((relationship) =>
+    relationship.type.toLowerCase().endsWith("/theme"),
+  );
+  const themeColors = parseThemeColors(text(themeRelationship?.target ?? "xl/theme/theme1.xml"));
+  const fillRgbByFillId = parseFillRgbByFillId(stylesXml, themeColors);
   const fillIdByCellXf = parseFillIdByCellXf(stylesXml);
   const colorOf = (styleIndex: number) => {
     const fillId = fillIdByCellXf[styleIndex];

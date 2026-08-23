@@ -18,8 +18,11 @@ function baseReport(overrides: Partial<WorkbookReadReport> = {}): WorkbookReadRe
     elapsedMs: 120,
     parseMs: 90,
     verificationMs: 30,
+    analysisMs: 20,
     sourceBytes: 5000,
     expandedBytes: 20000,
+    visitedCells: 100,
+    estimatedPeakMemoryBytes: 61000,
     sheets: 2,
     repairedCells: 0,
     divergentCells: 0,
@@ -54,8 +57,11 @@ describe("import-metrics: construção de entradas", () => {
       elapsedMs: 120,
       parseMs: 90,
       verificationMs: 30,
+      analysisMs: 20,
       sourceBytes: 5000,
       expandedBytes: 20000,
+      visitedCells: 100,
+      estimatedPeakMemoryBytes: 61000,
       sheets: 2,
       repairedCells: 0,
       divergentCells: 0,
@@ -172,5 +178,10 @@ describe("import-metrics: agregação", () => {
     expect(summary.fallbackCount).toBe(1);
     expect(summary.wasmShadowMatched).toBe(3);
     expect(summary.wasmShadowDiverged).toBe(1);
+    expect(summary.avgVisitedCells).toBe(100);
+    expect(summary.maxEstimatedPeakMemoryBytes).toBe(61000);
+    expect(summary.avgParseMs).toBe(90);
+    expect(summary.avgVerificationMs).toBe(30);
+    expect(summary.avgAnalysisMs).toBe(20);
   });
 });
