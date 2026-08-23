@@ -67,6 +67,9 @@ test("normaliza as faixas de um histograma persistido para os valores reais", as
   });
   await expect(histogram).toBeVisible();
 
+  await histogram
+    .getByRole("button", { name: "Mostrar configuração de Distribuição de Quantidade" })
+    .click();
   const grouping = histogram.getByRole("combobox", { name: "Agrupamento do histograma" });
   await expect(grouping).toHaveValue("0");
   await expect(grouping.locator("option:checked")).toHaveText("Por valor (5)");
