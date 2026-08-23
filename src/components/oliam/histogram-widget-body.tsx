@@ -182,7 +182,9 @@ export function HistogramWidgetBody({
       )}
       {!valueCol || !chartValidity?.valid ? (
         <p className="p-6 text-center text-xs text-muted-foreground">
-          {!valueCol ? "Escolha uma coluna numérica para este widget." : chartValidity.reason}
+          {!valueCol
+            ? "Escolha uma coluna numérica para este widget."
+            : (chartValidity?.reason ?? "Dados insuficientes para montar o histograma.")}
         </p>
       ) : (
         <>
