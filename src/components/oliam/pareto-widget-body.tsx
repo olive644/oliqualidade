@@ -210,7 +210,7 @@ export function ParetoWidgetBody({
         <p className="p-6 text-center text-xs text-muted-foreground">
           {!groupCol || !valueCol
             ? "Escolha uma coluna de categoria e uma numérica para este widget."
-            : chartValidity.reason}
+            : (chartValidity?.reason ?? "Dados insuficientes para montar o Pareto.")}
         </p>
       ) : (
         <>
