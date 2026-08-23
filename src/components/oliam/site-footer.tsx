@@ -33,23 +33,10 @@ export function SiteFooter() {
   return (
     <footer className="border-t border-border/70 bg-canvas px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center">
-        <figure
-          className="group flex cursor-default flex-col items-center outline-none"
-          tabIndex={0}
-          aria-label="José Oliver, fundador da aplicação"
-        >
-          <img
-            src="/founder-jose-oliver.png"
-            alt="Ilustração de José Oliver"
-            className="h-28 w-28 object-contain opacity-10 transition duration-500 group-hover:-translate-y-1 group-hover:opacity-100 group-focus:opacity-100 motion-reduce:transform-none motion-reduce:transition-none sm:h-32 sm:w-32"
-          />
-          <figcaption className="mt-2 text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus:opacity-100">
-            <strong className="block font-display text-sm font-semibold">joséoliver</strong>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              Fundador da aplicação
-            </span>
-          </figcaption>
-        </figure>
+        <div className="text-center" aria-label="José Oliver, fundador da aplicação">
+          <strong className="block font-display text-sm font-semibold">joséoliver</strong>
+          <span className="mt-0.5 block text-xs text-muted-foreground">Fundador da aplicação</span>
+        </div>
 
         <nav className="mt-5 flex items-center gap-3" aria-label="Redes sociais do OliQualidade">
           {socialLinks.map((social) => (
