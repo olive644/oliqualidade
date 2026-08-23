@@ -36,6 +36,22 @@ test.describe("fluxo de leitura analítica", () => {
               automaticWidgetPolicyVersion: 2,
               widgets: [
                 {
+                  id: "metric-resultado",
+                  type: "metric",
+                  metricKey: "resultado",
+                  op: "sum",
+                  span: 1,
+                  size: "sm",
+                },
+                {
+                  id: "metric-meta",
+                  type: "metric",
+                  metricKey: "meta",
+                  op: "sum",
+                  span: 1,
+                  size: "sm",
+                },
+                {
                   id: "area-resultados",
                   type: "area",
                   title: "Evolução de Resultado",
