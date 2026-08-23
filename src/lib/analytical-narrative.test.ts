@@ -65,6 +65,15 @@ describe("analyzeQuestionCoverage", () => {
       widget("line", { groupKey: "data", valueKey: "resultado" }),
     ]);
     expect(coverage.covered.map((q) => q.id).sort()).toEqual(["trend-over-time", "who-is-bigger"]);
+    expect(
+      coverage.questions.find((question) => question.id === "trend-over-time")?.coveredByWidgetId,
+    ).toBe("w_line");
+    expect(coverage.questions.find((question) => question.id === "who-is-bigger")?.metricKey).toBe(
+      "resultado",
+    );
+    expect(coverage.questions.find((question) => question.id === "who-is-bigger")?.groupKey).toBe(
+      "unidade",
+    );
   });
 
   it("não trata um tipo de gráfico correto com a métrica errada como cobertura", () => {

@@ -4,6 +4,7 @@ import {
   aggregate,
   applyMissingRules,
   barChartPresentation,
+  buildAreaComparisonSeries,
   chartSeries,
   collapsePieSeries,
   boxPlotStats,
@@ -96,6 +97,51 @@ describe("chartSeries", () => {
       { name: "A", total: 0.69, sourceRow: 1 },
       { name: "A", total: 1234.5, sourceRow: 2 },
     ]);
+  });
+});
+
+describe("buildAreaComparisonSeries", () => {
+  const series = [
+    { name: "Jan", total: 10 },
+    { name: "Fev", total: 15 },
+    { name: "Mar", total: 8 },
+  ];
+
+  it("separa variações acima e abaixo do período anterior", () => {
+    const compared = buildAreaComparisonSeries(series, "previous");
+    expect(compared.map((point) => point.difference)).toEqual([0, 5, -7]);
+    expect(compared.map((point) => point.aboveReference)).toEqual([0, 5, 0]);
+    expect(compared.map((point) => point.belowReference)).toEqual([0, 0, -7]);
+  });
+
+  it("preserva a leitura quando os próprios resultados são negativos", () => {
+    const compared = buildAreaComparisonSeries(
+      [
+        { name: "Jan", total: -10 },
+        { name: "Fev", total: -4 },
+        { name: "Mar", total: -12 },
+      ],
+      "previous",
+    );
+    expect(compared.map((point) => point.difference)).toEqual([0, 6, -8]);
+  });
+
+  it("usa a meta por período e recua para o período anterior quando ela falta", () => {
+    const compared = buildAreaComparisonSeries(
+      series,
+      "goal",
+      new Map([
+        ["Jan", 12],
+        ["Fev", 14],
+      ]),
+    );
+    expect(compared.map((point) => point.reference)).toEqual([12, 14, 15]);
+    expect(compared.map((point) => point.difference)).toEqual([-2, 1, -7]);
+  });
+
+  it("calcula a média móvel apenas com períodos anteriores", () => {
+    const compared = buildAreaComparisonSeries(series, "moving-average");
+    expect(compared.map((point) => point.reference)).toEqual([10, 10, 12.5]);
   });
 });
 

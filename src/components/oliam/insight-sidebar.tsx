@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import { CheckCircle2, CircleHelp, Plus, X } from "lucide-react";
 import type { AutoDashboardPlan } from "@/lib/auto-dashboard";
 import type { AnalysisTrustSummary } from "@/lib/analysis-trust";
-import type { QuestionCoverage } from "@/lib/analytical-narrative";
+import type { AnalyticalQuestion, QuestionCoverage } from "@/lib/analytical-narrative";
 import { aggregate, aggregationLabels, type AggregationOp } from "@/lib/data-pipeline";
 import { conditionalColor, conditionalStyle, fmt, parseNumericValue } from "@/lib/format";
 import type { Column, FilterRule, Row } from "@/lib/types";
@@ -28,9 +28,53 @@ export function InsightSidebar(p: {
   dateCol: Column | undefined;
   filters: FilterRule[];
   setFilters: (filters: FilterRule[]) => void;
+  onOpenQuestionWidget: (widgetId: string) => void;
+  onCreateQuestionWidget: (question: AnalyticalQuestion) => void;
 }) {
   const { cat, primary, dateCol, open, onOpenChange } = p;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const questionAnswer = (question: AnalyticalQuestion): string => {
+    if (!question.answerable)
+      return question.reason ?? "Os dados necessários não estão disponíveis.";
+    if (!question.coveredByWidgetId)
+      return "A planilha permite responder, mas ainda falta uma visualização.";
+    if (question.id === "current-value" && p.primary) {
+      const operation = p.metricOperations.get(p.primary.key) ?? "sum";
+      const total = aggregate(
+        p.data
+          .map((row) => parseNumericValue(row[p.primary!.key]))
+          .filter((value): value is number => value !== null),
+        operation,
+      );
+      return `${aggregationLabels[operation]} de ${p.primary.label}: ${fmt(total, p.primary.kind)}.`;
+    }
+    if (["who-is-bigger", "share-of-total", "root-causes"].includes(question.id)) {
+      const leader = p.sidebarRanking[0];
+      return leader && p.cat && p.primary
+        ? `${leader.name || "Não informado"} lidera com ${fmt(leader.total, p.primary.kind)}.`
+        : "A comparação está disponível no painel.";
+    }
+    if (question.id === "trend-over-time") {
+      return (
+        p.executiveSummary.find((sentence) => sentence.includes("ao longo de")) ??
+        "A evolução temporal está disponível no painel."
+      );
+    }
+    if (question.id === "anomalies") {
+      return p.analysisTrust.pendingExceptionCount
+        ? `${p.analysisTrust.pendingExceptionCount} pendência${p.analysisTrust.pendingExceptionCount === 1 ? "" : "s"} merece${p.analysisTrust.pendingExceptionCount === 1 ? "" : "m"} revisão.`
+        : "Nenhuma pendência crítica foi identificada na visão atual.";
+    }
+    return "A resposta está representada por uma visualização do painel.";
+  };
+
+  const questionEvidence = (question: AnalyticalQuestion): string => {
+    const metric = p.nums.find((column) => column.key === question.metricKey)?.label;
+    const group = [p.cat, p.dateCol].find((column) => column?.key === question.groupKey)?.label;
+    const fields = [metric, group].filter(Boolean).join(" por ");
+    return `${fields || "Estrutura da planilha"}, usando ${p.data.length} registros na visão atual${p.filters.length ? ` e ${p.filters.length} filtro${p.filters.length === 1 ? "" : "s"}` : ""}.`;
+  };
 
   useEffect(() => {
     if (!open || !window.matchMedia("(max-width: 1023px)").matches) return;
@@ -78,12 +122,87 @@ export function InsightSidebar(p: {
       )}
       {p.questionCoverage && p.questionCoverage.questions.length > 0 && (
         <div className="border-b border-border p-4">
-          <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-            Perguntas analíticas
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              Roteiro de análise
+            </p>
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {p.questionCoverage.covered.length}/{p.questionCoverage.answerable.length} respondidas
+            </span>
+          </div>
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            {p.questionCoverage.summary}
+            Siga as perguntas abaixo para conferir o que o painel responde e o que ainda falta.
           </p>
+          <ol className="mt-3 space-y-2">
+            {p.questionCoverage.questions.map((question, index) => {
+              const covered = Boolean(question.coveredByWidgetId);
+              return (
+                <li key={question.id} className="rounded-xl border border-border bg-card p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold leading-snug">{question.label}</p>
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[9px]",
+                            covered
+                              ? "bg-primary/10 text-primary"
+                              : question.answerable
+                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {covered ? (
+                            <CheckCircle2 className="size-3" />
+                          ) : (
+                            <CircleHelp className="size-3" />
+                          )}
+                          {covered
+                            ? "Respondida"
+                            : question.answerable
+                              ? "Sem gráfico"
+                              : "Dados insuficientes"}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-[11px] leading-relaxed text-foreground/85">
+                        {questionAnswer(question)}
+                      </p>
+                      <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                        Evidência: {questionEvidence(question)}
+                      </p>
+                      {question.coveredByWidgetId ? (
+                        <button
+                          type="button"
+                          className="mt-2 text-[11px] font-semibold text-primary underline-offset-2 hover:underline"
+                          onClick={() => {
+                            onOpenChange(false);
+                            p.onOpenQuestionWidget(question.coveredByWidgetId!);
+                          }}
+                        >
+                          Ver gráfico
+                        </button>
+                      ) : question.answerable ? (
+                        <button
+                          type="button"
+                          className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary underline-offset-2 hover:underline"
+                          onClick={() => {
+                            onOpenChange(false);
+                            p.onCreateQuestionWidget(question);
+                          }}
+                        >
+                          <Plus className="size-3" />
+                          Criar gráfico
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       )}
       {p.autoDashboard && (
@@ -322,7 +441,7 @@ export function InsightSidebar(p: {
           Visão geral da análise
         </h2>
         <p id="insight-sidebar-mobile-description" className="sr-only">
-          Resumo executivo, perguntas analíticas, indicadores e filtros do painel.
+          Resumo executivo, roteiro de análise, indicadores e filtros do painel.
         </p>
         <button
           ref={closeButtonRef}

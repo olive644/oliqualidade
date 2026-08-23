@@ -26,6 +26,7 @@ import {
   kinds,
   numericKinds,
   type ChartDataMode,
+  type AreaReferenceMode,
   type Column,
   type FilterRule,
   type Kind,
@@ -36,6 +37,7 @@ import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/format";
 import {
   aggregationLabels,
+  buildAreaComparisonSeries,
   barChartPresentation,
   chartSeries,
   collapsePieSeries,
@@ -205,6 +207,31 @@ export function ChartWidgetBody({
       ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
       : limitChartSeriesForRendering(orderedSeries);
   const series = renderableSeries.items;
+  // Metas podem ser classificadas como referência semântica, não como métrica
+  // agregável. Por isso a detecção precisa considerar todas as colunas
+  // numéricas do painel, e não apenas `numericCols`.
+  const goalColumns = columns.filter(
+    (column) =>
+      numericKinds.includes(column.kind) &&
+      column.key !== valueCol?.key &&
+      /\bmeta(s)?\b|\balvo\b|\bobjetivo\b|\btarget\b|\bgoal\b/i.test(
+        `${column.label} ${column.key}`,
+      ),
+  );
+  const areaGoalCol = goalColumns.find((column) => column.key === w.areaGoalKey) ?? goalColumns[0];
+  const areaReference: AreaReferenceMode =
+    w.type === "area"
+      ? w.areaReference === "goal" && !areaGoalCol
+        ? "previous"
+        : (w.areaReference ?? (areaGoalCol ? "goal" : "previous"))
+      : "previous";
+  const goalSeries =
+    w.type === "area" && groupCol && areaGoalCol
+      ? chartSeries(data, groupCol.key, areaGoalCol.key, "avg", "aggregate")
+      : [];
+  const goalsByName = new Map(goalSeries.map((entry) => [entry.name, entry.total]));
+  const areaSeries =
+    w.type === "area" ? buildAreaComparisonSeries(series, areaReference, goalsByName) : [];
   const seriesColor = valueCol
     ? (conditionalColor(series.at(-1)?.total ?? null, valueCol.kind, valueCol.conditionalFormat) ??
       "var(--primary)")
@@ -370,6 +397,23 @@ export function ChartWidgetBody({
           onRaw={() => onConfigure({ dataMode: "raw" })}
           onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
         />
+        {w.type === "area" && (
+          <label className="flex max-w-64 items-center gap-1 rounded-lg border border-border bg-card pl-2 text-[10px] text-muted-foreground">
+            <span>Comparar com</span>
+            <select
+              aria-label="Referência do gráfico de área"
+              className="oliam-select h-7 min-w-0 border-0 bg-transparent px-1.5 shadow-none"
+              value={areaReference}
+              onChange={(event) =>
+                onConfigure({ areaReference: event.target.value as AreaReferenceMode })
+              }
+            >
+              <option value="previous">Período anterior</option>
+              <option value="moving-average">Média móvel</option>
+              {areaGoalCol && <option value="goal">Meta: {areaGoalCol.label}</option>}
+            </select>
+          </label>
+        )}
       </WidgetConfigBar>
       {sizeControls}
       {renderableSeries.omitted > 0 && (
@@ -844,13 +888,29 @@ export function ChartWidgetBody({
       ) : w.type === "area" ? (
         <div className="p-3">
           <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/30">
-            <div className="flex items-center gap-2 px-4 pt-4 pb-1">
-              <span
-                className="size-3 shrink-0 rounded-sm"
-                style={{ backgroundColor: seriesColor }}
-                aria-hidden="true"
-              />
-              <span className="truncate text-xs text-muted-foreground">{valueCol.label}</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-1 pt-4 text-[11px] text-muted-foreground">
+              {[
+                ["var(--primary)", "Resultado observado"],
+                ["var(--secondary-accent)", "Acima da referência"],
+                ["#d59b32", "Abaixo da referência"],
+                [
+                  "var(--muted-foreground)",
+                  areaReference === "goal"
+                    ? `Meta: ${areaGoalCol?.label ?? "configurada"}`
+                    : areaReference === "moving-average"
+                      ? "Média móvel"
+                      : "Período anterior",
+                ],
+              ].map(([color, label]) => (
+                <span key={label} className="inline-flex items-center gap-1.5">
+                  <span
+                    className="size-2.5 shrink-0 rounded-sm"
+                    style={{ backgroundColor: color }}
+                    aria-hidden="true"
+                  />
+                  {label}
+                </span>
+              ))}
             </div>
             <div className="relative">
               <div
@@ -873,11 +933,22 @@ export function ChartWidgetBody({
                   }}
                 >
                   <ResponsiveContainer>
-                    <AreaChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
+                    <AreaChart
+                      data={areaSeries}
+                      margin={{ top: 20, right: 12, left: 0, bottom: 14 }}
+                    >
                       <defs>
-                        <linearGradient id={`area-${w.id}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={seriesColor} stopOpacity={0.45} />
-                          <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
+                        <linearGradient id={`area-above-${w.id}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--secondary-accent)" stopOpacity={0.5} />
+                          <stop
+                            offset="100%"
+                            stopColor="var(--secondary-accent)"
+                            stopOpacity={0.06}
+                          />
+                        </linearGradient>
+                        <linearGradient id={`area-below-${w.id}`} x1="0" y1="1" x2="0" y2="0">
+                          <stop offset="0%" stopColor="#d59b32" stopOpacity={0.5} />
+                          <stop offset="100%" stopColor="#d59b32" stopOpacity={0.06} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -887,9 +958,17 @@ export function ChartWidgetBody({
                         interval={0}
                       />
                       <YAxis
+                        yAxisId="observed"
                         tick={{ fontSize: 10 }}
                         width={52}
                         tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
+                      />
+                      <YAxis yAxisId="variation" orientation="right" hide />
+                      <ReferenceLine
+                        yAxisId="variation"
+                        y={0}
+                        stroke="var(--border)"
+                        strokeDasharray="3 3"
                       />
                       <ChartTooltip
                         contentStyle={{
@@ -907,14 +986,51 @@ export function ChartWidgetBody({
                           marginBottom: 2,
                         }}
                         itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                        formatter={(v: number, name: string) => [
+                          fmt(v, valueCol.kind) ?? String(v),
+                          name,
+                        ]}
                       />
                       <Area
                         type="monotone"
+                        yAxisId="variation"
+                        dataKey="aboveReference"
+                        name="Variação acima da referência"
+                        stroke="var(--secondary-accent)"
+                        strokeWidth={1.5}
+                        fill={`url(#area-above-${w.id})`}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
+                      <Area
+                        type="monotone"
+                        yAxisId="variation"
+                        dataKey="belowReference"
+                        name="Variação abaixo da referência"
+                        stroke="#d59b32"
+                        strokeWidth={1.5}
+                        fill={`url(#area-below-${w.id})`}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        yAxisId="observed"
+                        dataKey="reference"
+                        name="Referência"
+                        stroke="var(--muted-foreground)"
+                        strokeWidth={1.5}
+                        strokeDasharray="5 4"
+                        dot={false}
+                        activeDot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        yAxisId="observed"
                         dataKey="total"
+                        name="Resultado observado"
                         stroke={seriesColor}
-                        strokeWidth={2}
-                        fill={`url(#area-${w.id})`}
+                        strokeWidth={2.5}
                         dot={(dotProps: ChartDotProps) => {
                           const { key, ...rest } = dotProps as ChartDotProps & {
                             key?: string | number;
@@ -945,6 +1061,15 @@ export function ChartWidgetBody({
                             />
                           );
                         }}
+                      />
+                      <Line
+                        type="monotone"
+                        yAxisId="variation"
+                        dataKey="difference"
+                        name="Diferença"
+                        stroke="transparent"
+                        dot={false}
+                        activeDot={false}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
