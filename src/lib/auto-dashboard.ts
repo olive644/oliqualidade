@@ -707,7 +707,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
               columns: [dimension.key, primaryMetric.key],
               baseConfidence: 78,
               reasons: [
-                `Mostra quantas das ${cardinality} categorias de "${dimension.label}" concentram 80% de "${primaryMetric.label}" — a pergunta de contribuições dominantes, diferente do ranking (quem lidera).`,
+                `Mostra quantas das ${cardinality} categorias de "${dimension.label}" concentram 80% de "${primaryMetric.label}". Essa leitura destaca contribuições dominantes e difere do ranking, que mostra quem lidera.`,
               ],
             }),
           );
