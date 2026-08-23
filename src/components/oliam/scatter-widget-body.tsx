@@ -16,6 +16,7 @@ import { numericKinds, type Column, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, fmt } from "@/lib/format";
 import { linearTrend, pearsonCorrelation, scatterPoints } from "@/lib/data-pipeline";
+import { scatterChartValidity } from "@/lib/chart-validity";
 import {
   compactAxisValue,
   FieldDropSlot,
@@ -81,6 +82,7 @@ export function ScatterWidgetBody({
     columns.find((c) => c.key === w.valueKey2) ?? allNumericCols.find((c) => c.key !== xCol?.key);
 
   const points = xCol && yCol ? scatterPoints(data, xCol.key, yCol.key) : [];
+  const chartValidity = xCol && yCol ? scatterChartValidity(points) : null;
   const trend = linearTrend(points);
   const correlation = pearsonCorrelation(points);
   const trendLine =
@@ -164,7 +166,9 @@ export function ScatterWidgetBody({
       {sizeControls}
       {xCol && yCol && (
         <p className="border-b border-border/70 bg-card px-4 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
-          {reading ? (
+          {!chartValidity?.valid ? (
+            chartValidity?.reason
+          ) : reading ? (
             <>
               Correlação {reading.strength}
               {reading.direction && ` e ${reading.direction}`} entre &quot;{xCol.label}&quot; e
@@ -190,11 +194,11 @@ export function ScatterWidgetBody({
           )}
         </p>
       )}
-      {!xCol || !yCol || points.length === 0 ? (
+      {!xCol || !yCol || !chartValidity?.valid ? (
         <p className="p-6 text-center text-xs text-muted-foreground">
           {!xCol || !yCol
             ? "Escolha duas colunas numéricas para este widget."
-            : "Nenhum par de valores disponível para montar a dispersão."}
+            : chartValidity.reason}
         </p>
       ) : (
         <>
