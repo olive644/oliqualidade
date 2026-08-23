@@ -29,6 +29,11 @@ import {
 } from "@/lib/data-pipeline";
 import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import {
+  groupedCountValues,
+  groupedNumericValues,
+  paretoChartValidity,
+} from "@/lib/chart-validity";
+import {
   CalculationButton,
   compactAxisValue,
   FieldDropSlot,
@@ -93,6 +98,13 @@ export function ParetoWidgetBody({
   const op: AggregationOp = relevantOps.includes(w.op ?? "sum")
     ? (w.op ?? "sum")
     : (relevantOps[0] ?? "sum");
+  const groupedValues =
+    groupCol && valueCol
+      ? op === "count"
+        ? groupedCountValues(data, groupCol.key)
+        : groupedNumericValues(data, groupCol.key, valueCol.key)
+      : new Map<string, number[]>();
+  const chartValidity = groupCol && valueCol ? paretoChartValidity(groupedValues) : null;
 
   const series =
     groupCol && valueCol
@@ -187,18 +199,18 @@ export function ParetoWidgetBody({
       {sizeControls}
       {groupCol && valueCol && (
         <p className="border-b border-border/70 bg-card px-4 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
-          {series.length === 0
-            ? `Nenhuma categoria de "${groupCol.label}" tem contribuição positiva para montar o Pareto.`
+          {!chartValidity?.valid
+            ? chartValidity?.reason
             : vitalFewCount > 0
               ? `${vitalFewCount} de ${series.length} categorias de "${groupCol.label}" concentram 80% de "${valueCol.label}".`
               : `Nem somando todas as ${series.length} categorias de "${groupCol.label}" o acumulado chega a 80% de "${valueCol.label}". A contribuição está bem distribuída e não há poucas categorias dominantes.`}
         </p>
       )}
-      {!groupCol || !valueCol || series.length === 0 ? (
+      {!groupCol || !valueCol || !chartValidity?.valid ? (
         <p className="p-6 text-center text-xs text-muted-foreground">
           {!groupCol || !valueCol
             ? "Escolha uma coluna de categoria e uma numérica para este widget."
-            : "Dados insuficientes para montar o Pareto."}
+            : chartValidity.reason}
         </p>
       ) : (
         <>
