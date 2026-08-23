@@ -439,9 +439,18 @@ describe("histogramBins", () => {
     expect(bins.reduce((sum, bin) => sum + bin.count, 0)).toBe(150);
   });
 
-  it("respeita uma quantidade manual de faixas mesmo com poucos valores discretos", () => {
-    const rows: Row[] = Array.from({ length: 20 }, (_, index) => ({ valor: (index % 5) + 1 }));
-    expect(histogramBins(rows, "valor", 8)).toHaveLength(8);
+  it("corrige uma quantidade persistida maior que os valores distintos", () => {
+    const rows: Row[] = Array.from({ length: 150 }, (_, index) => ({ valor: (index % 5) + 1 }));
+    const bins = histogramBins(rows, "valor", 20);
+
+    expect(bins.map((bin) => bin.label)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(bins).toHaveLength(5);
+    expect(bins.every((bin) => bin.count === 30)).toBe(true);
+  });
+
+  it("respeita uma quantidade manual menor que os valores distintos", () => {
+    const rows: Row[] = Array.from({ length: 80 }, (_, index) => ({ valor: (index % 8) + 1 }));
+    expect(histogramBins(rows, "valor", 5)).toHaveLength(5);
   });
 
   it("carrega o índice de origem estável de cada linha por faixa, quando disponível", () => {

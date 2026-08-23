@@ -79,6 +79,10 @@ export function HistogramWidgetBody({
   }));
   const showsExactValues =
     series.length > 1 && series.every((bin) => bin.rangeStart === bin.rangeEnd);
+  const distinctValueCount = new Set(validValues).size;
+  const availableBinCountOptions = showsExactValues
+    ? BIN_COUNT_OPTIONS.filter((count) => count < distinctValueCount)
+    : BIN_COUNT_OPTIONS;
   const distributionUnit = showsExactValues
     ? series.length === 1
       ? "valor distinto"
@@ -154,18 +158,21 @@ export function HistogramWidgetBody({
           </select>
         </FieldDropSlot>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-          Faixas
+          {showsExactValues ? "Agrupamento" : "Faixas"}
           <select
-            aria-label="Quantidade de faixas"
+            aria-label={showsExactValues ? "Agrupamento do histograma" : "Quantidade de faixas"}
             className="oliam-select h-7"
-            value={w.binCount ?? 0}
+            value={showsExactValues ? 0 : (w.binCount ?? 0)}
+            disabled={showsExactValues && availableBinCountOptions.length === 0}
             onChange={(e) => {
               const next = Number(e.target.value);
               onConfigure({ binCount: next || undefined });
             }}
           >
-            <option value={0}>{showsExactValues ? "Automático por valor" : "Automático"}</option>
-            {BIN_COUNT_OPTIONS.map((n) => (
+            <option value={0}>
+              {showsExactValues ? `Por valor (${series.length})` : "Automático"}
+            </option>
+            {availableBinCountOptions.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
