@@ -1,6 +1,14 @@
 import type { ColumnDiagnostic, ImportDiagnostics } from "@/lib/import-intelligence";
-import { parseNumericValue } from "@/lib/format";
 import type { ChartAggregationOp, Column, Row, Widget, WidgetType } from "@/lib/types";
+import {
+  boxPlotChartValidity,
+  groupedNumericValues,
+  histogramChartValidity,
+  numericValuesFor,
+  pairedNumericValues,
+  paretoChartValidity,
+  scatterChartValidity,
+} from "@/lib/chart-validity";
 import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
   createWidget,
@@ -95,11 +103,6 @@ const GEO_NAME =
  * mesma ordem, então a recomendação automática nem chega a propor ranking.
  */
 const RANKING_TOP_N = 5;
-const MIN_HISTOGRAM_VALUES = 20;
-const MIN_HISTOGRAM_DISTINCT_VALUES = 5;
-const MIN_SCATTER_PAIRS = 8;
-const MIN_SCATTER_DISTINCT_VALUES = 3;
-const MIN_BOX_GROUP_VALUES = 4;
 const MAX_AUTOMATIC_VISUALIZATIONS = 8;
 
 const VISUALIZATION_PRIORITY: Partial<Record<WidgetType, number>> = {
@@ -116,43 +119,9 @@ const VISUALIZATION_PRIORITY: Partial<Record<WidgetType, number>> = {
   pie: 70,
 };
 
-function numericValues(rows: Row[], key: string): number[] {
-  return rows
-    .map((row) => parseNumericValue(row[key]))
-    .filter((value): value is number => value !== null && Number.isFinite(value));
-}
-
-function scatterPairs(rows: Row[], firstKey: string, secondKey: string) {
-  return rows.flatMap((row) => {
-    const first = parseNumericValue(row[firstKey]);
-    const second = parseNumericValue(row[secondKey]);
-    return first !== null && second !== null && Number.isFinite(first) && Number.isFinite(second)
-      ? [{ first, second }]
-      : [];
-  });
-}
-
-function boxGroups(rows: Row[], groupKey: string, valueKey: string): Map<string, number[]> {
-  const groups = new Map<string, number[]>();
-  for (const row of rows) {
-    const group = row[groupKey];
-    const value = parseNumericValue(row[valueKey]);
-    if (group === null || group === undefined || group === "" || value === null) continue;
-    const key = String(group);
-    groups.set(key, [...(groups.get(key) ?? []), value]);
-  }
-  return groups;
-}
-
 function supportsPareto(rows: Row[], groupKey: string, valueKey: string): boolean {
-  const groups = boxGroups(rows, groupKey, valueKey);
-  const values = [...groups.values()].flat();
-  return (
-    groups.size > RANKING_TOP_N &&
-    values.length >= groups.size &&
-    values.some((value) => value > 0) &&
-    values.every((value) => value >= 0)
-  );
+  const groups = groupedNumericValues(rows, groupKey, valueKey);
+  return groups.size > RANKING_TOP_N && paretoChartValidity(groups).valid;
 }
 
 function limitAutomaticVisualizations(
@@ -577,9 +546,9 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   // e variedade suficientes. Contar linhas da planilha incluía nulos/textos
   // e criava histogramas vazios ou de uma única barra.
   if (primaryMetric) {
-    const values = numericValues(input.rows, primaryMetric.key);
+    const values = numericValuesFor(input.rows, primaryMetric.key);
     const distinctValues = new Set(values).size;
-    if (values.length >= MIN_HISTOGRAM_VALUES && distinctValues >= MIN_HISTOGRAM_DISTINCT_VALUES) {
+    if (histogramChartValidity(values).valid) {
       recommendations.push(
         recommendation(input, {
           id: slug("histograma", primaryMetric.key),
@@ -602,14 +571,8 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   if (metrics.length >= 2) {
     const [first, second] = [...metrics].sort((a, b) => b.confidence - a.confidence);
     if (first && second) {
-      const pairs = scatterPairs(input.rows, first.key, second.key);
-      const firstDistinct = new Set(pairs.map((pair) => pair.first)).size;
-      const secondDistinct = new Set(pairs.map((pair) => pair.second)).size;
-      if (
-        pairs.length >= MIN_SCATTER_PAIRS &&
-        firstDistinct >= MIN_SCATTER_DISTINCT_VALUES &&
-        secondDistinct >= MIN_SCATTER_DISTINCT_VALUES
-      ) {
+      const pairs = pairedNumericValues(input.rows, first.key, second.key);
+      if (scatterChartValidity(pairs).valid) {
         recommendations.push(
           recommendation(input, {
             id: slug("dispersao", first.key, second.key),
@@ -720,13 +683,8 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
       // calcular quartis de verdade — com 1 ou 2 linhas por categoria, o
       // "box" seria só um traço sem informação além do que a barra já mostra.
       if (index === 0 && cardinality >= 2 && cardinality <= 8 && !isGeo) {
-        const groups = boxGroups(input.rows, dimension.key, primaryMetric.key);
-        const allGroupsSupportQuartiles =
-          groups.size === cardinality &&
-          [...groups.values()].every(
-            (values) => values.length >= MIN_BOX_GROUP_VALUES && new Set(values).size >= 2,
-          );
-        if (allGroupsSupportQuartiles) {
+        const groups = groupedNumericValues(input.rows, dimension.key, primaryMetric.key);
+        if (groups.size === cardinality && boxPlotChartValidity(groups).valid) {
           const smallestGroup = Math.min(...[...groups.values()].map((values) => values.length));
           recommendations.push(
             recommendation(input, {

@@ -17,6 +17,7 @@ import { numericKinds, type Column, type FilterRule, type Row, type Widget } fro
 import { sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, parseNumericValue } from "@/lib/format";
 import { barChartPresentation, histogramBins, pieComparisonFor } from "@/lib/data-pipeline";
+import { histogramChartValidity, numericValuesFor } from "@/lib/chart-validity";
 import {
   FieldDropSlot,
   SeriesComparisonPanel,
@@ -66,6 +67,8 @@ export function HistogramWidgetBody({
     configuredValueCol && numericKinds.includes(configuredValueCol.kind)
       ? configuredValueCol
       : numericCols[0];
+  const validValues = valueCol ? numericValuesFor(data, valueCol.key) : [];
+  const chartValidity = valueCol ? histogramChartValidity(validValues) : null;
   const bins = valueCol ? histogramBins(data, valueCol.key, w.binCount) : [];
   const series = bins.map((bin) => ({
     name: bin.label,
@@ -177,11 +180,11 @@ export function HistogramWidgetBody({
           )}
         </p>
       )}
-      {!valueCol || series.length === 0 ? (
+      {!valueCol || !chartValidity?.valid ? (
         <p className="p-6 text-center text-xs text-muted-foreground">
           {!valueCol
             ? "Escolha uma coluna numérica para este widget."
-            : "Nenhum valor numérico disponível para montar a distribuição."}
+            : (chartValidity?.reason ?? "Dados insuficientes para montar o histograma.")}
         </p>
       ) : (
         <>
