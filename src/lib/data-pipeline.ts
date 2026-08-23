@@ -710,6 +710,22 @@ export function semanticAggregationOps(
 }
 
 /**
+ * Resolve a operacao que sera realmente usada depois das restricoes dos
+ * dados e do significado da coluna. Centralizar esta escolha evita que um
+ * grafico corrija uma soma insegura para media enquanto KPIs e narrativas
+ * continuam calculando a soma solicitada originalmente.
+ */
+export function resolveSemanticAggregationOp(
+  operations: AggregationOp[],
+  column: Pick<Column, "kind" | "label">,
+  profile?: AggregationSemanticProfile,
+  requested: AggregationOp = "sum",
+): AggregationOp {
+  const allowed = semanticAggregationOps(operations, column, profile);
+  return allowed.includes(requested) ? requested : (allowed[0] ?? "count");
+}
+
+/**
  * Aplica de forma padronizada o clique de cross-filter em um widget
  * (barra, pizza, linha, área, ranking, mapa): clicar em um valor filtra a
  * base por aquela coluna; clicar de novo no mesmo valor remove o filtro
