@@ -3752,2487 +3752,714 @@ dependÃªncias neste projeto deve rodar `npx npm@10 install` (ou a versÃ£o
 de npm que o `node-version` do workflow realmente bundla) em vez do
 `npm install` padrÃ£o do ambiente local, e sempre confirmar com um `rm
 -rf node_modules && npm ci` limpo antes de considerar a mudanÃ§a
-pronta â€” sem isso, o problema sÃ³ aparece na CI real, nunca localmente.
-
-## 74. Bug real de produto reportado pelo usuÃ¡rio: NaN generalizado por vÃ­rgula decimal brasileira, e widget novo para mostrar imagens embutidas
-
-UsuÃ¡rio trouxe um arquivo real (planilha de cronograma de anÃ¡lises
-microbiolÃ³gicas e Ã¡gua) com dois problemas visÃ­veis: a aba
-"Monitoramento - F-Q Mensal" mostrava "NaN" em vÃ¡rias cÃ©lulas da tabela
-detalhada, e uma imagem embutida ("DefiniÃ§Ã£o das Zonas de Contato", uma
-matriz de risco + diagrama) nÃ£o aparecia em lugar nenhum do painel,
-mesmo jÃ¡ inventariada pela seÃ§Ã£o 72.
-
-### Causa raiz do NaN: Number("0,69") Ã© NaN em JavaScript
-
-A planilha tem mediÃ§Ãµes como "0,69", "0,46" â€” texto com vÃ­rgula decimal
-brasileira (confirmado inspecionando o XML bruto: sÃ£o valores
-legÃ­timos, nÃ£o erro de digitaÃ§Ã£o). `Number()` nativo do JS nÃ£o entende
-vÃ­rgula decimal. Uma varredura por `Number(` operando sobre valores de
-cÃ©lula (nÃ£o sobre input de formulÃ¡rio) encontrou o mesmo padrÃ£o
-espalhado por 6 arquivos: o motor central de agregaÃ§Ã£o
-(`data-pipeline.ts` â€” `groupAndAggregate`, `chartSeries`,
-`applyMissingRules` na interpolaÃ§Ã£o, `detectQualitySignals`,
-`matchesRange`), o editor de fÃ³rmula/formataÃ§Ã£o condicional
-(`format.ts` â€” `fmt`, `evalFormula`, `resolveConditionalFormat`), os
-widgets de KPI/avaliaÃ§Ã£o (`widget-card.tsx`), os widgets operacionais/
-carta de controle (`operational-widgets.ts`) e o editor de regras de
-formataÃ§Ã£o condicional (`format-rules-editor.tsx`).
-
-Antes da correÃ§Ã£o, a maioria desses pontos nÃ£o mostrava "NaN" â€” eles
-descartavam o valor silenciosamente (`Number.isFinite(NaN)` Ã© falso, e
-os `.filter()` jÃ¡ existentes removiam o valor da agregaÃ§Ã£o sem aviso).
-Isso Ã© pior que o "NaN" visÃ­vel: grÃ¡ficos de barra/linha/pizza, cartas
-de controle e KPIs para essa planilha estavam somando/calculando mÃ©dias
-sem parte real dos dados, sem nenhum sinal de que algo estava faltando.
-SÃ³ a tabela detalhada (`DataTable`, via `fmt()`) de fato formatava e
-exibia o "NaN" literal â€” foi o Ãºnico ponto visÃ­vel ao usuÃ¡rio, mas o
-mesmo bug atingia o resto do painel de forma invisÃ­vel.
-
-CorreÃ§Ã£o: `parseNumericValue` (novo, em `format.ts`, ao lado de
-`parseDateValue` â€” mesmo padrÃ£o de "parser tolerante de Value" jÃ¡
-estabelecido) aceita nÃºmeros nativos e texto em notaÃ§Ã£o brasileira
-(vÃ­rgula decimal, ponto de milhar, prefixo R$/US$) ou americana (ponto
-decimal simples), e nunca retorna NaN â€” falha explicitamente com null
-para quem chama decidir o que fazer. Aplicado nos 6 arquivos,
-substituindo todo `Number(valorDeCelula)` direto. Em `fmt()`
-especificamente, quando o valor nÃ£o Ã© interpretÃ¡vel como nÃºmero (ex.:
-"N/A" numa coluna numÃ©rica), o texto original Ã© mostrado em vez de
-"NaN" â€” mostra o dado real, nunca inventa nem esconde.
-
-17 testes de regressÃ£o novos cobrindo os 6 pontos corrigidos
-(`format.test.ts`, `data-pipeline.test.ts`, `operational-widgets.test.ts`),
-incluindo um teste dedicado para `matchesRange` (funÃ§Ã£o que nunca tinha
-tido cobertura prÃ³pria). Verificado ao vivo: subi o arquivo real do
-usuÃ¡rio no dev server local (injetado via `fetch` de um arquivo
-temporÃ¡rio em `public/`, contornando a ausÃªncia de upload nativo do
-navegador neste sandbox â€” mais simples e sem limite de tamanho que a
-tÃ©cnica anterior de injetar File/DataTransfer com base64 inline) e
-confirmei: a tabela "Base detalhada" da aba "Monitoramento - F-Q
-Mensal" agora mostra os valores corretamente onde antes aparecia "NaN";
-o ranking por bloco mostra somas reais em vez de descartar os valores.
-
-### Widget novo: imagem embutida (fecha o pedido do usuÃ¡rio sobre o PNG)
-
-InvestigaÃ§Ã£o da aba "Requisitos de Monitoramento" (a que o usuÃ¡rio
-achava "mal lida"): tem sÃ³ 30 linhas ao todo, e a Ãºnica tabela real Ã©
-uma matriz de risco pequena (4 linhas), que o app jÃ¡ importava
-corretamente (confirmado: os KPIs batem com os dados originais). O
-resto da aba Ã© conteÃºdo visual â€” um diagrama grande embutido como
-imagem. A detecÃ§Ã£o de imagens (seÃ§Ã£o 72) jÃ¡ identificava essa imagem no
-inventÃ¡rio da revisÃ£o, mas nada no app permitia ver a imagem â€” sÃ³ o
-metadado (nome/posiÃ§Ã£o/formato). Confirmado com o usuÃ¡rio via pergunta
-direta que a prioridade era construir esse widget agora, nÃ£o sÃ³
-documentar a limitaÃ§Ã£o.
-
-ExtraÃ§Ã£o dos bytes: `WorkbookImageDiagnostic` ganhou um campo
-`dataUrl?: string` opcional. `parseImages` (`workbook-metadata.ts`)
-agora recebe tambÃ©m um accessor `bytesOf(part)` (bytes brutos do zip,
-precisa ser separado do `text()` existente, que usa `strFromU8` e
-corromperia bytes binÃ¡rios de imagem via interpretaÃ§Ã£o UTF-8) e gera a
-data URL via `btoa` em blocos de 8192 bytes (evita estourar o limite de
-argumentos de `String.fromCharCode` em imagens maiores â€” mesmo padrÃ£o
-de `btoa(String.fromCharCode(...bytes))` jÃ¡ usado em
-`encrypted-backup.ts`/`chat-session.ts`, sÃ³ em blocos). Dois limites
-deliberados: sÃ³ formatos que `<img>` de navegador renderiza diretamente
-(PNG/JPEG/GIF/BMP/TIFF) ganham `dataUrl` â€” EMF/WMF continuam sÃ³
-inventariados; e um teto de 4 MB por imagem protege o IndexedDB de
-fotos em resoluÃ§Ã£o de cÃ¢mera coladas na planilha.
-
-Widget novo `"image"` (`types.ts`, `widgetTypeLabels`,
-`widgetTypeDescriptions`, `WidgetPickerIcon`): span 2, tamanho `lg` por
-padrÃ£o (`widgets.ts`). RenderizaÃ§Ã£o em `widget-card.tsx`: `<img>` com a
-`dataUrl`, ou uma mensagem explicando que o formato nÃ£o Ã© renderizÃ¡vel
-quando ausente. Deliberadamente nÃ£o entra na recomendaÃ§Ã£o automÃ¡tica
-(`auto-dashboard.ts` nunca referencia o tipo) â€” mesma decisÃ£o jÃ¡ tomada
-para "Insights automÃ¡ticos"/painÃ©is de exceÃ§Ã£o/validaÃ§Ã£o (seÃ§Ã£o 47/54):
-mudar o que Ã© recomendado por padrÃ£o Ã© decisÃ£o de produto de alcance
-amplo, fora do escopo implÃ­cito de "adicionar um widget". SÃ³ aparece no
-seletor "Adicionar widget" quando `sheet.sourceImages` nÃ£o estÃ¡ vazio.
-
-Threading: como imagens sÃ£o por aba (cada `<drawing>` do Excel pertence
-a uma aba sÃ³, ao contrÃ¡rio de nomes definidos/links externos/macros que
-sÃ£o do workbook inteiro â€” mesma distinÃ§Ã£o jÃ¡ registrada na seÃ§Ã£o 70),
-`sourceImages` entrou em `SheetData` (`types.ts`) espelhando exatamente
-o padrÃ£o jÃ¡ usado por `sourceNotes`: extraÃ­do de `diagnostics.images`
-em `prepare()`/`buildImportedSheets()` (fluxo de pasta monitorada) e
-copiado para o `SheetData` final em `confirmReview()`.
-
-Verificado ao vivo com o arquivo real do usuÃ¡rio: adicionar o widget
-"Imagem embutida" na aba "Requisitos de Monitoramento" via o seletor
-"Widget" da barra de ferramentas (nota: o gatilho do menu Ã© um Radix
-DropdownMenuTrigger â€” cliques sintÃ©ticos via `element.click()` nÃ£o
-disparam a abertura, precisou do `computer` do Browser pane com um
-`ref` real para simular um clique confiÃ¡vel; o item do menu em si jÃ¡
-aceitou uma sequÃªncia pointerdown/pointerup/click sintÃ©tica
-normalmente) renderizou a imagem real, decodificada pelo navegador com
-sucesso (dimensÃµes reais, nÃ£o um `<img>` quebrado).
-
-Verificado com `npx vitest run` (506 passou, 11 pulados â€” dois testes
-novos: EMF sem `dataUrl`, `createWidget("image", ...)`), `npx tsc
---noEmit` sem erros, Prettier limpo (dois ajustes manuais de quebra de
-linha para bater com o formatador), `npm run build` e `npm run
-performance:check` aprovados (maior chunk genÃ©rico subiu de 374,4 para
-375,7 KiB â€” ainda dentro da margem de ~450 KiB).
-
-Fora do escopo, sinalizado como tarefa separada (nÃ£o Ã© um bug de
-leitura, Ã© uma descoberta de UX que precisa de decisÃ£o de arquitetura):
-uma corrida real de hidrataÃ§Ã£o SSR do TanStack Start foi encontrada
-durante a configuraÃ§Ã£o do Playwright (seÃ§Ã£o 73 acima) â€” um clique
-disparado antes da hidrataÃ§Ã£o terminar Ã© silenciosamente perdido. NÃ£o
-investigado a fundo aqui; ver o chip de tarefa criado naquela sessÃ£o.
-
-## 75. Corrigida a corrida de hidrataÃ§Ã£o SSR sinalizada nas seÃ§Ãµes 73/74: botÃµes da tela Empty desabilitados nativamente atÃ© o React conectar
-
-Item 1 do backlog priorizado (`SECOND_BRAIN.md`). AnÃ¡lise estÃ¡tica (sem
-rodar o Playwright de novo) confirmou primeiro o alcance real do bug:
-como a hidrataÃ§Ã£o do TanStack Start acontece uma vez sÃ³ para a Ã¡rvore
-inteira no carregamento inicial, o risco estÃ¡ inteiramente concentrado
-nos controles que jÃ¡ vÃªm prontos no HTML do servidor. `Empty`
-(`components/oliam/empty.tsx`) Ã© o Ãºnico estÃ¡gio nessa situaÃ§Ã£o na
-rota `/` â€” `dashboards` comeÃ§a como `[]` e sÃ³ Ã© populado depois do
-`useEffect` assÃ­ncrono em `index.tsx`, que roda bem depois da
-hidrataÃ§Ã£o terminar, entÃ£o `Home` nunca estÃ¡ sujeita Ã  janela de
-corrida; `Review`/`Dashboard` sÃ³ aparecem como resultado de uma aÃ§Ã£o do
-usuÃ¡rio que jÃ¡ passou dessa janela.
-
-DecisÃ£o do usuÃ¡rio (perguntado diretamente, sem opÃ§Ã£o "nÃ£o decidir"):
-desabilitar os controles atÃ© a hidrataÃ§Ã£o terminar, sem indicador de
-carregamento visÃ­vel â€” risco mÃ­nimo de mudanÃ§a de layout, aparÃªncia
-igual Ã  de hoje enquanto a janela dura (tipicamente bem menos de 1s).
-
-ImplementaÃ§Ã£o: `OliAm` (`routes/index.tsx`) ganhou um estado
-`hydrated`, `false` por padrÃ£o â€” igual em qualquer render, incluindo a
-do servidor â€” que vira `true` num `useEffect` de dependÃªncias vazias
-(sÃ³ roda depois que o React conecta os event handlers no cliente, por
-definiÃ§Ã£o de como hidrataÃ§Ã£o funciona). Passado como prop pro `Empty`,
-que aplica o atributo HTML nativo `disabled` a todo controle visÃ­vel no
-primeiro paint: o botÃ£o grande de upload (`disabled={p.loading ||
-!p.hydrated}`, combinando com a condiÃ§Ã£o que jÃ¡ existia), o botÃ£o de
-ativar modo privado, os dois toggles de expandir (Google Sheets, colar
-dados), os botÃµes "Pasta monitorada" e "Ver demonstraÃ§Ã£o", o botÃ£o de
-voltar (quando `showBack`) e a checkbox de tema (`ThemeToggle` ganhou
-um prop `disabled?: boolean` novo, opcional â€” nÃ£o quebra os outros
-call sites).
-
-O motivo de usar o atributo `disabled` do HTML, e nÃ£o sÃ³ uma guarda no
-inÃ­cio do `onClick` (`if (!hydrated) return`): o `disabled` sai
-renderizado pelo prÃ³prio servidor, entÃ£o o navegador jÃ¡ recebe o botÃ£o
-genuinamente inerte no primeiro payload, sem depender de nenhum
-JavaScript ter rodado. Uma guarda em `onClick` teria a mesma janela de
-corrida do bug original, porque o handler sÃ³ existe depois da
-hidrataÃ§Ã£o de qualquer forma â€” o problema nunca foi "o handler faz a
-coisa errada", foi "o handler ainda nÃ£o existe".
-
-VerificaÃ§Ã£o ao vivo (nÃ£o sÃ³ anÃ¡lise estÃ¡tica): subi o dev server local
-via Bash (`preview_start` do Browser pane abre numa rede isolada da do
-Bash â€” Playwright/curl usados pra verificaÃ§Ã£o de HTML bruto precisam do
-servidor no lado do Bash, nÃ£o do preview) e capturei o HTML gerado pelo
-servidor direto com `curl` antes de qualquer hidrataÃ§Ã£o â€” confirma
-`disabled=""` presente nos 6 elementos interativos (5 botÃµes +
-checkbox) jÃ¡ no payload SSR. Depois, verifiquei via `javascript_tool`
-no Browser pane que, pÃ³s-hidrataÃ§Ã£o, os mesmos elementos voltam a
-`disabled: false`, e que clicar em "Ver demonstraÃ§Ã£o" ainda leva
-normalmente Ã  revisÃ£o (fluxo funcional intacto).
-
-Verificado com `npx vitest run` (506 passou, 11 pulados â€” sem teste
-novo: Ã© uma mudanÃ§a de atributo HTML condicional, sem lÃ³gica nova para
-cobrir com unidade; a prova Ã© a verificaÃ§Ã£o SSR ao vivo acima), `npx
-tsc --noEmit` sem erros, `npm run build` e `npm run performance:check`
-aprovados (maior chunk genÃ©rico foi de 375,7 para 375,8 KiB â€”
-variaÃ§Ã£o desprezÃ­vel), e `npm run test:e2e` (1 passou, mesmo teste da
-seÃ§Ã£o 73).
-
-## 76. InventÃ¡rio de formas nativas com texto e grÃ¡ficos nativos do Excel (item 2 do backlog, com achado novo de lacuna arquitetural)
-
-Item 2 do backlog priorizado (`SECOND_BRAIN.md`). Ao contrÃ¡rio do que o
-texto do backlog sugeria ("ninguÃ©m pediu explicitamente ainda"), o
-usuÃ¡rio escolheu este item explicitamente quando perguntado. Sem
-acesso Ã  pasta `upload/` neste checkout (ausente, Ã© local por
-convenÃ§Ã£o), o usuÃ¡rio trouxe de novo o arquivo real jÃ¡ usado nas
-seÃ§Ãµes 68-74 (`FRS-QA-BR-405...(5).xlsx`), copiado para `upload/`
-localmente (nÃ£o commitado).
-
-### O que o arquivo real revelou
-
-InspeÃ§Ã£o direta do ZIP (nÃ£o suposiÃ§Ã£o pela especificaÃ§Ã£o OOXML)
-mostrou: 14 grÃ¡ficos nativos do Excel numa aba inteira dedicada a
-tendÃªncias microbiolÃ³gicas ("TendÃªncia 2", `xl/drawings/drawing3.xml`
-â€” 14 `xdr:graphicFrame` + `xl/charts/chart1.xml`...`chart14.xml`, cada
-um com tÃ­tulo real como "Ar ambiente - Bolores e Leveduras"); 24
-formas nativas (`xdr:sp`) espalhadas em 3 abas â€” 6 numa legenda de
-cronograma ("Programado"/"Realizado"/"Atrasado" na aba principal), 17
-formando o texto de uma legenda de zonas de contato (a mesma aba
-"Requisitos de Monitoramento" da seÃ§Ã£o 74, que jÃ¡ tinha uma imagem
-raster inventariada â€” a legenda em texto ao lado da imagem nunca tinha
-sido vista) e 1 com citaÃ§Ãµes regulatÃ³rias completas ("Conforme
-Portaria nÂ° 2914..."). Nenhum agrupamento/outline (`outlineLevel`) nem
-segmentaÃ§Ã£o (`xl/slicers`) apareceu neste arquivo â€” por isso o escopo
-desta seÃ§Ã£o ficou deliberadamente restrito a formas e grÃ¡ficos; os
-outros dois continuam sem parsing, sem evidÃªncia real para justificar.
-
-### ImplementaÃ§Ã£o
-
-Mesmo padrÃ£o jÃ¡ estabelecido por hyperlinks/nomes definidos/validaÃ§Ãµes/
-macros/imagens (seÃ§Ãµes 68-72): `parseShapes`/`parseCharts`
-(`workbook-metadata.ts`) leem `xl/drawings/drawingN.xml` por aba,
-reaproveitando a mesma cadeia de relacionamentos (`.rels` de aba â†’
-drawing â†’ `.rels` de drawing â†’ `xl/charts/chartN.xml` para grÃ¡ficos,
-mesma estrutura de dois nÃ­veis jÃ¡ usada por imagens). `anchorOf`, antes
-duplicado dentro de `parseImages`, virou uma funÃ§Ã£o pequena
-compartilhada pelas trÃªs funÃ§Ãµes (imagem/forma/grÃ¡fico), sem mudar
-nenhum comportamento existente.
-
-DecisÃµes de escopo:
-- **SÃ³ formas com texto entram no inventÃ¡rio** (`shapeText` extrai e
-  junta os `<a:t>` de cada `<a:p>`, um parÃ¡grafo por linha). Conectores
-  (`xdr:cxnSp`, 11 no arquivo real) e formas puramente decorativas sem
-  `xdr:txBody` nÃ£o carregam informaÃ§Ã£o prÃ³pria para o usuÃ¡rio revisar
-  â€” mesmo critÃ©rio de "nÃ£o virar ruÃ­do" jÃ¡ usado para nomes internos
-  do Excel (seÃ§Ã£o 68/decisÃµes registradas).
-- **Tipo do grÃ¡fico** (`chartType`) procura a primeira tag reconhecida
-  dentro de `<c:plotArea>` (`c:barChart`, `c:lineChart`, `c:pieChart`
-  etc.); tipos nÃ£o listados (grÃ¡ficos 3D customizados, por exemplo)
-  viram `"desconhecido"` em vez de falhar.
-- **TÃ­tulo vinculado a uma referÃªncia de cÃ©lula** (`<c:title><c:tx>
-  <c:strRef>`, em vez de texto literal `<c:rich>`) vira `null` â€” nÃ£o
-  hÃ¡ um texto fixo pra mostrar sem resolver a referÃªncia, e resolver
-  a referÃªncia Ã© fora de escopo (o inventÃ¡rio nÃ£o lÃª valores de
-  cÃ©lula do grÃ¡fico, sÃ³ metadados de estrutura).
-- PainÃ©is novos em `review.tsx` seguem o padrÃ£o `<details>` exato dos
-  demais; o painel de grÃ¡ficos tem uma frase extra deixando claro que
-  eles **nÃ£o sÃ£o recalculados nem reproduzidos no painel** â€” sÃ£o
-  metadados do arquivo original, os dados de origem continuam
-  disponÃ­veis nos widgets que o usuÃ¡rio criar.
-
-### Lacuna arquitetural encontrada (nÃ£o corrigida nesta sessÃ£o, por decisÃ£o do usuÃ¡rio)
-
-`!oliAdvanced` (de onde vÃªm os 8 recursos inventariados atÃ© aqui,
-incluindo os 2 novos) Ã© anexado ao objeto `XLSX.WorkSheet` original em
-`attachWorkbookFeatures`. Quando uma aba Ã© dividida em regiÃµes/seÃ§Ãµes
-independentes (`independentRegionWorksheet`/`independentSectionWorksheet`
-em `import.ts`, usadas por `sheetsWithData` quando `detectIndependentSections`
-ou `tableRegions` encontram mais de uma tabela empilhada), o worksheet
-resultante Ã© construÃ­do do zero â€” sÃ³ copia cÃ©lulas e `!merges`, nunca
-`!oliAdvanced`. Confirmado com o arquivo real: a aba "Anexo III -
-CritÃ©rios de aceit." (dividida em 4 sub-tabelas) perde sua Ãºnica forma;
-pior, "TendÃªncia 2" (14 grÃ¡ficos, zero linhas de dado tabular) nunca
-aparece nem como opÃ§Ã£o de importaÃ§Ã£o â€” `sheetsWithData` descarta
-qualquer aba sem nenhuma linha, entÃ£o os 14 grÃ¡ficos ficam
-completamente invisÃ­veis, nÃ£o sÃ³ sem o painel novo. Abas nÃ£o divididas
-("FRS QA BR 405 Brasil", "Requisitos de Monitoramento") preservam
-formas/grÃ¡ficos corretamente.
-
-Perguntado diretamente: usuÃ¡rio escolheu entregar sÃ³ o que jÃ¡ funciona
-(a maioria dos casos reais â€” abas nÃ£o divididas) e documentar a lacuna
-em vez de ampliar o escopo deste PR para propagar `!oliAdvanced`
-atravÃ©s da divisÃ£o de regiÃµes/seÃ§Ãµes, ou para permitir abas sem
-nenhuma linha de dado virarem opÃ§Ã£o de importaÃ§Ã£o quando tiverem
-grÃ¡ficos/formas. Ambos ficam como trabalho futuro, nÃ£o implÃ­citos em
-nenhum item existente do backlog â€” precisam de uma entrada prÃ³pria.
-
-### Achado Ã  parte, sinalizado como tarefa separada
-
-O mesmo arquivo real expÃ´s um teste de corpus prÃ©-existente
-(`real-upload-validation.test.ts`, "recupera todas as abas com
-validade e fidelidade integrais") falhando: a aba "FRS QA BR 405
-Brasil" mostra fidelidade 82% (limite do teste Ã© 90%), com 9
-divergÃªncias nÃ£o resolvidas entre os leitores. NÃ£o investigado â€”
-ortogonal ao trabalho de formas/grÃ¡ficos; pode ser que o arquivo desta
-sessÃ£o seja uma versÃ£o ligeiramente diferente da usada quando o teste
-foi escrito (o teste aceita duas variantes de nome de arquivo,
-sugerindo dois downloads diferentes do mesmo usuÃ¡rio).
-
-Verificado com `npx vitest run` (todos passando, incluindo os testes
-novos de `workbook-metadata.test.ts`), `npx tsc --noEmit` sem erros,
-`npm run build` e `npm run performance:check`, e verificaÃ§Ã£o ao vivo
-contra o arquivo real (`upload/`, nÃ£o commitado) confirmando os dados
-acima.
-
-## 77. Investigado e corrigido o achado Ã  parte da seÃ§Ã£o 76: as 9 divergÃªncias de fidelidade eram todas o mesmo falso positivo de fim de linha
-
-ContinuaÃ§Ã£o direta da sessÃ£o anterior. Dump das 9 divergÃªncias
-(`meta.readerDivergences` da aba "FRS QA BR 405 Brasil") mostrou um
-Ãºnico padrÃ£o repetido: o SheetJS (leitor "primary") lÃª texto multilinha
-de cÃ©lula com `\n` puro, enquanto o leitor OOXML independente
-("independent") preservava `\r\n` literal do XML â€” o mesmo texto,
-divergindo sÃ³ pelo fim de linha, nÃ£o por perda ou corrupÃ§Ã£o de dado.
-As 9 cÃ©lulas eram observaÃ§Ãµes, notas de revisÃ£o e nomes de item com
-quebra de linha (`xml:space="preserve"`).
-
-Causa raiz: `xmlText()` (`ooxml-reader.ts`), a funÃ§Ã£o central que
-converte conteÃºdo de `<t>` para string JS, nunca normalizava fim de
-linha â€” sÃ³ decodificava entidades e referÃªncias numÃ©ricas de
-caractere. Corrigido com `.replace(/\r\n?/g, "\n")` no fim do
-pipeline, igualando o comportamento do SheetJS. Como `xmlText` Ã© o
-Ãºnico ponto de conversÃ£o usado por shared strings, inline strings,
-texto de fÃ³rmula e valores `str`/`e` (ver os 5 call sites no arquivo),
-a correÃ§Ã£o cobre todo texto lido pelo leitor independente, nÃ£o sÃ³ o
-caso testado.
-
-Efeito colateral importante, nÃ£o uma correÃ§Ã£o separada: `unresolvedReaderDivergences`
-(`import-intelligence.ts`) conta toda divergÃªncia nÃ£o reparada,
-inclusive severidade `warning` (diferente de `fidelity-meter.ts`, que
-jÃ¡ tinha a decisÃ£o explÃ­cita de nÃ£o penalizar avisos â€” ver comentÃ¡rio
-em `WorkbookFidelityReport.warnings`). Essa inconsistÃªncia entre os
-dois caminhos de pontuaÃ§Ã£o de fidelidade continua existindo em teoria
-para qualquer divergÃªncia de aviso que nÃ£o seja de fim de linha; nÃ£o
-foi alterada aqui porque, com a causa raiz corrigida, as 9 divergÃªncias
-reais do arquivo desapareceram por completo â€” nÃ£o sobrou nenhum caso
-para justificar mudar a semÃ¢ntica de pontuaÃ§Ã£o nesta sessÃ£o. Fica
-registrado como possÃ­vel trabalho futuro se aparecer um novo tipo de
-divergÃªncia de aviso recorrente.
-
-Teste de regressÃ£o novo em `workbook-fidelity.test.ts`: shared string
-sintÃ©tica com `\r\n` literal, confirma `rawValue` normalizado e zero
-divergÃªncias contra um `primary` fabricado com `\n`.
-
-Verificado com o arquivo real: as 9 divergÃªncias somem por completo
-(`readerDivergences` vazio), e o teste antes falho
-(`real-upload-validation.test.ts`, "recupera todas as abas com
-validade e fidelidade integrais") passa â€” fidelidade da aba "FRS QA BR
-405 Brasil" volta a 100%. SuÃ­te completa: `npx vitest run` (518
-passou, 1 pulado â€” o pulado Ã© uma fixture privada diferente, nÃ£o
-relacionada), `npx tsc --noEmit` sem erros, `npm run build` e `npm run
-performance:check` aprovados, sem mudanÃ§a de tamanho de bundle
-(`ooxml-reader.ts` nÃ£o Ã© cÃ³digo de rota, Ã© parte do worker de leitura).
-
-## 78. Item 4 do backlog priorizado fechado por confirmaÃ§Ã£o direta do usuÃ¡rio
-
-"Painel real do usuÃ¡rio com widgets configurados com a coluna 'Foto'
-vazia" (bloqueado desde sessÃµes anteriores, pendia do usuÃ¡rio abrir o
-painel local dele e indicar o que ajustar) foi resolvido fora desta
-sessÃ£o â€” usuÃ¡rio confirmou diretamente, sem pedir nenhuma mudanÃ§a de
-cÃ³digo aqui. Removido do backlog em `SECOND_BRAIN.md`; nenhum arquivo
-de cÃ³digo foi tocado por esta entrada.
-
-## 79. Diagnosticado o widget "Matriz" mal configurado do usuÃ¡rio; inventÃ¡rio novo de cor de preenchimento de cÃ©lula (metade 1 de 2)
-
-UsuÃ¡rio trouxe 3 capturas de tela: um widget "Matriz de Coluna 2 Ã—
-Coluna 6" no painel dele com nÃºmeros sem sentido (0/1/2/3 cruzando
-categorias erradas), e duas capturas do Excel original ("DefiniÃ§Ã£o das
-Zonas de Contato" com legenda colorida ZONA 1-4, e a aba "Matriz de
-Perigo" com uma coluna "Criticidade do Contato" colorida vermelho/
-amarelo/verde). Pedido: ler a aba 100% fiel e usar/criar widget que
-interprete melhor os dados.
-
-### DiagnÃ³stico completo do widget mal configurado
-
-InvestigaÃ§Ã£o cÃ©lula a cÃ©lula (arquivo real, `readWorkbookBytes` +
-inspeÃ§Ã£o direta do XML) confirmou que a aba real por trÃ¡s do widget do
-usuÃ¡rio Ã© "Requisitos de Monitoramento" (nÃ£o "Matriz de Perigo" â€” sÃ£o
-abas diferentes; a matriz 3Ã—3 pequena de critÃ©rio vive em
-"Requisitos", a tabela grande de 168 linhas por tipo de superfÃ­cie Ã©
-"Matriz de Perigo"). Achados, todos confirmados contra `dimension
-ref="A1:X30"` e `<mergeCell ref="F29:G30"/>` do XML bruto de
-`sheet10.xml`:
-
-- Os valores da matriz de critÃ©rio (3,6,9 / 2,4,6 / 1,2,3) estÃ£o
-  100% corretos e completos â€” nenhuma perda de dado.
-- O rÃ³tulo do eixo de linhas nÃ£o tem cabeÃ§alho de cÃ©lula: o nome real
-  ("PERIGO â€” Proximidade com Alimentos") Ã© uma forma de texto flutuante
-  (jÃ¡ inventariada pela seÃ§Ã£o 76, Ã¢ncora A25), nÃ£o um valor de cÃ©lula.
-  Por isso a coluna virou o nome genÃ©rico "Coluna 2".
-- "Coluna 6"/"Coluna 7" (o texto "Adaptada de FSSC 22000" que o
-  usuÃ¡rio cruzou no widget) sÃ£o uma cÃ©lula de rodapÃ© mesclada
-  (`F29:G30`) que fisicamente compartilha linha com a Ãºltima linha da
-  matriz â€” dado real, lido corretamente, mas que nÃ£o pertence Ã 
-  matriz.
-- A Probabilidade (Baixa/MÃ©dia/Alta) estÃ¡ em **3 colunas separadas**
-  (formato largo), nÃ£o numa Ãºnica coluna categÃ³rica. Por isso nenhuma
-  configuraÃ§Ã£o do widget "Matriz" (que cruza duas colunas categÃ³ricas)
-  consegue representar essa tabela corretamente â€” ela jÃ¡ Ã© uma matriz
-  prÃ©-pivotada, nÃ£o dado transacional para cruzar. O widget correto
-  pra essa estrutura, sem nenhuma mudanÃ§a de cÃ³digo, Ã© "Tabela" com as
-  4 colunas reais (renomeando "Coluna 2" e excluindo "Coluna 6"/"Coluna
-  7" no painel de Colunas).
-
-Nenhuma mudanÃ§a em `structural-model.ts`/`import.ts` foi feita: o caso
-Ã© idiossincrÃ¡tico (uma cÃ©lula de anotaÃ§Ã£o mesclada compartilhando
-linha com uma tabela sem cabeÃ§alho de eixo), e mexer na heurÃ­stica
-geral de detecÃ§Ã£o de coluna/cabeÃ§alho por causa de um Ãºnico arquivo
-vai contra a disciplina do projeto de sÃ³ mudar isso com evidÃªncia de
-mÃºltiplos arquivos reais.
-
-### InventÃ¡rio novo: cor de preenchimento de cÃ©lula (sÃ³ a leitura, ainda nÃ£o ligada a widget)
-
-UsuÃ¡rio pediu explicitamente a leitura de cor pra reproduzir as
-zonas coloridas do Excel. `parseFillRgbByFillId`/`parseFillIdByCellXf`/
-`parseCellFills` (`workbook-metadata.ts`) resolvem `xl/styles.xml`
-(`<fills>` â†’ `<cellXfs>`) e cruzam com o atributo `s` de cada `<c>` do
-XML da aba. Verificado contra o arquivo real: as cores resolvidas
-batem exatamente com o cÃ¡lculo manual feito a partir do XML bruto â€”
-`fillId 8/21/22` = amarelo `#FFFF00`/vermelho `#FF0000`/verde
-`#00B050`, reproduzindo cÃ©lula a cÃ©lula a mesma coloraÃ§Ã£o da matriz de
-critÃ©rio (linha Alto: 3=amarelo, 6=vermelho, 9=vermelho; MÃ©dio:
-2=verde, 4=amarelo, 6=vermelho; Baixo: 1=verde, 2=verde, 3=amarelo) e
-153 cÃ©lulas reais na coluna "Criticidade do Contato" de "Matriz de
-Perigo".
-
-Escopo deliberadamente restrito a cor RGB direta
-(`<fgColor rgb="FFRRGGBB">`). Cor de tema (`theme="N"`) e paleta
-indexada legada (`indexed="N"`) nÃ£o sÃ£o resolvidas â€” accessar o mapeamento
-correto de Ã­ndice de tema pra RGB nÃ£o Ã© trivial (a ordem de
-`<clrScheme>` no XML nÃ£o Ã© a mesma ordem usada pelos Ã­ndices de estilo
-de cÃ©lula) e o risco de resolver uma cor errada silenciosamente pesa
-mais que o ganho: no arquivo real, cor de tema aparece sÃ³ em
-sombreamento decorativo de cabeÃ§alho (`fillId 25/26`), nunca na cor de
-negÃ³cio que motivou o pedido.
-
-Painel novo `<details>` em `review.tsx` ("Cor de preenchimento
-original"), mesmo padrÃ£o dos demais, com uma bolinha colorida por
-cÃ©lula â€” sÃ³ inventÃ¡rio, deixa explÃ­cito que ainda nÃ£o colore nenhum
-widget.
-
-**Pausa deliberada antes da metade 2 (ligar a cor a um widget)**: a
-Ãºnica forma existente de rastrear um `Row` final atÃ© sua origem Ã©
-`sourceRowIndexOf` (`data-review.ts`) â€” dÃ¡ o Ã­ndice da linha original,
-nÃ£o o endereÃ§o completo (linha+coluna). Reconstruir o endereÃ§o exato
-de uma cÃ©lula depois de todas as transformaÃ§Ãµes jÃ¡ aplicadas (colunas
-mescladas viram uma coluna de grupo, colunas excluÃ­das, renomeadas,
-regiÃ£o deslocada por corte de Ã¡rea independente) Ã© uma peÃ§a de
-plumbing prÃ³pria, nÃ£o uma extensÃ£o trivial do que jÃ¡ existe. Dado que
-os dados de origem sÃ£o uma matriz de risco de seguranÃ§a alimentar
-(HACCP), errar essa correspondÃªncia e colorir a cÃ©lula errada seria
-pior do que nÃ£o colorir nenhuma â€” decisÃ£o de nÃ£o seguir sem confirmar
-o escopo real com o usuÃ¡rio primeiro.
-
-Verificado com `npx vitest run` (518 passou, 1 pulado), `npx tsc
---noEmit` sem erros, `npm run build` e `npm run performance:check`
-aprovados (maior chunk genÃ©rico foi de 375,8 para 383,1 KiB â€” ainda
-dentro da margem de ~450 KiB), e verificaÃ§Ã£o ao vivo contra o arquivo
-real confirmando as cores acima.
-
-## 80. Metade 2: cor de preenchimento original ligada ao widget Tabela, via rastreamento de endereÃ§o restrito a abas simples
-
-ContinuaÃ§Ã£o direta da seÃ§Ã£o 79. InvestigaÃ§Ã£o de `sheetToRows`
-(`import.ts`, ~2.500 linhas) confirmou que hoje nÃ£o existe nenhum
-conceito de "Ã­ndice de coluna original" sobrevivendo atÃ© `Column`/
-`Row` â€” o cabeÃ§alho vira a chave do objeto e passa por ~15 estÃ¡gios de
-transformaÃ§Ã£o por string (remoÃ§Ã£o de coluna fantasma, mesclagem de
-coluna redundante, corte de rodapÃ©, renomeaÃ§Ã£o de duplicata). Rastrear
-proveniÃªncia de coluna atravÃ©s de tudo isso tocaria dezenas de pontos
-do nÃºcleo de toda importaÃ§Ã£o do app â€” risco desproporcional pro
-ganho. Apresentado ao usuÃ¡rio com essa avaliaÃ§Ã£o revisada; decisÃ£o:
-restringir a abas simples, sem tocar `import.ts`.
-
-### `resolveSourceCellFills` (`cell-fill-provenance.ts`)
-
-FunÃ§Ã£o pura e deliberadamente conservadora, calculada uma vez em
-`confirmReview()`/`buildImportedSheets()` (`routes/index.tsx`, mesmo
-ponto onde `sourceNotes`/`sourceImages` jÃ¡ saltam de diagnÃ³stico
-transiente da revisÃ£o para `SheetData` persistente):
-
-1. Casa o rÃ³tulo de cada `Column` final com o texto literal da linha
-   de cabeÃ§alho na `SourceGrid` (`diagnostics.header.row`) â€” sÃ³ aceita
-   quando bate com exatamente uma cÃ©lula do cabeÃ§alho.
-2. Assume que os dados seguem o cabeÃ§alho sequencialmente, cÃ©lula por
-   cÃ©lula, sem lacuna â€” `rowIndex` final vira `header.row + rowIndex`
-   no endereÃ§o absoluto da aba.
-3. Recusa completamente (devolve `[]`) quando qualquer sinal indicar
-   que essa suposiÃ§Ã£o sequencial pode estar errada: linhas ocultas/em
-   branco/de rodapÃ©/de cabeÃ§alho repetido descartadas
-   (`audit.hiddenRowsIgnored` etc. > 0), ou `SourceGrid` truncado
-   (`truncatedRows`/`truncatedColumns`). Nunca associa uma cor a uma
-   cÃ©lula sem ter certeza de qual cÃ©lula Ã© essa â€” a origem real dessa
-   sessÃ£o Ã© uma matriz de risco de seguranÃ§a alimentar (HACCP), e
-   colorir errado seria pior que nÃ£o colorir.
-
-O resultado (`{rowIndex, columnKey, color}[]`) Ã© o que persiste em
-`SheetData.sourceCellFills` â€” leve, resolvido uma vez, sem carregar
-`SourceGrid`/`ImportAudit` inteiros pro modelo permanente do painel.
-
-### Consumo no widget Tabela
-
-`DataTable` (`data-table-widget.tsx`) ganhou a prop opcional
-`sourceCellFills`; usa `sourceRowIndexOf(row)` (jÃ¡ existente,
-mecanismo que jÃ¡ alimenta o histÃ³rico de auditoria) combinado com
-`column.key` pra buscar a cor. Quando nÃ£o hÃ¡ regra explÃ­cita de
-formataÃ§Ã£o condicional na coluna (`conditionalStyle` retorna `null`),
-a cor original do Excel Ã© aplicada como fundo da cÃ©lula â€” regra
-explÃ­cita do usuÃ¡rio sempre tem prioridade. Aplicado tanto na tabela
-virtualizada quanto na tabela de prÃ©via usada na exportaÃ§Ã£o/PDF, pelo
-mesmo motivo.
-
-### VerificaÃ§Ã£o ao vivo (a prova que importava de verdade aqui)
-
-Arquivo real, dev server local, widget "Tabela" adicionado Ã  aba
-"Requisitos de Monitoramento" pelo dropdown "Widget" (clique sintÃ©tico
-completo `pointerdown`+`pointerup`+`click` no gatilho, mesmo problema
-de sempre com `DropdownMenuTrigger` do Radix). Cor de fundo lida
-diretamente do DOM renderizado, cÃ©lula por cÃ©lula:
-
-- Linha "Alto (3)": 3 â†’ amarelo `rgb(255,255,0)`, 6 â†’ vermelho
-  `rgb(255,0,0)`, 9 â†’ vermelho.
-- Linha "MÃ©dio (2)": 2 â†’ verde `rgb(0,176,80)`, 4 â†’ amarelo, 6 â†’
-  vermelho.
-- Linha "Baixo (1)": 1 â†’ verde, 2 â†’ verde, 3 â†’ amarelo.
-
-Reproduz exatamente a matriz de critÃ©rio do Excel original (mesmas
-cores confirmadas manualmente no XML bruto na seÃ§Ã£o 79). A aba "Matriz
-de Perigo" (168 linhas, 153 cÃ©lulas coloridas) foi verificada sÃ³ no
-nÃ­vel do resolvedor (mesma funÃ§Ã£o, mesmos dados jÃ¡ confirmados na
-seÃ§Ã£o 79) â€” nÃ£o repetida na UI por completo nesta sessÃ£o, dado que o
-caminho de renderizaÃ§Ã£o Ã© idÃªntico ao jÃ¡ provado para "Requisitos".
-
-Verificado com `npx vitest run` (523 passou, 1 pulado; 5 testes novos
-em `cell-fill-provenance.test.ts` cobrindo os gates de seguranÃ§a â€”
-linha pulada, grade truncada, rÃ³tulo ambÃ­guo, dados ausentes), `npx
-tsc --noEmit` sem erros, `npm run build` e `npm run performance:check`
-aprovados (maior chunk genÃ©rico foi de 383,1 para 384,0 KiB â€”
-variaÃ§Ã£o desprezÃ­vel).
-
-## 81. Item 2b do backlog: propaga `!oliAdvanced` atravÃ©s da divisÃ£o de regiÃµes/seÃ§Ãµes independentes
-
-Ao contrÃ¡rio do problema de proveniÃªncia de coluna da seÃ§Ã£o 80 (que
-exigiria tocar ~15 estÃ¡gios de transformaÃ§Ã£o por string no nÃºcleo de
-toda importaÃ§Ã£o), este Ã© mais tratÃ¡vel: `independentRegionWorksheet` e
-`independentSectionWorksheet` (`import.ts`) jÃ¡ calculam os limites
-exatos de linha/coluna de cada regiÃ£o/seÃ§Ã£o antes de fatiar o
-worksheet â€” sÃ³ faltava filtrar e remapear os metadados com Ã¢ncora
-dentro desses limites, sem mexer na lÃ³gica de corte em si.
-
-`sliceAdvancedMetadata` (`workbook-metadata.ts`), funÃ§Ã£o pura nova:
-recebe o `AdvancedSheetMetadata` original e uma funÃ§Ã£o `remap(address)
-=> address | null` (decide se um endereÃ§o pertence Ã  regiÃ£o e devolve
-o endereÃ§o jÃ¡ traduzido pras coordenadas do worksheet fatiado, ou
-`null` se estiver fora). Chamada logo depois que `sliced` Ã© montado
-nas duas funÃ§Ãµes de corte, com um `remap` calculado a partir dos
-mesmos limites (`range` em `independentRegionWorksheet`;
-`sourceToDestination`/`sourceStartColumn`/`sourceEndColumn` em
-`independentSectionWorksheet`, jÃ¡ existentes ali pra traduzir
-mesclagens).
-
-Escopo deliberadamente restrito aos campos com Ã¢ncora de cÃ©lula Ãºnica
-(hyperlinks, comentÃ¡rios, imagens, formas, grÃ¡ficos, cor de
-preenchimento). `dataValidations`/`structuredTables`/`pivotTables` usam
-intervalo (`range`), nÃ£o um Ãºnico endereÃ§o â€” fatiar um intervalo
-corretamente Ã© mais arriscado do que vale a pena aqui, entÃ£o saem
-vazios em vez de arriscar mostrar um intervalo errado (mesma lÃ³gica jÃ¡
-usada pra cor de tema na seÃ§Ã£o 79: incerteza vira ausÃªncia, nÃ£o
-suposiÃ§Ã£o). `definedNames`/`externalLinks`/`hasVbaMacros` sÃ£o do
-workbook inteiro, passam sem alteraÃ§Ã£o. Formas/imagens/grÃ¡ficos com
-Ã¢ncora desconhecida (`anchor: null`, raro) sÃ£o descartados ao fatiar
-em vez de duplicados em toda sub-regiÃ£o â€” sem saber a posiÃ§Ã£o real,
-mostrar em todo lugar seria pior que nÃ£o mostrar em lugar nenhum.
-
-Testado nos dois caminhos de divisÃ£o (`sheetsWithData`, via fixture
-sintÃ©tica): caso positivo (hyperlink dentro do intervalo da regiÃ£o 2,
-remapeado de `A7` pra `A2`) e caso negativo (endereÃ§o Ã³rfÃ£o fora de
-toda regiÃ£o detectada, some das duas em vez de vazar pra alguma) para
-`independentRegionWorksheet`; caso positivo anÃ¡logo pra
-`independentSectionWorksheet` (divisÃ£o por tÃ­tulo de seÃ§Ã£o). Mais 3
-testes unitÃ¡rios diretos de `sliceAdvancedMetadata`
-(`workbook-metadata.test.ts`): remapeamento completo, Ã¢ncora
-desconhecida descartada, tudo fora do intervalo some.
-
-Verificado contra o arquivo real: a forma de texto (Ã¢ncora `I24`) da
-aba "Anexo III - CritÃ©rios de aceit." â€” o caso citado como exemplo na
-seÃ§Ã£o 79 â€” continua ausente das 4 sub-abas divididas, mas agora por um
-motivo correto e confirmado (a Ã¢ncora cai fora dos limites das 4
-regiÃµes detectadas geometricamente), nÃ£o mais por ausÃªncia total de
-propagaÃ§Ã£o. Nenhuma prova positiva com este arquivo especÃ­fico (nenhum
-recurso ancorado dele cai dentro de uma regiÃ£o dividida por acaso) â€”
-a prova positiva vem das fixtures sintÃ©ticas acima, com endereÃ§o exato
-conferido Ã  mÃ£o.
-
-Verificado com `npx vitest run` (529 passou, 1 pulado â€” 6 testes
-novos), `npx tsc --noEmit` sem erros, nenhuma regressÃ£o nos 523 testes
-prÃ©-existentes (inclusive os de corpus real), `npm run build` e `npm
-run performance:check` aprovados (maior chunk genÃ©rico foi de 384,0
-para 385,2 KiB â€” variaÃ§Ã£o desprezÃ­vel).
-
-## 82. UsuÃ¡rio trouxe o mesmo arquivo real de novo: 3 bugs reais corrigidos, 1 investigado sem defeito, item de corpus com achado de duplicata
-
-UsuÃ¡rio pediu, numa mensagem sÃ³: adicionar o arquivo ao corpus, corrigir
-"Matriz de Perigo triplicando colunas", investigar "Anexo III meio
-bugado", corrigir um painel de pizza cortando informaÃ§Ã£o em largura
-1/3, e corrigir "Requisitos de Monitoramento" (bloco de fora + coluna
-com informaÃ§Ã£o errada) â€” visando "leitura 100% universal" desse
-arquivo. Sem selo/badge literal no app para essa frase; entendido como
-"essa leitura precisa ficar correta", nÃ£o como pedido de UI nova.
-
-### Corpus: arquivo jÃ¡ estava sanitizado numa sessÃ£o anterior
-
-`npm run corpus:sanitize` rodado sobre o arquivo produziu um caso cujas
-mÃ©tricas (11 abas, 10.289 cÃ©lulas, 1.931 textos sanitizados, 4
-hyperlinks removidos, 20 comentÃ¡rios removidos) batem exatamente com
-`sanitized-003.xlsx`, jÃ¡ presente em `test-fixtures/sanitized-real/`
-de sessÃ£o anterior. NÃ£o mesclado como duplicata (regra do projeto:
-"duplicatas... nÃ£o contam" pro gate de promoÃ§Ã£o). Corpus continua com
-6 fontes reais Ãºnicas, acima do mÃ­nimo de 5.
-
-### Bug real corrigido: preenchimento de mesclagem triplicando registros ("Matriz de Perigo")
-
-InvestigaÃ§Ã£o do XML bruto (`sheet9.xml`) mostrou que colunas B, C e D
-(nÃ£o sÃ³ A) tambÃ©m estÃ£o mescladas verticalmente em blocos de 3 linhas
-idÃªnticos â€” mas as linhas 2 e 3 de cada bloco sÃ£o 100% vazias no
-arquivo original, sem nenhum dado independente. O preenchimento de
-mesclagem (`sheetToRows`, `import.ts`) preenchia essas linhas mesmo
-assim, triplicando cada registro (168 linhas em vez de 56).
-
-Corrigido: uma linha sÃ³ recebe preenchimento de mesclagem em colunas
-adicionais quando jÃ¡ tinha **algum** valor digitado de forma
-independente antes de qualquer preenchimento (`originalFilledCount`,
-mÃ©trica que jÃ¡ existia pra outro propÃ³sito). Uma linha 100% vazia
-antes do preenchimento Ã© sÃ³ o efeito visual da mesclagem esticando a
-altura da linha de origem, nÃ£o um registro novo â€” cai no filtro jÃ¡
-existente de linha em branco (`blankRowsIgnored`) em vez de virar 3
-linhas idÃªnticas. O caso legÃ­timo continua intacto (item mesclado
-cobrindo linhas de fornecedores concorrentes com preÃ§o/fornecedor
-diferentes por linha â€” essas linhas tÃªm dado independente, nunca sÃ£o
-puladas).
-
-Verificado com o arquivo real: "Matriz de Perigo" caiu de 168 para 56
-linhas (1 por superfÃ­cie, `blankRowsIgnored: 112` no audit). Efeito
-colateral positivo confirmado ao vivo: "FRS QA BR 405 Brasil" tambÃ©m
-caiu de 249 para 177 cÃ©lulas "de mesclagem vertical" no aviso de
-importaÃ§Ã£o â€” o mesmo bug afetava outras Ã¡reas do arquivo.
-
-### Investigado sem defeito: Anexo III
-
-As 4 sub-tabelas (Bebidas, Produtos alimentÃ­cios, Ãgua PotÃ¡vel, Objeto
-de AnÃ¡lise) foram lidas cÃ©lula a cÃ©lula â€” dados corretos e completos,
-sem duplicaÃ§Ã£o nem lixo. O usuÃ¡rio trouxe print do Excel original
-mostrando "Bebidas lÃ¡cteas/Iogurtes" com fundo colorido cobrindo 3
-linhas, esperando ver o rÃ³tulo repetido nas 3. InvestigaÃ§Ã£o do XML
-(`sheet4.xml`, dimension `A1:K54`) confirmou: **nÃ£o existe mesclagem
-de cÃ©lula na coluna A** para esse grupo â€” sÃ³ `F4:F6`/`G4:G6`/`I4:I6`
-estÃ£o mescladas. O agrupamento visual vem de cor de preenchimento, nÃ£o
-de cÃ©lula mesclada. Sem mesclagem, nÃ£o hÃ¡ valor de origem pra
-reconstruir â€” o app estÃ¡ correto ao mostrar `null` nas linhas de
-continuaÃ§Ã£o. Inferir agrupamento a partir de banda de cor (sem
-mesclagem real) seria um recurso novo especulativo, nÃ£o uma correÃ§Ã£o;
-nÃ£o implementado.
-
-### Bug real corrigido: painel de comparaÃ§Ã£o/tendÃªncia cortando texto em widget estreito
-
-`SeriesComparisonPanel` e `TrendSummaryPanel` (`widget-support.tsx`)
-usavam `sm:grid-cols-[...]` â€” uma media query de **viewport** (ativa
-a partir de 640px de largura de tela) â€” pra decidir o layout de um
-painel que vive dentro de um card de largura variÃ¡vel (1/3, 2/3, cheio
-da grade de widgets). Numa tela desktop qualquer, a viewport jÃ¡ passa
-de 640px mesmo com o widget em 1/3 (bem mais estreito que 640px), entÃ£o
-o grid de colunas fixas sempre tentava caber ~29rem de larguras
-mÃ­nimas num espaÃ§o de ~230px â€” cortando texto ("VALOR DE...",
-"DIFEREN...").
-
-Corrigido trocando `grid` + media query por `flex flex-wrap`: o layout
-agora reflui de acordo com a largura real do container (o card do
-widget), nunca da viewport. Verificado ao vivo: painel de comparaÃ§Ã£o
-numa pizza real em ~231px de largura, `scrollWidth === clientWidth`
-(sem overflow), todo o texto (`DIFERENÃ‡A PARA...`, `VALOR DE...`)
-presente e legÃ­vel via `innerText`.
-
-### Bug real corrigido (parcial): coluna genÃ©rica redundante em "Requisitos de Monitoramento"
-
-Retomando o achado da seÃ§Ã£o 79: a cÃ©lula de rodapÃ© mesclada
-horizontalmente (`F29:G30`, "Adaptada de FSSC 22000") gera duas
-colunas sem cabeÃ§alho ("Coluna 6"/"Coluna 7") com o mesmo valor. A
-lÃ³gica de remoÃ§Ã£o de coluna redundante jÃ¡ existente (`import.ts`)
-detecta duas colunas com o mesmo valor em toda linha, mas **excluÃ­a
-deliberadamente nomes genÃ©ricos "Coluna N"** da comparaÃ§Ã£o â€” proteÃ§Ã£o
-contra falso positivo (duas colunas sem nome, coincidentemente iguais,
-sem relaÃ§Ã£o real).
-
-Refinado: nomes genÃ©ricos sÃ³ ficam de fora da comparaÃ§Ã£o quando **nÃ£o
-sÃ£o vizinhas diretas** no cabeÃ§alho. Duas colunas "Coluna N" adjacentes
-com valores idÃªnticos em toda linha quase certamente vÃªm de uma
-mesclagem horizontal transbordando pra coluna seguinte â€” coincidÃªncia
-deixa de ser plausÃ­vel. A proteÃ§Ã£o original continua valendo pra
-colunas genÃ©ricas nÃ£o-adjacentes (novo teste de regressÃ£o confirma).
-
-Resultado parcial, nÃ£o 100%: "Coluna 7" (a duplicata exata) some
-automaticamente agora. "Coluna 6" (a cÃ³pia Ãºnica e canÃ´nica da nota)
-continua aparecendo â€” nÃ£o hÃ¡ evidÃªncia suficiente (tabela de sÃ³ 3
-linhas, 1/3 preenchida) pra generalizar uma regra de remoÃ§Ã£o sem
-arriscar apagar dado esparso legÃ­timo em outro arquivo real. UsuÃ¡rio
-pode excluir essa coluna manualmente no painel de Colunas.
-
-Verificado com `npx vitest run` (532 passou, 1 pulado â€” 4 testes
-novos: 2 para o preenchimento de mesclagem, 2 para o dedup de coluna
-genÃ©rica adjacente/nÃ£o-adjacente), `npx tsc --noEmit` sem erros, `npm
-run build` e `npm run performance:check` aprovados (385,2 â†’ 385,3 KiB,
-variaÃ§Ã£o desprezÃ­vel), e verificaÃ§Ã£o ao vivo contra o arquivo real
-para os trÃªs itens corrigidos.
-
-## 83. UsuÃ¡rio trouxe corpus sintÃ©tico de 6 planilhas prÃ³prias: bug real de dois estÃ¡gios no inventÃ¡rio avanÃ§ado OOXML (namespace prefixada + Target absoluto)
-
-UsuÃ¡rio gerou 6 planilhas `.xlsx` sintÃ©ticas prÃ³prias (`01_indicadores_operacionais` a `06_serie_temporal_larga`, tituladas "Corpus 0N" no prÃ³prio conteÃºdo, sem dado privado), cobrindo indicadores, fÃ³rmulas/datas, matriz HACCP com mesclagem+cor, mÃºltiplas regiÃµes, validaÃ§Ãµes+hyperlinks e sÃ©rie temporal larga. NÃ£o geradas por Excel/openpyxl/exceljs â€” um script prÃ³prio do usuÃ¡rio, que serializa OOXML de um jeito incomum mas espec-vÃ¡lido: a namespace principal do spreadsheetML vinculada a um prefixo explÃ­cito (`<x:dataValidation>` em vez de `<dataValidation>`), e o `Target` dos relacionamentos do workbook usando caminho absoluto a partir da raiz do pacote (`Target="/xl/worksheets/sheet1.xml"`, vÃ¡lido pelo padrÃ£o OPC) em vez de relativo Ã  pasta `xl`.
-
-Uma varredura rÃ¡pida (`readWorkbookBytes` sobre as 6 planilhas, fora do vitest normal) mostrou `cellFills: 0`, `hyperlinks: 0`, `dataValidations: 0` em **todas**, mesmo no arquivo 03 (mesclagem+cor confirmada por inspeÃ§Ã£o direta do XML bruto) e no 05 (2 `<dataValidation>` reais no XML). InvestigaÃ§Ã£o encontrou dois bugs silenciosos combinados em `workbook-metadata.ts`:
-
-1. Toda regex do arquivo (`parseHyperlinks`, `parseDataValidations`, `parseCellFills`, `parseComments`, `parseDefinedNames`, `parseExternalLinks`, `parseTable`, `parsePivot`, tags `sheet`/`autoFilter`/`tablePart`/`pivotTableDefinition`/`drawing` em `inspectWorkbookFeatures`) casava elementos sem tolerar um prefixo de namespace opcional.
-2. `normalizePart()` sempre combinava `Target` com a pasta base (`xl`) mesmo quando `Target` jÃ¡ era absoluto â€” produzindo um caminho de ZIP inexistente (`xl/xl/worksheets/sheet1.xml`) que resolvia pra XML vazio.
-
-O segundo bug sozinho jÃ¡ bastava pra zerar tudo (a parte do worksheet nunca era encontrada), mas os dois precisavam de correÃ§Ã£o â€” reproduzido isoladamente com `inspectWorkbookFeatures` chamado direto sobre bytes crus antes de identificar a causa raiz real (o path de Target, nÃ£o sÃ³ a regex).
-
-Corrigido com um fragmento de regex tolerante a prefixo (`NS = "(?:[A-Za-z_][\\w.-]*:)?"`) aplicado sÃ³ Ã s regras da namespace principal do spreadsheetML â€” nÃ£o Ã s namespaces de desenho/grÃ¡fico (`xdr:`/`a:`/`c:`), que jÃ¡ sÃ£o sempre prefixadas por convenÃ§Ã£o mesmo em arquivos do Excel, e sem evidÃªncia de quebra nesta rodada. `.rels` (`Relationship`) usa outra namespace (`package/2006/relationships`), sem prefixo neste corpus, nÃ£o tocado.
-
-Verificado ao vivo: aba real "Matriz de Risco" (arquivo 03) foi de "0 cÃ©lulas com cor de preenchimento" pra "**30 cÃ©lula(s) com cor de preenchimento original detectada(s)**" no painel de revisÃ£o. `npx vitest run` (533 passou, 1 pulado â€” 1 teste novo com pacote OOXML mÃ­nimo prefixado+Target absoluto), `npx tsc --noEmit`, `npm run build` e `npm run performance:check` aprovados. PR [#131](https://github.com/olive644/oliqualidade/pull/131), branch `fix/ooxml-namespace-prefix-tolerance`.
-
-Nesta mesma sessÃ£o, tambÃ©m implementado (branch separada `feat/color-group-labels`, PR [#130](https://github.com/olive644/oliqualidade/pull/130), aguardando merge â€” nÃ£o documentado nesta seÃ§Ã£o pra evitar o conflito de append-only jÃ¡ registrado em [[#Armadilhas de ambiente conhecidas]] entre branches simultÃ¢neas tocando este arquivo): `resolveColorGroupLabels` (`cell-fill-provenance.ts`) infere rÃ³tulo de agrupamento visual quando uma banda de linhas compartilha cor de preenchimento sem mesclagem real (investigaÃ§Ã£o "Anexo III" da seÃ§Ã£o anterior a esta) â€” sÃ³ exibiÃ§Ã£o no widget Tabela, nunca escreve em `rows`.
-
-## 84. ExtraÃ­do `useSheetMutations`: os 7 mutadores de dados que sobravam soltos em `Dashboard`
-
-InvestigaÃ§Ã£o anterior (pedida pelo usuÃ¡rio: avaliar se o nÃºcleo restante do
-`Dashboard`, ~1.089 linhas, merece um reducer central) concluiu que os 13
-`useState` de UI nÃ£o ganhavam nada com reducer, mas os 7 mutadores de dados
-ainda soltos (`setFilters`, `setColumns`, `setSemanticOverride`,
-`resetSemanticOverride`, `setExceptionDecision`, `correctException`,
-`editTableCell`) deveriam seguir o mesmo padrÃ£o jÃ¡ provado em
-`useWidgetActions` (hook dedicado, nÃ£o `useReducer` genÃ©rico) â€” porque um
-reducer genÃ©rico teria que reproduzir manualmente duas exceÃ§Ãµes
-comportamentais deliberadas (`restoreEncryptedBackup` grava sem passar pelo
-undo/redo; `correctException`/`editTableCell` sÃ³ chamam `recordHistory()`
-depois de checar `Object.is(before, after)`), com risco real de alterar o
-undo/redo visÃ­vel ao usuÃ¡rio se a regra genÃ©rica errasse.
-
-`useSheetMutations` (`use-sheet-mutations.ts`) Ã© extraÃ§Ã£o puramente
-estrutural â€” mesmo cÃ³digo, mesma ordem de chamadas, mesmas duas guardas
-condicionais preservadas literalmente. Recebe `sheet`/`updateSheet`/
-`recordHistory`/`setFocusedCell` como parÃ¢metros, mesmo formato de
-`useWidgetActions`. `Dashboard` caiu de ~1.089 para ~940 linhas.
-
-Verificado: `npx vitest run` (538 passou, 1 pulado, nenhum teste novo â€” Ã©
-extraÃ§Ã£o pura, sem mudanÃ§a de comportamento), `npx tsc --noEmit` sem erros,
-e verificaÃ§Ã£o ao vivo (editar cÃ©lula â†’ toast de sucesso â†’ Ctrl+Z desfaz e
-volta ao valor original, confirmando que `recordHistory()` chamado de
-dentro do hook novo continua integrado com `useUndoRedoHistory` exatamente
-como antes).
-
-## 85. Abas sÃ³ com grÃ¡ficos/formas/imagens nativos (sem linha de dado tabular) agora sÃ£o importÃ¡veis
-
-Retomando a pendÃªncia registrada na seÃ§Ã£o 76/81 e no backlog (item 2b):
-`sheetsWithData` (`import.ts`) descartava inteira qualquer aba sem nenhuma
-linha de dado, mesmo tendo conteÃºdo visual nativo do Excel (grÃ¡ficos,
-formas com texto, imagens). DecisÃ£o de produto pedida ao usuÃ¡rio antes de
-implementar (regra do projeto para mudanÃ§a no nÃºcleo de importaÃ§Ã£o):
-uma aba assim vira opÃ§Ã£o de importaÃ§Ã£o normal, gera um painel (mesmo que
-sem widget de dado, jÃ¡ que nÃ£o hÃ¡ coluna/linha pra construir um), e o
-inventÃ¡rio de grÃ¡ficos/formas passa a **persistir** em `SheetData`
-(`sourceCharts`/`sourceShapes`) em vez de existir sÃ³ durante a revisÃ£o
-efÃªmera â€” novo componente `SourceVisualsPanel` (mesmo padrÃ£o de
-`SourceNotesPanel`) renderiza esse inventÃ¡rio no painel final, nÃ£o sÃ³ na
-bancada de importaÃ§Ã£o.
-
-Escopo real, maior que "sÃ³ trocar um filtro": havia um **segundo** filtro
-idÃªntico em `routes/index.tsx` (`prepare()`, usado por todos os caminhos de
-importaÃ§Ã£o â€” arquivo, colar, Google Sheets, demo) que tambÃ©m cortava por
-`rows.length > 0` antes da aba chegar Ã  revisÃ£o; sem corrigir os dois, a
-aba nunca aparecia. `infer([])` (0 linhas) retorna 0 colunas, mas a etapa
-"Confirme como cada coluna deve ser lida" da revisÃ£o nÃ£o quebra com 0
-colunas â€” sÃ³ mostra a lista vazia e, como a confianÃ§a fica baixa (0%), pede
-a mesma confirmaÃ§Ã£o de "leitura ambÃ­gua" jÃ¡ usada em qualquer aba de baixa
-confianÃ§a (nenhum bypass novo foi necessÃ¡rio).
-
-Verificado com o arquivo real do usuÃ¡rio: a aba "TendÃªncia 2" do
-FRS-QA-BR-405 tem 14 grÃ¡ficos nativos e zero linhas de dado â€” sÃ³ apareceu
-depois desta correÃ§Ã£o (`readWorkbookBytes` foi de 18 para 19 abas
-recuperadas). `real-upload-validation.test.ts` atualizado para refletir
-isso: as asserÃ§Ãµes de qualidade/fidelidade (`fidelity.score >= 90` etc.)
-agora rodam sÃ³ sobre as 18 abas com dado â€” o score de fidelidade de uma aba
-sem nenhuma cÃ©lula pra comparar (`fidelity: 25` na aba "TendÃªncia 2") nÃ£o Ã©
-um bug, Ã© a mÃ©trica nÃ£o ter sido desenhada para comparaÃ§Ã£o vazia; nÃ£o
-alterado, fora do escopo desta mudanÃ§a. Teste novo dedicado confirma a aba
-"TendÃªncia 2" aparece com `rows: []` e 14 grÃ¡ficos inventariados.
-
-Verificado tambÃ©m ao vivo com uma fixture sintÃ©tica prÃ³pria (`.xlsx`
-mÃ­nimo com 1 grÃ¡fico nativo e 0 linhas, construÃ­do via `fflate.zipSync`
-imitando a estrutura de `advancedWorkbookPackage()` do
-`workbook-metadata.test.ts` â€” nÃ£o usa nenhum dado do usuÃ¡rio): fluxo
-completo funciona, do upload atÃ© o painel final mostrar "GrÃ¡ficos nativos
-do Excel Â· 1" persistido. DivergÃªncia pequena do que foi combinado: o
-painel final nÃ£o fica com 0 widgets â€” `buildRecommendedWidgets` ainda cria
-1 widget de tabela detalhada vazia (0 linhas Ã— 0 colunas) por padrÃ£o, sem
-crash nem aparÃªncia quebrada; nÃ£o foi tratado como bug, decisÃ£o de nÃ£o
-mexer em `buildRecommendedWidgets`/`generateAutoDashboardPlan` para esse
-caso degenerado sem evidÃªncia de que vale o risco.
-
-`npx vitest run` (541 passou, 1 pulado â€” 3 testes novos: 2 em `import.ts`
-para o filtro de `sheetsWithData`, 1 em `real-upload-validation.test.ts`
-para a aba "TendÃªncia 2" real), `npx tsc --noEmit`, `npm run build` e `npm
-run performance:check` aprovados.
-
-## 86. UsuÃ¡rio trouxe modelos `.xltx` reais em cima do mesmo corpus: cabeÃ§alho hierÃ¡rquico virava registro fantasma em planilha sem dado
-
-UsuÃ¡rio trouxe 5 modelos `.xltx` (mesmo tema do corpus sintÃ©tico da seÃ§Ã£o
-83, agora salvos como modelo genuinamente vazio â€” cabeÃ§alho + fÃ³rmulas de
-limite, sem nenhuma linha preenchida). NÃ£o contam pro gate de promoÃ§Ã£o
-Rust/WASM (ainda precisa de dado real de negÃ³cio, nÃ£o modelo em branco
-sintÃ©tico), mas serviram de bateria de regressÃ£o de novo e encontraram um
-bug real, **prÃ©-existente** (nÃ£o introduzido nesta sessÃ£o): jÃ¡ afetava o
-arquivo `03_matriz_haccp_mesclagens_cores.xlsx` da seÃ§Ã£o 83, sÃ³ nÃ£o tinha
-sido notado porque a verificaÃ§Ã£o daquela sessÃ£o focou em cor de cÃ©lula, nÃ£o
-em nomes de coluna.
-
-Causa raiz: `findHeaderRowIndex` (`import.ts`) sÃ³ reconhece uma linha de
-tÃ­tulo mesclada como "banner" (e portanto a exclui de virar cabeÃ§alho)
-quando `originalFilledCount === 1` â€” ou seja, sÃ³ a cÃ©lula de origem da
-mesclagem tem valor, como o Excel de verdade sempre serializa. Geradores de
-OOXML fora do Excel (scripts prÃ³prios, inclusive o do usuÃ¡rio) costumam
-escrever o mesmo texto em **toda** cÃ©lula do intervalo mesclado. Sem
-reconhecer isso como banner, a linha de tÃ­tulo virava o cabeÃ§alho da
-tabela (nomes de coluna genÃ©ricos "TÃ­tulo_N"), e o cabeÃ§alho hierÃ¡rquico
-real (2 linhas: grupo + subcoluna) vazava como duas linhas de "dado"
-fantasma.
-
-Corrigido com uma segunda checagem em `bannerRows`: aceita tambÃ©m uma
-mesclagem que cobre a largura inteira da linha E cujas cÃ©lulas preenchidas
-tÃªm todas o mesmo texto â€” condiÃ§Ã£o que sÃ³ pode acontecer nesse padrÃ£o de
-"texto repetido pelo gerador", nunca num cabeÃ§alho real com colunas
-coincidentemente batizadas igual (que nÃ£o cobre a largura inteira sozinho
-com valor idÃªntico em toda coluna).
-
-Corrigido tambÃ©m um segundo problema, encontrado ao testar o modelo
-genuinamente vazio: `findHierarchicalHeaderEnd` sÃ³ estende o cabeÃ§alho pra
-incluir a camada folha (subcolunas) quando hÃ¡ evidÃªncia de dado numÃ©rico/
-data abaixo â€” sinal que nunca existe num modelo sem nenhuma linha
-preenchida. Adicionado um sinal estrutural alternativo: quando a camada
-atual jÃ¡ tem mesclagem horizontal real (evidÃªncia de estrutura, nÃ£o
-estatÃ­stica) e **nÃ£o hÃ¡ dado nenhum em lugar nenhum abaixo**, estender Ã©
-seguro â€” nÃ£o existe registro real que a extensÃ£o possa engolir por engano.
-
-Efeito colateral positivo do segundo fix: um modelo genuinamente vazio
-(cabeÃ§alho hierÃ¡rquico + zero linhas de dado) agora retorna corretamente 0
-linhas (nada pra importar), em vez de "importar" as prÃ³prias linhas de
-cabeÃ§alho como se fossem registros.
-
-Achado relacionado, nÃ£o corrigido nesta sessÃ£o: o modelo "04" (duas
-tabelas independentes lado a lado) tem um padrÃ£o de mesclagem parcial
-diferente â€” dois grupos de tÃ­tulo mesclados na mesma linha (nÃ£o um Ãºnico
-banner de largura inteira) â€” que o fix acima nÃ£o cobre, e a separaÃ§Ã£o
-automÃ¡tica de regiÃµes (`detectIndependentSections`/
-`regionsAreSafeToSplit`) tambÃ©m exige evidÃªncia de dado que um modelo vazio
-nÃ£o tem. Registrado como pendÃªncia separada; nÃ£o Ã© o mesmo mecanismo do
-cabeÃ§alho hierÃ¡rquico de uma tabela sÃ³, exigiria investigaÃ§Ã£o prÃ³pria.
-
-Verificado ao vivo com o modelo real "01_template_indicadores_operacionais.xltx":
-colunas corretas ("Data","Turno","Setor","Lote","MediÃ§Ã£o","Limite","Resultado","SituaÃ§Ã£o"),
-nenhum nome genÃ©rico. `npx vitest run` (543 passou, 1 pulado â€” 2 testes
-novos: banner com texto repetido + cabeÃ§alho hierÃ¡rquico sem dado nÃ£o
-fabrica registro fantasma), `npx tsc --noEmit`, `npm run build` e `npm run
-performance:check` aprovados.
-
-## 87. UsuÃ¡rio trouxe mais 5 modelos `.xltx` reais (06-10): cabeÃ§alho misto e data fantasma "31/12/1899"
-
-ContinuaÃ§Ã£o direta da seÃ§Ã£o 86: usuÃ¡rio trouxe 5 modelos `.xltx` novos
-(calibraÃ§Ã£o de equipamentos, inspeÃ§Ã£o de recebimento, matriz de
-treinamento, monitoramento ambiental, avaliaÃ§Ã£o de fornecedores) â€” mesmo
-padrÃ£o de modelo genuinamente vazio, ainda sem dado real de negÃ³cio (nÃ£o
-desbloqueiam o gate de promoÃ§Ã£o). Estrutura de tÃ­tulo diferente do lote
-anterior (cÃ©lula Ãºnica, nÃ£o repetida â€” o fix da seÃ§Ã£o 86 nÃ£o era
-necessÃ¡rio aqui), mas encontraram dois bugs reais novos.
-
-**Bug 1 â€” cabeÃ§alho hierÃ¡rquico misto nÃ£o estendia.** O modelo "08"
-(matriz de treinamento) tem uma linha de cabeÃ§alho com colunas simples
-("Colaborador", "FunÃ§Ã£o") ao lado de colunas mescladas agrupando
-subcolunas ("Treinamentos obrigatÃ³rios" cobrindo 4 subcolunas,
-"AvaliaÃ§Ã£o" cobrindo 2). A trava em `findHierarchicalHeaderEnd`
-("`distinctParents.size >= 3 && unmergedLabels.length >= 2` â†’ break",
-pensada pra nÃ£o confundir uma mesclagem isolada de leaf-header com um
-cabeÃ§alho de verdade) bloqueava a extensÃ£o mesmo com a mesclagem real
-presente, porque a linha misturava rÃ³tulos mesclados com nÃ£o-mesclados.
-Corrigido reaproveitando o mesmo sinal `noDataAnywhereBelow` da seÃ§Ã£o 86:
-sem dado nenhum abaixo, os rÃ³tulos nÃ£o mesclados sÃ£o colunas de nÃ­vel
-Ãºnico legÃ­timas, nÃ£o indÃ­cio de que a prÃ³xima linha jÃ¡ Ã© dado â€” a trava
-original sÃ³ se aplica quando ainda pode haver dado real embaixo.
-
-**Bug 2 â€” data fantasma "31/12/1899" numa fÃ³rmula nÃ£o calculada com
-formato de data.** O modelo "06" (calibraÃ§Ã£o) tem uma cÃ©lula com fÃ³rmula
-condicional (`IF(OR(A2="",B2=""),"",A2+B2)`) sem valor calculado no
-arquivo (`t="s"`, `v=""`) e formato de data no estilo. O SheetJS 0.20, ao
-montar o AOA, sintetiza `new Date(0)` a partir do valor vazio + formato de
-nÃºmero, e `normalizeRawRow` (`import.ts`) jÃ¡ tinha uma correÃ§Ã£o pra esse
-tipo de artefato (recuperar a string original quando `sourceCell.t ===
-"s"`) â€” mas ela rodava **depois** de tentar formatar a data fantasma como
-texto, entÃ£o o `if (formatted) return formatted` sempre ganhava primeiro.
-Corrigido invertendo a ordem: checar o tipo original da cÃ©lula antes de
-tentar formatar como data. Mesmo mecanismo jÃ¡ documentado pro caso "Torre
-de Processo" do FRS-QA-028 (cÃ©lula textual virando `Date` sÃ³ pelo estilo),
-agora cobrindo tambÃ©m cÃ©lula de fÃ³rmula vazia com formato de data.
-
-Efeito colateral positivo idÃªntico ao da seÃ§Ã£o 86: como as Ãºnicas cÃ©lulas
-"preenchidas" nesses modelos eram justamente esses dois artefatos
-fabricados (cabeÃ§alho vazando como dado, data fantasma), corrigir os dois
-bugs fez os 5 modelos voltarem a ser reconhecidos como genuinamente vazios
-(0 abas â€” nada de dado real pra importar), consistente com o restante do
-lote.
-
-`npx vitest run` (545 passou, 1 pulado â€” 2 testes novos: cabeÃ§alho
-hierÃ¡rquico misto sem dado + fÃ³rmula vazia com formato de data nÃ£o vira
-"31/12/1899"), `npx tsc --noEmit`, `npm run build` e `npm run
-performance:check` aprovados.
-
-## 88. UsuÃ¡rio trouxe 2 arquivos `.xltx` reais de verdade â€” eram duplicatas do corpus jÃ¡ sanitizado
-
-Diferente das seÃ§Ãµes 86/87 (modelos vazios gerados por script), usuÃ¡rio
-trouxe desta vez 2 arquivos `.xltx` confirmados como reais: "FRS-QA-435-
-Suape Recebimento de Resinas" (7 abas, ~67 mil cÃ©lulas â€” controle de
-recebimento de resina) e "Anexo FRS-QA-028-Suape - Controle de AnÃ¡lise
-DiÃ¡ria de Cloro Residual Livre" (2 abas â€” mesmo assunto do fixture
-`frs-qa-028-import.test.ts` jÃ¡ existente no projeto). Junto vieram mais 3
-arquivos claramente sintÃ©ticos ("modelo fictÃ­cio"/"exemplo
-propositalmente aleatÃ³rio" no prÃ³prio conteÃºdo), nÃ£o usados.
-
-`npm run corpus:sanitize` sÃ³ aceitava `.xlsx` â€” bloqueado antes mesmo de
-tentar. Estendido pra aceitar `.xltx` tambÃ©m
-(`scripts/sanitize-workbook-corpus.mjs`), mas a saÃ­da sanitizada de um
-`.xltx` sempre grava `.xlsx` de verdade: o SheetJS instalado sÃ³ sabe
-escrever `bookType` `xlsx`/`xlsm` (`XLSX.write` lanÃ§a `Unrecognized
-bookType |xltx|` pra qualquer outro valor, jÃ¡ documentado na seÃ§Ã£o
-"Outros formatos OOXML" do `WASM_PROMOTION_CRITERIA.md`). DecisÃ£o
-confirmada com o usuÃ¡rio antes de implementar: sanitizar normalmente e
-gravar `.xlsx` â€” preserva o conteÃºdo real pra teste de paridade TSÃ—Rust,
-mas nÃ£o conta como fonte `.xltx` no gate (extensÃ£o/Content-Types nÃ£o
-batem com o que o gate espera).
-
-Sanitizado num destino temporÃ¡rio (`test-fixtures/private/batch4` â†’
-`sanitized-batch4-tmp`, ambos fora do Git, apagados depois) pra comparar
-com o corpus existente antes de mesclar â€” mesmo processo jÃ¡ usado na
-seÃ§Ã£o 82. Resultado: as mÃ©tricas de ambos os arquivos (abas, cÃ©lulas,
-strings/nÃºmeros/datas sanitizados) bateram **exatamente** com
-`sanitized-001.xlsx` e `sanitized-002.xlsx` jÃ¡ presentes no corpus. SÃ£o o
-mesmo conteÃºdo de origem que jÃ¡ tinha sido sanitizado numa sessÃ£o
-anterior (provavelmente a partir das versÃµes `.xlsx` desses mesmos
-documentos) â€” por definiÃ§Ã£o do projeto, duplicata nÃ£o conta como fonte
-nova. Nenhum arquivo novo mesclado no corpus.
-
-**Resultado lÃ­quido**: `npm run corpus:sanitize` agora aceita `.xltx`
-como entrada (Ãºtil pra qualquer arquivo real futuro nesse formato que
-ainda nÃ£o esteja no corpus), mas XLTX/XLTM continuam em 0/5 no gate de
-promoÃ§Ã£o â€” nenhum arquivo real disponÃ­vel atÃ© agora acrescentou conteÃºdo
-que jÃ¡ nÃ£o estivesse coberto. `npx vitest run` (545 passou, 1 pulado, sem
-teste novo â€” mudanÃ§a Ã© sÃ³ no script de tooling, coberto indiretamente por
-`workbook-sanitizer.test.ts` que jÃ¡ existia e continua passando), `npx
-tsc --noEmit`, `npm run build` e `npm run performance:check` aprovados.
-
-## 89. Item 6 do backlog investigado: jÃ¡ estava resolvido como efeito colateral das seÃ§Ãµes 86/87
-
-InvestigaÃ§Ã£o pedida pelo usuÃ¡rio sobre o achado pendente da seÃ§Ã£o 86
-(arquivo "04", duas tabelas independentes lado a lado com tÃ­tulo de seÃ§Ã£o
-mesclado parcialmente na mesma linha, nÃ£o dividia em regiÃµes quando a
-planilha estÃ¡ genuinamente vazia). Causa confirmada: `regionsAreSafeToSplit`
-(`import.ts`) exige pelo menos 2 linhas de dado por regiÃ£o com evidÃªncia
-numÃ©rica/data â€” sinal que um modelo `.xltx` vazio nunca tem.
-
-Implementado o mesmo padrÃ£o jÃ¡ usado nas seÃ§Ãµes 86/87 (`noDataAnywhereAcrossRegions`:
-dispensa a exigÃªncia de linha de dado quando nÃ£o hÃ¡ dado nenhum em nenhuma
-regiÃ£o, preservando a checagem original intacta quando hÃ¡ dado real).
-Mas, testando com um fixture reconstruÃ­do fielmente Ã  estrutura real
-(arquivo original nÃ£o estava mais disponÃ­vel pra reteste direto â€” usuÃ¡rio
-jÃ¡ tinha limpado o Downloads), o resultado final ficou **idÃªntico com e
-sem a mudanÃ§a**, em todos os cenÃ¡rios testados (com/sem tÃ­tulo acima, com
-conteÃºdo visual sobrevivendo ao filtro de aba vazia). As correÃ§Ãµes das
-seÃ§Ãµes 86 (banner com texto repetido) e 87 (cabeÃ§alho hierÃ¡rquico misto)
-jÃ¡ eliminam o sintoma observÃ¡vel (registro fantasma com colunas
-genÃ©ricas) *antes* de `regionsAreSafeToSplit` sequer entrar em jogo â€” o
-caminho de tabela Ãºnica (sem split) jÃ¡ reconhece corretamente o cabeÃ§alho
-combinado como cabeÃ§alho, nÃ£o como dado, entÃ£o o resultado final (0
-linhas, nada pra importar) Ã© o mesmo independente de a divisÃ£o em regiÃµes
-acontecer ou nÃ£o.
-
-**DecisÃ£o**: revertida a mudanÃ§a em `regionsAreSafeToSplit` â€” sem
-benefÃ­cio demonstrÃ¡vel em nenhum teste, mudanÃ§a especulativa que sÃ³
-acrescentaria superfÃ­cie de risco no nÃºcleo de importaÃ§Ã£o sem prova de
-necessidade real. Item 6 do backlog fechado como "jÃ¡ resolvido, sem
-cÃ³digo adicional necessÃ¡rio".
-
-`npx vitest run` (545 passou, 1 pulado, sem mudanÃ§a â€” nenhum cÃ³digo de
-`import.ts` foi alterado nesta seÃ§Ã£o), confirmando que a suÃ­te jÃ¡ cobria
-esse caso.
-
-## 90. Corrigido bloqueio estrutural do gate XLSM: sanitizador recusava `.xlsm`/`.xltm` por polÃ­tica, nÃ£o por lacuna real
-
-UsuÃ¡rio trouxe mais 10 arquivos `.xltx` (5 confirmados duplicata exata de
-fontes jÃ¡ no corpus, 5 confirmados sintÃ©ticos pelo prÃ³prio cabeÃ§alho
-interno â€” "Corpus sintÃ©tico preenchido â€” [Ãrea]" â€” depois de uma resposta
-inicial errada dizendo que eram reais; nenhum contou como fonte nova).
-Rodados pelo pipeline real (`sheetsWithData`/`sheetToRows`) mesmo assim,
-sem crash e sem bug novo.
-
-Perguntado ao usuÃ¡rio qual prioridade seguinte, escolhida "desbloquear
-XLSM". InvestigaÃ§Ã£o: `docs/WASM_PROMOTION_CRITERIA.md` jÃ¡ documentava que
-XLSM tem corpus sintÃ©tico completo (25 arquivos, â‰¥10.000 cÃ©lulas, zero
-divergÃªncias) mas estÃ¡ em 0/5 no gate real. O motivo nÃ£o era sÃ³ "falta
-arquivo real" â€” `scripts/sanitize-workbook-corpus.mjs` recusava de
-propÃ³sito qualquer arquivo `.xlsm`/`.xltm` antes de gerar qualquer saÃ­da
-("A origem contem arquivo(s) com macros..."). Mesmo que o usuÃ¡rio trouxesse
-5 `.xlsm` reais agora, o gate nunca fecharia.
-
-Investigando `scripts/workbook-sanitizer.mjs` (`sanitizeWorkbookBytes`),
-a recusa era redundante: a funÃ§Ã£o jÃ¡ lÃª com `bookVBA: false` (o SheetJS
-nem chega a decodificar o binÃ¡rio da macro) e jÃ¡ remove `workbook.vbaraw`
-antes de gravar, e sempre grava `bookType: "xlsx"` fixo â€” nunca havia
-lacuna real de seguranÃ§a na sanitizaÃ§Ã£o em si, sÃ³ uma polÃ­tica de bloqueio
-na camada de cima que nem sequer combinava com o que a funÃ§Ã£o por baixo jÃ¡
-garantia.
-
-**CorreÃ§Ã£o** (confirmada com o usuÃ¡rio antes de implementar, branch
-`fix/sanitize-xlsm-support`, sem merge ainda): `.xlsm`/`.xltm` passam a
-ser aceitos como entrada; `sanitizeWorkbookBytes` recebe um `bookType`
-explÃ­cito (`"xlsx"` ou `"xlsm"` â€” os dois Ãºnicos que o `XLSX.write`
-instalado sabe escrever) em vez de hardcoded, e valida que sÃ³ esses dois
-valores sÃ£o aceitos. `.xlsm` de origem sai como `.xlsm` sanitizado de
-verdade (macro-enabled, Excel abre normalmente, mas sem nenhuma macro
-dentro); `.xltm` de origem sai como `.xlsm` (mesma limitaÃ§Ã£o de template
-que jÃ¡ existia pra `.xltx`â†’`.xlsx`, documentada). O `format` gravado no
-manifesto agora reflete o `bookType` real em vez de ficar hardcoded em
-`"xlsx"`, entÃ£o o gate por formato (que lÃª `format` do manifesto e a
-extensÃ£o do arquivo pra rotear o leitor) passa a contar fontes `.xlsm`
-corretamente.
-
-Prova de regressÃ£o em `src/lib/workbook-sanitizer.test.ts`: um workbook
-`.xlsm` sintÃ©tico com `WBProps.CodeName` (metadado de macro) sanitizado
-e entÃ£o (1) relido sem `vbaraw`, (2) o ZIP de saÃ­da inspecionado byte a
-byte confirmando ausÃªncia de qualquer parte `vbaProject` e ausÃªncia da
-string `Attribute VB_Name` (assinatura de cÃ³digo VBA) em qualquer parte
-do arquivo, (3) `[Content_Types].xml` ainda declarando `macroEnabled`
-(necessÃ¡rio pro gate contar o formato certo). Mais um teste confirmando
-que um `bookType` fora de `xlsx`/`xlsm` (ex.: `"xltx"`, que o SheetJS
-instalado nÃ£o sabe escrever) lanÃ§a erro explÃ­cito em vez de deixar
-`XLSX.write` falhar com uma mensagem genÃ©rica. Smoke test manual da CLI
-completa (`npm run corpus:sanitize` com um `.xlsm` sintÃ©tico) confirmou
-`sanitized-001.xlsm` com `"format": "xlsm"` no manifesto, fora do
-repositÃ³rio e apagado depois.
-
-DocumentaÃ§Ã£o atualizada: `docs/WASM_CORPUS_SANITIZATION.md` (seÃ§Ã£o
-"Garantias e limites") e `docs/WASM_PROMOTION_CRITERIA.md` (nova
-subseÃ§Ã£o descrevendo a correÃ§Ã£o) nÃ£o descrevem mais a recusa de macros
-como limite permanente do sanitizador.
-
-**Resultado lÃ­quido**: XLSM permanece em 0/5 no gate â€” a lacuna agora Ã©
-sÃ³ "falta arquivo `.xlsm` real do usuÃ¡rio", nÃ£o mais uma recusa
-estrutural do prÃ³prio sanitizador. `npx vitest run` (547 passou, 1
-pulado â€” 2 testes novos), `npx tsc --noEmit` e `npx eslint --fix` nos 4
-arquivos tocados (mais checagem CRLF-safe do Prettier) aprovados.
-
-Mesclada como [PR #138](https://github.com/olive644/oliqualidade/pull/138)
-depois de todos os checks de CI passarem (E2E Playwright, lint/test/build/
-performance, security headers, Vercel) e autorizaÃ§Ã£o explÃ­cita do
-usuÃ¡rio. Main avanÃ§ou de `950c16d` para `859dac8`.
-
-## 91. Corrigido o segundo bloqueio "permanente": XLTX/XLTM agora preservam o Content-Type de modelo de verdade, nÃ£o viram .xlsx/.xlsm disfarÃ§ado
-
-Depois da seÃ§Ã£o 90 (XLSM), o usuÃ¡rio perguntou "preciso mudar a lib?"
-sobre a limitaÃ§Ã£o restante documentada em `WASM_PROMOTION_CRITERIA.md`:
-a saÃ­da sanitizada de um `.xltx`/`.xltm` sempre gravava `.xlsx`/`.xlsm`
-de verdade, entÃ£o nunca contava como fonte real pro gate especÃ­fico
-desses dois formatos â€” sÃ³ ampliava as fontes do gate `xlsx`/`xlsm` jÃ¡
-superado. A causa raiz era a mesma de sempre: o SheetJS instalado sÃ³
-sabe **escrever** `bookType` `xlsx`/`xlsm` (`XLSX.write` lanÃ§a
-`Unrecognized bookType |xltx|` pra qualquer outro valor).
-
-InvestigaÃ§Ã£o: trocar a lib inteira (`xlsx`/SheetJS) seria desproporcional
-e arriscado â€” Ã© a dependÃªncia usada em toda a importaÃ§Ã£o real do app, nÃ£o
-sÃ³ no sanitizador, e a versÃ£o instalada (`0.20.3`) jÃ¡ Ã© a build atual da
-CDN oficial, nÃ£o uma versÃ£o desatualizada esperando update; a lacuna de
-escrita de `bookType` de template Ã© conhecida da prÃ³pria lib. Inspecionando
-o `[Content_Types].xml` gerado (`unzipSync` via `fflate`, jÃ¡ dependÃªncia do
-projeto), a diferenÃ§a OOXML real entre um workbook "documento" e o
-"modelo" equivalente Ã© sÃ³ a declaraÃ§Ã£o de Content-Type da parte
-`/xl/workbook.xml` â€” `...spreadsheetml.sheet.main+xml` vs.
-`...spreadsheetml.template.main+xml` (e o par macro-enabled equivalente
-pra `.xltm`). Todo o resto do ZIP (cÃ©lulas, fÃ³rmulas, estilos, hyperlinks
-removidos, etc.) jÃ¡ era idÃªntico.
-
-**CorreÃ§Ã£o** (mesma branch da seÃ§Ã£o 90, `fix/sanitize-template-formats`,
-sem merge ainda): `sanitizeWorkbookBytes` grava com o `bookType` real que
-o SheetJS suporta (`xlsx` para `.xltx`, `xlsm` para `.xltm`) e, sÃ³ quando
-a origem pedida Ã© um modelo, reabre o ZIP resultante com `unzipSync`/
-`zipSync` (`fflate`) pra trocar essa Ãºnica string no
-`[Content_Types].xml` antes de devolver os bytes â€” nada mais no ZIP Ã©
-tocado. `scripts/sanitize-workbook-corpus.mjs` simplificou: o mapa
-extensÃ£oâ†’`bookType` agora Ã© identidade (`.xltx`â†’`"xltx"`,
-`.xltm`â†’`"xltm"`), entÃ£o o nome do arquivo de saÃ­da e o campo `format`
-do manifesto usam a extensÃ£o real, nÃ£o mais `.xlsx`/`"xlsx"` disfarÃ§ado.
-
-Validado manualmente com `unzipSync` antes de escrever o teste: o ZIP
-resultante de uma origem `.xltx` sintÃ©tica tem
-`ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml"`
-na parte `/xl/workbook.xml` (nÃ£o mais `.sheet.main+xml`), reabre
-normalmente no SheetJS, e o conteÃºdo sanitizado permanece intacto. Mesmo
-teste pra `.xltm` (`application/vnd.ms-excel.template.macroEnabled.main+xml`),
-confirmando tambÃ©m ausÃªncia de `vbaProject` e de qualquer assinatura
-`Attribute VB_Name` no ZIP (mesma prova jÃ¡ usada pra `.xlsm` na seÃ§Ã£o
-90). Smoke test manual da CLI completa confirmou `sanitized-001.xltx`
-(`"format": "xltx"`) e `sanitized-002.xltm` (`"format": "xltm"`) no
-manifesto, fora do repositÃ³rio e apagado depois.
-
-Prova de regressÃ£o em `src/lib/workbook-sanitizer.test.ts`: 2 testes
-novos (`.xltx` e `.xltm`), cada um inspecionando o `[Content_Types].xml`
-byte a byte pra confirmar a string de Content-Type trocada e ausente a
-antiga. O teste antigo que verificava a recusa de `bookType: "xltx"`
-como invÃ¡lido foi atualizado â€” `"xltx"` agora Ã© um valor vÃ¡lido, entÃ£o o
-teste de rejeiÃ§Ã£o passou a usar `"xlsb"` (formato binÃ¡rio legado, que o
-SheetJS instalado tambÃ©m nÃ£o sabe escrever) pra continuar provando que
-`bookType`s realmente nÃ£o suportados sÃ£o rejeitados explicitamente.
-
-DocumentaÃ§Ã£o atualizada: `docs/WASM_CORPUS_SANITIZATION.md` e
-`docs/WASM_PROMOTION_CRITERIA.md` nÃ£o descrevem mais XLTX/XLTM como
-bloqueio permanente sem caminho de correÃ§Ã£o â€” agora tÃªm o mesmo tipo de
-pendÃªncia que XLSX jÃ¡ superou (sÃ³ falta arquivo real do usuÃ¡rio).
-
-**Resultado lÃ­quido**: os quatro formatos OOXML suportados (XLSX, XLSM,
-XLTX, XLTM) nÃ£o tÃªm mais nenhum bloqueio estrutural no sanitizador de
-corpus. XLSM/XLTX/XLTM continuam em 0/5 no gate de promoÃ§Ã£o â€” dependem
-sÃ³ de arquivo real chegando, mesmo tipo de lacuna que XLSX jÃ¡ fechou
-(6/5). `npx vitest run` (549 passou, 1 pulado â€” 2 testes novos desta
-seÃ§Ã£o), `npx tsc --noEmit`, `npx eslint --fix` nos 4 arquivos tocados e
-checagem CRLF-safe do Prettier aprovados.
-
-Mesclada como [PR #139](https://github.com/olive644/oliqualidade/pull/139)
-depois de todos os checks de CI passarem e autorizaÃ§Ã£o explÃ­cita do
-usuÃ¡rio. Main avanÃ§ou de `859dac8` para `9c8e27f`.
-
-## 92. Auditoria de seguranÃ§a/privacidade a pedido do usuÃ¡rio: removido componente shadcn/ui morto com `dangerouslySetInnerHTML`
-
-UsuÃ¡rio pediu pra priorizar seguranÃ§a/privacidade enquanto o gate XLSM/
-XLTX/XLTM espera arquivo real. InvestigaÃ§Ã£o (nÃ£o um scanner genÃ©rico, leitura
-direta do cÃ³digo): CSP self-hosted sem wildcard em `script-src`/`style-src`,
-`object-src 'none'`, `frame-ancestors 'none'` (`http-security.ts`); cookies
-de sessÃ£o `HttpOnly`/`SameSite=Strict`; checagem de origem em rotas de API
-(`isSameOriginBrowserRequest`); construÃ§Ã£o do payload enviado ao Gemini jÃ¡
-filtra CPF/CNPJ/email/telefone por regex de nome de coluna E de valor,
-zera exemplos de coluna sensÃ­vel, tem filtro anti prompt-injection, e
-**revalida no servidor** em vez de confiar no `sensitive` calculado pelo
-client (`smart-import.ts`, `validateSmartImportInput`); modo privacidade
-grava em `sessionStorage` em vez de `localStorage` (`storage.ts`); `npm
-audit --production` sem vulnerabilidades. Postura geral jÃ¡ madura.
-
-Dois achados concretos, nÃ£o teÃ³ricos, reportados ao usuÃ¡rio:
-
-1. **CÃ³digo morto com sink de HTML/CSS nÃ£o escapado**:
-   `src/components/ui/chart.tsx` (`ChartContainer`/`ChartStyle`, boilerplate
-   do shadcn/ui) interpolava `key`/`color` de um `ChartConfig` direto dentro
-   de um `<style dangerouslySetInnerHTML>` sem escapar. Confirmado por busca
-   de importaÃ§Ã£o (`from "@/components/ui/chart"` e variantes) que **nenhum
-   widget real usa esse arquivo** â€” todo o app importa `recharts` direto em
-   `widget-card.tsx`. NÃ£o Ã© explorÃ¡vel hoje (nada alimenta esse componente
-   com dado do usuÃ¡rio), mas Ã© uma armadilha: se algum dia alguÃ©m religar o
-   componente com nomes de categoria/sÃ©rie vindos de planilha (dado nÃ£o
-   confiÃ¡vel por definiÃ§Ã£o, Ã© o propÃ³sito do app), vira injeÃ§Ã£o de HTML via
-   quebra do `<style>` sem nenhum aviso.
-2. **`script-src 'self' 'unsafe-inline'` no CSP**: tradeoff jÃ¡ documentado
-   no prÃ³prio cÃ³digo (`http-security.ts:10-12`) como temporÃ¡rio atÃ© o
-   TanStack Start expor nonce pra hidrataÃ§Ã£o. Registrado como pendÃªncia,
-   nÃ£o implementado nesta sessÃ£o (usuÃ¡rio priorizou o item 1).
-
-**CorreÃ§Ã£o aplicada** (item 1, branch `remove-unused-chart-component`,
-sem merge ainda): arquivo `src/components/ui/chart.tsx` deletado por
-inteiro â€” confirmado sem nenhuma importaÃ§Ã£o em lugar nenhum do `src/` e
-sem teste prÃ³prio cobrindo-o, entÃ£o nÃ£o hÃ¡ caminho de compatibilidade a
-preservar. `npx tsc --noEmit`, `npx vitest run` (549 passou, 1 pulado,
-sem mudanÃ§a de contagem â€” nenhum teste dependia do arquivo), `npm run
-build` e `npm run performance:check` aprovados sem regressÃ£o (arquivo jÃ¡
-nÃ£o entrava em nenhum bundle, por nÃ£o ser importado).
-
-**PendÃªncia registrada, nÃ£o implementada**: apertar `script-src` do CSP
-removendo `unsafe-inline` depende de o TanStack Start expor nonce de
-hidrataÃ§Ã£o â€” checar a versÃ£o instalada antes de tentar, Ã© mudanÃ§a mais
-delicada (mexe em toda pÃ¡gina) e nÃ£o foi pedida pra esta sessÃ£o.
-
-## 93. Item 7 do backlog implementado: `script-src` do CSP agora usa nonce por requisiÃ§Ã£o, sem `unsafe-inline`
-
-UsuÃ¡rio pediu pra prosseguir com o item 7 registrado na seÃ§Ã£o 92.
-InvestigaÃ§Ã£o confirmou que a versÃ£o instalada
-(`@tanstack/react-start@1.168.44`/`@tanstack/react-router@1.170.18`) jÃ¡
-suporta `router.options.ssr.nonce` de verdade â€” lido em `Scripts.js`,
-`ScriptOnce.js` e `Asset.js` do pacote (`node_modules/@tanstack/react-router/dist/esm/`).
-O framework tem inclusive seu prÃ³prio mecanismo de reconciliaÃ§Ã£o de nonce
-no cliente: renderiza `<meta property="csp-nonce" content="...">` no HTML
-e o bootstrap do cliente lÃª esse valor via `document.querySelector` pra
-manter `router.options.ssr.nonce` consistente na hidrataÃ§Ã£o â€” descoberto
-inspecionando o bundle de produÃ§Ã£o depois do build, nÃ£o documentaÃ§Ã£o.
-
-**Desafio real**: `src/router.tsx` (`getRouter()`) Ã© o Ãºnico ponto de
-criaÃ§Ã£o do router, compartilhado entre servidor (chamado fresco a cada
-requisiÃ§Ã£o por `createStartHandler` do `@tanstack/start-server-core`,
-confirmado lendo `createStartHandler.js`) e cliente (hidrataÃ§Ã£o). Um
-nonce por requisiÃ§Ã£o nÃ£o pode ser passado como parÃ¢metro â€” `getRouter()`
-nÃ£o recebe request nenhum, Ã© invocado pelo framework internamente. E o
-valor tem que bater exatamente entre o `<script nonce="...">` renderizado
-e o header `Content-Security-Policy` da resposta, ou o script de
-hidrataÃ§Ã£o quebra e a pÃ¡gina inteira fica em branco.
-
-**SoluÃ§Ã£o**: mesmo padrÃ£o de `AsyncLocalStorage` jÃ¡ usado e comprovado em
-`error-capture.ts` pra exatamente esse tipo de problema (estado por
-requisiÃ§Ã£o precisando atravessar chamadas internas opacas do framework).
-Novo mÃ³dulo `src/lib/csp-nonce.ts` (`generateNonce`/`runWithNonce`/
-`currentNonce`, server-only â€” usa `node:async_hooks`/`node:crypto`).
-`server.ts` gera o nonce uma vez no topo do `fetch()` e envolve toda a
-request com `runWithNonce` (aninhado com `runWithErrorCapture` jÃ¡
-existente, ambos ASyncLocalStorage independentes, sem conflito), passando
-o mesmo valor explicitamente pras 4 chamadas de `withSecurityHeaders`.
-
-**Risco especÃ­fico resolvido**: `router.tsx` roda tanto no bundle do
-servidor quanto no bundle do cliente (importado por ambos via convenÃ§Ã£o
-do framework), mas `csp-nonce.ts` usa `node:async_hooks`/`node:crypto`,
-que quebrariam o bundle do navegador se importados estaticamente. Fix:
-`import()` dinÃ¢mico atrÃ¡s de um guard `import.meta.env.SSR` â€” o Vite
-substitui esse valor por um literal booleano em tempo de build e o
-Rollup elimina o branch inteiro (import dinÃ¢mico incluso) do bundle do
-cliente quando a condiÃ§Ã£o Ã© estaticamente `false`. **Validado, nÃ£o sÃ³
-assumido**: depois do `npm run build`, `grep -rl "async_hooks\|AsyncLocalStorage" .vercel/output/static/**/*.js`
-nÃ£o retornou nenhum arquivo â€” o mÃ³dulo server-only nÃ£o vaza pro bundle
-do navegador. `http-security.ts` ganhou `buildSecurityHeaders(nonce?)`:
-com nonce, `script-src 'self' 'nonce-<valor>'`; sem nonce (chamada direta
-em teste, por exemplo), cai de volta pra `'unsafe-inline'` â€” nunca pior
-que o comportamento anterior Ã  mudanÃ§a.
-
-**VerificaÃ§Ã£o end-to-end** (nÃ£o sÃ³ testes unitÃ¡rios, dado o risco de
-quebrar a pÃ¡gina inteira): subido `npm run dev` de verdade e inspecionado
-via Browser pane â€” `<meta property="csp-nonce">` presente com valor nÃ£o
-vazio; `document.querySelectorAll('script')[0].nonce` (propriedade IDL,
-nÃ£o `getAttribute` â€” navegador esconde o atributo de propÃ³sito depois
-que o elemento entra no DOM) bate exatamente com o valor da meta tag;
-header `Content-Security-Policy` da resposta real (`curl`) mostra
-`script-src 'self' 'nonce-<valor>'`, sem `'unsafe-inline'`; zero
-violaÃ§Ã£o de CSP no console; clique em "Ativar modo privado" (toggle que
-depende de handler de evento React funcionando pÃ³s-hidrataÃ§Ã£o) sem erro
-nenhum. `npx playwright test` (suÃ­te E2E completa) passou contra o
-mesmo dev server.
-
-`scripts/security-smoke.mjs` (rodado na CI a cada PR) sÃ³ checava
-`frame-ancestors 'none'` de substring solto no CSP â€” nÃ£o validava
-`script-src` nenhum. Fortalecido: agora falha se `script-src` nÃ£o tiver
-`'nonce-...'`, e falha se `script-src` especificamente ainda tiver
-`'unsafe-inline'` (checagem por regex no segmento `script-src`, nÃ£o a
-string inteira â€” `style-src` continua com `'unsafe-inline'` de
-propÃ³sito, inalterado). Rodado de verdade contra dev server real via
-Bash (nÃ£o Browser pane â€” namespaces de rede isolados, ver armadilha #2
-de sessÃµes anteriores) antes de commitar: aprovado.
-
-Testes novos: `src/lib/csp-nonce.test.ts` (geraÃ§Ã£o, isolamento por
-`AsyncLocalStorage` inclusive entre chamadas concorrentes, mesmo padrÃ£o
-de teste jÃ¡ usado pro `error-capture.ts`) e `src/lib/http-security.test.ts`
-(CSP com/sem nonce). `npx vitest run` (555 passou, 1 pulado â€” 6 testes
-novos), `npx tsc --noEmit` (achou e corrigiu um erro real de
-`exactOptionalPropertyTypes` â€” `ssr: { nonce: undefined }` nÃ£o Ã© a mesma
-coisa que omitir `ssr` inteiro, com esse flag ligado), `npx eslint --fix`
-+ Prettier CRLF-safe nos 7 arquivos tocados, `npm run build` (client
-bundle confirmado limpo) e `npm run performance:check` aprovados.
-
-**Resultado lÃ­quido**: o Ãºnico item conhecido de seguranÃ§a/privacidade
-registrado no backlog desta sessÃ£o estÃ¡ resolvido. CSP `script-src` nÃ£o
-anuncia mais `'unsafe-inline'` em nenhuma resposta do servidor,
-reduzindo de verdade a superfÃ­cie de XSS que a seÃ§Ã£o 92 apontou como
-mitigada sÃ³ parcialmente (o componente morto foi removido, mas o CSP
-continuava permitindo qualquer script inline atÃ© esta seÃ§Ã£o).
-
-## 94. Primeira fatia da divisÃ£o de `widget-card.tsx` (151 KB, ~3543 linhas numa funÃ§Ã£o sÃ³): 5 tipos de widget extraÃ­dos, 783 linhas removidas
-
-UsuÃ¡rio apontou `widget-card.tsx` como o prÃ³ximo candidato forte a
-divisÃ£o â€” muito acima dos demais componentes em tamanho, concentrando
-boa parte da complexidade visual e de regras dos widgets. Pediu
-repartiÃ§Ã£o em subcomponentes/hooks e mais testes focados.
-
-**Descoberta que mudou o formato da divisÃ£o**: o arquivo nÃ£o Ã© uma
-coleÃ§Ã£o de componentes â€” Ã© uma funÃ§Ã£o Ãºnica (`WidgetCard`) de ~3350
-linhas com 14 branches `if (w.type === ...)` sequenciais, zero
-`useMemo`/`useCallback`/`useEffect` (tudo recomputado por render, mesmo
-dentro de cada branch) e **zero teste** cobrindo o arquivo inteiro.
-Mapeado a fundo (via subagente Explore) antes de tocar em qualquer
-linha: props, estado, handlers, estrutura de renderizaÃ§Ã£o por tipo,
-chrome compartilhado (`<article>` + `WidgetHead` + `dragProps` +
-`sizeControls`, quase idÃªntico em toda branch) e concerns cruzados
-(resoluÃ§Ã£o de campo/agregaÃ§Ã£o duplicada quase literalmente 4x; clique-
-para-filtrar duplicado em 6+ branches).
-
-**DecisÃ£o de escopo**: dado o risco real (componente de renderizaÃ§Ã£o
-crÃ­tico, usado em produÃ§Ã£o, sem nenhuma rede de seguranÃ§a de teste
-unitÃ¡rio) e o tamanho do arquivo, dividir tudo de uma vez num Ãºnico
-diff enorme e nÃ£o-revisÃ¡vel seria irresponsÃ¡vel. Entregue em fatia
-pequena, completa e verificada â€” 5 dos 14 tipos de widget extraÃ­dos
-nesta sessÃ£o (os mais autocontidos, sem compartilhar estado com o bloco
-de grÃ¡ficos barra/pizza/linha/Ã¡rea), com os 9 restantes explicitamente
-registrados como prÃ³xima fatia, nÃ£o abandonados.
-
-**ExtraÃ­do para arquivos prÃ³prios** (`src/components/oliam/`, mesmo
-padrÃ£o jÃ¡ usado por `map-widget-body.tsx`/`operational-widget-body.tsx`):
-`version-compare-widget-body.tsx`, `pivot-widget-body.tsx` (pivot-table
-+ matrix-heatmap), `ranking-widget-body.tsx`, `insights-widget-body.tsx`,
-`rating-widget-body.tsx`. Cada um Ã© um substituto completo e autocontido
-do branch original inteiro (inclusive o prÃ³prio `<article>` + `WidgetHead`,
-nÃ£o sÃ³ o conteÃºdo interno) â€” decisÃ£o tomada depois de descobrir que
-alguns branches (pivot-table/matrix-heatmap) intercalam chrome genÃ©rico
-(`sizeControls`) com toolbar especÃ­fica do tipo, entÃ£o dividir a
-responsabilidade entre pai e filho no meio do branch criava ambiguidade
-de quem renderiza o quÃª; um componente autocontido por tipo Ã© mais
-simples e sem essa ambiguidade.
-
-**DeduplicaÃ§Ã£o real, nÃ£o sÃ³ realocaÃ§Ã£o de cÃ³digo** (correÃ§Ã£o de
-oportunidade encontrada durante a extraÃ§Ã£o, nÃ£o pedida Ã  parte):
-`EmptyWidget` movido pra `widget-support.tsx` (evita import circular,
-jÃ¡ que mÃºltiplos corpos extraÃ­dos precisam dele); `FilterChip` â€” antes
-uma closure local em `WidgetCard` capturando `filters`/`setFilters` do
-escopo, recriada implicitamente a cada render â€” virou componente
-exportado em `widget-support.tsx` recebendo `filters`/`setFilters`
-como props explÃ­citas, elimina a necessidade de threadear a closure
-como prop atravÃ©s de cada arquivo extraÃ­do; novo tipo `WidgetDragProps`
-exportado pra parar de repetir a mesma uniÃ£o de 12 props opcionais em
-`WidgetHead`/`EmptyWidget`/cada corpo extraÃ­do.
-
-**Prova de que o comportamento nÃ£o mudou** (sem teste unitÃ¡rio
-prÃ©-existente pra confiar, verificaÃ§Ã£o teve que ser mais pesada que o
-normal): `npx tsc --noEmit` limpo depois de cada extraÃ§Ã£o individual
-(pego cedo, nunca acumulado); `npx eslint --fix` confirmando zero import
-nÃ£o utilizado sobrando nos arquivos originais depois de remover cada
-branch; `npm run build` com bundle confirmado sem regressÃ£o de tamanho
-(`npm run performance:check` aprovado); `npx playwright test` (E2E
-completo) aprovado contra dev server real; **verificaÃ§Ã£o manual no
-navegador** do dashboard de demonstraÃ§Ã£o real (`vendas_2026.xlsx`,
-12 linhas) â€” `RANKING POR UNIDADE` renderizado com dado computado
-correto (Linha A 391, Linha B 386, Linha C 278), clique-pra-filtrar
-testado nas duas direÃ§Ãµes (clicar na barra do ranking filtra 12â†’4
-linhas e atualiza KPIs; clicar no chip "Filtrado por: Linha A" remove o
-filtro e volta a 12â†’12), zero erro novo no console (sÃ³ um aviso de
-hidrataÃ§Ã£o prÃ©-existente e nÃ£o relacionado, sobre o texto do botÃ£o de
-modo privado, causado por estado de sessÃ£o anterior no localStorage).
-Essa verificaÃ§Ã£o ponta-a-ponta era especialmente importante aqui porque
-a extraÃ§Ã£o do `FilterChip` mudou sua assinatura (de closure implÃ­cita
-pra props explÃ­citas) e trocou `handleGroupClick` por uma chamada
-direta a `toggleClickFilter` â€” mudanÃ§a mecÃ¢nica, mas exatamente o tipo
-de refactor que um teste automatizado nÃ£o cobria e sÃ³ verificaÃ§Ã£o real
-prova.
-
-**Resultado lÃ­quido**: `widget-card.tsx` caiu de 3543 para 2760 linhas
-(-783 linhas, -22%). `npx vitest run` (555 passou, 1 pulado, sem
-mudanÃ§a de contagem â€” nenhum teste novo foi pedido nesta fatia, mas
-nenhum teste existente quebrou), `npx tsc --noEmit`, `npx eslint --fix`
-+ Prettier CRLF-safe em todos os 7 arquivos tocados, `npm run build` e
-`npm run performance:check` aprovados.
-
-**PendÃªncia explÃ­cita, nÃ£o implementada** (prÃ³xima fatia natural): os
-9 branches restantes â€” `exception-panel` (maior branch nÃ£o-grÃ¡fico,
-~376 linhas, autocontido), `schedule-heatmap` (~577 linhas, autocontido),
-`metric`/`metric-trend` (inclui sparkline Recharts inline), e o maior de
-todos, `bar`/`pie`/`line`/`area` (~780 linhas, compartilha
-`activePieIndex`/`selectedPieIndex`/`activeBarIndex` sÃ³ entre si â€” pode
-virar um Ãºnico arquivo autocontido levando esse estado junto). Os
-branches jÃ¡ delegados a componentes lazy (`attendance-overview` etc. â†’
-`OperationalWidgetBody`, `map` â†’ `MapWidgetBody`) e os branches
-pequenos (`folder-files`, `image`, ~15-40 linhas) nÃ£o foram tocados por
-jÃ¡ estarem no tamanho certo ou jÃ¡ extraÃ­dos. O padrÃ£o desta seÃ§Ã£o
-(componente autocontido por tipo, chrome compartilhado extraÃ­do pra
-`widget-support.tsx` quando genuinamente duplicado, verificaÃ§Ã£o
-end-to-end no navegador antes de considerar pronto) deve se repetir nas
-prÃ³ximas fatias.
-
-Mesclada como [PR #142](https://github.com/olive644/oliqualidade/pull/142)
-depois de todos os checks de CI passarem e autorizaÃ§Ã£o explÃ­cita do
-usuÃ¡rio. Main avanÃ§ou de `50eb6c5` para `7967844`.
-
-## 95. DivisÃ£o de `widget-card.tsx` concluÃ­da: os 9 branches restantes extraÃ­dos, arquivo cai de 3543 para 738 linhas (-79%)
-
-UsuÃ¡rio pediu pra prosseguir com o restante do backlog item 8. Seguido o
-mesmo padrÃ£o da seÃ§Ã£o 94 (componente autocontido por tipo, chrome
-genuinamente duplicado extraÃ­do pra arquivo compartilhado, verificaÃ§Ã£o
-`tsc`+`eslint`+`vitest`+`build`+E2E+navegador real a cada extraÃ§Ã£o â€” sem
-acumular mudanÃ§as nÃ£o verificadas).
-
-**ExtraÃ­dos, em ordem de complexidade crescente**:
-
-- `exception-panel-widget-body.tsx` (maior branch nÃ£o-grÃ¡fico, ~410
-  linhas) â€” os 4 `useState` de revisÃ£o de exceÃ§Ã£o
-  (`exceptionView`/`editingException`/`correctionValue`/`correctionReason`)
-  confirmados usados sÃ³ ali (`grep` antes de mover) e movidos pra dentro
-  do componente, nÃ£o mais em `WidgetCard`. Achado no caminho: o export
-  CSV usava `` `ï»¿${csv}` `` (BOM via escape Unicode) â€” o editor
-  desta sessÃ£o insistia em converter a sequÃªncia `ï»¿` digitada em
-  bytes num caractere BOM literal ao gravar o arquivo (mesmo problema
-  reapareceu em vÃ¡rias tentativas de `Edit`/`Write`); contornado
-  escrevendo um token de texto comum primeiro (`node -e` com
-  `String.fromCharCode`) e sÃ³ depois substituindo pelo texto
-  `ï»¿` literal â€” resultado final confirmado byte a byte
-  (`JSON.stringify` do trecho) antes de seguir.
-- `schedule-heatmap-widget-body.tsx` (~580 linhas).
-- `metric-widget-body.tsx` (`metric` + `metric-trend`, inclui sparkline
-  Recharts).
-- `chart-widget-body.tsx` (`bar`/`pie`/`line`/`area`, ~780 linhas â€” o
-  maior de todos). Os 3 `useState` de interaÃ§Ã£o
-  (`activePieIndex`/`selectedPieIndex`/`activeBarIndex`) confirmados
-  usados sÃ³ ali e movidos pra dentro do componente.
-
-**Novo hook compartilhado, achado durante a extraÃ§Ã£o do `metric-trend`**:
-o sparkline do metric-trend usa exatamente a mesma lÃ³gica de rolagem
-horizontal por arrasto (`chartScrollRef`/`handleChartScrollPointerDown`/
-`ChartScrollButtons`) que o bloco de grÃ¡ficos principal â€” extraÃ­do pra
-`use-chart-horizontal-scroll.tsx` (precisa ser `.tsx`, nÃ£o `.ts`, por
-conter JSX no botÃ£o de rolagem â€” pego pelo `tsc` na primeira tentativa)
-e usado tanto por `metric-widget-body.tsx` quanto por
-`chart-widget-body.tsx`, alÃ©m do que sobrou em `WidgetCard` antes desta
-lÃ³gica tambÃ©m sair de lÃ¡.
-
-**VerificaÃ§Ã£o de risco proporcional ao tamanho da mudanÃ§a**: como
-`chart-widget-body.tsx` Ã© o branch mais complexo (interaÃ§Ã£o de
-clique/hover em barra e pizza, cross-filter, tooltips), a verificaÃ§Ã£o em
-navegador real foi alÃ©m do check visual â€” clique programÃ¡tico via
-`dispatchEvent` num setor real do grÃ¡fico de pizza e numa barra real do
-grÃ¡fico de barras (calculando a posiÃ§Ã£o via `getBoundingClientRect()`,
-nÃ£o sÃ³ chamando o handler React diretamente), confirmando em ambos os
-casos: contagem de linhas visÃ­veis muda corretamente (12â†’4), chip
-"Filtrado por X" aparece, remover o chip volta a 12â†’12, zero erro novo
-no console. Essa Ã© a mesma verificaÃ§Ã£o de duas direÃ§Ãµes jÃ¡ usada na
-seÃ§Ã£o 94 para `ranking`, agora estendida pro caminho de interaÃ§Ã£o mais
-complexo do arquivo inteiro.
-
-`npx vitest run` (555 passou, 1 pulado â€” sem teste novo nesta fatia, mas
-nada quebrou), `npx tsc --noEmit` limpo depois de cada extraÃ§Ã£o
-individual, `npx eslint --fix` sem erro real restante (sÃ³ avisos
-prÃ©-existentes de fast-refresh em `widget-support.tsx`), `npm run build`
-+ `npm run performance:check` aprovados, `npx playwright test` (E2E
-completo) aprovado contra dev server real depois da fatia inteira.
-
-**Resultado lÃ­quido**: `widget-card.tsx` foi de 3543 linhas/151 KB
-(inÃ­cio da seÃ§Ã£o 94) para **738 linhas** â€” reduÃ§Ã£o de 79% no arquivo
-inteiro ao longo das duas seÃ§Ãµes. Todos os 14 tipos de widget originais
-agora vivem em arquivo prÃ³prio (`*-widget-body.tsx`) ou jÃ¡ delegavam
-antes pra componente lazy (`OperationalWidgetBody`, `MapWidgetBody`);
-`WidgetCard` ficou reduzido a um dispatcher por `w.type` + chrome
-compartilhado (`dragProps`, `sizeControls`) + os dois branches pequenos
-que nunca precisaram de extraÃ§Ã£o (`folder-files`, `image`, ~15-40
-linhas cada). Item 8 do backlog fechado â€” nÃ£o hÃ¡ mais pendÃªncia de
-divisÃ£o registrada.
-
-Mesclada como [PR #143](https://github.com/olive644/oliqualidade/pull/143)
-depois de todos os checks de CI passarem e autorizaÃ§Ã£o explÃ­cita do
-usuÃ¡rio. Main avanÃ§ou de `7967844` para `e24e07d`.
-
-## 96. ConfianÃ§a por coluna na revisÃ£o de importaÃ§Ã£o (badge alta/mÃ©dia/baixa + motivo)
-
-UsuÃ¡rio trouxe uma lista extensa de prioridades ("Prioridade alta â€”
-fazer agora") cobrindo confiabilidade de importaÃ§Ã£o, UX de erro,
-seguranÃ§a de infraestrutura e produto/arquitetura. Perguntado por onde
-comeÃ§ar; escolhida a pontuaÃ§Ã£o de confianÃ§a por aba/coluna â€” primeiro
-item da seÃ§Ã£o de maior prioridade e alicerce dos outros itens da mesma
-seÃ§Ã£o (modo de revisÃ£o e relatÃ³rio de fidelidade dependem de ter um
-sinal de confianÃ§a pra mostrar).
-
-**InvestigaÃ§Ã£o prÃ©via (subagente Explore) antes de desenhar qualquer
-coisa**: a infraestrutura de confianÃ§a jÃ¡ existia em grande parte â€”
-`buildSheetConfidenceMatrix` (nÃ­vel por aba, alta/mÃ©dia/baixa + motivos)
-jÃ¡ existe e jÃ¡ Ã© renderizado como tooltip nas abas da revisÃ£o;
-`ColumnDiagnostic` (por coluna) jÃ¡ tinha `confidence` (certeza de
-detecÃ§Ã£o de tipo, 0-1) e `warnings: string[]` computados, mas **nunca
-renderizados em lugar nenhum** â€” o gap real nÃ£o era "calcular confianÃ§a
-por coluna", era "faltava o nÃ­vel de 3 categorias e a UI pra mostrar o
-que jÃ¡ existia". `ImportAudit` (mesclagens expandidas, fÃ³rmulas
-recuperadas, linhas em branco ignoradas etc.) tambÃ©m jÃ¡ Ã© computado mas
-nunca chega Ã  tela â€” mapeado como gap real, nÃ£o corrigido nesta seÃ§Ã£o
-(vide "pendÃªncia" abaixo).
-
-**Implementado**: `confidenceLevelFor(score): "alta"|"mÃ©dia"|"baixa"`
-extraÃ­do como funÃ§Ã£o pura em `import-intelligence.ts` (mesmos limiares
-85/60 que `buildSheetConfidenceMatrix` jÃ¡ usava, agora nomeados e
-reaproveitados, nÃ£o mais duplicados). Novo tipo `ConfidenceLevel`
-compartilhado; `SheetConfidenceLevel` passa a ser
-`ConfidenceLevel | "sem diagnÃ³stico"`. `ColumnDiagnostic` ganhou o campo
-`level`, computado como a mÃ©dia de `confidence*100` e `qualityScore`
-(as duas mÃ©tricas medem coisas diferentes â€” o quÃ£o bem o padrÃ£o bate vs.
-o quÃ£o uniforme Ã© o preenchido â€” e sÃ³ correspondem a "alta" quando as
-duas concordam), com uma regra adicional: qualquer `warnings.length > 0`
-impede `"alta"` mesmo que o score combinado cruze o limiar â€” nÃ£o faz
-sentido mostrar "alta confianÃ§a" ao lado de um motivo de dÃºvida listado
-na mesma coluna.
-
-Novo componente compartilhado `confidence-dot.tsx` (`ConfidenceDot`) â€”
-ponto colorido emerald/amber/rose, mesmo mapeamento de cor que jÃ¡ era
-usado inline nas abas da revisÃ£o; refatorado para reaproveitar em vez de
-duplicar. Renderizado por coluna em `import-workbench.tsx`, no cabeÃ§alho
-clicÃ¡vel da "Bancada de importaÃ§Ã£o" (mesmo botÃ£o que jÃ¡ alterna
-incluir/ignorar coluna), com `title` mostrando
-`` `ConfianÃ§a ${level} â€” ${warnings.join("; ")}` `` â€” mesmo padrÃ£o de
-tooltip jÃ¡ usado pelas abas.
-
-Testes novos em `import-intelligence.test.ts`: limiares de
-`confidenceLevelFor`; coluna limpa e consistente â†’ alta; coluna com
-aviso explÃ­cito nunca mostra alta mesmo com score combinado alto (prova
-direta da regra de demoÃ§Ã£o); coluna com representaÃ§Ãµes misturadas e
-muita ausÃªncia â†’ baixa (fixture ajustada depois de uma primeira tentativa
-com sÃ³ 1 valor preenchido nÃ£o gerar inconsistÃªncia suficiente â€” corrigido
-usando mÃºltiplos valores de famÃ­lia de representaÃ§Ã£o diferente, incluindo
-erros de fÃ³rmula do Excel, antes de aceitar o teste).
-
-**VerificaÃ§Ã£o alÃ©m de testes unitÃ¡rios**: como sempre nesta sessÃ£o para
-mudanÃ§as de UI, verificado em navegador real â€” upload de um CSV
-sintÃ©tico com uma coluna limpa e duas colunas com 40% de valores
-ausentes confirmou exatamente o comportamento esperado:
-`Produto â†’ "ConfianÃ§a alta"` (ponto verde), `Valor`/`Comentario` â†’
-`"ConfianÃ§a mÃ©dia â€” muitos valores ausentes"` (ponto Ã¢mbar). Achado no
-caminho: o fluxo de demonstraÃ§Ã£o (`Ver demonstraÃ§Ã£o`) nÃ£o passa pelo
-pipeline real de diagnÃ³stico (`prepare()` em `routes/index.tsx` injeta
-`Row[]` prontos sem chamar `diagnoseImportedSheet`), entÃ£o nÃ£o serviu
-pra verificar â€” precisou de upload real (via simulaÃ§Ã£o de
-`input.files`/evento `change`, que funcionou embora o retorno sÃ­ncrono
-imediato do script tenha mostrado incorretamente "0 arquivos" â€” o
-upload processou de verdade um instante depois).
-
-TambÃ©m flagrado (nÃ£o corrigido, `spawn_task` registrado pro usuÃ¡rio
-decidir): um erro real e reproduzÃ­vel de corrida de hidrataÃ§Ã£o SSR
-("Hydration failed... modo privado") apareceu em toda verificaÃ§Ã£o de
-navegador desta sessÃ£o inteira, incluindo as anteriores â€” fora de
-escopo desta seÃ§Ã£o, mas confirmado como bug real, nÃ£o ruÃ­do.
-
-`npx vitest run` (559 passou, 1 pulado â€” 4 testes novos), `npx tsc
---noEmit`, `npx eslint --fix` nos 7 arquivos tocados + Prettier
-CRLF-safe, `npm run build` + `npm run performance:check`, e
-`npx playwright test` (E2E completo) aprovados.
-
-**PendÃªncia explÃ­cita, nÃ£o implementada**: `ImportAudit` (mesclagens
-expandidas, fÃ³rmulas recuperadas, linhas ignoradas etc.) continua
-computado e nunca renderizado â€” prÃ³ximo passo natural pra "mostrando
-exatamente o motivo" a nÃ­vel de aba, complementando o nÃ­vel de coluna
-implementado aqui. O restante da lista trazida pelo usuÃ¡rio (modo de
-revisÃ£o prÃ©-importaÃ§Ã£o, regras de importaÃ§Ã£o salvas por modelo,
-relatÃ³rio de fidelidade por aba, identificaÃ§Ã£o de arquivo por conteÃºdo,
-limite de Ã¡rea inflada, rate limit distribuÃ­do, SAST na CI, etc.)
-permanece registrado como prÃ³ximas prioridades, nÃ£o abandonado.
-
-## 97. Corrigido o bug real de hidrataÃ§Ã£o SSR sinalizado na seÃ§Ã£o 96 ("Hydration failed... modo privado")
-
-UsuÃ¡rio escolheu investigar este achado (flagrado como `spawn_task` na
-sessÃ£o anterior, seÃ§Ã£o 96) em vez de seguir a lista de prioridades.
-
-**Causa raiz**: `const [privateMode, setPrivateModeState] = useState(()
-=> isPrivateMode())` em `routes/index.tsx` chamava `isPrivateMode()`
-(`storage.ts`, lÃª `localStorage.getItem(PRIVACY_MODE_KEY)`) direto no
-inicializador do estado, executado tanto no servidor quanto na primeira
-renderizaÃ§Ã£o do cliente. No servidor `localStorage` nÃ£o existe, entÃ£o o
-resultado Ã© sempre `false`; no cliente, se o usuÃ¡rio jÃ¡ tinha ativado o
-modo privado numa sessÃ£o anterior (persistido em `localStorage`, nÃ£o Ã©
-efÃªmero), o resultado Ã© `true` â€” os dois HTML divergem no texto do botÃ£o
-("Ativar modo privado" vs. "Modo privado ligado"), e o React lanÃ§a
-`Hydration failed` de forma consistente, sempre que o flag jÃ¡ estava
-setado.
-
-**CorreÃ§Ã£o**: mesmo padrÃ£o jÃ¡ usado para `hydrated` (ver seÃ§Ã£o 74/75) â€”
-estado inicial fixo em `false` (igual ao servidor), sincronizado com o
-valor real de `isPrivateMode()` via `useEffect(() =>
-setPrivateModeState(isPrivateMode()), [])`, que sÃ³ roda no cliente apÃ³s
-a montagem, quando o React jÃ¡ reconciliou a Ã¡rvore hidratada.
-
-**VerificaÃ§Ã£o em navegador real** (nÃ£o sÃ³ unitÃ¡ria, por ser bug de
-SSR/hidrataÃ§Ã£o): `localStorage.setItem("oliam-private-mode", "1")` antes
-do carregamento, depois recarga limpa. Sem a correÃ§Ã£o, reproduzido de
-forma consistente (`Hydration failed because the server rendered text
-...Ativar modo privado`); com a correÃ§Ã£o, 3 recargas consecutivas sem
-nenhum erro, e o botÃ£o mostra corretamente "Modo privado ligado" depois
-da hidrataÃ§Ã£o (efeito observado, nÃ£o sÃ³ ausÃªncia de erro). Achado
-lateral registrado mas nÃ£o corrigido nesta seÃ§Ã£o (fora do escopo do
-sintoma relatado, mesma classe de bug): `sidebar` em `routes/index.tsx`
-tambÃ©m usa `useState(() => typeof window === "undefined" ? true :
-window.matchMedia(...).matches)`, que pode divergir do mesmo jeito
-dependendo da largura da viewport â€” nÃ£o reproduzido nem confirmado como
-sintoma real, sÃ³ sinalizado por semelhanÃ§a estrutural.
-
-`npx vitest run` (559 passou, 1 pulado, sem teste novo â€” Ã© um bug de
-timing de hidrataÃ§Ã£o, nÃ£o de lÃ³gica pura, e jÃ¡ hÃ¡ verificaÃ§Ã£o de
-navegador real cobrindo o cenÃ¡rio), `npx tsc --noEmit`, `npm run build`,
-`npx playwright test` (E2E completo) aprovados.
-
-## 98. RelatÃ³rio de fidelidade por aba na revisÃ£o de importaÃ§Ã£o (item pendente da seÃ§Ã£o 96, backlog item 9)
-
-PrÃ³ximo item natural da frente "confiabilidade de importaÃ§Ã£o", jÃ¡
-registrado como pendÃªncia explÃ­cita na seÃ§Ã£o 96: `ImportAudit`
-(mesclagens expandidas, fÃ³rmulas recuperadas, linhas em branco/ocultas/
-finais ignoradas, colunas ignoradas, conversÃµes numÃ©ricas, cabeÃ§alhos
-repetidos ignorados, regiÃµes mantidas juntas) jÃ¡ era computado por
-`sheetToRows` (`import.ts`) e chegava atÃ© `reviewSheets` em
-`routes/index.tsx`, mas sÃ³ era consumido internamente por
-`resolveSourceCellFills` â€” nunca chegava Ã  UI nem sobrevivia alÃ©m da
-revisÃ£o (nÃ£o entra em `SheetData`, por decisÃ£o de escopo jÃ¡ implÃ­cita:
-Ã© um relatÃ³rio da importaÃ§Ã£o, nÃ£o um dado do painel).
-
-**Implementado**: `auditFidelityPercent(audit): number` (`import.ts`,
-funÃ§Ã£o pura) â€” percentual de cÃ©lulas nÃ£o vazias da origem que
-sobreviveram atÃ© a tabela importada (`outputNonEmptyCells` sobre
-`sourceNonEmptyCells`, arredondado, nunca passa de 100 mesmo se uma
-fÃ³rmula recuperada fizer o output superar a origem). Reaproveita
-`confidenceLevelFor` (limiares 85/60 jÃ¡ usados pela seÃ§Ã£o 96) pro
-`ConfidenceDot` do painel, mesmo mapeamento de cor em toda a revisÃ£o.
-
-Painel `<details>` novo em `review.tsx`, mesmo padrÃ£o visual dos outros
-inventÃ¡rios da revisÃ£o (hyperlinks, nomes definidos, cor de
-preenchimento etc.): badge com percentual + ponto de confianÃ§a no
-resumo, e dentro uma lista de rÃ³tuloâ†’valor pra cada campo do
-`ImportAudit`, condicionada a `> 0` pra nÃ£o poluir uma importaÃ§Ã£o limpa
-com zeros (sÃ³ "cÃ©lulas na origem"/"cÃ©lulas na tabela importada" sempre
-aparecem, o resto Ã© condicional).
-
-**VerificaÃ§Ã£o em navegador real** (nÃ£o sÃ³ unitÃ¡ria, por envolver upload
-e pipeline de diagnÃ³stico real â€” mesma ressalva da seÃ§Ã£o 96: "Ver
-demonstraÃ§Ã£o" nÃ£o passa por `diagnoseImportedSheet`/`sheetToRows` de
-verdade): CSV sintÃ©tico com uma linha em branco no meio e uma coluna
-numÃ©rica salva como texto (`R$ 10,00` etc.) via simulaÃ§Ã£o de
-`input.files`/evento `change`. Painel mostrou exatamente 12 cÃ©lulas na
-origem (cabeÃ§alho + 9 cÃ©lulas de dado), 9 na tabela importada (cabeÃ§alho
-nÃ£o conta como cÃ©lula de dado no output), 3 conversÃµes numÃ©ricas, 1
-linha em branco ignorada â€” 75% de fidelidade, aritmÃ©tica conferida Ã 
-mÃ£o antes de aceitar o resultado.
-
-4 testes novos em `import.test.ts` (`auditFidelityPercent`): fidelidade
-total, perda parcial arredondada, nunca ultrapassa 100% mesmo com output
-maior que a origem, 100% quando nÃ£o hÃ¡ cÃ©lula de origem a preservar.
-
-`npx vitest run` (563 passou, 1 pulado â€” 4 testes novos), `npx tsc
---noEmit`, `npx eslint` nos 3 arquivos tocados (sÃ³ ruÃ­do de CRLF
-prÃ©-existente, confirmado com o contorno Prettier CRLF-safe), `npm run
-build` + `npm run performance:check`, `npx playwright test` (E2E
-completo) aprovados.
-
-## 99. ConfirmaÃ§Ã£o de cabeÃ§alho/intervalo/tipos obrigatÃ³ria antes de gerar o relatÃ³rio (backlog item 9, "modo de revisÃ£o prÃ©-importaÃ§Ã£o mais guiado")
-
-PrÃ³ximo item da lista de prioridades do usuÃ¡rio. **InvestigaÃ§Ã£o prÃ©via
-(subagente Explore) antes de desenhar qualquer coisa**: toda a
-infraestrutura de detecÃ§Ã£o/ajuste jÃ¡ existia â€” cabeÃ§alho detectado e
-mostrado (`review.tsx`), intervalo editÃ¡vel (`import-workbench.tsx`,
-campos "Primeira linha"/"Ãšltima linha"), tipos por coluna sempre
-visÃ­veis e editÃ¡veis (tabela "Coluna / Tipo e formato / Amostra"). O gap
-real nÃ£o era falta de recurso, era a confirmaÃ§Ã£o ser **opcional e
-condicional**: `needsConfirmation` sÃ³ ativava com confianÃ§a baixa
-(`confidence < 70`, `header.confidence < 0.7` ou mÃºltiplas regiÃµes);
-numa importaÃ§Ã£o "normal" o usuÃ¡rio podia clicar direto em "Gerar
-relatÃ³rio" sem nunca olhar cabeÃ§alho, intervalo ou tipos. Pior: se
-abrisse a Bancada de importaÃ§Ã£o, editasse "Primeira linha"/"Ãšltima
-linha" mas esquecesse de clicar "Aplicar seleÃ§Ã£o", a alteraÃ§Ã£o era
-descartada em silÃªncio â€” o botÃ£o final nÃ£o depende de `apply()` ter
-rodado, sÃ³ lÃª `active.rows`/`active.columns` do estado do sheet.
-
-**DecisÃ£o de produto explÃ­cita**: como isso muda o comportamento de toda
-importaÃ§Ã£o (nÃ£o Ã© bug, Ã© UX nova), perguntado ao usuÃ¡rio o formato antes
-de implementar â€” 3 opÃ§Ãµes apresentadas (1 checkbox sempre visÃ­vel, 3
-checks granulares, resumo sem bloqueio). Escolhido: **3 checks
-granulares**.
-
-**Implementado**: o checkbox Ãºnico genÃ©rico ("Confirmar leitura
-ambÃ­gua", sÃ³ aparecia com confianÃ§a baixa) foi substituÃ­do por 3
-checkboxes sempre visÃ­veis e independentes â€” CabeÃ§alho, Intervalo de
-linhas, Tipos das colunas â€” cada um com o valor atual ao vivo (linha do
-cabeÃ§alho + confianÃ§a; `selection.startRow`â€“`selection.endRow` de
-`rows.length`; contagem de colunas) e apontando onde corrigir na Bancada
-de importaÃ§Ã£o abaixo. Quando `needsConfirmation` ainda Ã© `true` (mesmos
-limiares de antes), o card do cabeÃ§alho ganha destaque Ã¢mbar e um aviso
-extra â€” a distinÃ§Ã£o de confianÃ§a baixa nÃ£o foi perdida, sÃ³ deixou de ser
-o Ãºnico gate. `disabled={!headerChecked || !rangeChecked ||
-!typesChecked}` no botÃ£o "Gerar relatÃ³rio"; estado reseta ao trocar de
-aba (`useEffect` em `p.activeIndex`, mesmo padrÃ£o das outras
-reinicializaÃ§Ãµes por aba nesta tela).
-
-**VerificaÃ§Ã£o em navegador real** com upload de CSV sintÃ©tico: botÃ£o
-desabilitado com 0/3 marcados, continua desabilitado com 2/3 (testado
-via estado real dos checkboxes, nÃ£o sÃ³ leitura visual), habilita sÃ³ com
-os 3 marcados, e o clique em "Gerar relatÃ³rio" avanÃ§a normalmente atÃ© o
-painel (`Oli.Qualidade, painel`), sem erro de console.
-
-**Efeito colateral encontrado e corrigido**: o teste E2E existente
-(`demo-dashboard.spec.ts`) clicava direto em "Gerar relatÃ³rio" depois do
-fluxo "Ver demonstraÃ§Ã£o" â€” que tambÃ©m passa pela revisÃ£o real, nÃ£o sÃ³
-pelo atalho de diagnÃ³stico. Ajustado para marcar os 3 checkboxes
-(`getByRole("checkbox", { name: ... })` por nome acessÃ­vel de cada
-label) antes do clique.
-
-`npx vitest run` (563 passou, 1 pulado â€” nenhum teste novo de lÃ³gica
-pura, Ã© um gate de UI coberto por E2E real), `npx tsc --noEmit`, `npx
-eslint` nos 2 arquivos tocados (Prettier reformatou `review.tsx` de
-verdade nesta seÃ§Ã£o â€” nÃ£o era sÃ³ ruÃ­do de CRLF desta vez, `--write`
-aplicado e reconferido), `npm run build` + `npm run
-performance:check`, `npx playwright test` (E2E completo, incluindo o
-ajuste acima) aprovados.
-
-## 100. UsuÃ¡rio trouxe 12 planilhas reais de calibraÃ§Ã£o/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formataÃ§Ã£o encontrados e corrigidos, um terceiro registrado
-
-Pedido do usuÃ¡rio: "tente usar essas planilhas pra fortalecer o corpus",
-anexando 12 arquivos reais do Windows Downloads (6 `.xlsx`, 3 `.xls`, 3
-`.xlsm`). Contexto imediato: a sessÃ£o tinha acabado de revisar a PR #147
-(corpus XLTX *derivado*, que deliberadamente nÃ£o conta pro gate nativo â€”
-ver `docs/WASM_CORPUS_SANITIZATION.md`), entÃ£o esta era a primeira leva
-de arquivo real desde entÃ£o visando o gate nativo de verdade.
-
-**Preparo**: os 12 arquivos copiados via PowerShell (nÃ£o Bash `cp`, por
-causa de acentos nos nomes originais) pra `test-fixtures/private/
-downloads-batch` com nomes ASCII simples, gitignorado. Os 3 `.xls`
-(formato binÃ¡rio OLE2 antigo) foram ignorados automaticamente pelo
-sanitizador â€” fora do escopo OOXML do Reading Engine v2, nÃ£o Ã© lacuna
-nova. `corpus:sanitize` processou os 9 restantes (6 `.xlsx` + 3 `.xlsm`)
-com salt gerado localmente (`crypto.randomBytes`, nunca commitado).
-
-**Achado 1 â€” falso positivo no validador** (corrigido, PR
-[#149](https://github.com/olive644/oliqualidade/pull/149)):
-`corpus:validate` (adicionado na PR #147) reprovou 6 dos 9 arquivos com
-"nome definido do usuÃ¡rio sobreviveu". InvestigaÃ§Ã£o: nÃ£o Ã© vazamento de
-privacidade â€” o sanitizador sempre zera `Workbook.Names`;
-`_xlnm._FilterDatabase` Ã© reconstruÃ­do pelo prÃ³prio SheetJS a partir do
-`!autofilter` da aba, sem nome de usuÃ¡rio nenhum. O bug era a regex do
-validador exigir aspas simples ao redor do nome da aba
-(`'SHEET_001'!...`), mas o SheetJS sÃ³ cita quando o identificador exige
-(espaÃ§os, caracteres especiais) â€” `SHEET_NNN` nunca exige, sai sem
-aspas. Nunca tinha sido exercitado com um arquivo real com autofiltro
-antes. Regex corrigida pra aspas opcionais; teste de regressÃ£o em
-`corpus-tools.test.ts` reproduz o cenÃ¡rio exato (aba com `!autofilter`).
-Depois da correÃ§Ã£o: `corpus:validate` aprovou os 9 arquivos, 62.653
-cÃ©lulas, paridade estrutural e privacidade confirmadas.
-
-**Mesclado no corpus real**: os 9 arquivos validados foram renumerados
-(`sanitized-007` a `sanitized-015`, continuando a sequÃªncia dos 6
-`.xlsx` jÃ¡ existentes) e mesclados em `test-fixtures/sanitized-real/
-manifest.local.json`. DistribuiÃ§Ã£o final: 12 `.xlsx` (gate jÃ¡ fechado
-desde antes, 6/5), **3 `.xlsm` reais e distintos â€” gate sai de 0/5 pra
-3/5**, ainda insuficiente pros 5 mÃ­nimos mas progresso real pela
-primeira vez nesse formato.
-
-**Achado 2 â€” bug real de paridade Rust/TypeScript, dois estÃ¡gios**
-(corrigido, PR
-[#150](https://github.com/olive644/oliqualidade/pull/150)):
-`npm run wasm:corpus` contra o corpus ampliado mostrou 6 dos 9 arquivos
-novos divergindo entre o leitor Rust/WASM e o TypeScript â€” nenhum
-arquivo do corpus antigo divergia, entÃ£o era garantidamente um sintoma
-novo, nÃ£o ruÃ­do prÃ©-existente. Isolado com um script de debug ad-hoc
-(`__debug-diverge.mjs`, temporÃ¡rio, nÃ£o commitado) que compara cÃ©lula a
-cÃ©lula os dois motores e imprime sÃ³ as diferenÃ§as.
-
-- *EstÃ¡gio 1*: `display_cell_value` (Rust) sÃ³ reconhecia 4 cÃ³digos de
-  formato fixo (`"0"`, `"0.00"`, `"0%"`, `"0.00%"`) â€” qualquer outra
-  contagem de decimais fixos (`"0.0"`, `"0.000"` etc., comuns em
-  planilhas de calibraÃ§Ã£o/mediÃ§Ã£o) caÃ­a em `format_general_number`
-  ("General", corta zeros Ã  direita) em vez de completar as casas
-  decimais do formato. O valor bruto (`rawValue`) sempre foi idÃªntico
-  nos dois motores â€” sÃ³ a string de exibiÃ§Ã£o divergia (ex.: `"406981"`
-  em vez de `"406981.0"`). `fixed_decimal_places` generaliza pra
-  qualquer quantidade de zeros depois do ponto, mantendo os 4 casos
-  antigos intactos.
-- *EstÃ¡gio 2* (achado sÃ³ depois de reverificar o corpus real com o
-  estÃ¡gio 1 jÃ¡ corrigido â€” ainda sobravam divergÃªncias menores): mesmo
-  com o formato certo identificado, `format!("{value:.decimals}")`
-  direto no `f64` exato diverge do Excel/SheetJS perto do meio do
-  Ãºltimo dÃ­gito. Exemplo real: `654055.45` Ã© armazenado como
-  `654055.44999999995343387127` em f64 (ruÃ­do binÃ¡rio inevitÃ¡vel, nÃ£o Ã©
-  bug de parsing) â€” formatar esse valor exato com 1 decimal arredonda
-  pra baixo (`654055.4`, round-half-to-even do IEEE 754 sobre o binÃ¡rio
-  verdadeiro), mas `654055.45 * 10 = 6540554.5` cai exato em f64 (sem
-  ruÃ­do), e arredondar esse valor escalado pra cima antes de desescalar
-  bate com o que o Excel e o SheetJS mostram (`654055.5`).
-  `format_fixed_decimals` replica o algoritmo de escalaâ†’arredondaâ†’
-  desescala do Excel/SheetJS em vez de formatar o valor exato direto.
-
-**Rebuild real do `.wasm`, nÃ£o sÃ³ do cÃ³digo Rust**: como
-`cargo build`/`wasm-pack` nÃ£o funcionam neste sandbox Windows (ver
-armadilha #4 do handoff), cada uma das duas correÃ§Ãµes precisou de
-`gh workflow run wasm-build.yml --ref <branch>` (build real no Ubuntu,
-`cargo test` de verdade â€” 15 testes unitÃ¡rios, incluindo os novos desta
-seÃ§Ã£o) seguido de `gh run download` do artefato e substituiÃ§Ã£o manual
-de `src/wasm/oli-ooxml-core/oli_ooxml_core_bg.wasm`. Sem esse passo, os
-testes JS (`wasm-shadow-corpus.test.ts`) continuariam rodando contra o
-binÃ¡rio antigo e nenhuma correÃ§Ã£o teria efeito observÃ¡vel fora dos
-testes unitÃ¡rios Rust isolados.
-
-**Resultado final verificado contra o corpus real** (nÃ£o sÃ³ testes
-unitÃ¡rios sintÃ©ticos): xlsx caiu de 3 pra 1 arquivo divergente (114 â†’ 32
-cÃ©lulas); xlsm sem mudanÃ§a (26 cÃ©lulas â€” causa raiz diferente, ver
-achado 3). `npm run wasm:corpus`, `npx vitest run` (566 passou, 1
-pulado), `npx tsc --noEmit`, `npm run build`, `npx playwright test`
-aprovados com o binÃ¡rio reconstruÃ­do.
-
-**Achado 3 â€” bug real de formato de data customizado, NÃƒO corrigido
-nesta sessÃ£o** (registrado pro usuÃ¡rio decidir prioridade): as
-divergÃªncias restantes (o 1 `.xlsx` que sobrou + os 3 `.xlsm` inteiros)
-sÃ£o todas a mesma causa raiz, diferente da anterior â€” cÃ³digo de formato
-de **data** customizado da cÃ©lula (`mm/yy`, `mmm-yy`, `dd/mm/yy` etc.)
-sendo ignorado pelo Rust, que sempre mostra ISO `AAAA-MM-DD` genÃ©rico
-independente do formato real da cÃ©lula (ex.: cÃ©lula formatada `mmm-yy`
-com valor real `2032-01-15` deveria mostrar `"Jan-32"`, Rust mostra
-`"2032-01-15"`). Mesmo padrÃ£o do achado 2 (valor bruto idÃªntico, sÃ³
-exibiÃ§Ã£o diverge), mas escopo bem maior â€” a lÃ³gica de data do Rust
-(`excel_date.rs`) sÃ³ cobre os formatos de data *builtin* do Excel (IDs
-14-22/45-47 em `builtin_number_format`), nÃ£o formatos de data
-*customizados* arbitrÃ¡rios registrados em `styles.xml`, que sÃ£o comuns
-em planilhas reais de cronograma/calibraÃ§Ã£o. NÃ£o investigado a fundo
-nem corrigido â€” acabou de ser descoberto ao final desta sessÃ£o, Ã© claramente
-um bug maior que os dois jÃ¡ corrigidos aqui, merece sessÃ£o prÃ³pria.
-
-`npx vitest run`, `npx tsc --noEmit`, `npm run build`, `npx playwright
-test` aprovados em todas as etapas intermediÃ¡rias e no estado final.
-
-## 101. Parser genÃ©rico de formato de data no leitor Rust (achado 3 da seÃ§Ã£o 100, backlog item 3b)
-
-UsuÃ¡rio pediu explicitamente pra corrigir o achado 3 registrado na
-seÃ§Ã£o anterior, depois de perguntar por que nÃ£o tinha sido corrigido
-junto â€” resposta: escopo bem maior que os dois bugs de decimal
-(generalizar uma regra simples vs. escrever um parser de verdade),
-risco de introduzir um bug novo se feito Ã s pressas no fim de uma
-sessÃ£o jÃ¡ longa. UsuÃ¡rio concordou em prosseguir numa etapa separada,
-depois de mesclar as duas PRs pendentes primeiro.
-
-**Causa raiz**: `format_excel_date` (`excel_date.rs`) era um `match`
-sobre ~15 strings de formato de data exatas e fixas (`"m/d/yy"`,
-`"mmm-yy"` etc.) â€” qualquer cÃ³digo fora dessa lista caÃ­a num fallback
-ISO genÃ©rico, mesmo quando havia um caso "core" equivalente jÃ¡
-suportado. Formatos reais das planilhas do usuÃ¡rio que expunham o bug:
-`"mm/yy"` (nem estava na tabela), `"d/m/yy"` (sem preenchimento de
-zero), e sobretudo formatos com prefixo de localidade/cor do Excel como
-`"[$-416]mmm\-yy;@"` â€” o prefixo `[$-416]` e a seÃ§Ã£o de texto `;@`
-impediam o match exato mesmo com `"mmm-yy"` central jÃ¡ presente na
-tabela.
-
-**Implementado**: um parser de verdade, nÃ£o mais entradas na tabela
-fixa (que sÃ³ empurraria o mesmo problema pro prÃ³ximo formato de
-localidade nÃ£o previsto):
-- `first_format_section` corta na primeira seÃ§Ã£o do cÃ³digo
-  (`;positivo;negativo;zero;texto`), ignorando `;` dentro de
-  aspas/colchetes.
-- `tokenize_date_format` separa o cÃ³digo em tokens de y/m/d/h/s
-  (contando repetiÃ§Ã£o de letra, ex. "mm" â†’ 2) e literais (aspas, escape
-  `\X`, separadores); descarta grupos `[...]` inteiros (localidade/cor/
-  condiÃ§Ã£o) e `_X`/`*X` (espaÃ§amento visual do Excel, sem efeito
-  textual).
-- `resolve_month_minute` resolve a ambiguidade clÃ¡ssica "m" mÃªs-vs-
-  minuto pela mesma regra do Excel: Ã© minuto sÃ³ quando o token
-  significativo mais prÃ³ximo antes Ã© hora, ou o mais prÃ³ximo depois Ã©
-  segundo; senÃ£o Ã© mÃªs.
-- `render_date_token` renderiza cada token: ano 2/4 dÃ­gitos, mÃªs
-  nÃºmero/zero-padded/abreviado/nome completo, dia idem + nome do dia da
-  semana via algoritmo de Sakamoto (`day_of_week`, independente do
-  serial Excel), hora 12/24h conforme presenÃ§a de am/pm, am/pm curto
-  ("A"/"P") vs. longo ("AM"/"PM").
-
-A tabela fixa original continua intacta com prioridade â€” o parser
-genÃ©rico sÃ³ roda no fallback, sem risco de regressÃ£o nos formatos jÃ¡
-testados.
-
-**VerificaÃ§Ã£o sem compilaÃ§Ã£o local**: o sandbox desta sessÃ£o nÃ£o linka
-nem `cargo check` (falha nos build scripts das dependÃªncias antes de
-alcanÃ§ar o crate â€” nÃ£o Ã© erro do cÃ³digo novo, testado isoladamente:
-falha idÃªntica rodando `cargo check` num crate vazio). Antes de
-commitar, revisÃ£o manual completa traÃ§ando Ã  mÃ£o cada um dos 6 testes
-novos contra a implementaÃ§Ã£o (tokens gerados, resoluÃ§Ã£o mÃªs/minuto,
-render final) â€” sÃ³ depois disso o cÃ³digo foi commitado e enviado pra
-CI. `cargo fmt --check` aprovado localmente.
-
-**Resultado real via `gh workflow run wasm-build.yml`** (Ubuntu, build
-+ `cargo test` de verdade): 21 testes unitÃ¡rios passando (15 â†’ 21, os 6
-novos desta seÃ§Ã£o), 0 falhas â€” confirma que a revisÃ£o manual bateu
-certo com o compilador de verdade. BinÃ¡rio `.wasm` reconstruÃ­do e
-reverificado contra o corpus real: **zero divergÃªncia em xlsx** (12
-fontes reais, gate 5/5 fechado, `eligible: true` pela primeira vez) e
-**zero divergÃªncia em xlsm** (3 fontes reais, ainda 3/5 sÃ³ por volume,
-nÃ£o mais por qualidade de leitura). Os 4 arquivos que divergiam na
-seÃ§Ã£o 100 (o `.xlsx` restante + os 3 `.xlsm`) foram todos corrigidos.
-
-**Elegibilidade tÃ©cnica nÃ£o Ã© promoÃ§Ã£o**: `eligible: true` no gate XLSX
-Ã© uma mÃ©trica calculada, nÃ£o uma aÃ§Ã£o â€” nÃ£o promove o Rust/WASM pra
-leitor primÃ¡rio fora de shadow mode sozinho. Isso continua sendo
-decisÃ£o de produto do usuÃ¡rio, registrada como pendÃªncia explÃ­cita
-(nÃ£o tomada nesta sessÃ£o).
-
-`npm run wasm:corpus`, `npx vitest run` (567 passou, 1 pulado), `npx
-tsc --noEmit`, `npm run build`, `npx playwright test` (E2E) aprovados
-com o binÃ¡rio reconstruÃ­do.
-
-## 102. Ctrl+P exporta o painel como PDF em vez de imprimir
-
-Pedido direto do usuÃ¡rio: "adicione ctrl+P no projeto, pra ter como
-imprimir". O app jÃ¡ tinha exportaÃ§Ã£o de PDF completa (`exportPdf` em
-`use-dashboard-export.ts`, paginada, com assinatura OliQualidade,
-tabelas completas em vez de sÃ³ o que estÃ¡ visÃ­vel na tela) via menu
-"Exportar" â€” o diÃ¡logo de impressÃ£o nativo do navegador seria
-estritamente pior nesse caso (imprime sÃ³ o viewport atual renderizado,
-sem paginaÃ§Ã£o real nem os dados completos da tabela detalhada).
-
-**Implementado**: `exportPdfRef` (mesmo padrÃ£o jÃ¡ usado por
-`undoRef`/`redoRef` em `routes/index.tsx`) mantÃ©m a versÃ£o mais recente
-de `exportPdf` acessÃ­vel dentro do listener de `keydown` com deps
-vazias (`useEffect(() => { exportPdfRef.current = () => void
-exportPdf(); })`, sem array de dependÃªncias, roda a cada render).
-Ctrl+P/âŒ˜P intercepta o atalho nativo do navegador (`e.preventDefault()`)
-e chama `exportPdfRef.current()`. Adicionado ao diÃ¡logo de atalhos
-(Ctrl+/) pra ficar descobrÃ­vel.
-
-**VerificaÃ§Ã£o em navegador real, incluindo um alarme falso
-investigado**: Ctrl+P disparado via `dispatchEvent` mostrou o menu
-"Exportar" preso em "Gerando PDFâ€¦" por mais de 30 segundos â€” parecia um
-bug novo. Isolado clicando o item de menu "PDF do painel" original
-(prÃ©-existente, sem nenhuma linha tocada nesta sessÃ£o) do mesmo jeito:
-mesmo travamento idÃªntico. Confirma que Ã© um comportamento prÃ©-existente
-de `html2canvas-pro` (provavelmente lento ou preso capturando este
-painel de demonstraÃ§Ã£o especificamente no navegador automatizado desta
-sessÃ£o, nÃ£o reproduzido nem investigado a fundo por estar fora do
-escopo do pedido) â€” nÃ£o uma regressÃ£o desta mudanÃ§a. `document.fonts
-.ready` (suspeito inicial) resolve normalmente, entÃ£o nÃ£o Ã© a causa.
-Ctrl+K (paleta de comandos) e Ctrl+/ (atalhos) testados depois,
-funcionando normalmente â€” sem regressÃ£o nos outros atalhos do mesmo
-listener.
-
-`npx vitest run` (567 passou, 1 pulado), `npx tsc --noEmit`, `npx
-eslint` nos 2 arquivos tocados (sÃ³ ruÃ­do de CRLF prÃ©-existente,
-confirmado com o contorno Prettier CRLF-safe), `npm run build` e `npx
-playwright test` (E2E) aprovados.
-
-## 103. Dependabot, CodeQL e gate de auditoria de dependÃªncias na CI
-
-PrÃ³ximo item da lista de seguranÃ§a de infraestrutura registrada no
-backlog (item 9 do SECOND_BRAIN): "rate limit distribuÃ­do, proteÃ§Ã£o na
-borda, npm audit+scan de segredos+Dependabot/Renovate+CodeQL na CI,
-polÃ­tica de dados de IA mais visÃ­vel, smoke test mais completo".
-Escolhidos os trÃªs itens mecÃ¢nicos sem decisÃ£o de produto pendente
-(rate limit distribuÃ­do exige escolher um provedor de infraestrutura â€”
-Redis/Upstash â€” fora do escopo sem essa decisÃ£o do usuÃ¡rio).
-
-**Implementado**:
-- `.github/dependabot.yml` â€” atualizaÃ§Ãµes semanais agrupadas
-  (minor/patch) pra `npm` (raiz), `cargo`
-  (`rust/oli-ooxml-core`) e `github-actions`.
-- `.github/workflows/codeql.yml` â€” anÃ¡lise CodeQL em push/PR pra
-  `main` + semanal (cron). SÃ³ `javascript-typescript` e `actions` â€”
-  Rust nÃ£o tem suporte oficial no CodeQL (lista de linguagens
-  suportadas na documentaÃ§Ã£o oficial nÃ£o inclui Rust).
-- Novo job `dependency-audit` em `application.yml` â€” `npm audit
-  --audit-level=high`, bloqueante de verdade (roda em toda PR e push
-  pra `main`, mesmo padrÃ£o dos outros jobs).
-
-**DecisÃ£o sobre o threshold**: `--audit-level=high`, nÃ£o `moderate`
-nem sem threshold. O projeto jÃ¡ tem 2 vulnerabilidades `moderate`
-prÃ©-existentes (pacote `uuid` via `exceljs`) descobertas ao rodar
-`npm audit` local antes de decidir o threshold â€” `exceljs` Ã©
-dependÃªncia direta e usada de verdade
-(`workbook-metadata.ts`/`workbook-verifier.ts`, parte do padrÃ£o de
-mÃºltiplos leitores pra verificaÃ§Ã£o cruzada), a correÃ§Ã£o exigiria
-`npm audit fix --force` com downgrade de major version (`exceljs@3.4.0`,
-mais antigo que o `4.4.0` atual) â€” nÃ£o Ã© algo pra forÃ§ar Ã s cegas numa
-sessÃ£o sobre CI, e bloquear a CI nisso sem correÃ§Ã£o disponÃ­vel de
-verdade sÃ³ geraria um checkbox vermelho permanente sem aÃ§Ã£o possÃ­vel
-(motivo jÃ¡ registrado antes na regra "nÃ£o reduza testes/critÃ©rios pra
-forÃ§ar verde" â€” aqui o oposto: nÃ£o crie um gate que nunca pode ficar
-verde de forma legÃ­tima). `high`/`critical` continuam bloqueando de
-verdade; `moderate`/`low` ficam de fora do gate automatizado,
-revisÃ¡veis com `npm audit` local sem `--audit-level` quando precisar
-do quadro completo.
-
-**Bug real pego antes de commitar**: a primeira tentativa de inserir o
-job `dependency-audit` no meio do arquivo, via `Edit`, apagou sem
-querer as duas linhas de cabeÃ§alho do job `security-smoke` jÃ¡ existente
-logo depois (`security-smoke:` + `name: ...`), deixando `runs-on`/
-`timeout-minutes` Ã³rfÃ£os sob o job novo â€” YAML sintaticamente invÃ¡lido,
-teria quebrado a CI inteira. Descoberto validando com `js-yaml`
-(`node -e "yaml.load(...)"`, listando as chaves de `jobs` esperadas)
-antes do commit, nÃ£o confiando sÃ³ em leitura visual do diff.
-
-`npm audit --audit-level=high` confirmado limpo localmente (exit 0, as
-2 vulnerabilidades prÃ©-existentes ficam abaixo do threshold). `npx
-vitest run` (567 passou, 1 pulado), `npx tsc --noEmit`, `npx prettier
---check` nos 3 arquivos (`.yml`) aprovados. NÃ£o Ã© possÃ­vel rodar
-CodeQL/Dependabot localmente â€” verificaÃ§Ã£o real fica pra quando a PR
-for aberta no GitHub.
-
-**Pendente, mesma seÃ§Ã£o do backlog do usuÃ¡rio, nÃ£o abandonado**: rate
-limit distribuÃ­do (Redis/Upstash), proteÃ§Ã£o na borda pro
-`/api/gemini/*`, polÃ­tica de dados de IA mais visÃ­vel por dashboard,
-smoke test cobrindo `Permissions-Policy`/`Cross-Origin-Opener-Policy`/
-cache/mÃ©todos inesperados. Scan de segredos (ex.: gitleaks/
-trufflehog na CI) tambÃ©m nÃ£o foi adicionado nesta seÃ§Ã£o â€” considerar
-como prÃ³ximo item da mesma frente.
-
-## 104. Scan de segredos: recurso nativo do GitHub habilitado (nÃ£o precisou de gitleaks/trufflehog na CI)
-
-PrÃ³ximo item natural da seÃ§Ã£o 103 (scan de segredos, deixado como
-pendÃªncia ali). Antes de adicionar `gitleaks`/`trufflehog` como
-workflow de CI (a soluÃ§Ã£o assumida na seÃ§Ã£o anterior), verificado via
-`gh api repos/olive644/oliqualidade` se o GitHub jÃ¡ oferecia algo
-nativo â€” descoberto que sim: **secret scanning e push protection sÃ£o
-gratuitos e automÃ¡ticos em repositÃ³rios pÃºblicos**, e o repositÃ³rio
-tinha acabado de virar pÃºblico (decisÃ£o do usuÃ¡rio, motivada pela
-necessidade de habilitar CodeQL na seÃ§Ã£o 103 â€” GitHub Advanced Security
-para repositÃ³rio privado nÃ£o existe em conta pessoal Free/Pro, sÃ³ em
-planos Enterprise).
-
-**Estado confirmado via API** (`security_and_analysis` do repositÃ³rio):
-`secret_scanning` e `secret_scanning_push_protection` jÃ¡ vinham
-`enabled` sozinhos ao tornar o repo pÃºblico â€” nada pra fazer no cÃ³digo.
-Achado de bÃ´nus, tambÃ©m via API: **Dependabot Alerts**
-(`vulnerability-alerts`, a base que gera os avisos de dependÃªncia
-vulnerÃ¡vel que a seÃ§Ã£o 103 assumia jÃ¡ vir junto do `dependabot.yml`, mas
-Ã© uma configuraÃ§Ã£o separada) estava **desabilitado**. Confirmado com o
-usuÃ¡rio antes de mudar (Ã© configuraÃ§Ã£o de conta/repositÃ³rio, categoria
-que exige permissÃ£o explÃ­cita) e habilitado via `gh api -X PUT
-repos/.../vulnerability-alerts` (204, sem corpo) + `gh api -X PATCH
-repos/... -f
-security_and_analysis[dependabot_security_updates][status]=enabled`
-(PRs automÃ¡ticos de correÃ§Ã£o quando uma dependÃªncia tem CVE conhecido â€”
-complementa o `dependabot.yml` da seÃ§Ã£o 103, que sÃ³ cobria atualizaÃ§Ã£o
-de rotina por cronograma, nÃ£o vulnerabilidade especÃ­fica).
-
-Nenhum cÃ³digo novo, nenhuma PR â€” mudanÃ§a de configuraÃ§Ã£o do
-repositÃ³rio via API, fora do escopo de `git`. Registrado aqui pra nÃ£o
-duplicar o achado numa sessÃ£o futura.
-
-**Pendente, mesma frente**: rate limit distribuÃ­do (Redis/Upstash),
-proteÃ§Ã£o na borda pro `/api/gemini/*`, polÃ­tica de dados de IA mais
-visÃ­vel por dashboard, smoke test cobrindo `Permissions-Policy`/
-`Cross-Origin-Opener-Policy`/cache/mÃ©todos inesperados.
-
-## 105. RevisÃ£o dos 14 PRs abertos pelo Dependabot: 5 de baixo risco mescladas, TypeScript 7 rejeitado por incompatibilidade real
-
-O Dependabot (habilitado na seÃ§Ã£o 103) abriu 14 PRs na primeira
-varredura: 4 bumps de GitHub Actions, 1 grupo minor/patch do npm (5
-pacotes) e 9 bumps de major version do npm. Pedido do usuÃ¡rio: revisar
-por ordem de risco, comeÃ§ando pelas de baixo risco.
-
-**Mescladas sem incidente** (Actions, sÃ³ infraestrutura de CI):
-`actions/checkout` 4â†’7, `actions/upload-artifact` 4â†’7,
-`github/codeql-action` 3â†’4, `actions/setup-node` 4â†’7.
-
-**Grupo minor/patch do npm** (`@hookform/resolvers`,
-`@tanstack/react-router`, `@tanstack/react-start`,
-`eslint-plugin-react-refresh`, mais um) â€” achado real antes de
-mesclar: o lockfile que o prÃ³prio Dependabot gerou para essa PR estava
-fora de sincronia (`lru-cache@11.5.2` faltando), `npm ci` falhava com
-"package.json e package-lock.json ... are in sync" â€” mesma armadilha jÃ¡
-documentada do projeto (resoluÃ§Ã£o de lockfile diverge entre npm local e
-CI). Corrigido rodando `npx npm@10 install` direto no branch da PR do
-Dependabot (`git checkout -b ... origin/dependabot/...`, instalar,
-commitar o lockfile regenerado, `git push` de volta pro branch remoto do
-Dependabot) â€” CI ficou verde depois, mesclada normalmente. Verificado
-localmente antes: `npm ci` limpo, `npx vitest run`, `npx tsc --noEmit`,
-`npm run build`, `npx playwright test` (E2E, relevante por envolver
-TanStack Router/Start) todos aprovados com as dependÃªncias novas.
-
-**TypeScript 5.9.3 â†’ 7.0.2, rejeitado** â€” pedido do usuÃ¡rio pra comeÃ§ar
-pelas majors por este. TS 7.0 Ã© a reescrita do compilador em Go da
-equipe TypeScript (a numeraÃ§Ã£o pula a 6.x, reservada pra uma release de
-transiÃ§Ã£o sÃ³ com avisos de depreciaÃ§Ã£o). Testado localmente (`git
-checkout` do branch do Dependabot + `npx npm@10 ci`): falha real de
-peer dependency, nÃ£o Ã© lockfile â€” `typescript-eslint@8.67.0` (versÃ£o
-atual do projeto) exige `typescript ">=4.8.4 <6.1.0"`, incompatÃ­vel com
-TS 7 por completo. NÃ£o forÃ§ado com `--legacy-peer-deps` (mascararia uma
-instalaÃ§Ã£o genuinamente quebrada). Comentado o achado na PR e pedido
-`@dependabot ignore this major version` â€” Dependabot fechou a PR
-sozinho, para de reabrir a mesma proposta atÃ© o ecossistema (pelo menos
-`typescript-eslint`) suportar TS 7 de verdade.
-
-**Ainda pendentes, nÃ£o revisadas nesta sessÃ£o**: `eslint` 9â†’10,
-`@eslint/js` 9â†’10, `globals` 15â†’17 (provÃ¡veis dependÃªncias entre si e
-com `typescript-eslint`, revisar juntos), `zod` 3â†’4 (mudanÃ§a de API
-conhecida, usado em vÃ¡rias validaÃ§Ãµes), `react-day-picker` 9â†’10,
-`lucide-react` 0.xâ†’1.x, `html2canvas-pro` 1.6â†’2.3, `@types/node` 22â†’26.
-
-## 106. RepositÃ³rio voltou a ser privado; CodeQL removido (dependÃªncia direta da decisÃ£o da seÃ§Ã£o 103)
-
-DecisÃ£o do usuÃ¡rio: reverter a visibilidade pÃºblica que tinha sido
-adotada sÃ³ pra viabilizar o CodeQL na seÃ§Ã£o 103. ConsequÃªncia tÃ©cnica
-avisada antes de agir: CodeQL/code scanning num repositÃ³rio privado
-nÃ£o existe em conta pessoal Free/Pro (sÃ³ Enterprise) â€” voltar a ficar
-privado faria o workflow `codeql.yml` voltar a falhar em toda PR, do
-mesmo jeito que a investigaÃ§Ã£o da seÃ§Ã£o 103 encontrou originalmente.
-
-Confirmado com o usuÃ¡rio qual dos trÃªs caminhos seguir (manter
-pÃºblico, deixar falhando, ou remover) antes de agir â€” mudanÃ§a de
-visibilidade de repositÃ³rio Ã© categoria que exige permissÃ£o explÃ­cita.
-Escolhido remover o workflow.
-
-**Feito**:
-- `gh api -X PATCH repos/olive644/oliqualidade -f private=true` â€”
-  repositÃ³rio privado de novo.
-- `.github/workflows/codeql.yml` removido (`git rm`) â€” nÃ£o faz sentido
-  manter um workflow que nunca vai conseguir ficar verde nesta conta.
-- `secret_scanning`/`secret_scanning_push_protection` voltam
-  automaticamente pra `disabled` (sÃ³ existem de graÃ§a em repo pÃºblico,
-  confirmado via API) â€” perda esperada, jÃ¡ avisada na seÃ§Ã£o 104 como
-  consequÃªncia implÃ­cita de qualquer reversÃ£o futura de visibilidade.
-  `dependabot_security_updates` continua `enabled` (nÃ£o depende de
-  visibilidade).
-
-Dependabot e o gate `dependency-audit` (`npm audit --audit-level=high`)
-continuam funcionando normalmente em repositÃ³rio privado â€” nenhum dos
-dois depende de GHAS.
-
-## 107. `html2canvas-pro` atualizado (1.6.7 â†’ 2.3.8) e animaÃ§Ã£o de entrada das barras de preenchimento
-
-UsuÃ¡rio pediu pra revisar sÃ³ o `html2canvas-pro` entre as majors
-pendentes da seÃ§Ã£o 105 â€” Ã© a lib usada no export de PDF/PNG do painel,
-Ãºnica com chance real de melhorar algo concreto (changelog tinha
-"Performance Improvements": cache LRU pra gradientes lineares, cache de
-parse de CSS). Testado localmente (`git checkout` do branch do
-Dependabot + `npx npm@10 ci`): mesma armadilha de lockfile fora de
-sincronia jÃ¡ vista duas vezes nesta sessÃ£o (`lru-cache` faltando),
-corrigida do mesmo jeito. `npx vitest run`, `npx tsc --noEmit`, `npm
-run build`, `npx playwright test` (E2E) aprovados com a versÃ£o nova.
-Mesclado sem mais investigaÃ§Ã£o â€” nÃ£o achado nada que quebrasse.
-
-**AnimaÃ§Ã£o de entrada das barras de preenchimento** â€” pedido separado
-do usuÃ¡rio: replicar as animaÃ§Ãµes de um componente de exemplo (cards
-"bento" com `framer-motion`, spring physics, hover pop) nos widgets que
-fizessem sentido, mantendo o design atual do site. InvestigaÃ§Ã£o prÃ©via
-importante: a maior parte da infraestrutura de animaÃ§Ã£o **jÃ¡ existia**
-e jÃ¡ era bem desenhada â€” `@keyframes oliam-in` (fade + leve subida) com
-`animationDelay` jÃ¡ fiado widget a widget desde `routes/index.tsx`
-(`Math.min(i, 8) * 40`) atravÃ©s de `widget-card.tsx` atÃ© cada
-`*-widget-body.tsx`, hover com elevaÃ§Ã£o e sombra, e respeito a
-`prefers-reduced-motion` jÃ¡ implementado. O grÃ¡fico de barras do
-Recharts tem a animaÃ§Ã£o de entrada **deliberadamente** desligada
-(`isAnimationActive={false}`, com comentÃ¡rio explicando um bug real de
-flicker no eixo Y a cada hover, jÃ¡ corrigido em sessÃ£o anterior) â€” nÃ£o
-mexido, por respeito Ã  correÃ§Ã£o jÃ¡ documentada.
-
-O que faltava de verdade: as 3 barras de preenchimento por porcentagem
-do app (`ranking-widget-body.tsx`, `rating-widget-body.tsx`,
-`insight-sidebar.tsx`, todas reaproveitando `.oliam-ranking-fill`) jÃ¡
-tinham uma `transition` de `width` bem calibrada, mas ela sÃ³ dispara
-quando o dado *muda depois* â€” a largura nasce direto no valor final no
-primeiro render (setada via inline style), entÃ£o nunca "cresce" na
-entrada visÃ­vel, mesmo com a transition pronta.
-
-Adicionado `@keyframes oliam-fill-in` (`scaleX` 0â†’1,
-`transform-origin: left` â€” mais barato que animar `width` de verdade,
-roda sÃ³ no compositor) como `animation` na prÃ³pria `.oliam-ranking-fill`,
-com atraso escalonado por Ã­ndice nas listas (`150 + min(i,10)*45`ms em
-`ranking-widget-body.tsx`/`insight-sidebar.tsx`) e atraso fixo de 150ms
-na avaliaÃ§Ã£o (barra Ãºnica). O atraso garante que a barra sÃ³ comeÃ§a a
-crescer depois que o card do widget termina de entrar, nÃ£o simultÃ¢neo.
-`prefers-reduced-motion` desliga a animaÃ§Ã£o nova junto com a existente.
-Sem `framer-motion` nem nenhuma dependÃªncia nova â€” zero custo de
-bundle, mesma filosofia de animaÃ§Ã£o CSS-only jÃ¡ usada em todo o app.
-
-**VerificaÃ§Ã£o em navegador real com um alarme falso investigado**: a
-barra pareceu travada em `scaleX(0)` por vÃ¡rios segundos ao checar via
-`getAnimations()` â€” `playState: "running"` mas `currentTime: 0`
-congelado. Isolado como limitaÃ§Ã£o do ambiente de teste, nÃ£o bug: o
-Browser pane nÃ£o estava em primeiro plano ("the Browser pane is not
-displayed" no erro do `screenshot`), e o Chrome desacelera/pausa o
-avanÃ§o de tempo de animaÃ§Ãµes CSS em abas em segundo plano â€” mesma
-classe de limitaÃ§Ã£o jÃ¡ encontrada com o hang do `html2canvas` numa
-sessÃ£o anterior. Confirmado forÃ§ando `anim.finish()` via JS: a barra
-chega exatamente no valor final correto (417,66px = 100% do container).
-
-`npx vitest run` (567 passou, 1 pulado), `npx tsc --noEmit`, `npx
-eslint` nos 4 arquivos tocados (sÃ³ ruÃ­do de CRLF prÃ©-existente), `npm
-run build` (zero mudanÃ§a no orÃ§amento de bundle) aprovados.
-
-## 108. DiagnÃ³stico de importaÃ§Ã£o baixÃ¡vel e "Tentar modo de compatibilidade" na revisÃ£o (item da lista de melhorias do leitor trazida pelo usuÃ¡rio)
-
-UsuÃ¡rio trouxe uma lista grande de melhorias pro leitor/revisÃ£o de
-importaÃ§Ã£o (progresso por estÃ¡gio, comparaÃ§Ã£o visual, perfis
-reutilizÃ¡veis, modo de compatibilidade, diagnÃ³stico baixÃ¡vel,
-remapeamento de cores/tabelas/validaÃ§Ãµes/pivot, seguranÃ§a de borda,
-divisÃ£o de `import.ts`/`styles.css`). Escolhido comeÃ§ar pelos dois
-itens mais auto-contidos, ambos na tela de revisÃ£o (`review.tsx`), sem
-infraestrutura nova.
-
-**Achado prÃ©vio importante, antes de implementar qualquer coisa**:
-investigaÃ§Ã£o encontrou que "Regras de importaÃ§Ã£o reutilizÃ¡veis por
-modelo de planilha" â€” item que o `SECOND_BRAIN.md` listava como
-pendente no backlog (seÃ§Ã£o 9) â€” **jÃ¡ estava implementado e em uso**
-desde PRs antigas (#16, #21, #37): `ImportProfile`/`saveImportProfile`/
-`matchingImportProfile`/`adaptImportProfile`
-(`src/lib/import-workbench.ts`), com UI completa em `review.tsx`
-(botÃ£o "Salvar perfil", aviso de reaplicaÃ§Ã£o/adaptaÃ§Ã£o automÃ¡tica ao
-reabrir uma planilha do mesmo modelo). O backlog estava desatualizado
-nesse item â€” corrigido junto com esta sessÃ£o, sem reimplementar nada.
-
-**DiagnÃ³stico baixÃ¡vel**: `importDiagnosticsExportPayload`
-(`src/lib/review-export.ts`) monta `{ generatedAt, file, sheet,
-fidelityPercent, audit, diagnostics }` a partir do que `sheetToRows`/
-`diagnoseImportedSheet` jÃ¡ calculam â€” nenhum dado novo computado. Ãšnico
-cuidado: `images[].dataUrl` (base64 da imagem embutida,
-`workbook-metadata.ts`) Ã© removido antes do download, porque infla o
-arquivo sem ajudar a diagnosticar um problema de importaÃ§Ã£o; o resto do
-inventÃ¡rio (`name`/`anchor`/`format`) Ã© preservado. BotÃ£o "Baixar
-diagnÃ³stico" no cabeÃ§alho do painel "RelatÃ³rio de fidelidade da
-importaÃ§Ã£o" jÃ¡ existente (`review.tsx`, seÃ§Ã£o 98), com
-`preventDefault`/`stopPropagation` pra nÃ£o togglear o `<details>` ao
-clicar. Reaproveita o mesmo padrÃ£o Blob+`<a download>` jÃ¡ usado (sem
-helper compartilhado) em `use-dashboard-export.ts`/
-`exception-panel-widget-body.tsx`.
-
-**"Tentar modo de compatibilidade"**: atÃ© agora, quando a confianÃ§a de
-cabeÃ§alho/regiÃ£o Ã© baixa (`needsConfirmation`), sÃ³ existiam dois
-caminhos â€” a IA sugerir algo automaticamente (sÃ³ cobre alguns casos) ou,
-se houvesse mÃºltiplas regiÃµes detectadas, "Usar esta regiÃ£o" por
-regiÃ£o (`review.tsx`, botÃ£o jÃ¡ existente). NÃ£o existia nenhum fallback
-pro caso mais simples: "nÃ£o confio em nada disso, Ã© sÃ³ uma tabela
-plana". `compatibilityModeSelection` (`src/lib/import-workbench.ts`) Ã©
-puramente estrutural â€” acha a primeira linha da grade original
-(`SourceGrid`) com qualquer dado, usa como cabeÃ§alho, e todo o resto da
-grade como dado, sem nenhuma tentativa de pular tÃ­tulos mesclados ou
-adivinhar semÃ¢ntica (documentado no prÃ³prio comentÃ¡rio da funÃ§Ã£o: Ã©
-"burro" de propÃ³sito, Ã© o Ãºltimo recurso). Monta o mesmo formato de
-`ImportSelection`/`SourceSelection` que o botÃ£o "Usar esta regiÃ£o" jÃ¡
-monta manualmente â€” populando `setSelection`, sem aplicar sozinho; o
-usuÃ¡rio revisa na Bancada de importaÃ§Ã£o (que jÃ¡ muda pra modo "Selecionar
-na grade original" automaticamente) e clica "Aplicar seleÃ§Ã£o" como
-sempre. Zero estado novo, zero infraestrutura nova.
-
-Painel novo em `review.tsx`, visÃ­vel quando `needsConfirmation &&
-active?.sourceGrid`, logo apÃ³s o painel de warnings existente.
-
-Verificado ao vivo com dois workbooks sintÃ©ticos: um com regiÃµes
-totalmente separadas por coluna vazia (auto-split do `import.ts` jÃ¡
-resolve isso sozinho, painel de compatibilidade nÃ£o aparece â€” confirma
-que o gate `needsConfirmation` estÃ¡ correto) e outro com linhas de
-contagem de coluna irregular sem nenhuma linha claramente textual
-(cabeÃ§alho detectado a 48% de confianÃ§a) â€” painel aparece, clique
-troca a Bancada pra "Selecionar na grade original" com cabeÃ§alho na
-linha 1 e dados nas linhas seguintes, exatamente como
-`compatibilityModeSelection` calcula; "Aplicar seleÃ§Ã£o" depois disso
-nÃ£o quebra nada. DiagnÃ³stico baixÃ¡vel verificado interceptando
-`URL.createObjectURL` no navegador real: JSON de 5,5 KB, sem `base64`
-no conteÃºdo, com os campos esperados.
-
-`npx vitest run` (572 passou, 1 pulado â€” 5 testes novos), `npx tsc
---noEmit`, `npx eslint` nos 5 arquivos tocados (CRLF normalizado antes,
-armadilha conhecida), `npm run build` + `npm run performance:check`
-(zero regressÃ£o de orÃ§amento) aprovados.
-
-## 109. RevisÃ£o de mais PRs do Dependabot: zod 4 e react-day-picker 10 mescladas, grupo eslint 10 fechado por regressÃ£o real de performance (nÃ£o incompatibilidade)
-
-ContinuaÃ§Ã£o da seÃ§Ã£o 105/107. `zod` (3â†’4, PR #163) e `react-day-picker`
-(9â†’10, PR #160) mescladas depois de confirmar que nenhum dos dois Ã©
-usado de fato no cÃ³digo-fonte (`zod` Ã© dependÃªncia direta Ã³rfÃ£ â€” sÃ³
-usado transitivamente por `@hookform/resolvers`/TanStack internamente;
-`react-day-picker`/`Calendar` Ã© scaffolding do shadcn/ui nunca
-importado por nenhuma rota) â€” risco de regressÃ£o essencialmente zero,
-mas testado da mesma forma rigorosa mesmo assim. Achado real na PR do
-`react-day-picker`: a v10 renomeou a chave `table` do `UI` enum pra
-`month_grid` â€” `tsc` pegou o erro de tipo em `calendar.tsx`, corrigido
-como parte do merge (migraÃ§Ã£o real, nÃ£o gambiarra). Ambas as PRs
-tiveram o mesmo problema recorrente de lockfile fora de sincronia
-gerado pelo Dependabot (`lru-cache`, quarta vez nesta sessÃ£o),
-corrigido do mesmo jeito de sempre.
-
-`lucide-react` (0.xâ†’1.x, PR #167) tambÃ©m mesclada â€” sÃ³ Ã­cones
-adicionados entre 0.575 e 1.31, nenhuma mudanÃ§a de API que afetasse o
-projeto (imports nomeados continuam resolvendo). Lockfile tambÃ©m
-precisou da mesma correÃ§Ã£o.
-
-`@types/node` (22â†’26, PR #164): confirmado de novo (CI roda
-`node-version: 22` explÃ­cito em todos os jobs de
-`.github/workflows/application.yml`; produÃ§Ã£o Vercel usa
-`nodejs24.x`) que a versÃ£o 26 fica Ã  frente dos dois ambientes reais â€”
-comentado e deixado aberto, sem `ignore` (nÃ£o Ã© rejeiÃ§Ã£o permanente).
-
-**Grupo eslint (eslint 10.8.1 + @eslint/js 10.0.1 + globals 17.11.0,
-PRs #162/#166/#161)**: achado em duas etapas.
-
-1. Primeira tentativa de merge das trÃªs juntas: `npm ci` falha com
-   ERESOLVE real â€” `eslint-plugin-react-hooks@5.2.0` (versÃ£o atual do
-   projeto) sÃ³ declara suporte a `eslint` atÃ© `^9.0.0` como peer.
-   Comentado nas trÃªs PRs, deixadas abertas (bloqueio resolÃºvel, ao
-   contrÃ¡rio do caso do TypeScript 7 na seÃ§Ã£o 105).
-2. InvestigaÃ§Ã£o de desbloqueio: `eslint-plugin-react-hooks@7.1.1` jÃ¡
-   declara suporte a `eslint ^10.0.0` â€” instala sem conflito. Mas o
-   lint completo do repo (`eslint .`), que roda em **19,8s** na `main`
-   original (medido numa `git worktree` separada, como linha de base),
-   passou de **10 minutos sem terminar** com o combo eslint 10 +
-   react-hooks 7.1.1 â€” confirmado que nÃ£o era travamento (processo
-   `node` com CPU ativa ~100% de um core o tempo inteiro, nÃ£o
-   deadlock/CPU zerada) via `Get-Process` no PowerShell. Isolado por
-   diretÃ³rio (`src/lib/`, `src/components/oliam/`,
-   `src/routes/index.tsx` individualmente â€” todos rÃ¡pidos, 14-90s) nÃ£o
-   reproduziu o problema; sÃ³ o `eslint .` do repo inteiro junto trava
-   lento. Suspeita: as regras de anÃ¡lise "React Compiler" que o
-   `eslint-plugin-react-hooks` passou a incluir por padrÃ£o a partir da
-   v6 fazem inferÃªncia mais pesada (possivelmente com custo nÃ£o-linear
-   no tamanho do projeto) que a v5 nunca teve.
-
-DecisÃ£o: **as trÃªs PRs do grupo eslint foram fechadas** (nÃ£o mescladas,
-nÃ£o sÃ³ um `@dependabot ignore`) â€” um lint de 10+ minutos inviabilizaria
-a CI. Diferente da rejeiÃ§Ã£o do TypeScript 7 (incompatibilidade
-estrutural permanente), aqui a combinaÃ§Ã£o tecnicamente instala e
-funciona, sÃ³ Ã© lenta demais pra usar. Revisitar se o
-`eslint-plugin-react-hooks` lanÃ§ar uma versÃ£o que resolva essa
-lentidÃ£o, ou se surgir uma forma de manter as regras de hooks
-essenciais sem herdar as novas regras pesadas do `recommended`.
-
-`npx vitest run`, `npx tsc --noEmit`, `npm run build` +
-`npm run performance:check` aprovados nas duas PRs mescladas (zod,
-react-day-picker) antes do merge; `lucide-react` tambÃ©m passou pela
-mesma bateria antes do merge.
-
-## 110. CorreÃ§Ã£o do tooltip da barra, pop de hover em barra/pizza, glow no ranking, e novo widget "Radar"
-
-UsuÃ¡rio colou o cÃ³digo de um componente de exemplo ("Bento Dashboard",
-framer-motion, visual brutalista) e pediu trÃªs coisas, decididas por
-perguntas de esclarecimento antes de implementar: (1) levar o
-*espÃ­rito* de animaÃ§Ã£o/hover do exemplo pros widgets de ranking/barra/
-pizza jÃ¡ existentes, sem adotar framer-motion nem o visual brutalista
-(mesma decisÃ£o da seÃ§Ã£o 107); (2) corrigir o tooltip do grÃ¡fico de
-barras, que aparecia em qualquer ponto da coluna da categoria, nÃ£o sÃ³
-sobre a barra; (3) adicionar o grÃ¡fico "radar/stats" do exemplo como
-tipo de widget de verdade, com dados reais, do tamanho da pizza.
-
-**Tooltip da barra**: causa raiz confirmada lendo
-`node_modules/recharts/es6/cartesian/Bar.js` â€” o `<Tooltip cursor={...}>`
-do Recharts rastreia a posiÃ§Ã£o X do mouse e ativa pra toda a faixa da
-categoria (eixo), independente da altura real da barra. Em paralelo jÃ¡
-existia `activeBarIndex`, setado via `onMouseEnter`/`onMouseLeave` do
-prÃ³prio `<Bar>` â€” que o Recharts dispara por barra real renderizada
-(handler recebe `(data, index, event)`, mecanismo mais preciso).
-CorreÃ§Ã£o: `cursor={false}` (remove o retÃ¢ngulo de fundo que pintava a
-coluna inteira) + `content` do `<ChartTooltip>` agora sÃ³ renderiza
-`<BarTooltip>` quando `activeBarIndex !== null`. Nenhuma mudanÃ§a em
-`data`/`barSeries`/`isAnimationActive` â€” risco zero de reintroduzir o
-bug de flicker do eixo Y (seÃ§Ã£o 48). Verificado ao vivo despachando
-eventos de mouse sintÃ©ticos direto no elemento da barra (nÃ£o no
-`elementFromPoint` de uma coordenada, que aqui nÃ£o atravessa o SVG por
-alguma peculiaridade de layout nÃ£o investigada): sobre a barra, o
-tooltip mostra "Quarta R$ 8,00 linha 3 do Excel â†“ 92%"; no espaÃ§o vazio
-da mesma coluna (acima da barra curta), o `content` retorna vazio.
-
-**Pop de hover em barra e pizza**: barra ganhou `stroke`/`strokeWidth`
-condicionais no `<Cell>` jÃ¡ existente (mesmo padrÃ£o do `<Cell>` da
-pizza). Pizza ganhou `activeShape` nativo do Recharts (`<Sector>` com
-`outerRadius` +6 na fatia ativa) â€” sem estado novo, reaproveita
-`displayedPieIndex` que jÃ¡ existia. Verificado ao vivo: raio do setor
-sob o mouse foi de 71.06 pra 77.06 (o +6 esperado) ao despachar eventos
-de mouse no elemento real.
-
-**Glow de hover no ranking/avaliaÃ§Ã£o/sidebar**: `.oliam-ranking-fill`
-(reaproveitada pelos 3 lugares desde a seÃ§Ã£o 107) ganhou
-`filter: brightness(1.12)` + halo (`box-shadow`) no `:hover`, sem mexer
-em altura/`transform: scale` â€” a track tem `overflow: hidden` e altura
-fixa (7px), cresceria cortada. Desligado tambÃ©m em
-`prefers-reduced-motion: reduce`, mesmo padrÃ£o jÃ¡ usado no arquivo.
-**NÃ£o verificado interativamente**: `:hover` Ã© estado nativo do
-navegador, nÃ£o disparÃ¡vel por evento de mouse sintÃ©tico (diferente do
-`onMouseEnter` do React, que responde a qualquer `MouseEvent`
-despachado) â€” e este sandbox nÃ£o consegue tirar screenshot/mover o
-mouse de verdade (pane nÃ£o compÃµe frames em segundo plano, mesma
-limitaÃ§Ã£o jÃ¡ documentada pra RAF/screenshot). Confirmado apenas que a
-regra CSS compilou corretamente no stylesheet servido (`brightness(1.12)`
-presente) e que a sintaxe Ã© idÃªntica ao `.oliam-ranking-row:hover` jÃ¡
-comprovado funcionando.
-
-**Novo widget "Radar"**: mesma semÃ¢ntica do ranking (`groupKey`
-categÃ³rica + `valueKey` numÃ©rica + `op`, Top `topN` como eixos, padrÃ£o
-5), reaproveitando `chartSeries` diretamente â€” nenhuma agregaÃ§Ã£o nova.
-RenderizaÃ§Ã£o 100% Recharts nativo (`RadarChart`/`PolarGrid`/
-`PolarAngleAxis`/`PolarRadiusAxis`/`Radar`), cores via variÃ¡veis CSS jÃ¡
-usadas em outros grÃ¡ficos. Arquivo prÃ³prio
-`src/components/oliam/radar-widget-body.tsx` (nÃ£o amontoado em
-`chart-widget-body.tsx`, que jÃ¡ Ã© grande e sÃ³ agrupa bar/pie/line/area
-por compartilharem estado â€” radar nÃ£o compartilha nada com eles).
-Registrado nos 6 pontos do checklist da seÃ§Ã£o 47: `types.ts` (uniÃ£o +
-`widgetTypeLabels`), `widget-support.tsx`
-(`widgetTypeDescriptions`+`WidgetPickerIcon`, Ã­cone `Radar` do
-lucide-react), `widgets.ts` (`defaultSpan`/`defaultSize` na mesma
-condiÃ§Ã£o de `"pie"` + branch de `createWidget`), `widget-card.tsx`
-(dispatcher), `routes/index.tsx` (`canAdd`, mesma condiÃ§Ã£o de `pie`).
-Mesma decisÃ£o da seÃ§Ã£o 47: **nÃ£o** entra na recomendaÃ§Ã£o automÃ¡tica
-(`auto-dashboard.ts` nÃ£o foi tocado), sÃ³ aparece no seletor manual
-"Adicionar widget".
-
-Verificado ao vivo (dados colados, categoria "Quarta" com valor bem
-menor que as outras pra forÃ§ar uma barra curta): o item do seletor
-"Widget" precisou do mesmo contorno jÃ¡ documentado pra `DropdownMenu`
-do Radix (`.click()` sintÃ©tico nÃ£o abre o menu; sequÃªncia
-`pointerdown`/`pointerup`/`click` despachada via `dispatchEvent`, sim)
-â€” "GrÃ¡fico radar" aparece na lista, widget criado com tÃ­tulo "Radar Â·
-Soma de Valor por Categoria" (dados reais), classe
-`lg:col-span-1 min-h-80` (idÃªntica Ã  da pizza), eixos mostrando as 5
-maiores categorias corretas, polÃ­gono do radar renderizado. Zero erro
-no console.
-
-`npx vitest run` (572 passou, 1 pulado â€” mesma contagem, nenhuma
-funÃ§Ã£o pura nova), `npx tsc --noEmit`, `npx eslint` nos 7 arquivos
-tocados (sÃ³ avisos prÃ©-existentes de `react-refresh/only-export-components`,
-nÃ£o relacionados), `npm run build` + `npm run performance:check`
-(recharts-vendor subiu de ~407 pra ~418 KiB pelo `RadarChart` novo,
-orÃ§amento continua aprovado) aprovados.
-
-## 111. Bug real reportado pelo usuÃ¡rio: eixos duplicados no widget Radar (herdou modo "linha a linha" do padrÃ£o de ranking/barra)
-
-UsuÃ¡rio reportou (com screenshot) que um widget Radar recÃ©m-criado
-mostrava eixos repetidos ("ManhÃ£" 3x, "Tarde" 2x, "Noite" 3x") e nenhum
-polÃ­gono visÃ­vel â€” agrupando por "Turno" (sÃ³ 3 valores possÃ­veis) e
-agregando "Amostras".
-
-**Causa raiz**: `dataMode` em `radar-widget-body.tsx` foi copiado
-verbatim do padrÃ£o de `ranking-widget-body.tsx` (seÃ§Ã£o 110):
-`w.dataMode ?? (op === "count" ? "aggregate" : "raw")`. Pra
-ranking/barra, modo "linha a linha" (raw) faz sentido â€” cada linha vira
-uma marca prÃ³pria, mesmo repetindo o nome da categoria. Pra radar,
-nÃ£o: o eixo do polÃ­gono Ã© posicional (`PolarAngleAxis`), uma posiÃ§Ã£o
-por categoria â€” em modo raw, cada LINHA da planilha virava um eixo
-separado, e linhas com o mesmo valor de categoria (o caso normal, jÃ¡
-que "Turno" sÃ³ tem 3 valores possÃ­veis pra vÃ¡rias linhas) geravam eixos
-com o mesmo rÃ³tulo em posiÃ§Ãµes diferentes do cÃ­rculo, sem nenhum
-agregado real â€” o polÃ­gono resultante era degenerado/sem sentido.
-
-**CorreÃ§Ã£o**: radar agora sempre usa `dataMode: "aggregate"`
-(constante, ignora `w.dataMode`) â€” nunca oferece nem herda modo raw.
-Removido tambÃ©m `allowRaw`/`onRaw` do `CalculationButton` do radar (a
-opÃ§Ã£o de trocar pra "linha a linha" nem aparece mais na UI). Widgets
-radar jÃ¡ salvos com `dataMode: "raw"` de sessÃµes anteriores se
-autocorrigem no prÃ³ximo render, sem precisar de migraÃ§Ã£o â€” o campo Ã©
-simplesmente ignorado agora.
-
-Verificado ao vivo reproduzindo o cenÃ¡rio exato do usuÃ¡rio (Turno com
-valores repetidos + Amostras numÃ©rica): eixos agora mostram
-`["Tarde", "Manha", "Noite"]` (Ãºnicos), polÃ­gono renderiza com valores
-reais (`Radar Â· MÃ©dia de Amostras por Turno`, operaÃ§Ã£o "mÃ©dia"
-auto-escolhida). `npx vitest run` (572 passou, 1 pulado), `npx tsc
---noEmit`, `npx eslint` no arquivo tocado aprovados.
-
-## 112. TrÃªs achados reais no widget Radar: mÃ©trica padrÃ£o sem sentido, opÃ§Ã£o de "Eixos" sem efeito, e falta de hover/mÃ©tricas como pizza/barra
-
-UsuÃ¡rio testou o widget Radar (seÃ§Ã£o 110/111) com dados reais e trouxe
-trÃªs problemas concretos, um por vez, cada um com achado real por trÃ¡s
-(nenhum era "o seletor nÃ£o funciona" â€” a suspeita inicial da seÃ§Ã£o 110
-foi descartada por teste ao vivo: `<select>` sempre respondeu
-corretamente a mudanÃ§a real de valor).
-
-**1. MÃ©trica padrÃ£o sem sentido ao criar o widget** â€” um Radar novo
-agrupando "Turno" nascia contando "Conformidade" (`Registros por
-Turno`), mesmo existindo uma coluna genuinamente somÃ¡vel
-("Amostras"). Causa real: `createWidget` (`widgets.ts`) escolhia
-`nums[0]` (primeira coluna numÃ©rica por posiÃ§Ã£o) sem considerar se ela
-sobrevive como mÃ©trica agregÃ¡vel â€” a degradaÃ§Ã£o pra "contagem"
-acontecia de verdade, mas sÃ³ no *render* (`semanticAggregationOps` usa
-o perfil semÃ¢ntico da coluna, ex. `aggregable: false` pra uma coluna
-tipo "taxa/score" mesmo com `kind: "number"`), porque `createWidget`
-nunca recebia esse perfil. Corrigido threading `semanticProfiles`
-atravÃ©s de `createWidget` (novo 5Âº parÃ¢metro opcional,
-`sheet.intelligence?.columns` no Ãºnico call site que importa,
-`use-widget-actions.ts`) â€” radar agora prefere a primeira coluna
-numÃ©rica que sobrevive como soma/mÃ©dia de verdade, caindo no padrÃ£o
-antigo (`nums[0]`) sÃ³ se nenhuma qualificar. Teste novo em
-`widgets.test.ts` reproduz o cenÃ¡rio exato (coluna "Conformidade" com
-`aggregable: false`, "Amostras" saudÃ¡vel) â€” antes do fix falhava
-(escolhia Conformidade), depois passa.
-
-**2. OpÃ§Ã£o "Eixos: 8" sem nenhum efeito visÃ­vel** â€” com sÃ³ 3 categorias
-possÃ­veis na coluna de agrupamento, qualquer valor de "Eixos" â‰¥3
-desenha o mesmo triÃ¢ngulo, mas a lista fixa `[3, 5, 8]` sempre
-oferecia as trÃªs opÃ§Ãµes, parecendo um seletor quebrado. Corrigido:
-`axisOptions` agora filtra a lista fixa mantendo sÃ³ valores cujo
-resultado *efetivo* (`Math.min(n, categoriasDisponÃ­veis)`) Ã© diferente
-do valor anterior â€” com 3 categorias, sÃ³ "3" aparece; com, digamos, 4,
-"3" e "5" aparecem (a segunda jÃ¡ mostra tudo) mas "8" some, porque
-teria o mesmo efeito de "5".
-
-**3. Sem hover/zoom/mÃ©tricas como pizza e barra** â€” pedido explÃ­cito do
-usuÃ¡rio: "quero que as pontas do radar deem um leve zoom e mostrem os
-dados, igual a pizza". Pizza/barra jÃ¡ tinham esse padrÃ£o
-(`activeShape`/`Cell` com opacidade + `SeriesComparisonPanel` com
-`pieComparisonFor`, ambos genÃ©ricos sobre `{name, total}[]` desde a
-seÃ§Ã£o 43) â€” radar reaproveita os dois sem nenhuma lÃ³gica nova: `dot`
-customizado no `<Radar>` (cada ponta Ã© um `<circle>` com
-`onMouseEnter`/`onMouseLeave` prÃ³prios, `r` de 4â†’7 no hover, mesma
-transiÃ§Ã£o cubic-bezier jÃ¡ usada em outros lugares) e
-`SeriesComparisonPanel` abaixo do grÃ¡fico, usando `pieComparisonFor`
-sobre `axes`. O `onClick` antigo do `RadarChart` (baseado em
-`state.activeLabel`, rastreamento por eixo â€” mesmo padrÃ£o problemÃ¡tico
-da seÃ§Ã£o 110 pro tooltip da barra) foi removido: o clique agora vive
-no prÃ³prio `<circle>` de cada ponta, preciso por forma real, e
-manter os dois juntos causaria duplo toggle (filtro ligado pelo
-`<circle>`, desligado de novo pelo `onClick` do chart, cancelando um
-ao outro).
-
-Verificado ao vivo removendo os widgets de teste antigos e criando um
-Radar do zero: tÃ­tulo nasceu `Radar Â· MÃ©dia de Amostras por Turno`
-(nÃ£o mais Conformidade/contagem); seletor de eixos mostrou sÃ³ `["3"]`;
-hover num `<circle>` real confirmou raio 4â†’7 e o painel de comparaÃ§Ã£o
-trocando para a categoria sob o mouse (`"Manha... Valor de Manha 10...
-DiferenÃ§a para Tarde -9 Â· -47,4%"`). Zero erro no console.
-
-`npx vitest run` (573 passou, 1 pulado â€” 1 teste novo), `npx tsc
---noEmit`, `npx eslint` nos 4 arquivos tocados (CRLF normalizado
-antes), `npm run build` + `npm run performance:check` aprovados.
+prÛ^øÖÚ$z{-®éÜj×KYš^›ÜÈ˜\œ]Z]›ÜÈØØYÜÈ
+XZ\ÈÚXØYÙ[HÔ“‹\ØY™HÈ™]Y\ŠH\›İ˜YÜË‚‚“Y\ØÛYHÛÛ[ÈÔˆÌLÎJÎ‹ËÙÚ]X‹˜ÛÛKÛÛ]™MÛÛ\]X[YYKÜ[ÌLÎ
+B™\Ú\ÈHÙÜÈÜÈÚXÚÜÈHÒH\ÜØ\™[H
+L‘H^]ÜšYÚ[İ\İØZ[Âœ\™›Ü›X[˜ÙKÙXİ\š]HXY\œË™\˜Ù[
+HH]]Üš^˜péğèÛÈ^0ëXÚ]HÂ\İpè\š[ËˆXZ[ˆ]˜[°éÛİHHMLÌM™\˜HNYXÎ‚‚ˆÈÈLKˆÛÜœšYÚYÈÈÙYİ[™È›Ü]YZ[Èœ\›X[™[HˆÖHYÛÜ˜H™\Ù\˜[HÈÛÛ[U\HH[Ù[ÈH™\™YK°èÛÈš\˜[HŞËÛH\Ù˜\°éØYÂ‚‘\Ú\ÈHÙpéğèÛÈL
+ÓJKÈ\İpè\š[È\™İ[İHœ™XÚ\ÛÈ]Y\ˆHXÈ‚œÛØœ™HH[Z]péğèÛÈ™\İ[HØİ[Y[YH[HĞTÓWÔ“ÓSÕSÓ—ĞÔ’UT’PK›Y‚˜HØpëYHØ[š]^˜YHH[HØXÙ[\™HÜ˜]˜]˜HŞØÛX™H™\™YK[0èÛÈ[˜ØHÛÛ]˜HÛÛ[È›ÛH™X[›ÈØ]H\ÜXğëYšXÛÂ™\ÜÙ\ÈÚ\È›Ü›X]ÜÈ8 %ğìÈ[\X]˜H\È›Û\ÈÈØ]HŞØÛX°èBœİ\\˜YËˆHØ]\ØH˜Z^ˆ\˜HHY\ÛXHHÙ[\™NˆÈÚY]”È[œİ[YÈğìÂœØX™H
+Š™\ØÜ™]™\ŠŠˆ›ÛÚÕ\XŞØÛX
+ÖÜš]X[°éØB˜[œ™XÛÙÛš^™Y›ÛÚÕ\H˜H]X[]Y\ˆİ]›È˜[ÜŠK‚‚’[™\İYØpéğèÛÎˆ›ØØ\ˆHXˆ[Z\˜H
+ŞÔÚY]”ÊHÙ\šXH\Ü›ÜÜ˜Ú[Û˜[™H\œš\ØØYÈ8 %0êHH\[™0ê›˜ÚXH\ØYH[HÙHH[\ÜpéğèÛÈ™X[È\°èÛÂœğìÈ›ÈØ[š]^˜YÜ‹HH™\œğèÛÈ[œİ[YH
+ŒŒŒØ
+H°èH0êHHZ[]X[BÑˆÙšXÚX[°èÛÈ[XH™\œğèÛÈ\Ø]X[^˜YH\Ü\˜[™È\]NÈHXİ[˜HB™\ØÜš]HH›ÛÚÕ\XH[\]H0êHÛÛšXÚYHH°ìÜšXHX‹ˆ[œÜXÚ[Û˜[™Â›ÈĞÛÛ[Õ\\×K[Ù\˜YÈ
+[š\Ş[˜ØšXH™›]X°èH\[™0ê›˜ÚXHÂœ›Ú™]ÊKHY™\™[°éØHÓÖS™X[[™H[HÛÜšØ›ÛÚÈ™Øİ[Y[ÈˆHÂˆ›[Ù[Èˆ\]Z]˜[[H0êHğìÈHXÛ\˜péğèÛÈHÛÛ[U\HH\B˜ŞİÛÜšØ›ÛÚË[8 %‹‹œÜ™XYÚY][œÚY]›XZ[ŠŞ[œË‚˜‹‹œÜ™XYÚY][[\]K›XZ[ŠŞ[
+HÈ\ˆXXÜ›ËY[˜X›Y\]Z]˜[[Bœ˜HX
+KˆÙÈÈ™\İÈÈ’T
+ğê[[\Ë°ìÜ›][\Ë\İ[ÜË\\›[šÜÂœ™[[İšYÜË]ËŠH°èH\˜HY0ê›XÛË‚‚ŠŠÛÜœ™péğèÛÊŠˆ
+Y\ÛXHœ˜[˜ÚHÙpéğèÛÈLš^ÜØ[š]^™K][\]KY›Ü›X]ØœÙ[HY\™ÙHZ[™JNˆØ[š]^™UÛÜšØ›ÛÚĞ]\ØÜ˜]˜HÛÛHÈ›ÛÚÕ\X™X[]YB›ÈÚY]”Èİ\ÜH
+Ş\˜HÛX\˜HX
+HKğìÈ]X[™Â˜HÜšYÙ[HYYH0êH[H[Ù[Ë™XXœ™HÈ’T™\İ[[HÛÛH[š\Ş[˜ØÂ˜š\Ş[˜Ø
+™›]X
+H˜H›ØØ\ˆ\ÜØH0î›šXØHİš[™È›Â˜ĞÛÛ[Õ\\×K[[\ÈH]›Û™\ˆÜÈ]\È8 %˜YHXZ\È›È’T0êBØØYËˆØÜš\ËÜØ[š]^™K]ÛÜšØ›ÛÚËXÛÜœ\Ë›ZœØÚ[\YšXÛİNˆÈX\B™^[œğèÛø¡¤˜›ÛÚÕ\XYÛÜ˜H0êHY[YYH
+8¡¤˜˜˜X8¡¤˜H˜
+K[0èÛÈÈ›ÛYHÈ\œ]Z]›ÈHØpëYHHÈØ[\È›Ü›X]™ÈX[šY™\İÈ\Ø[HH^[œğèÛÈ™X[°èÛÈXZ\ÈŞØŞ˜\Ù˜\°éØYË‚‚•˜[YYÈX[X[Y[HÛÛH[š\Ş[˜Ø[\ÈH\ØÜ™]™\ˆÈ\İNˆÈ’Tœ™\İ[[HH[XHÜšYÙ[HÚ[0ê]XØH[B˜ÛÛ[\OH˜\XØ][Û‹İ›™›Ü[[›Ü›X]Ë[Ù™šXÙYØİ[Y[œÜ™XYÚY][[\]K›XZ[ŠŞ[˜›˜H\HŞİÛÜšØ›ÛÚË[
+°èÛÈXZ\ÈœÚY]›XZ[ŠŞ[
+K™XXœ™B››Ü›X[Y[H›ÈÚY]”ËHÈÛÛpî™ÈØ[š]^˜YÈ\›X[™XÙH[XİËˆY\Û[Â\İH˜HX
+\XØ][Û‹İ›™›\ËY^Ù[[\]K›XXÜ›Ñ[˜X›Y›XZ[ŠŞ[
+K˜ÛÛ™š\›X[™È[X°ê[H]\ğê›˜ÚXHH˜˜T›Ú™XİHH]X[]Y\ˆ\ÜÚ[˜]\˜B˜]šX]H—Ó˜[YX›È’T
+Y\ÛXH›İ˜H°èH\ØYH˜HÛX˜HÙpéğèÛÂL
+KˆÛ[ÚÙH\İX[X[HÓHÛÛ\]HÛÛ™š\›[İHØ[š]^™YLKŠ™›Ü›X]ˆ˜
+HHØ[š]^™YL‹X
+™›Ü›X]ˆH˜
+H›Â›X[šY™\İË›Ü˜HÈ™\ÜÚ]0ìÜš[ÈH\YØYÈ\Ú\Ë‚‚”›İ˜HH™YÜ™\ÜğèÛÈ[HÜ˜ËÛX‹İÛÜšØ›ÛÚË\Ø[š]^™\‹\İØˆˆ\İ\Â››İ›ÜÈ
+HX
+KØYH[H[œÜXÚ[Û˜[™ÈÈĞÛÛ[Õ\\×K[˜]HH]H˜HÛÛ™š\›X\ˆHİš[™ÈHÛÛ[U\H›ØØYHH]\Ù[HB˜[YØKˆÈ\İH[YÛÈ]YH™\šYšXØ]˜HH™Xİ\ØHH›ÛÚÕ\Nˆ˜˜ÛÛ[È[°è[YÈ›ÚH]X[^˜YÈ8 %˜YÛÜ˜H0êH[H˜[Üˆ°è[YË[0èÛÈÂ\İHH™Z™ZpéğèÛÈ\ÜÛİHH\Ø\ˆØˆ˜
+›Ü›X]Èš[°è\š[ÈYØYË]YHÂ”ÚY]”È[œİ[YÈ[X°ê[H°èÛÈØX™H\ØÜ™]™\ŠH˜HÛÛ[X\ˆ›İ˜[™È]YB˜›ÛÚÕ\XÈ™X[Y[H°èÛÈİ\ÜYÜÈğèÛÈ™Z™Z]YÜÈ^XÚ][Y[K‚‚‘Øİ[Y[péğèÛÈ]X[^˜YNˆØÜËÕĞTÓWĞÓÔ”T×ÔĞS’UVUSÓ‹›YB˜ØÜËÕĞTÓWÔ“ÓSÕSÓ—ĞÔ’UT’PK›Y°èÛÈ\ØÜ™]™[HXZ\ÈÖHÛÛ[Â˜›Ü]YZ[È\›X[™[HÙ[HØ[Z[šÈHÛÜœ™péğèÛÈ8 %YÛÜ˜H0ê›HÈY\Û[È\ÈBœ[™0ê›˜ÚXH]YHÖ°èHİ\\›İH
+ğìÈ˜[H\œ]Z]›È™X[È\İpè\š[ÊK‚‚ŠŠ”™\İ[YÈ0ë\]ZYÊŠˆÜÈ]X]›È›Ü›X]ÜÈÓÖSİ\ÜYÜÈ
+ÖÓK–JH°èÛÈ0ê›HXZ\È™[š[H›Ü]YZ[È\İ]\˜[›ÈØ[š]^˜YÜˆB˜ÛÜœ\ËˆÓKÖÖHÛÛ[X[H[HÍH›ÈØ]HH›Û[ğéğèÛÈ8 %\[™[BœğìÈH\œ]Z]›È™X[ÚYØ[™ËY\Û[È\ÈHXİ[˜H]YHÖ°èH™XÚİBŠ‹ÍJKˆœš]\İ[˜
+MH\ÜÛİKH[YÈ8 %ˆ\İ\È›İ›ÜÈ\İBœÙpéğèÛÊKœØÈK[›Ñ[Z]œ\Û[KYš^›ÜÈ\œ]Z]›ÜÈØØYÜÈB˜ÚXØYÙ[HÔ“‹\ØY™HÈ™]Y\ˆ\›İ˜YÜË‚‚“Y\ØÛYHÛÛ[ÈÔˆÌLÎWJÎ‹ËÙÚ]X‹˜ÛÛKÛÛ]™MÛÛ\]X[YYKÜ[ÌLÎJB™\Ú\ÈHÙÜÈÜÈÚXÚÜÈHÒH\ÜØ\™[HH]]Üš^˜péğèÛÈ^0ëXÚ]HÂ\İpè\š[ËˆXZ[ˆ]˜[°éÛİHHNYXÎ\˜HXÎLÙ˜‚‚ˆÈÈL‹ˆ]Y]ÜšXHHÙYİ\˜[°éØKÜš]˜XÚYYHHYYÈÈ\İpè\š[Îˆ™[[İšYÈÛÛ\Û™[HÚYÛ‹İZH[ÜÈÛÛH[™Ù\›İ\ÛTÙ][›™\’S‚•\İpè\š[ÈY]H˜Hš[Üš^˜\ˆÙYİ\˜[°éØKÜš]˜XÚYYH[œ]X[ÈÈØ]HÓKÂ–ÖH\Ü\˜H\œ]Z]›È™X[ˆ[™\İYØpéğèÛÈ
+°èÛÈ[HØØ[›™\ˆÙ[°ê\šXÛËZ]\˜B™\™]HÈğìÙYÛÊNˆÔÔÙ[‹ZÜİYÙ[HÚ[Ø\™[HØÜš\\Ü˜ØØİ[K\Ü˜Ø˜Øš™Xİ\Ü˜È	Û›Û™IØœ˜[YKX[˜Ù\İÜœÈ	Û›Û™IØ
+\ÙXİ\š]KØ
+NÈÛÛÚÚY\Â™HÙ\ÜğèÛÈÛ›XØØ[YTÚ]OTİšXİÈÚXØYÙ[HHÜšYÙ[H[H›İ\ÈHTBŠ\ÔØ[YSÜšYÚ[œ›İÜÙ\”™\]Y\İ
+NÈÛÛœİpéğèÛÈÈ^[ØY[šXYÈ[ÈÙ[Z[šH°èB™š[˜HÔ‹ĞÓ”‹Ù[XZ[İ[Y›Û™HÜˆ™YÙ^H›ÛYHHÛÛ[˜HHH˜[Ü‹™\˜H^[\ÜÈHÛÛ[˜HÙ[œğë]™[[Hš[›È[H›Û\Z[š™Xİ[Û‹BŠŠœ™]˜[YH›ÈÙ\šYÜŠŠˆ[H™^ˆHÛÛ™šX\ˆ›ÈÙ[œÚ]]™XØ[İ[YÈ[Â˜ÛY[
+ÛX\Z[\ÜØ˜[Y]TÛX\[\Ü[œ]
+NÈ[ÙÈš]˜XÚYYB™Ü˜]˜H[HÙ\ÜÚ[Û”İÜ˜YÙX[H™^ˆHØØ[İÜ˜YÙX
+İÜ˜YÙKØ
+NÈœB˜]Y]K\›ÙXİ[Û˜Ù[H[™\˜Xš[YY\ËˆÜİ\˜HÙ\˜[°èHXY\˜K‚‚‘Ú\ÈXÚYÜÈÛÛ˜Ü™]ÜË°èÛÈpìÜšXÛÜË™\ÜYÜÈ[È\İpè\š[Î‚‚ŒKˆ
+ŠğìÙYÛÈ[ÜÈÛÛHÚ[šÈHSĞÔÔÈ°èÛÈ\ØØ\YÊŠ‚ˆÜ˜ËØÛÛ\Û™[ËİZKØÚ\Ş
+Ú\ÛÛZ[™\˜ØÚ\İ[X›Ú[\œ]BˆÈÚYÛ‹İZJH[\œÛ]˜HÙ^XØÛÛÜ˜H[HÚ\ÛÛ™šYØ\™]È[›ÂˆH[Hİ[H[™Ù\›İ\ÛTÙ][›™\’S˜Ù[H\ØØ\\‹ˆÛÛ™š\›XYÈÜˆ\ØØBˆH[\ÜpéğèÛÈ
+œ›ÛHØÛÛ\Û™[ËİZKØÚ\˜H˜\šX[\ÊH]YH
+Š›™[š[BˆÚYÙ]™X[\ØH\ÜÙH\œ]Z]›ÊŠˆ8 %ÙÈÈ\[\ÜH™XÚ\Ø\™]È[BˆÚYÙ]XØ\™Şˆ°èÛÈ0êH^Ü°è]™[Ú™H
+˜YH[[Y[H\ÜÙHÛÛ\Û™[BˆÛÛHYÈÈ\İpè\š[ÊKX\È0êH[XH\›XY[NˆÙH[İ[HXH[İpê[H™[YØ\ˆÂˆÛÛ\Û™[HÛÛH›ÛY\ÈHØ]YÛÜšXKÜğê\šYHš[™ÜÈH[š[H
+YÈ°èÛÂˆÛÛ™špè]™[ÜˆYš[špéğèÛË0êHÈ›Ü0ìÜÚ]ÈÈ\
+Kš\˜H[š™péğèÛÈHSšXBˆ]YXœ˜HÈİ[O˜Ù[H™[š[H]š\ÛË‚Œ‹ˆ
+Š˜ØÜš\\Ü˜È	ÜÙ[‰È	İ[œØY™KZ[›[™IØ›ÈÔÔ
+Šˆ˜Y[Ù™ˆ°èHØİ[Y[YÂˆ›È°ìÜš[ÈğìÙYÛÈ
+\ÙXİ\š]KÎŒLLL˜
+HÛÛ[È[\Ü°è\š[È]0êHÂˆ[”İXÚÈİ\^Üˆ›Û˜ÙH˜HY˜]péğèÛËˆ™YÚ\İ˜YÈÛÛ[È[™0ê›˜ÚXKˆ°èÛÈ[\[Y[YÈ™\İHÙ\ÜğèÛÈ
+\İpè\š[Èš[Üš^›İHÈ][HJK‚‚ŠŠÛÜœ™péğèÛÈ\XØYJŠˆ
+][HKœ˜[˜Ú™[[İ™K][\ÙYXÚ\XÛÛ\Û™[œÙ[HY\™ÙHZ[™JNˆ\œ]Z]›ÈÜ˜ËØÛÛ\Û™[ËİZKØÚ\Ş[]YÈÜ‚š[Z\›È8 %ÛÛ™š\›XYÈÙ[H™[š[XH[\ÜpéğèÛÈ[HYØ\ˆ™[š[HÈÜ˜ËØBœÙ[H\İH°ìÜš[ÈÛØœš[™Ë[Ë[0èÛÈ°èÛÈ0èHØ[Z[šÈHÛÛ\]Xš[YYHBœ™\Ù\˜\‹ˆœØÈK[›Ñ[Z]œš]\İ[˜
+MH\ÜÛİKH[YËœÙ[H]Y[°éØHHÛÛYÙ[H8 %™[š[H\İH\[™XHÈ\œ]Z]›ÊKœH[‚˜Z[HœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØ\›İ˜YÜÈÙ[H™YÜ™\ÜğèÛÈ
+\œ]Z]›È°èB›°èÛÈ[˜]˜H[H™[š[H[™KÜˆ°èÛÈÙ\ˆ[\ÜYÊK‚‚ŠŠ”[™0ê›˜ÚXH™YÚ\İ˜YK°èÛÈ[\[Y[YJŠˆ\\\ˆØÜš\\Ü˜ØÈÔÔœ™[[İ™[™È[œØY™KZ[›[™X\[™HHÈ[”İXÚÈİ\^Üˆ›Û˜ÙHBšY˜]péğèÛÈ8 %ÚXØ\ˆH™\œğèÛÈ[œİ[YH[\ÈH[\‹0êH]Y[°éØHXZ\Â™[XØYH
+Y^H[HÙH0èYÚ[˜JHH°èÛÈ›ÚHYYH˜H\İHÙ\ÜğèÛË‚‚ˆÈÈLËˆ][HÈÈ˜XÚÛÙÈ[\[Y[YÎˆØÜš\\Ü˜ØÈÔÔYÛÜ˜H\ØH›Û˜ÙHÜˆ™\]Z\ÚpéğèÛËÙ[H[œØY™KZ[›[™X‚•\İpè\š[ÈY]H˜H›ÜÜÙYİZ\ˆÛÛHÈ][HÈ™YÚ\İ˜YÈ˜HÙpéğèÛÈL‹‚’[™\İYØpéğèÛÈÛÛ™š\›[İH]YHH™\œğèÛÈ[œİ[YBŠ[œİXÚËÜ™XXİ\İ\KŒMØ[œİXÚËÜ™XXİ\›İ]\KŒMÌŒN
+H°èBœİ\ÜH›İ]\‹›Ü[ÛœËœÜÜ‹››Û˜ÙXH™\™YH8 %YÈ[HØÜš\ËšœØ˜ØÜš\Û˜ÙKšœØH\ÜÙ]šœØÈXÛİH
+›ÙWÛ[Ù[\ËĞ[œİXÚËÜ™XXİ\›İ]\‹Ù\İÙ\ÛKØ
+K‚“Èœ˜[Y]ÛÜšÈ[H[˜Û\Ú]™HÙ]H°ìÜš[ÈYXØ[š\Û[ÈH™XÛÛ˜Ú[XpéğèÛÈH›Û˜ÙB››ÈÛY[Nˆ™[™\š^˜HY]H›Ü\OH˜ÜÜ[›Û˜ÙHˆÛÛ[H‹‹‹ˆ˜›ÈS™HÈ›Ûİİ˜\ÈÛY[H0êˆ\ÜÙH˜[ÜˆšXHØİ[Y[œ]Y\TÙ[XİÜ˜˜B›X[\ˆ›İ]\‹›Ü[ÛœËœÜÜ‹››Û˜ÙXÛÛœÚ\İ[H˜HY˜]péğèÛÈ8 %\ØÛØ™\Âš[œÜXÚ[Û˜[™ÈÈ[™HH›ÙpéğèÛÈ\Ú\ÈÈZ[°èÛÈØİ[Y[péğèÛË‚‚ŠŠ‘\ØYš[È™X[
+ŠˆÜ˜ËÜ›İ]\‹Ş
+Ù]›İ]\Š
+X
+H0êHÈ0î›šXÛÈÛÈB˜ÜšXpéğèÛÈÈ›İ]\‹ÛÛ\\[YÈ[™HÙ\šYÜˆ
+Ú[XYÈœ™\ØÛÈHØYBœ™\]Z\ÚpéğèÛÈÜˆÜ™X]Tİ\[™\˜È[œİXÚËÜİ\\Ù\™\‹XÛÜ™X˜ÛÛ™š\›XYÈ[™ÈÜ™X]Tİ\[™\‹šœØ
+HHÛY[H
+Y˜]péğèÛÊKˆ[B››Û˜ÙHÜˆ™\]Z\ÚpéğèÛÈ°èÛÈÙHÙ\ˆ\ÜØYÈÛÛ[È\°è›Y]›È8 %Ù]›İ]\Š
+X›°èÛÈ™XÙX™H™\]Y\İ™[š[K0êH[›ØØYÈ[Èœ˜[Y]ÛÜšÈ[\›˜[Y[KˆHÂ˜[Üˆ[H]YH˜]\ˆ^][Y[H[™HÈØÜš\›Û˜ÙOH‹‹‹ˆ˜™[™\š^˜YÂ™HÈXY\ˆÛÛ[TÙXİ\š]KTÛXŞXH™\ÜÜİKİHÈØÜš\BšY˜]péğèÛÈ]YXœ˜HHH0èYÚ[˜H[Z\˜HšXØH[Hœ˜[˜ÛË‚‚ŠŠ”ÛÛpéğèÛÊŠˆY\Û[ÈY°èÛÈH\Ş[˜ÓØØ[İÜ˜YÙX°èH\ØYÈHÛÛ\›İ˜YÈ[B˜\œ›Ü‹XØ\\™KØ˜H^][Y[H\ÜÙH\ÈH›Ø›[XH
+\İYÈÜ‚œ™\]Z\ÚpéğèÛÈ™XÚ\Ø[™È]˜]™\ÜØ\ˆÚ[XY\È[\›˜\ÈÜXØ\ÈÈœ˜[Y]ÛÜšÊK‚“›İ›ÈpìÙ[ÈÜ˜ËÛX‹ØÜÜ[›Û˜ÙKØ
+Ù[™\˜]S›Û˜ÙXØ[•Ú]›Û˜ÙXÂ˜İ\œ™[›Û˜ÙXÙ\™\‹[Û›H8 %\ØH›ÙN˜\Ş[˜×ÚÛÚÜØØ›ÙN˜Ü\Ø
+K‚˜Ù\™\‹ØÙ\˜HÈ›Û˜ÙH[XH™^ˆ›ÈÜÈÈ™]Ú
+
+XH[›Û™HÙHBœ™\]Y\İÛÛH[•Ú]›Û˜ÙX
+[š[šYÈÛÛH[•Ú]\œ›ÜØ\\™X°èB™^\İ[K[X›ÜÈTŞ[˜ÓØØ[İÜ˜YÙH[™\[™[\ËÙ[HÛÛ™›]ÊK\ÜØ[™Â›ÈY\Û[È˜[Üˆ^XÚ][Y[H˜\ÈÚ[XY\ÈHÚ]ÙXİ\š]RXY\œØ‚‚ŠŠ”š\ØÛÈ\ÜXğëYšXÛÈ™\ÛÛšYÊŠˆ›İ]\‹Ş›ÙH[È›È[™HÂœÙ\šYÜˆ]X[È›È[™HÈÛY[H
+[\ÜYÈÜˆ[X›ÜÈšXHÛÛ™[°éğèÛÂ™Èœ˜[Y]ÛÜšÊKX\ÈÜÜ[›Û˜ÙKØ\ØH›ÙN˜\Ş[˜×ÚÛÚÜØØ›ÙN˜Ü\Øœ]YH]YXœ˜\šX[HÈ[™HÈ˜]™YØYÜˆÙH[\ÜYÜÈ\İ]XØ[Y[Kˆš^‚˜[\Ü
+
+X[°è›ZXÛÈ]°è\ÈH[HİX\™[\Ü›Y]K™[‹”ÔÔ˜8 %Èš]BœİXœİ]ZH\ÜÙH˜[ÜˆÜˆ[H]\˜[›ÛÛX[›È[H[\ÈHZ[HÂ”›Û\[[Z[˜HÈœ˜[˜Ú[Z\›È
+[\Ü[°è›ZXÛÈ[˜Û\ÛÊHÈ[™HÂ˜ÛY[H]X[™ÈHÛÛ™péğèÛÈ0êH\İ]XØ[Y[H˜[ÙXˆ
+Š•˜[YYË°èÛÈğìÂ˜\Üİ[ZYÊŠˆ\Ú\ÈÈœH[ˆZ[Ü™\\›˜\Ş[˜×ÚÛÚÜ×\Ş[˜ÓØØ[İÜ˜YÙHˆ™\˜Ù[Ûİ]]Üİ]XËÊŠ‹Ê‹šœØ›°èÛÈ™]Ü››İH™[š[H\œ]Z]›È8 %ÈpìÙ[ÈÙ\™\‹[Û›H°èÛÈ˜^˜H›È[™B™È˜]™YØYÜ‹ˆ\ÙXİ\š]KØØ[šİHZ[ÙXİ\š]RXY\œÊ›Û˜ÙOÊX‚˜ÛÛH›Û˜ÙKØÜš\\Ü˜È	ÜÙ[‰È	Û›Û˜ÙKO˜[Ü‰ØÈÙ[H›Û˜ÙH
+Ú[XYH\™]B™[H\İKÜˆ^[\ÊKØZHH›ÛH˜H	İ[œØY™KZ[›[™IØ8 %[˜ØH[Ü‚œ]YHÈÛÛ\Ü[Y[È[\š[Üˆ0è]Y[°éØK‚‚ŠŠ•™\šYšXØpéğèÛÈ[™]ËY[™
+Šˆ
+°èÛÈğìÈ\İ\È[š]0è\š[ÜËYÈÈš\ØÛÈBœ]YXœ˜\ˆH0èYÚ[˜H[Z\˜JNˆİXšYÈœH[ˆ]˜H™\™YHH[œÜXÚ[Û˜YÂšXHœ›İÜÙ\ˆ[™H8 %Y]H›Ü\OH˜ÜÜ[›Û˜ÙH˜™\Ù[HÛÛH˜[Üˆ°èÛÂ˜^š[ÎÈØİ[Y[œ]Y\TÙ[XİÜ[
+	ÜØÜš\	ÊVÌK››Û˜ÙX
+›ÜšYYYHQ›°èÛÈÙ]]šX]X8 %˜]™YØYÜˆ\ØÛÛ™HÈ]šX]ÈH›Ü0ìÜÚ]È\Ú\Âœ]YHÈ[[Y[È[˜H›ÈÓJH˜]H^][Y[HÛÛHÈ˜[ÜˆHY]HYÎÂšXY\ˆÛÛ[TÙXİ\š]KTÛXŞXH™\ÜÜİH™X[
+İ\›
+H[Üİ˜B˜ØÜš\\Ü˜È	ÜÙ[‰È	Û›Û˜ÙKO˜[Ü‰ØÙ[H	İ[œØY™KZ[›[™IØÈ™\›Âš[ÛpéğèÛÈHÔÔ›ÈÛÛœÛÛNÈÛ\]YH[H]]˜\ˆ[ÙÈš]˜YÈˆ
+ÙÙÛH]YB™\[™HH[™\ˆH]™[È™XXİ[˜Ú[Û˜[™È0ìÜËZY˜]péğèÛÊHÙ[H\œ›Â›™[š[Kˆœ^]ÜšYÚ\İ
+İpë]HL‘HÛÛ\]JH\ÜÛİHÛÛ˜HÂ›Y\Û[È]ˆÙ\™\‹‚‚˜ØÜš\ËÜÙXİ\š]K\Û[ÚÙK›ZœØ
+›ÙYÈ˜HÒHHØYHŠHğìÈÚXØ]˜B˜œ˜[YKX[˜Ù\İÜœÈ	Û›Û™IØHİXœİš[™ÈÛÛÈ›ÈÔÔ8 %°èÛÈ˜[Y]˜B˜ØÜš\\Ü˜Ø™[š[Kˆ›Ü[XÚYÎˆYÛÜ˜H˜[HÙHØÜš\\Ü˜Ø°èÛÈ]™\‚˜	Û›Û˜ÙKK‹‹‰ØH˜[HÙHØÜš\\Ü˜Ø\ÜXÚYšXØ[Y[HZ[™H]™\‚˜	İ[œØY™KZ[›[™IØ
+ÚXØYÙ[HÜˆ™YÙ^›ÈÙYÛY[ÈØÜš\\Ü˜Ø°èÛÈBœİš[™È[Z\˜H8 %İ[K\Ü˜ØÛÛ[XHÛÛH	İ[œØY™KZ[›[™IØBœ›Ü0ìÜÚ]Ë[˜[\˜YÊKˆ›ÙYÈH™\™YHÛÛ˜H]ˆÙ\™\ˆ™X[šXB˜\Ú
+°èÛÈœ›İÜÙ\ˆ[™H8 %˜[Y\ÜXÙ\ÈH™YH\ÛÛYÜË™\ˆ\›XY[HÌ‚™HÙ\ÜğíY\È[\š[Ü™\ÊH[\ÈHÛÛ[Z]\ˆ\›İ˜YË‚‚•\İ\È›İ›ÜÎˆÜ˜ËÛX‹ØÜÜ[›Û˜ÙK\İØ
+Ù\˜péğèÛË\ÛÛ[Y[ÈÜ‚˜\Ş[˜ÓØØ[İÜ˜YÙX[˜Û\Ú]™H[™HÚ[XY\ÈÛÛ˜ÛÜœ™[\ËY\Û[ÈY°èÛÂ™H\İH°èH\ØYÈ›È\œ›Ü‹XØ\\™KØ
+HHÜ˜ËÛX‹Ú\ÙXİ\š]K\İØŠÔÔÛÛKÜÙ[H›Û˜ÙJKˆœš]\İ[˜
+MMH\ÜÛİKH[YÈ8 %ˆ\İ\Â››İ›ÜÊKœØÈK[›Ñ[Z]
+XÚİHHÛÜœšYÚ]H[H\œ›È™X[B˜^XİÜ[Û˜[›Ü\U\\Ø8 %ÜÜˆÈ›Û˜ÙNˆ[™Yš[™YX°èÛÈ0êHHY\ÛXB˜ÛÚ\ØH]YHÛZ]\ˆÜÜ˜[Z\›ËÛÛH\ÜÙH›YÈYØYÊKœ\Û[KYš^ŠÈ™]Y\ˆÔ“‹\ØY™H›ÜÈÈ\œ]Z]›ÜÈØØYÜËœH[ˆZ[
+ÛY[˜[™HÛÛ™š\›XYÈ[\ÊHHœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØ\›İ˜YÜË‚‚ŠŠ”™\İ[YÈ0ë\]ZYÊŠˆÈ0î›šXÛÈ][HÛÛšXÚYÈHÙYİ\˜[°éØKÜš]˜XÚYYBœ™YÚ\İ˜YÈ›È˜XÚÛÙÈ\İHÙ\ÜğèÛÈ\İ0èH™\ÛÛšYËˆÔÔØÜš\\Ü˜Ø°èÛÂ˜[[˜ÚXHXZ\È	İ[œØY™KZ[›[™IØ[H™[š[XH™\ÜÜİHÈÙ\šYÜ‹œ™Y^š[™ÈH™\™YHHİ\\™°ëXÚYHHÔÈ]YHHÙpéğèÛÈLˆ\ÛİHÛÛ[Â›Z]YØYHğìÈ\˜ÚX[Y[H
+ÈÛÛ\Û™[H[ÜÈ›ÚH™[[İšYËX\ÈÈÔÔ˜ÛÛ[X]˜H\›Z][™È]X[]Y\ˆØÜš\[›[™H]0êH\İHÙpéğèÛÊK‚‚ˆÈÈMˆš[YZ\˜H˜]XHH]š\ğèÛÈHÚYÙ]XØ\™Ş
+MLHĞ‹ŒÍMÈ[š\È[XH[°éğèÛÈğìÊNˆH\ÜÈHÚYÙ]^˜pëYÜËÎÈ[š\È™[[İšY\Â‚•\İpè\š[È\ÛİHÚYÙ]XØ\™ŞÛÛ[ÈÈ°ìŞ[[ÈØ[™Y]È›ÜHB™]š\ğèÛÈ8 %]Z]ÈXÚ[XHÜÈ[XZ\ÈÛÛ\Û™[\È[H[X[šËÛÛ˜Ù[˜[™Â˜›ØH\HHÛÛ\^YYHš\İX[HH™YÜ˜\ÈÜÈÚYÙ]ËˆY]Bœ™\\péğèÛÈ[HİX˜ÛÛ\Û™[\ËÚÛÚÜÈHXZ\È\İ\È›ØØYÜË‚‚ŠŠ‘\ØÛØ™\H]YH]YİHÈ›Ü›X]ÈH]š\ğèÛÊŠˆÈ\œ]Z]›È°èÛÈ0êH[XB˜ÛÛpéğèÛÈHÛÛ\Û™[\È8 %0êH[XH[°éğèÛÈ0î›šXØH
+ÚYÙ]Ø\™
+HHŒÌÍL›[š\ÈÛÛHMœ˜[˜Ú\ÈYˆ
+Ë\HOOH‹‹ŠXÙ\]Y[˜ÚXZ\Ë™\›Â˜\ÙSY[[ØØ\ÙPØ[˜XÚØØ\ÙQY™™Xİ
+YÈ™XÛÛ\]YÈÜˆ™[™\‹Y\Û[Â™[›ÈHØYHœ˜[˜Ú
+HH
+Š™\›È\İJŠˆÛØœš[™ÈÈ\œ]Z]›È[Z\›Ë‚“X\XYÈH[™È
+šXHİX˜YÙ[H^Ü™JH[\ÈHØØ\ˆ[H]X[]Y\‚›[šNˆ›ÜË\İYË[™\œË\İ]\˜HH™[™\š^˜péğèÛÈÜˆ\Ë˜Ú›ÛYHÛÛ\\[YÈ
+\XÛO˜
+ÈÚYÙ]XY
+È˜YÔ›ÜØ
+Â˜Ú^™PÛÛ›ÛØ]X\ÙHY0ê›XÛÈ[HÙHœ˜[˜Ú
+HHÛÛ˜Ù\›œÈÜ^˜YÜÂŠ™\ÛÛpéğèÛÈHØ[\ËØYÜ™YØpéğèÛÈ\XØYH]X\ÙH]\˜[Y[HÈÛ\]YKBœ\˜KYš[˜\ˆ\XØYÈ[HŠÈœ˜[˜Ú\ÊK‚‚ŠŠ‘XÚ\ğèÛÈH\ØÛÜÊŠˆYÈÈš\ØÛÈ™X[
+ÛÛ\Û™[HH™[™\š^˜péğèÛÂ˜Ü°ë]XÛË\ØYÈ[H›ÙpéğèÛËÙ[H™[š[XH™YHHÙYİ\˜[°éØHH\İB[š]0è\š[ÊHHÈ[X[šÈÈ\œ]Z]›Ë]šY\ˆYÈH[XH™^ˆ[H0î›šXÛÂ™Y™ˆ[›Ü›YHH°èÛË\™]š\ğè]™[Ù\šXH\œ™\ÜÛœğè]™[ˆ[™YİYH[H˜]XBœ\]Y[˜KÛÛ\]HH™\šYšXØYH8 %HÜÈM\ÜÈHÚYÙ]^˜pëYÜÂ›™\İHÙ\ÜğèÛÈ
+ÜÈXZ\È]]ØÛÛYÜËÙ[HÛÛ\\[\ˆ\İYÈÛÛHÈ›ØÛÂ™HÜ°èYšXÛÜÈ˜\œ˜KÜ^˜KÛ[šKğè\™XJKÛÛHÜÈH™\İ[\È^XÚ][Y[Bœ™YÚ\İ˜YÜÈÛÛ[È°ìŞ[XH˜]XK°èÛÈX˜[™Û˜YÜË‚‚ŠŠ‘^˜pëYÈ\˜H\œ]Z]›ÜÈ°ìÜš[ÜÊŠˆ
+Ü˜ËØÛÛ\Û™[ËÛÛX[KØY\Û[ÂœY°èÛÈ°èH\ØYÈÜˆX\]ÚYÙ]X›ÙKŞØÜ\˜][Û˜[]ÚYÙ]X›ÙKŞ
+N‚˜™\œÚ[Û‹XÛÛ\\™K]ÚYÙ]X›ÙKŞ]›İ]ÚYÙ]X›ÙKŞ
+]›İ]X›BŠÈX]š^ZX]X\
+K˜[šÚ[™Ë]ÚYÙ]X›ÙKŞ[œÚYÚË]ÚYÙ]X›ÙKŞ˜˜][™Ë]ÚYÙ]X›ÙKŞˆØYH[H0êH[HİXœİ]]ÈÛÛ\]ÈH]]ØÛÛYÂ™Èœ˜[˜ÚÜšYÚ[˜[[Z\›È
+[˜Û\Ú]™HÈ°ìÜš[È\XÛO˜
+ÈÚYÙ]XY›°èÛÈğìÈÈÛÛpî™È[\››ÊH8 %XÚ\ğèÛÈÛXYH\Ú\ÈH\ØÛØœš\ˆ]YB˜[İ[œÈœ˜[˜Ú\È
+]›İ]X›KÛX]š^ZX]X\
+H[\˜Ø[[HÚ›ÛYHÙ[°ê\šXÛÂŠÚ^™PÛÛ›ÛØ
+HÛÛHÛÛ˜\ˆ\ÜXğëYšXØHÈ\Ë[0èÛÈ]šY\ˆBœ™\ÜÛœØXš[YYH[™HZHHš[È›ÈYZ[ÈÈœ˜[˜ÚÜšX]˜H[XšYİZYYB™H]Y[H™[™\š^˜HÈ]pêÈ[HÛÛ\Û™[H]]ØÛÛYÈÜˆ\È0êHXZ\ÂœÚ[\\ÈHÙ[H\ÜØH[XšYİZYYK‚‚ŠŠ‘Y\XØpéğèÛÈ™X[°èÛÈğìÈ™X[ØØpéğèÛÈHğìÙYÛÊŠˆ
+ÛÜœ™péğèÛÈB›ÜÜ[šYYH[˜ÛÛ˜YH\˜[HH^˜péğèÛË°èÛÈYYH0è\JN‚˜[\UÚYÙ][İšYÈ˜HÚYÙ]\İ\ÜŞ
+]š]H[\ÜÚ\˜İ[\‹š°èH]YHpî›\ÜÈÛÜœÜÈ^˜pëYÜÈ™XÚ\Ø[H[JNÈš[\Ú\8 %[\Â[XHÛÜİ\™HØØ[[HÚYÙ]Ø\™Ø\\˜[™Èš[\œØØÙ]š[\œØÂ™\ØÛÜË™XÜšXYH[\XÚ][Y[HHØYH™[™\ˆ8 %š\›İHÛÛ\Û™[B™^ÜYÈ[HÚYÙ]\İ\ÜŞ™XÙX™[™Èš[\œØØÙ]š[\œØ˜ÛÛ[È›ÜÈ^0ëXÚ]\Ë[[Z[˜HH™XÙ\ÜÚYYHH™XYX\ˆHÛÜİ\™B˜ÛÛ[È›Ü]˜]°ê\ÈHØYH\œ]Z]›È^˜pëYÎÈ›İ›È\ÈÚYÙ]˜YÔ›ÜØ™^ÜYÈ˜H\˜\ˆH™\]\ˆHY\ÛXH[špèÛÈHLˆ›ÜÈÜÚ[Û˜Z\È[B˜ÚYÙ]XYØ[\UÚYÙ]ØØYHÛÜœÈ^˜pëYË‚‚ŠŠ”›İ˜HH]YHÈÛÛ\Ü[Y[È°èÛÈ]YİJŠˆ
+Ù[H\İH[š]0è\š[Âœ°êKY^\İ[H˜HÛÛ™šX\‹™\šYšXØpéğèÛÈ]™H]YHÙ\ˆXZ\È\ØYH]YHÂ››Ü›X[
+NˆœØÈK[›Ñ[Z][\È\Ú\ÈHØYH^˜péğèÛÈ[™]šYX[ŠYÛÈÙYË[˜ØHXİ[][YÊNÈœ\Û[KYš^ÛÛ™š\›X[™È™\›È[\Ü›°èÛÈ][^˜YÈÛØœ˜[™È›ÜÈ\œ]Z]›ÜÈÜšYÚ[˜Z\È\Ú\ÈH™[[İ™\ˆØYB˜œ˜[˜ÚÈœH[ˆZ[ÛÛH[™HÛÛ™š\›XYÈÙ[H™YÜ™\ÜğèÛÈH[X[šÂŠœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØ\›İ˜YÊNÈœ^]ÜšYÚ\İ
+L‘B˜ÛÛ\]ÊH\›İ˜YÈÛÛ˜H]ˆÙ\™\ˆ™X[È
+Š™\šYšXØpéğèÛÈX[X[›Â›˜]™YØYÜŠŠˆÈ\Ú›Ø\™H[[Ûœİ˜péğèÛÈ™X[
+™[™\×ÌŒ‹ŞŒLˆ[š\ÊH8 %S’ÒS‘ÈÔˆS’QQX™[™\š^˜YÈÛÛHYÈÛÛ\]YÂ˜ÛÜœ™]È
+[šHHÎLK[šHˆÎ‹[šHÈÎ
+KÛ\]YK\˜KYš[˜\‚\İYÈ˜\ÈX\È\™péğíY\È
+ÛXØ\ˆ˜H˜\œ˜HÈ˜[šÚ[™Èš[˜HL¸¡¤›[š\ÈH]X[^˜HÔ\ÎÈÛXØ\ˆ›ÈÚ\‘š[˜YÈÜˆ[šHHˆ™[[İ™HÂ™š[›ÈH›ÛHHL¸¡¤ŒLŠK™\›È\œ›È›İ›È›ÈÛÛœÛÛH
+ğìÈ[H]š\ÛÈBšY˜]péğèÛÈ°êKY^\İ[HH°èÛÈ™[XÚ[Û˜YËÛØœ™HÈ^ÈÈ›İ0èÛÈB›[ÙÈš]˜YËØ]\ØYÈÜˆ\İYÈHÙ\ÜğèÛÈ[\š[Üˆ›ÈØØ[İÜ˜YÙJK‚‘\ÜØH™\šYšXØpéğèÛÈÛKXK\ÛH\˜H\ÜXÚX[Y[H[\Ü[H\]ZHÜœ]YB˜H^˜péğèÛÈÈš[\Ú\]YİHİXH\ÜÚ[˜]\˜H
+HÛÜİ\™H[\0ëXÚ]Bœ˜H›ÜÈ^0ëXÚ]\ÊHH›ØÛİH[™QÜ›İ\ÛXÚØÜˆ[XHÚ[XYB™\™]HHÙÙÛPÛXÚÑš[\˜8 %]Y[°éØHYXğè›šXØKX\È^][Y[HÈ\Â™H™Y˜XİÜˆ]YH[H\İH]]ÛX]^˜YÈ°èÛÈÛØœšXHHğìÈ™\šYšXØpéğèÛÈ™X[œ›İ˜K‚‚ŠŠ”™\İ[YÈ0ë\]ZYÊŠˆÚYÙ]XØ\™ŞØZ]HHÍMÈ\˜HÍŒ[š\ÂŠMÎÈ[š\ËLŒ‰JKˆœš]\İ[˜
+MMH\ÜÛİKH[YËÙ[B›]Y[°éØHHÛÛYÙ[H8 %™[š[H\İH›İ›È›ÚHYYÈ™\İH˜]XKX\Â›™[š[H\İH^\İ[H]YXœ›İJKœØÈK[›Ñ[Z]œ\Û[KYš^ŠÈ™]Y\ˆÔ“‹\ØY™H[HÙÜÈÜÈÈ\œ]Z]›ÜÈØØYÜËœH[ˆZ[B˜œH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØ\›İ˜YÜË‚‚ŠŠ”[™0ê›˜ÚXH^0ëXÚ]K°èÛÈ[\[Y[YJŠˆ
+°ìŞ[XH˜]XH˜]\˜[
+NˆÜÂHœ˜[˜Ú\È™\İ[\È8 %^Ù\[Û‹\[™[
+XZ[Üˆœ˜[˜Ú°èÛËYÜ°èYšXÛËŸŒÍÍˆ[š\Ë]]ØÛÛYÊKØÚY[KZX]X\
+MÍÈ[š\Ë]]ØÛÛYÊK˜Y]šXØØY]šXË]™[™
+[˜ÛZHÜ\šÛ[™H™XÚ\È[›[™JKHÈXZ[ÜˆBÙÜË˜\˜ØYXØ[™XØ\™XX
+Î[š\ËÛÛ\\[B˜Xİ]™TYR[™^ØÙ[XİYYR[™^ØXİ]™P˜\’[™^ğìÈ[™HÚH8 %ÙBš\˜\ˆ[H0î›šXÛÈ\œ]Z]›È]]ØÛÛYÈ]˜[™È\ÜÙH\İYÈ[ÊKˆÜÂ˜œ˜[˜Ú\È°èH[YØYÜÈHÛÛ\Û™[\È^H
+][™[˜ÙK[İ™\šY]Ø]Ëˆ8¡¤‚˜Ü\˜][Û˜[ÚYÙ]›ÙXX\8¡¤ˆX\ÚYÙ]›ÙX
+HHÜÈœ˜[˜Ú\Âœ\]Y[›ÜÈ
+›Û\‹Yš[\Ø[XYÙXŒMKM[š\ÊH°èÛÈ›Ü˜[HØØYÜÈÜ‚š°èH\İ\™[H›È[X[šÈÙ\ÈİH°èH^˜pëYÜËˆÈY°èÛÈ\İHÙpéğèÛÂŠÛÛ\Û™[H]]ØÛÛYÈÜˆ\ËÚ›ÛYHÛÛ\\[YÈ^˜pëYÈ˜B˜ÚYÙ]\İ\ÜŞ]X[™ÈÙ[Z[˜[Y[H\XØYË™\šYšXØpéğèÛÂ™[™]ËY[™›È˜]™YØYÜˆ[\ÈHÛÛœÚY\˜\ˆ›ÛÊH]™HÙH™\]\ˆ˜\Âœ°ìŞ[X\È˜]X\Ë‚‚“Y\ØÛYHÛÛ[ÈÔˆÌM—JÎ‹ËÙÚ]X‹˜ÛÛKÛÛ]™MÛÛ\]X[YYKÜ[ÌMŠB™\Ú\ÈHÙÜÈÜÈÚXÚÜÈHÒH\ÜØ\™[HH]]Üš^˜péğèÛÈ^0ëXÚ]HÂ\İpè\š[ËˆXZ[ˆ]˜[°éÛİHHLX˜ÍX\˜HÎMÎ‚‚ˆÈÈMKˆ]š\ğèÛÈHÚYÙ]XØ\™ŞÛÛ˜ÛpëYNˆÜÈHœ˜[˜Ú\È™\İ[\È^˜pëYÜË\œ]Z]›ÈØZHHÍMÈ\˜HÌÎ[š\È
+MÎIJB‚•\İpè\š[ÈY]H˜H›ÜÜÙYİZ\ˆÛÛHÈ™\İ[HÈ˜XÚÛÙÈ][HˆÙYİZYÈÂ›Y\Û[ÈY°èÛÈHÙpéğèÛÈM
+ÛÛ\Û™[H]]ØÛÛYÈÜˆ\ËÚ›ÛYB™Ù[Z[˜[Y[H\XØYÈ^˜pëYÈ˜H\œ]Z]›ÈÛÛ\\[YË™\šYšXØpéğèÛÂ˜ØØ
+Ø\Û[
+Øš]\İ
+ØZ[
+ÑL‘JÛ˜]™YØYÜˆ™X[HØYH^˜péğèÛÈ8 %Ù[B˜Xİ[][\ˆ]Y[°éØ\È°èÛÈ™\šYšXØY\ÊK‚‚ŠŠ‘^˜pëYÜË[HÜ™[HHÛÛ\^YYHÜ™\ØÙ[JŠ‚‚‹H^Ù\[Û‹\[™[]ÚYÙ]X›ÙKŞ
+XZ[Üˆœ˜[˜Ú°èÛËYÜ°èYšXÛËLˆ[š\ÊH8 %ÜÈ\ÙTİ]XH™]š\ğèÛÈH^ÙpéğèÛÂˆ
+^Ù\[Û•šY]ØØY][™Ñ^Ù\[Û˜ØÛÜœ™Xİ[Û•˜[YXØÛÜœ™Xİ[Û”™X\ÛÛ˜
+BˆÛÛ™š\›XYÜÈ\ØYÜÈğìÈ[H
+Ü™\[\ÈH[İ™\ŠHH[İšYÜÈ˜H[›ÂˆÈÛÛ\Û™[K°èÛÈXZ\È[HÚYÙ]Ø\™ˆXÚYÈ›ÈØ[Z[šÎˆÈ^ÜˆÔÕˆ\Ø]˜H;îïÉØÜİŸX
+“ÓHšXH\ØØ\H[šXÛÙJH8 %ÈY]Ü‚ˆ\İHÙ\ÜğèÛÈ[œÚ\İXH[HÛÛ™\\ˆHÙ\]pê›˜ÚXH;îïØYÚ]YH[Bˆ]\È[HØ\˜Xİ\™H“ÓH]\˜[[ÈÜ˜]˜\ˆÈ\œ]Z]›È
+Y\Û[È›Ø›[XBˆ™X\\™XÙ]H[H°è\šX\È[]]˜\ÈHY]ØÜš]X
+NÈÛÛÜ›˜YÂˆ\ØÜ™]™[™È[HÚÙ[ˆH^ÈÛÛ][Hš[YZ\›È
+›ÙHYXÛÛBˆİš[™Ë™œ›ÛPÚ\ÛÙX
+HHğìÈ\Ú\ÈİXœİ]Z[™È[È^Âˆ;îïØ]\˜[8 %™\İ[YÈš[˜[ÛÛ™š\›XYÈ]HH]Bˆ
+”ÓÓ‹œİš[™ÚYXÈ™XÚÊH[\ÈHÙYİZ\‹‚‹HØÚY[KZX]X\]ÚYÙ]X›ÙKŞ
+N[š\ÊK‚‹HY]šXË]ÚYÙ]X›ÙKŞ
+Y]šXØ
+ÈY]šXË]™[™[˜ÛZHÜ\šÛ[™Bˆ™XÚ\ÊK‚‹HÚ\]ÚYÙ]X›ÙKŞ
+˜\˜ØYXØ[™XØ\™XXÎ[š\È8 %ÂˆXZ[ÜˆHÙÜÊKˆÜÈÈ\ÙTİ]XH[\˜péğèÛÂˆ
+Xİ]™TYR[™^ØÙ[XİYYR[™^ØXİ]™P˜\’[™^
+HÛÛ™š\›XYÜÂˆ\ØYÜÈğìÈ[HH[İšYÜÈ˜H[›ÈÈÛÛ\Û™[K‚‚ŠŠ“›İ›ÈÛÚÈÛÛ\\[YËXÚYÈ\˜[HH^˜péğèÛÈÈY]šXË]™[™
+Š‚›ÈÜ\šÛ[™HÈY]šXË]™[™\ØH^][Y[HHY\ÛXH0ìÙÚXØHH›ÛYÙ[BšÜš^›Û[Üˆ\œ˜\İÈ
+Ú\ØÜ›Û™Y˜Ø[™PÚ\ØÜ›ÛÚ[\‘İÛ˜Â˜Ú\ØÜ›Û]ÛœØ
+H]YHÈ›ØÛÈHÜ°èYšXÛÜÈš[˜Ú\[8 %^˜pëYÈ˜B˜\ÙKXÚ\ZÜš^›Û[\ØÜ›ÛŞ
+™XÚ\ØHÙ\ˆŞ°èÛÈØÜ‚˜ÛÛ\ˆ”Ö›È›İ0èÛÈH›ÛYÙ[H8 %YÛÈ[ÈØØ˜Hš[YZ\˜H[]]˜JB™H\ØYÈ[ÈÜˆY]šXË]ÚYÙ]X›ÙKŞ]X[ÈÜ‚˜Ú\]ÚYÙ]X›ÙKŞ[0ê[HÈ]YHÛØœ›İH[HÚYÙ]Ø\™[\È\İB›0ìÙÚXØH[X°ê[HØZ\ˆH0èK‚‚ŠŠ•™\šYšXØpéğèÛÈHš\ØÛÈ›ÜÜ˜Ú[Û˜[[È[X[šÈH]Y[°éØJŠˆÛÛ[Â˜Ú\]ÚYÙ]X›ÙKŞ0êHÈœ˜[˜ÚXZ\ÈÛÛ\^È
+[\˜péğèÛÈB˜Û\]YKÚİ™\ˆ[H˜\œ˜HH^˜KÜ›ÜÜËYš[\‹ÛÛ\ÊKH™\šYšXØpéğèÛÈ[B›˜]™YØYÜˆ™X[›ÚH[0ê[HÈÚXÚÈš\İX[8 %Û\]YH›ÙÜ˜[pè]XÛÈšXB˜\Ü]Ú]™[[HÙ]Üˆ™X[ÈÜ°èYšXÛÈH^˜HH[XH˜\œ˜H™X[Â™Ü°èYšXÛÈH˜\œ˜\È
+Ø[İ[[™ÈHÜÚpéğèÛÈšXHÙ]›İ[™[™ĞÛY[™Xİ
+
+X›°èÛÈğìÈÚ[X[™ÈÈ[™\ˆ™XXİ\™][Y[JKÛÛ™š\›X[™È[H[X›ÜÈÜÂ˜Ø\ÛÜÎˆÛÛYÙ[HH[š\Èš\ğë]™Z\È]YHÛÜœ™][Y[H
+L¸¡¤
+KÚ\ˆ‘š[˜YÈÜˆˆ\\™XÙK™[[İ™\ˆÈÚ\›ÛHHL¸¡¤ŒL‹™\›È\œ›È›İ›Â››ÈÛÛœÛÛKˆ\ÜØH0êHHY\ÛXH™\šYšXØpéğèÛÈHX\È\™péğíY\È°èH\ØYH˜BœÙpéğèÛÈM\˜H˜[šÚ[™ØYÛÜ˜H\İ[™YH›ÈØ[Z[šÈH[\˜péğèÛÈXZ\Â˜ÛÛ\^ÈÈ\œ]Z]›È[Z\›Ë‚‚˜œš]\İ[˜
+MMH\ÜÛİKH[YÈ8 %Ù[H\İH›İ›È™\İH˜]XKX\Â›˜YH]YXœ›İJKœØÈK[›Ñ[Z][\È\Ú\ÈHØYH^˜péğèÛÂš[™]šYX[œ\Û[KYš^Ù[H\œ›È™X[™\İ[H
+ğìÈ]š\ÛÜÂœ°êKY^\İ[\ÈH˜\İ\™Yœ™\Ú[HÚYÙ]\İ\ÜŞ
+KœH[ˆZ[ŠÈœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØ\›İ˜YÜËœ^]ÜšYÚ\İ
+L‘B˜ÛÛ\]ÊH\›İ˜YÈÛÛ˜H]ˆÙ\™\ˆ™X[\Ú\ÈH˜]XH[Z\˜K‚‚ŠŠ”™\İ[YÈ0ë\]ZYÊŠˆÚYÙ]XØ\™Ş›ÚHHÍMÈ[š\ËÌMLHĞ‚Š[°ëXÚ[ÈHÙpéğèÛÈM
+H\˜H
+ŠÌÎ[š\ÊŠˆ8 %™YpéğèÛÈHÎIH›È\œ]Z]›Âš[Z\›È[ÈÛ™ÛÈ\ÈX\ÈÙpéğíY\ËˆÙÜÈÜÈM\ÜÈHÚYÙ]ÜšYÚ[˜Z\Â˜YÛÜ˜Hš]™[H[H\œ]Z]›È°ìÜš[È
+
+‹]ÚYÙ]X›ÙKŞ
+HİH°èH[YØ]˜[B˜[\È˜HÛÛ\Û™[H^H
+Ü\˜][Û˜[ÚYÙ]›ÙXX\ÚYÙ]›ÙX
+NÂ˜ÚYÙ]Ø\™šXÛİH™Y^šYÈH[H\Ü]Ú\ˆÜˆË\X
+ÈÚ›ÛYB˜ÛÛ\\[YÈ
+˜YÔ›ÜØÚ^™PÛÛ›ÛØ
+H
+ÈÜÈÚ\Èœ˜[˜Ú\È\]Y[›ÜÂœ]YH[˜ØH™XÚ\Ø\˜[HH^˜péğèÛÈ
+›Û\‹Yš[\Ø[XYÙXŒMKM›[š\ÈØYJKˆ][HÈ˜XÚÛÙÈ™XÚYÈ8 %°èÛÈ0èHXZ\È[™0ê›˜ÚXHB™]š\ğèÛÈ™YÚ\İ˜YK‚‚“Y\ØÛYHÛÛ[ÈÔˆÌM×JÎ‹ËÙÚ]X‹˜ÛÛKÛÛ]™MÛÛ\]X[YYKÜ[ÌMÊB™\Ú\ÈHÙÜÈÜÈÚXÚÜÈHÒH\ÜØ\™[HH]]Üš^˜péğèÛÈ^0ëXÚ]HÂ\İpè\š[ËˆXZ[ˆ]˜[°éÛİHHÎMÎ\˜HLLÙ‚‚ˆÈÈM‹ˆÛÛ™šX[°éØHÜˆÛÛ[˜H˜H™]š\ğèÛÈH[\ÜpéğèÛÈ
+˜YÙH[KÛpêYXKØ˜Z^H
+È[İ]›ÊB‚•\İpè\š[È›İ^H[XH\İH^[œØHHš[ÜšYY\È
+”š[ÜšYYH[H8 %™˜^™\ˆYÛÜ˜HŠHÛØœš[™ÈÛÛ™šXXš[YYHH[\ÜpéğèÛËVH\œ›ËœÙYİ\˜[°éØHH[™œ˜Y\İ]\˜HH›Ù]ËØ\œ]Z]]\˜Kˆ\™İ[YÈÜˆÛ™B˜ÛÛYpéØ\È\ØÛÛYHHÛXpéğèÛÈHÛÛ™šX[°éØHÜˆX˜KØÛÛ[˜H8 %š[YZ\›Âš][HHÙpéğèÛÈHXZ[Üˆš[ÜšYYHH[XÙ\˜ÙHÜÈİ]›ÜÈ][œÈHY\ÛXBœÙpéğèÛÈ
+[ÙÈH™]š\ğèÛÈH™[]0ìÜš[ÈHšY[YYH\[™[HH\ˆ[BœÚ[˜[HÛÛ™šX[°éØH˜H[Üİ˜\ŠK‚‚ŠŠ’[™\İYØpéğèÛÈ°ê]šXH
+İX˜YÙ[H^Ü™JH[\ÈH\Ù[š\ˆ]X[]Y\‚˜ÛÚ\ØJŠˆH[™œ˜Y\İ]\˜HHÛÛ™šX[°éØH°èH^\İXH[HÜ˜[™H\H8 %˜Z[ÚY]ÛÛ™šY[˜ÙSX]š^
+°ë]™[ÜˆX˜K[KÛpêYXKØ˜Z^H
+È[İ]›ÜÊBš°èH^\İHH°èH0êH™[™\š^˜YÈÛÛ[ÈÛÛ\˜\ÈX˜\ÈH™]š\ğèÛÎÂ˜ÛÛ[[‘XYÛ›ÜİXØ
+ÜˆÛÛ[˜JH°èH[šHÛÛ™šY[˜ÙX
+Ù\^˜HB™]XğéğèÛÈH\ËLJHHØ\›š[™ÜÎˆİš[™Ö×XÛÛ\]YÜËX\È
+Š›[˜ØBœ™[™\š^˜YÜÈ[HYØ\ˆ™[š[JŠˆ8 %ÈØ\™X[°èÛÈ\˜H˜Ø[İ[\ˆÛÛ™šX[°éØBœÜˆÛÛ[˜H‹\˜H™˜[]˜HÈ°ë]™[HÈØ]YÛÜšX\ÈHHRH˜H[Üİ˜\ˆÂœ]YH°èH^\İXH‹ˆ[\Ü]Y]
+Y\ØÛYÙ[œÈ^[™Y\Ë°ìÜ›][\Âœ™Xİ\\˜Y\Ë[š\È[Hœ˜[˜ÛÈYÛ›Ü˜Y\È]ËŠH[X°ê[H°èH0êHÛÛ\]YÈX\Â›[˜ØHÚYØH0è[H8 %X\XYÈÛÛ[ÈØ\™X[°èÛÈÛÜœšYÚYÈ™\İHÙpéğèÛÂŠšYHœ[™0ê›˜ÚXHˆX˜Z^ÊK‚‚ŠŠ’[\[Y[YÊŠˆÛÛ™šY[˜ÙS]™[›ÜŠØÛÜ™JNˆ˜[HŸ›pêYXHŸ˜˜Z^H˜™^˜pëYÈÛÛ[È[°éğèÛÈ\˜H[H[\ÜZ[[YÙ[˜ÙKØ
+Y\Û[ÜÈ[ZX\™\ÂKÍŒ]YHZ[ÚY]ÛÛ™šY[˜ÙSX]š^°èH\Ø]˜KYÛÜ˜H›ÛYXYÜÈBœ™X\›İ™Z]YÜË°èÛÈXZ\È\XØYÜÊKˆ›İ›È\ÈÛÛ™šY[˜ÙS]™[˜ÛÛ\\[YÎÈÚY]ÛÛ™šY[˜ÙS]™[\ÜØHHÙ\‚˜ÛÛ™šY[˜ÙS]™[œÙ[HXYÛ°ìÜİXÛÈ˜ˆÛÛ[[‘XYÛ›ÜİXØØ[šİHÈØ[\Â˜]™[ÛÛ\]YÈÛÛ[ÈHpêYXHHÛÛ™šY[˜ÙJŒLH]X[]TØÛÜ™XŠ\ÈX\Èpê]šXØ\ÈYY[HÛÚ\Ø\ÈY™\™[\È8 %È]pèÛÈ™[HÈY°èÛÈ˜]HœË‚›È]pèÛÈ[šY›Ü›YH0êHÈ™Y[˜ÚYÈ8 %HğìÈÛÜœ™\ÜÛ™[HH˜[Hˆ]X[™È\Â™X\ÈÛÛ˜ÛÜ™[JKÛÛH[XH™YÜ˜HYXÚ[Û˜[ˆ]X[]Y\ˆØ\›š[™ÜË›[™İˆš[\YH˜[H˜Y\Û[È]YHÈØÛÜ™HÛÛXš[˜YÈÜ^™HÈ[ZX\ˆ8 %°èÛÈ˜^‚œÙ[YÈ[Üİ˜\ˆ˜[HÛÛ™šX[°éØHˆ[ÈYÈH[H[İ]›ÈH0îšYH\İYÂ›˜HY\ÛXHÛÛ[˜K‚‚“›İ›ÈÛÛ\Û™[HÛÛ\\[YÈÛÛ™šY[˜ÙKYİŞ
+ÛÛ™šY[˜ÙQİ
+H8 %œÛÈÛÛÜšYÈ[Y\˜[Ø[X™\‹Ü›ÜÙKY\Û[ÈX\X[Y[ÈHÛÜˆ]YH°èH\˜B\ØYÈ[›[™H˜\ÈX˜\ÈH™]š\ğèÛÎÈ™Y˜]Ü˜YÈ\˜H™X\›İ™Z]\ˆ[H™^ˆB™\XØ\‹ˆ™[™\š^˜YÈÜˆÛÛ[˜H[H[\Ü]ÛÜšØ™[˜ÚŞ›ÈØX™péØ[Â˜ÛXğè]™[H˜[˜ØYHH[\ÜpéğèÛÈˆ
+Y\Û[È›İ0èÛÈ]YH°èH[\›˜Bš[˜ÛZ\‹ÚYÛ›Ü˜\ˆÛÛ[˜JKÛÛH]X[Üİ˜[™Â˜ÛÛ™šX[°éØH	Û]™[H8 %	İØ\›š[™ÜËš›Ú[ŠÈŠ_X8 %Y\Û[ÈY°èÛÈBÛÛ\°èH\ØYÈ[\ÈX˜\Ë‚‚•\İ\È›İ›ÜÈ[H[\ÜZ[[YÙ[˜ÙK\İØˆ[ZX\™\ÈB˜ÛÛ™šY[˜ÙS]™[›Ü˜ÈÛÛ[˜H[\HHÛÛœÚ\İ[H8¡¤ˆ[NÈÛÛ[˜HÛÛB˜]š\ÛÈ^0ëXÚ]È[˜ØH[Üİ˜H[HY\Û[ÈÛÛHØÛÜ™HÛÛXš[˜YÈ[È
+›İ˜B™\™]HH™YÜ˜HH[[ğéğèÛÊNÈÛÛ[˜HÛÛH™\™\Ù[péğíY\ÈZ\İ\˜Y\ÈB›]Z]H]\ğê›˜ÚXH8¡¤ˆ˜Z^H
+š^\™HZ\İYH\Ú\ÈH[XHš[YZ\˜H[]]˜B˜ÛÛHğìÈH˜[Üˆ™Y[˜ÚYÈ°èÛÈÙ\˜\ˆ[˜ÛÛœÚ\İ0ê›˜ÚXHİYšXÚY[H8 %ÛÜœšYÚYÂ\Ø[™Èpî›\ÜÈ˜[Ü™\ÈH˜[pë[XHH™\™\Ù[péğèÛÈY™\™[K[˜ÛZ[™Â™\œ›ÜÈH°ìÜ›][HÈ^Ù[[\ÈHXÙZ]\ˆÈ\İJK‚‚ŠŠ•™\šYšXØpéğèÛÈ[0ê[HH\İ\È[š]0è\š[ÜÊŠˆÛÛ[ÈÙ[\™H™\İHÙ\ÜğèÛÈ\˜B›]Y[°éØ\ÈHRK™\šYšXØYÈ[H˜]™YØYÜˆ™X[8 %\ØYH[HÔÕ‚œÚ[0ê]XÛÈÛÛH[XHÛÛ[˜H[\HHX\ÈÛÛ[˜\ÈÛÛH	HH˜[Ü™\Â˜]\Ù[\ÈÛÛ™š\›[İH^][Y[HÈÛÛ\Ü[Y[È\Ü\˜YÎ‚˜›Ù]È8¡¤ˆÛÛ™šX[°éØH[H˜
+ÛÈ™\™JK˜[Ü˜ØÛÛY[\š[Ø8¡¤‚˜ÛÛ™šX[°éØHpêYXH8 %]Z]ÜÈ˜[Ü™\È]\Ù[\È˜
+ÛÈ0è›X˜\ŠKˆXÚYÈ›Â˜Ø[Z[šÎˆÈ›^ÈH[[Ûœİ˜péğèÛÈ
+™\ˆ[[Ûœİ˜péğèÛØ
+H°èÛÈ\ÜØH[Âœ\[[™H™X[HXYÛ°ìÜİXÛÈ
+™\\™J
+X[H›İ]\ËÚ[™^Ş[š™]B˜›İÖ×X›ÛÜÈÙ[HÚ[X\ˆXYÛ›ÜÙR[\ÜYÚY]
+K[0èÛÈ°èÛÈÙ\š]Bœ˜H™\šYšXØ\ˆ8 %™XÚ\ÛİHH\ØY™X[
+šXHÚ[][péğèÛÈB˜[œ]™š[\ØÙ]™[ÈÚ[™ÙX]YH[˜Ú[Û›İH[X›Ü˜HÈ™]Ü››Èğë[˜Ü›Û›Âš[YYX]ÈÈØÜš\[šH[Üİ˜YÈ[˜ÛÜœ™][Y[HŒ\œ]Z]›ÜÈˆ8 %Â\ØY›ØÙ\ÜÛİHH™\™YH[H[œİ[H\Ú\ÊK‚‚•[X°ê[H›YÜ˜YÈ
+°èÛÈÛÜœšYÚYËÜ]Û—İ\ÚØ™YÚ\İ˜YÈ›È\İpè\š[Â™XÚY\ŠNˆ[H\œ›È™X[H™\›Ù^°ë]™[HÛÜœšYHHY˜]péğèÛÈÔÔ‚Š’Y˜][Ûˆ˜Z[Y‹‹ˆ[ÙÈš]˜YÈŠH\\™XÙ]H[HÙH™\šYšXØpéğèÛÈB›˜]™YØYÜˆ\İHÙ\ÜğèÛÈ[Z\˜K[˜ÛZ[™È\È[\š[Ü™\È8 %›Ü˜HB™\ØÛÜÈ\İHÙpéğèÛËX\ÈÛÛ™š\›XYÈÛÛ[ÈYÈ™X[°èÛÈpëYË‚‚˜œš]\İ[˜
+MNH\ÜÛİKH[YÈ8 %\İ\È›İ›ÜÊKœØÂ‹K[›Ñ[Z]œ\Û[KYš^›ÜÈÈ\œ]Z]›ÜÈØØYÜÈ
+È™]Y\‚Ô“‹\ØY™KœH[ˆZ[
+ÈœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØB˜œ^]ÜšYÚ\İ
+L‘HÛÛ\]ÊH\›İ˜YÜË‚‚ŠŠ”[™0ê›˜ÚXH^0ëXÚ]K°èÛÈ[\[Y[YJŠˆ[\Ü]Y]
+Y\ØÛYÙ[œÂ™^[™Y\Ë°ìÜ›][\È™Xİ\\˜Y\Ë[š\ÈYÛ›Ü˜Y\È]ËŠHÛÛ[XB˜ÛÛ\]YÈH[˜ØH™[™\š^˜YÈ8 %°ìŞ[[È\ÜÛÈ˜]\˜[˜H›[Üİ˜[™Â™^][Y[HÈ[İ]›ÈˆH°ë]™[HX˜KÛÛ\[Y[[™ÈÈ°ë]™[HÛÛ[˜Bš[\[Y[YÈ\]ZKˆÈ™\İ[HH\İH˜^šYH[È\İpè\š[È
+[ÙÈBœ™]š\ğèÛÈ°êKZ[\ÜpéğèÛË™YÜ˜\ÈH[\ÜpéğèÛÈØ[˜\ÈÜˆ[Ù[Ëœ™[]0ìÜš[ÈHšY[YYHÜˆX˜KY[YšXØpéğèÛÈH\œ]Z]›ÈÜˆÛÛpî™Ë›[Z]HH0è\™XH[™›YK˜]H[Z]\İšXpëYËĞTÕ˜HÒK]ËŠBœ\›X[™XÙH™YÚ\İ˜YÈÛÛ[È°ìŞ[X\Èš[ÜšYY\Ë°èÛÈX˜[™Û˜YË‚‚ˆÈÈMËˆÛÜœšYÚYÈÈYÈ™X[HY˜]péğèÛÈÔÔˆÚ[˜[^˜YÈ˜HÙpéğèÛÈMˆ
+’Y˜][Ûˆ˜Z[Y‹‹ˆ[ÙÈš]˜YÈŠB‚•\İpè\š[È\ØÛÛ]H[™\İYØ\ˆ\İHXÚYÈ
+›YÜ˜YÈÛÛ[ÈÜ]Û—İ\ÚØ˜BœÙ\ÜğèÛÈ[\š[Ü‹ÙpéğèÛÈMŠH[H™^ˆHÙYİZ\ˆH\İHHš[ÜšYY\Ë‚‚ŠŠØ]\ØH˜Z^ŠŠˆÛÛœİÜš]˜]S[ÙKÙ]š]˜]S[ÙTİ]WHH\ÙTİ]J
+
+BOˆ\Ôš]˜]S[ÙJ
+JX[H›İ]\ËÚ[™^ŞÚ[X]˜H\Ôš]˜]S[ÙJ
+XŠİÜ˜YÙKØ0êˆØØ[İÜ˜YÙK™Ù]][J’UPÖWÓSÑWÒÑVJX
+H\™]È›Âš[šXÚX[^˜YÜˆÈ\İYË^Xİ]YÈ[È›ÈÙ\šYÜˆ]X[È˜Hš[YZ\˜Bœ™[™\š^˜péğèÛÈÈÛY[Kˆ›ÈÙ\šYÜˆØØ[İÜ˜YÙX°èÛÈ^\İK[0èÛÈÂœ™\İ[YÈ0êHÙ[\™H˜[ÙXÈ›ÈÛY[KÙHÈ\İpè\š[È°èH[šH]]˜YÈÂ›[ÙÈš]˜YÈ[XHÙ\ÜğèÛÈ[\š[Üˆ
+\œÚ\İYÈ[HØØ[İÜ˜YÙX°èÛÈ0êB™Y°ê›Y\›ÊKÈ™\İ[YÈ0êHYX8 %ÜÈÚ\ÈS]™\™Ù[H›È^ÈÈ›İ0èÛÂŠ]]˜\ˆ[ÙÈš]˜YÈˆœËˆ“[ÙÈš]˜YÈYØYÈŠKHÈ™XXİ[°éØB˜Y˜][Ûˆ˜Z[YH›Ü›XHÛÛœÚ\İ[KÙ[\™H]YHÈ›YÈ°èH\İ]˜BœÙ]YË‚‚ŠŠÛÜœ™péğèÛÊŠˆY\Û[ÈY°èÛÈ°èH\ØYÈ\˜HY˜]Y
+™\ˆÙpéğèÛÈÍÍÍJH8 %™\İYÈ[šXÚX[š^È[H˜[ÙX
+YİX[[ÈÙ\šYÜŠKÚ[˜Ü›Ûš^˜YÈÛÛHÂ˜[Üˆ™X[H\Ôš]˜]S[ÙJ
+XšXH\ÙQY™™Xİ
+
+
+HO‚œÙ]š]˜]S[ÙTİ]J\Ôš]˜]S[ÙJ
+JK×JX]YHğìÈ›ÙH›ÈÛY[H\0ìÜÂ˜H[ÛYÙ[K]X[™ÈÈ™XXİ°èH™XÛÛ˜Ú[[İHH0è\›Ü™HY˜]YK‚‚ŠŠ•™\šYšXØpéğèÛÈ[H˜]™YØYÜˆ™X[
+Šˆ
+°èÛÈğìÈ[š]0è\šXKÜˆÙ\ˆYÈB”ÔÔ‹ÚY˜]péğèÛÊNˆØØ[İÜ˜YÙKœÙ]][J›ÛX[K\š]˜]K[[ÙH‹ŒHŠX[\Â™ÈØ\œ™YØ[Y[Ë\Ú\È™XØ\™ØH[\KˆÙ[HHÛÜœ™péğèÛË™\›Ù^šYÈB™›Ü›XHÛÛœÚ\İ[H
+Y˜][Ûˆ˜Z[Y™XØ]\ÙHHÙ\™\ˆ™[™\™Y^‹‹‹]]˜\ˆ[ÙÈš]˜YØ
+NÈÛÛHHÛÜœ™péğèÛËÈ™XØ\™Ø\ÈÛÛœÙXİ]]˜\ÈÙ[B›™[š[H\œ›ËHÈ›İ0èÛÈ[Üİ˜HÛÜœ™][Y[H“[ÙÈš]˜YÈYØYÈˆ\Ú\Â™HY˜]péğèÛÈ
+Y™Z]ÈØœÙ\˜YË°èÛÈğìÈ]\ğê›˜ÚXHH\œ›ÊKˆXÚYÂ›]\˜[™YÚ\İ˜YÈX\È°èÛÈÛÜœšYÚYÈ™\İHÙpéğèÛÈ
+›Ü˜HÈ\ØÛÜÈÂœÚ[ÛXH™[]YËY\ÛXHÛ\ÜÙHHYÊNˆÚYX˜\˜[H›İ]\ËÚ[™^Ş[X°ê[H\ØH\ÙTİ]J
+
+HOˆ\[ÙˆÚ[™İÈOOH[™Yš[™YˆÈYH‚Ú[™İË›X]ÚYYXJ‹‹ŠK›X]Ú\ÊX]YHÙH]™\™Ú\ˆÈY\Û[È™Z]Â™\[™[™ÈH\™İ\˜HHšY]ÜÜ8 %°èÛÈ™\›Ù^šYÈ™[HÛÛ™š\›XYÈÛÛ[ÂœÚ[ÛXH™X[ğìÈÚ[˜[^˜YÈÜˆÙ[Y[[°éØH\İ]\˜[‚‚˜œš]\İ[˜
+MNH\ÜÛİKH[YËÙ[H\İH›İ›È8 %0êH[HYÈB[Z[™ÈHY˜]péğèÛË°èÛÈH0ìÙÚXØH\˜KH°èH0èH™\šYšXØpéğèÛÈB›˜]™YØYÜˆ™X[ÛØœš[™ÈÈÙ[°è\š[ÊKœØÈK[›Ñ[Z]œH[ˆZ[˜œ^]ÜšYÚ\İ
+L‘HÛÛ\]ÊH\›İ˜YÜË‚‚ˆÈÈNˆ™[]0ìÜš[ÈHšY[YYHÜˆX˜H˜H™]š\ğèÛÈH[\ÜpéğèÛÈ
+][H[™[HHÙpéğèÛÈM‹˜XÚÛÙÈ][HJB‚”°ìŞ[[È][H˜]\˜[Hœ™[H˜ÛÛ™šXXš[YYHH[\ÜpéğèÛÈ‹°èBœ™YÚ\İ˜YÈÛÛ[È[™0ê›˜ÚXH^0ëXÚ]H˜HÙpéğèÛÈMˆ[\Ü]Y]ŠY\ØÛYÙ[œÈ^[™Y\Ë°ìÜ›][\È™Xİ\\˜Y\Ë[š\È[Hœ˜[˜ÛËÛØİ[\ËÂ™š[˜Z\ÈYÛ›Ü˜Y\ËÛÛ[˜\ÈYÛ›Ü˜Y\ËÛÛ™\œğíY\È[pê\šXØ\ËØX™péØ[ÜÂœ™\]YÜÈYÛ›Ü˜YÜË™YÚpíY\ÈX[Y\È[\ÊH°èH\˜HÛÛ\]YÈÜ‚˜ÚY]Ô›İÜØ
+[\ÜØ
+HHÚYØ]˜H]0êH™]šY]ÔÚY]Ø[B˜›İ]\ËÚ[™^ŞX\ÈğìÈ\˜HÛÛœİ[ZYÈ[\›˜[Y[HÜ‚˜™\ÛÛ™TÛİ\˜ÙPÙ[š[Ø8 %[˜ØHÚYØ]˜H0èRH™[HÛØœ™]š]šXH[0ê[HBœ™]š\ğèÛÈ
+°èÛÈ[˜H[HÚY]]XÜˆXÚ\ğèÛÈH\ØÛÜÈ°èH[\0ëXÚ]N‚°êH[H™[]0ìÜš[ÈH[\ÜpéğèÛË°èÛÈ[HYÈÈZ[™[
+K‚‚ŠŠ’[\[Y[YÊŠˆ]Y]šY[]T\˜Ù[
+]Y]
+Nˆ[X™\˜
+[\ÜØ™[°éğèÛÈ\˜JH8 %\˜Ù[X[Hğê[[\È°èÛÈ˜^šX\ÈHÜšYÙ[H]YBœÛØœ™]š]™\˜[H]0êHHX™[H[\ÜYH
+İ]]›Û‘[\PÙ[ØÛØœ™B˜Ûİ\˜ÙS›Û‘[\PÙ[Ø\œ™YÛ™YË[˜ØH\ÜØHHLY\Û[ÈÙH[XB™°ìÜ›][H™Xİ\\˜YHš^™\ˆÈİ]]İ\\˜\ˆHÜšYÙ[JKˆ™X\›İ™Z]B˜ÛÛ™šY[˜ÙS]™[›Ü˜
+[ZX\™\ÈKÍŒ°èH\ØYÜÈ[HÙpéğèÛÈMŠH›Â˜ÛÛ™šY[˜ÙQİÈZ[™[Y\Û[ÈX\X[Y[ÈHÛÜˆ[HÙHH™]š\ğèÛË‚‚”Z[™[]Z[Ï˜›İ›È[H™]šY]ËŞY\Û[ÈY°èÛÈš\İX[ÜÈİ]›ÜÂš[™[0è\š[ÜÈH™]š\ğèÛÈ
+\\›[šÜË›ÛY\ÈYš[šYÜËÛÜˆBœ™Y[˜Ú[Y[È]ËŠNˆ˜YÙHÛÛH\˜Ù[X[
+ÈÛÈHÛÛ™šX[°éØH›Âœ™\İ[[ËH[›È[XH\İHH°ìİ[ø¡¤˜[Üˆ˜HØYHØ[\ÈÂ˜[\Ü]Y]ÛÛ™XÚ[Û˜YHHˆ˜H°èÛÈÛZ\ˆ[XH[\ÜpéğèÛÈ[\B˜ÛÛH™\›ÜÈ
+ğìÈ˜ğê[[\È˜HÜšYÙ[H‹È˜ğê[[\È˜HX™[H[\ÜYHˆÙ[\™B˜\\™XÙ[KÈ™\İÈ0êHÛÛ™XÚ[Û˜[
+K‚‚ŠŠ•™\šYšXØpéğèÛÈ[H˜]™YØYÜˆ™X[
+Šˆ
+°èÛÈğìÈ[š]0è\šXKÜˆ[›Û™\ˆ\ØY™H\[[™HHXYÛ°ìÜİXÛÈ™X[8 %Y\ÛXH™\ÜØ[˜HHÙpéğèÛÈMˆ•™\‚™[[Ûœİ˜péğèÛÈˆ°èÛÈ\ÜØHÜˆXYÛ›ÜÙR[\ÜYÚY]ØÚY]Ô›İÜØB™\™YJNˆÔÕˆÚ[0ê]XÛÈÛÛH[XH[šH[Hœ˜[˜ÛÈ›ÈYZ[ÈH[XHÛÛ[˜B›[pê\šXØHØ[˜HÛÛ[È^È
+‰L]ËŠHšXHÚ[][péğèÛÈB˜[œ]™š[\ØÙ]™[ÈÚ[™ÙXˆZ[™[[Üİ›İH^][Y[HLˆğê[[\È˜B›ÜšYÙ[H
+ØX™péØ[È
+ÈHğê[[\ÈHYÊKH˜HX™[H[\ÜYH
+ØX™péØ[Â›°èÛÈÛÛHÛÛ[Èğê[[HHYÈ›Èİ]]
+KÈÛÛ™\œğíY\È[pê\šXØ\ËB›[šH[Hœ˜[˜ÛÈYÛ›Ü˜YH8 %ÍIHHšY[YYK\š]pê]XØHÛÛ™™\šYH0è›pèÛÈ[\ÈHXÙZ]\ˆÈ™\İ[YË‚‚\İ\È›İ›ÜÈ[H[\Ü\İØ
+]Y]šY[]T\˜Ù[
+NˆšY[YYBİ[\™H\˜ÚX[\œ™YÛ™YK[˜ØH[˜\\ÜØHL	HY\Û[ÈÛÛHİ]]›XZ[Üˆ]YHHÜšYÙ[KL	H]X[™È°èÛÈ0èHğê[[HHÜšYÙ[HH™\Ù\˜\‹‚‚˜œš]\İ[˜
+MŒÈ\ÜÛİKH[YÈ8 %\İ\È›İ›ÜÊKœØÂ‹K[›Ñ[Z]œ\Û[›ÜÈÈ\œ]Z]›ÜÈØØYÜÈ
+ğìÈpëYÈHÔ“‚œ°êKY^\İ[KÛÛ™š\›XYÈÛÛHÈÛÛÜ››È™]Y\ˆÔ“‹\ØY™JKœH[‚˜Z[
+ÈœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØœ^]ÜšYÚ\İ
+L‘B˜ÛÛ\]ÊH\›İ˜YÜË‚‚ˆÈÈNKˆÛÛ™š\›XpéğèÛÈHØX™péØ[ËÚ[\˜[Ëİ\ÜÈØœšYØ]0ìÜšXH[\ÈHÙ\˜\ˆÈ™[]0ìÜš[È
+˜XÚÛÙÈ][HK›[ÙÈH™]š\ğèÛÈ°êKZ[\ÜpéğèÛÈXZ\ÈİZXYÈŠB‚”°ìŞ[[È][HH\İHHš[ÜšYY\ÈÈ\İpè\š[Ëˆ
+Š’[™\İYØpéğèÛÈ°ê]šXBŠİX˜YÙ[H^Ü™JH[\ÈH\Ù[š\ˆ]X[]Y\ˆÛÚ\ØJŠˆÙHBš[™œ˜Y\İ]\˜HH]XğéğèÛËØZ\İH°èH^\İXH8 %ØX™péØ[È]XİYÈB›[Üİ˜YÈ
+™]šY]ËŞ
+K[\˜[ÈY]0è]™[
+[\Ü]ÛÜšØ™[˜ÚŞ˜Ø[\ÜÈ”š[YZ\˜H[šH‹È°æ›[XH[šHŠK\ÜÈÜˆÛÛ[˜HÙ[\™Bš\ğë]™Z\ÈHY]0è]™Z\È
+X™[HÛÛ[˜HÈ\ÈH›Ü›X]ÈÈ[[Üİ˜HŠKˆÈØ\œ™X[°èÛÈ\˜H˜[HH™Xİ\œÛË\˜HHÛÛ™š\›XpéğèÛÈÙ\ˆ
+Š›ÜÚ[Û˜[B˜ÛÛ™XÚ[Û˜[
+Šˆ™YYĞÛÛ™š\›X][Û˜ğìÈ]]˜]˜HÛÛHÛÛ™šX[°éØH˜Z^BŠÛÛ™šY[˜ÙHÌXY\‹˜ÛÛ™šY[˜ÙHØİHpî›\\È™YÚpíY\ÊNÂ›[XH[\ÜpéğèÛÈ››Ü›X[ˆÈ\İpè\š[ÈÙXHÛXØ\ˆ\™]È[H‘Ù\˜\‚œ™[]0ìÜš[ÈˆÙ[H[˜ØHÛ\ˆØX™péØ[Ë[\˜[ÈİH\ÜËˆ[ÜˆÙB˜Xœš\ÜÙHH˜[˜ØYHH[\ÜpéğèÛËY]\ÜÙH”š[YZ\˜H[šH‹È°æ›[XB›[šHˆX\È\Ü]YXÙ\ÜÙHHÛXØ\ˆ\XØ\ˆÙ[péğèÛÈ‹H[\˜péğèÛÈ\˜B™\ØØ\YH[HÚ[0ê›˜Ú[È8 %È›İ0èÛÈš[˜[°èÛÈ\[™HH\J
+X\‚œ›ÙYËğìÈ0êˆXİ]™Kœ›İÜØØXİ]™K˜ÛÛ[[œØÈ\İYÈÈÚY]‚‚ŠŠ‘XÚ\ğèÛÈH›Ù]È^0ëXÚ]JŠˆÛÛ[È\ÜÛÈ]YHÈÛÛ\Ü[Y[ÈHÙBš[\ÜpéğèÛÈ
+°èÛÈ0êHYË0êHV›İ˜JK\™İ[YÈ[È\İpè\š[ÈÈ›Ü›X]È[\Â™H[\[Y[\ˆ8 %ÈÜ0éğíY\È\™\Ù[Y\È
+HÚXÚØ›ŞÙ[\™Hš\ğë]™[Â˜ÚXÚÜÈÜ˜[[\™\Ë™\İ[[ÈÙ[H›Ü]YZ[ÊKˆ\ØÛÛYÎˆ
+ŠŒÈÚXÚÜÂ™Ü˜[[\™\ÊŠ‹‚‚ŠŠ’[\[Y[YÊŠˆÈÚXÚØ›Ş0î›šXÛÈÙ[°ê\šXÛÈ
+ÛÛ™š\›X\ˆZ]\˜B˜[X°ëYİXH‹ğìÈ\\™XÚXHÛÛHÛÛ™šX[°éØH˜Z^JH›ÚHİXœİ]pëYÈÜˆÂ˜ÚXÚØ›Ş\ÈÙ[\™Hš\ğë]™Z\ÈH[™\[™[\È8 %ØX™péØ[Ë[\˜[ÈB›[š\Ë\ÜÈ\ÈÛÛ[˜\È8 %ØYH[HÛÛHÈ˜[Üˆ]X[[Èš]›È
+[šHÂ˜ØX™péØ[È
+ÈÛÛ™šX[°éØNÈÙ[Xİ[Û‹œİ\›İØ8 $ØÙ[Xİ[Û‹™[™›İØB˜›İÜË›[™İÈÛÛYÙ[HHÛÛ[˜\ÊHH\Û[™ÈÛ™HÛÜœšYÚ\ˆ˜H˜[˜ØYB™H[\ÜpéğèÛÈX˜Z^Ëˆ]X[™È™YYĞÛÛ™š\›X][Û˜Z[™H0êHYX
+Y\Û[ÜÂ›[ZX\™\ÈH[\ÊKÈØ\™ÈØX™péØ[ÈØ[šH\İ\]YH0è›X˜\ˆH[H]š\ÛÂ™^˜H8 %H\İ[°éğèÛÈHÛÛ™šX[°éØH˜Z^H°èÛÈ›ÚH\™YKğìÈZ^İHHÙ\‚›È0î›šXÛÈØ]Kˆ\ØX›Y^ÈZXY\ÚXÚÙY\˜[™ÙPÚXÚÙYˆ]\\ĞÚXÚÙYX›È›İ0èÛÈ‘Ù\˜\ˆ™[]0ìÜš[ÈÈ\İYÈ™\Ù]H[È›ØØ\ˆB˜X˜H
+\ÙQY™™Xİ[H˜Xİ]™R[™^Y\Û[ÈY°èÛÈ\Èİ]˜\Âœ™Z[šXÚX[^˜péğíY\ÈÜˆX˜H™\İH[JK‚‚ŠŠ•™\šYšXØpéğèÛÈ[H˜]™YØYÜˆ™X[
+ŠˆÛÛH\ØYHÔÕˆÚ[0ê]XÛÎˆ›İ0èÛÂ™\ØXš[]YÈÛÛHÌÈX\˜ØYÜËÛÛ[XH\ØXš[]YÈÛÛH‹ÌÈ
+\İYÂšXH\İYÈ™X[ÜÈÚXÚØ›Ş\Ë°èÛÈğìÈZ]\˜Hš\İX[
+KXš[]HğìÈÛÛB›ÜÈÈX\˜ØYÜËHÈÛ\]YH[H‘Ù\˜\ˆ™[]0ìÜš[Èˆ]˜[°éØH›Ü›X[Y[H]0êHÂœZ[™[
+ÛK”]X[YYKZ[™[
+KÙ[H\œ›ÈHÛÛœÛÛK‚‚ŠŠ‘Y™Z]ÈÛÛ]\˜[[˜ÛÛ˜YÈHÛÜœšYÚYÊŠˆÈ\İHL‘H^\İ[BŠ[[ËY\Ú›Ø\™œÜXËØ
+HÛXØ]˜H\™]È[H‘Ù\˜\ˆ™[]0ìÜš[Èˆ\Ú\ÈÂ™›^È•™\ˆ[[Ûœİ˜péğèÛÈˆ8 %]YH[X°ê[H\ÜØH[H™]š\ğèÛÈ™X[°èÛÈğìÂœ[È][ÈHXYÛ°ìÜİXÛËˆZ\İYÈ\˜HX\˜Ø\ˆÜÈÈÚXÚØ›Ş\ÂŠÙ]T›ÛJ˜ÚXÚØ›Ş‹È˜[YNˆ‹‹ˆJXÜˆ›ÛYHXÙ\Üğë]™[HØYB›X™[
+H[\ÈÈÛ\]YK‚‚˜œš]\İ[˜
+MŒÈ\ÜÛİKH[YÈ8 %™[š[H\İH›İ›ÈH0ìÙÚXØBœ\˜K0êH[HØ]HHRHÛØ™\ÈÜˆL‘H™X[
+KœØÈK[›Ñ[Z]œ™\Û[›ÜÈˆ\œ]Z]›ÜÈØØYÜÈ
+™]Y\ˆ™Y›Ü›X]İH™]šY]ËŞB™\™YH™\İHÙpéğèÛÈ8 %°èÛÈ\˜HğìÈpëYÈHÔ“ˆ\İH™^‹K]Üš]X˜\XØYÈH™XÛÛ™™\šYÊKœH[ˆZ[
+ÈœH[‚œ\™›Ü›X[˜ÙN˜ÚXÚØœ^]ÜšYÚ\İ
+L‘HÛÛ\]Ë[˜ÛZ[™ÈÂ˜Z\İHXÚ[XJH\›İ˜YÜË‚‚ˆÈÈLˆ\İpè\š[È›İ^HLˆ[š[\È™XZ\ÈHØ[Xœ˜péğèÛËÜ]X[YYNˆÛÜœ\ÈÓHØZHHÍH˜HËÍKÚ\ÈYÜÈ™XZ\ÈH›Ü›X]péğèÛÈ[˜ÛÛ˜YÜÈHÛÜœšYÚYÜË[H\˜ÙZ\›È™YÚ\İ˜YÂ‚”YYÈÈ\İpè\š[Îˆ[H\Ø\ˆ\ÜØ\È[š[\È˜H›Ü[XÙ\ˆÈÛÜœ\È‹˜[™^[™ÈLˆ\œ]Z]›ÜÈ™XZ\ÈÈÚ[™İÜÈİÛ›ØYÈ
+ˆŞÈØÂ˜ÛX
+KˆÛÛ^È[YYX]ÎˆHÙ\ÜğèÛÈ[šHXØX˜YÈH™]š\Ø\ˆHˆÌMÂŠÛÜœ\È
+™\š]˜YÊ‹]YH[X™\˜Y[Y[H°èÛÈÛÛH›ÈØ]H˜]]›È8 %™\ˆØÜËÕĞTÓWĞÓÔ”T×ÔĞS’UVUSÓ‹›Y
+K[0èÛÈ\İH\˜HHš[YZ\˜H]˜B™H\œ]Z]›È™X[\ÙH[0èÛÈš\Ø[™ÈÈØ]H˜]]›ÈH™\™YK‚‚ŠŠ”™\\›ÊŠˆÜÈLˆ\œ]Z]›ÜÈÛÜXYÜÈšXHİÙ\”Ú[
+°èÛÈ˜\ÚÜÜ‚˜Ø]\ØHHXÙ[ÜÈ›ÜÈ›ÛY\ÈÜšYÚ[˜Z\ÊH˜H\İYš^\™\ËÜš]˜]KÂ™İÛ›ØYËX˜]ÚÛÛH›ÛY\ÈTĞÒRHÚ[\\ËÚ]YÛ›Ü˜YËˆÜÈÈØŠ›Ü›X]Èš[°è\š[ÈÓLˆ[YÛÊH›Ü˜[HYÛ›Ü˜YÜÈ]]ÛX]XØ[Y[H[ÂœØ[š]^˜YÜˆ8 %›Ü˜HÈ\ØÛÜÈÓÖSÈ™XY[™È[™Ú[™HŒ‹°èÛÈ0êHXİ[˜B››İ˜KˆÛÜœ\ÎœØ[š]^™X›ØÙ\ÜÛİHÜÈH™\İ[\È
+ˆŞ
+ÈÈÛX
+B˜ÛÛHØ[Ù\˜YÈØØ[Y[H
+Ü\Ëœ˜[™ÛP]\Ø[˜ØHÛÛ[Z]YÊK‚‚ŠŠXÚYÈH8 %˜[ÛÈÜÚ]]›È›È˜[YYÜŠŠˆ
+ÛÜœšYÚYË‚–ÈÌMWJÎ‹ËÙÚ]X‹˜ÛÛKÛÛ]™MÛÛ\]X[YYKÜ[ÌMJJN‚˜ÛÜœ\Î˜[Y]X
+YXÚ[Û˜YÈ˜HˆÌMÊH™\›İ›İHˆÜÈH\œ]Z]›ÜÈÛÛBˆ››ÛYHYš[šYÈÈ\İpè\š[ÈÛØœ™]š]™]H‹ˆ[™\İYØpéğèÛÎˆ°èÛÈ0êH˜^˜[Y[ÈBœš]˜XÚYYH8 %ÈØ[š]^˜YÜˆÙ[\™H™\˜HÛÜšØ›ÛÚË“˜[Y\ØÂ˜Ş›K—Ñš[\‘]X˜\ÙX0êH™XÛÛœİpëYÈ[È°ìÜš[ÈÚY]”ÈH\\ˆÂ˜X]]Ùš[\˜HX˜KÙ[H›ÛYHH\İpè\š[È™[š[KˆÈYÈ\˜HH™YÙ^Â˜[YYÜˆ^YÚ\ˆ\Ü\ÈÚ[\\È[È™YÜˆÈ›ÛYHHX˜BŠ	ÔÒQUÌIÈK‹‹˜
+KX\ÈÈÚY]”ÈğìÈÚ]H]X[™ÈÈY[YšXØYÜˆ^YÙBŠ\ÜpéÛÜËØ\˜Xİ\™\È\ÜXÚXZ\ÊH8 %ÒQUÓ““˜[˜ØH^YÙKØZHÙ[B˜\Ü\Ëˆ[˜ØH[šHÚYÈ^\˜Ú]YÈÛÛH[H\œ]Z]›È™X[ÛÛH]]Ùš[›Â˜[\Ëˆ™YÙ^ÛÜœšYÚYH˜H\Ü\ÈÜÚ[Û˜Z\ÎÈ\İHH™YÜ™\ÜğèÛÈ[B˜ÛÜœ\Ë]ÛÛË\İØ™\›Ù^ˆÈÙ[°è\š[È^]È
+X˜HÛÛHX]]Ùš[\˜
+K‚‘\Ú\ÈHÛÜœ™péğèÛÎˆÛÜœ\Î˜[Y]X\›İ›İHÜÈH\œ]Z]›ÜËŒ‹LÂ˜ğê[[\Ë\šYYH\İ]\˜[Hš]˜XÚYYHÛÛ™š\›XY\Ë‚‚ŠŠ“Y\ØÛYÈ›ÈÛÜœ\È™X[
+ŠˆÜÈH\œ]Z]›ÜÈ˜[YYÜÈ›Ü˜[H™[[Y\˜YÜÂŠØ[š]^™YLØHØ[š]^™YLMXÛÛ[X[™ÈHÙ\]pê›˜ÚXHÜÈ‚˜Ş°èH^\İ[\ÊHHY\ØÛYÜÈ[H\İYš^\™\ËÜØ[š]^™Y\™X[Â›X[šY™\İ›ØØ[šœÛÛ˜ˆ\İšXZpéğèÛÈš[˜[ˆLˆŞ
+Ø]H°èH™XÚYÂ™\ÙH[\Ë‹ÍJK
+ŠŒÈÛX™XZ\ÈH\İ[ÜÈ8 %Ø]HØZHHÍH˜BŒËÍJŠ‹Z[™H[œİYšXÚY[H›ÜÈHpë[š[[ÜÈX\È›ÙÜ™\ÜÛÈ™X[[Bœš[YZ\˜H™^ˆ™\ÜÙH›Ü›X]Ë‚‚ŠŠXÚYÈˆ8 %YÈ™X[H\šYYH\İÕ\TØÜš\Ú\È\İ0èYÚ[ÜÊŠ‚ŠÛÜœšYÚYË‚–ÈÌMLJÎ‹ËÙÚ]X‹˜ÛÛKÛÛ]™MÛÛ\]X[YYKÜ[ÌML
+JN‚˜œH[ˆØ\ÛN˜ÛÜœ\ØÛÛ˜HÈÛÜœ\È[\XYÈ[Üİ›İHˆÜÈH\œ]Z]›ÜÂ››İ›ÜÈ]™\™Ú[™È[™HÈZ]Üˆ\İÕĞTÓHHÈ\TØÜš\8 %™[š[B˜\œ]Z]›ÈÈÛÜœ\È[YÛÈ]™\™ÚXK[0èÛÈ\˜HØ\˜[Y[Y[H[HÚ[ÛXB››İ›Ë°èÛÈpëYÈ°êKY^\İ[Kˆ\ÛÛYÈÛÛH[HØÜš\HXYÈYZØÂŠ×ÙXYËY]™\™ÙK›ZœØ[\Ü°è\š[Ë°èÛÈÛÛ[Z]YÊH]YHÛÛ\\˜Hğê[[HB˜ğê[[HÜÈÚ\È[İÜ™\ÈH[\š[YHğìÈ\ÈY™\™[°éØ\Ë‚‚‹H
+‘\İ0èYÚ[ÈJˆ\Ü^WØÙ[İ˜[YX
+\İ
+HğìÈ™XÛÛšXÚXHğìÙYÛÜÈBˆ›Ü›X]Èš^È
+Œ˜ŒŒ˜Œ	H˜ŒŒ	H˜
+H8 %]X[]Y\ˆİ]˜BˆÛÛYÙ[HHXÚ[XZ\Èš^ÜÈ
+ŒŒ˜ŒŒ˜]Ë‹ÛÛ][œÈ[Bˆ[š[\ÈHØ[Xœ˜péğèÛËÛYYpéğèÛÊHØpëXH[H›Ü›X]ÙÙ[™\˜[Û[X™\˜ˆ
+‘Ù[™\˜[‹ÛÜH™\›ÜÈ0è\™Z]JH[H™^ˆHÛÛ\]\ˆ\ÈØ\Ø\ÂˆXÚ[XZ\ÈÈ›Ü›X]ËˆÈ˜[Üˆœ]È
+˜]Õ˜[YX
+HÙ[\™H›ÚHY0ê›XÛÂˆ›ÜÈÚ\È[İÜ™\È8 %ğìÈHİš[™ÈH^XšpéğèÛÈ]™\™ÚXH
+^ˆNH˜ˆ[H™^ˆHNKŒ˜
+Kˆš^YÙXÚ[X[ÜXÙ\ØÙ[™\˜[^˜H˜Bˆ]X[]Y\ˆ]X[YYHH™\›ÜÈ\Ú\ÈÈÛËX[[™ÈÜÈØ\ÛÜÂˆ[YÛÜÈ[XİÜË‚‹H
+‘\İ0èYÚ[ÈŠˆ
+XÚYÈğìÈ\Ú\ÈH™]™\šYšXØ\ˆÈÛÜœ\È™X[ÛÛHÂˆ\İ0èYÚ[ÈH°èHÛÜœšYÚYÈ8 %Z[™HÛØœ˜]˜[H]™\™ğê›˜ÚX\ÈY[›Ü™\ÊNˆY\Û[ÂˆÛÛHÈ›Ü›X]ÈÙ\ÈY[YšXØYË›Ü›X]Jİ˜[YN‹™XÚ[X[ßHŠXˆ\™]È›È^]È]™\™ÙHÈ^Ù[ÔÚY]”È\ÈÈYZ[ÈÂˆ0î›[[È0ëYÚ]Ëˆ^[\È™X[ˆMMKX0êH\›X^™[˜YÈÛÛ[ÂˆMMKNNNNNNNMLÍÌÎÌLØ[H
+pëYÈš[°è\š[È[™]š]0è]™[°èÛÈ0êBˆYÈH\œÚ[™ÊH8 %›Ü›X]\ˆ\ÜÙH˜[Üˆ^]ÈÛÛHHXÚ[X[\œ™YÛ™Bˆ˜H˜Z^È
+MMK›İ[™Z[‹]ËY]™[ˆÈQQQHÍMÛØœ™HÈš[°è\š[Âˆ™\™YZ\›ÊKX\ÈMMKH
+ˆLHMMMXØZH^]È[H
+Ù[BˆpëYÊKH\œ™YÛ™\ˆ\ÜÙH˜[Üˆ\ØØ[YÈ˜HÚ[XH[\ÈH\Ù\ØØ[\‚ˆ˜]HÛÛHÈ]YHÈ^Ù[HÈÚY]”È[Üİ˜[H
+MMKX
+K‚ˆ›Ü›X]Ùš^YÙXÚ[X[Ø™\XØHÈ[ÛÜš][ÈH\ØØ[x¡¤˜\œ™YÛ™x¡¤‚ˆ\Ù\ØØ[HÈ^Ù[ÔÚY]”È[H™^ˆH›Ü›X]\ˆÈ˜[Üˆ^]È\™]Ë‚‚ŠŠ”™XZ[™X[ÈØ\ÛX°èÛÈğìÈÈğìÙYÛÈ\İ
+ŠˆÛÛ[Â˜Ø\™ÛÈZ[ØØ\ÛK\XÚØ°èÛÈ[˜Ú[Û˜[H™\İHØ[™›ŞÚ[™İÜÈ
+™\‚˜\›XY[HÍÈ[™Ù™ŠKØYH[XH\ÈX\ÈÛÜœ™péğíY\È™XÚ\ÛİHB˜ÚÛÜšÙ›İÈ[ˆØ\ÛKXZ[[[K\™Yˆœ˜[˜Ú˜
+Z[™X[›ÈX[K˜Ø\™ÛÈ\İH™\™YH8 %MH\İ\È[š]0è\š[ÜË[˜ÛZ[™ÈÜÈ›İ›ÜÈ\İBœÙpéğèÛÊHÙYİZYÈHÚ[ˆİÛ›ØYÈ\Y˜]ÈHİXœİ]ZpéğèÛÈX[X[™HÜ˜ËİØ\ÛKÛÛK[ÛŞ[XÛÜ™KÛÛWÛÛŞ[ØÛÜ™WØ™ËØ\ÛXˆÙ[H\ÜÙH\ÜÛËÜÂ\İ\È”È
+Ø\ÛK\ÚYİËXÛÜœ\Ë\İØ
+HÛÛ[X\šX[H›Ù[™ÈÛÛ˜HÂ˜š[°è\š[È[YÛÈH™[š[XHÛÜœ™péğèÛÈ\šXHY™Z]ÈØœÙ\°è]™[›Ü˜HÜÂ\İ\È[š]0è\š[ÜÈ\İ\ÛÛYÜË‚‚ŠŠ”™\İ[YÈš[˜[™\šYšXØYÈÛÛ˜HÈÛÜœ\È™X[
+Šˆ
+°èÛÈğìÈ\İ\Â[š]0è\š[ÜÈÚ[0ê]XÛÜÊNˆŞØZ]HHÈ˜HH\œ]Z]›È]™\™Ù[H
+LM8¡¤ˆÌ‚˜ğê[[\ÊNÈÛHÙ[H]Y[°éØH
+ˆğê[[\È8 %Ø]\ØH˜Z^ˆY™\™[K™\‚˜XÚYÈÊKˆœH[ˆØ\ÛN˜ÛÜœ\Øœš]\İ[˜
+Mˆ\ÜÛİKBœ[YÊKœØÈK[›Ñ[Z]œH[ˆZ[œ^]ÜšYÚ\İ˜\›İ˜YÜÈÛÛHÈš[°è\š[È™XÛÛœİpëYË‚‚ŠŠXÚYÈÈ8 %YÈ™X[H›Ü›X]ÈH]Hİ\İÛZ^˜YË°àÓÈÛÜœšYÚYÂ›™\İHÙ\ÜğèÛÊŠˆ
+™YÚ\İ˜YÈ›È\İpè\š[ÈXÚY\ˆš[ÜšYYJNˆ\Â™]™\™ğê›˜ÚX\È™\İ[\È
+ÈHŞ]YHÛØœ›İH
+ÈÜÈÈÛX[Z\›ÜÊBœğèÛÈÙ\ÈHY\ÛXHØ]\ØH˜Z^‹Y™\™[HH[\š[Üˆ8 %ğìÙYÛÈH›Ü›X]Â™H
+Š™]JŠˆİ\İÛZ^˜YÈHğê[[H
+[KŞ^X[[K^^XÛ[KŞ^X]ËŠBœÙ[™ÈYÛ›Ü˜YÈ[È\İ]YHÙ[\™H[Üİ˜HTÓÈPPPKSSKQÙ[°ê\šXÛÂš[™\[™[HÈ›Ü›X]È™X[Hğê[[H
+^ˆğê[[H›Ü›X]YH[[K^^X˜ÛÛH˜[Üˆ™X[ŒÌ‹LKLMX]™\šXH[Üİ˜\ˆ’˜[‹LÌˆ˜\İ[Üİ˜B˜ŒŒÌ‹LKLMH˜
+KˆY\Û[ÈY°èÛÈÈXÚYÈˆ
+˜[Üˆœ]ÈY0ê›XÛËğìÂ™^XšpéğèÛÈ]™\™ÙJKX\È\ØÛÜÈ™[HXZ[Üˆ8 %H0ìÙÚXØHH]HÈ\İŠ^Ù[Ù]KœœØ
+HğìÈÛØœ™HÜÈ›Ü›X]ÜÈH]H
+˜Z[[ŠˆÈ^Ù[
+QÂŒMLŒ‹ÍKMÈ[HZ[[—Û[X™\—Ù›Ü›X]
+K°èÛÈ›Ü›X]ÜÈH]BŠ˜İ\İÛZ^˜YÜÊˆ\˜š]°è\š[ÜÈ™YÚ\İ˜YÜÈ[Hİ[\Ë[]YHğèÛÈÛÛ][œÂ™[H[š[\È™XZ\ÈHÜ›Û›ÙÜ˜[XKØØ[Xœ˜péğèÛËˆ°èÛÈ[™\İYØYÈH[™Â›™[HÛÜœšYÚYÈ8 %XØX›İHHÙ\ˆ\ØÛØ™\È[Èš[˜[\İHÙ\ÜğèÛË0êHÛ\˜[Y[B[HYÈXZ[Üˆ]YHÜÈÚ\È°èHÛÜœšYÚYÜÈ\]ZKY\™XÙHÙ\ÜğèÛÈ°ìÜšXK‚‚˜œš]\İ[˜œØÈK[›Ñ[Z]œH[ˆZ[œ^]ÜšYÚ\İ\›İ˜YÜÈ[HÙ\È\È]\\È[\›YYpè\šX\ÈH›È\İYÈš[˜[‚‚ˆÈÈLKˆ\œÙ\ˆÙ[°ê\šXÛÈH›Ü›X]ÈH]H›ÈZ]Üˆ\İ
+XÚYÈÈHÙpéğèÛÈL˜XÚÛÙÈ][HØŠB‚•\İpè\š[ÈY]H^XÚ][Y[H˜HÛÜœšYÚ\ˆÈXÚYÈÈ™YÚ\İ˜YÈ˜BœÙpéğèÛÈ[\š[Ü‹\Ú\ÈH\™İ[\ˆÜˆ]YH°èÛÈ[šHÚYÈÛÜœšYÚYÂš[È8 %™\ÜÜİNˆ\ØÛÜÈ™[HXZ[Üˆ]YHÜÈÚ\ÈYÜÈHXÚ[X[ŠÙ[™\˜[^˜\ˆ[XH™YÜ˜HÚ[\\ÈœËˆ\ØÜ™]™\ˆ[H\œÙ\ˆH™\™YJKœš\ØÛÈH[›Ù^š\ˆ[HYÈ›İ›ÈÙH™Z]È0èÈ™\ÜØ\È›Èš[HH[XBœÙ\ÜğèÛÈ°èHÛ™ØKˆ\İpè\š[ÈÛÛ˜ÛÜ™İH[H›ÜÜÙYİZ\ˆ[XH]\HÙ\\˜YK™\Ú\ÈHY\ØÛ\ˆ\ÈX\ÈœÈ[™[\Èš[YZ\›Ë‚‚ŠŠØ]\ØH˜Z^ŠŠˆ›Ü›X]Ù^Ù[Ù]X
+^Ù[Ù]KœœØ
+H\˜H[HX]ÚœÛØœ™HŒMHİš[™ÜÈH›Ü›X]ÈH]H^]\ÈHš^\È
+›KÙŞ^H˜˜›[[K^^H˜]ËŠH8 %]X[]Y\ˆğìÙYÛÈ›Ü˜H\ÜØH\İHØpëXH[H˜[˜XÚÂ’TÓÈÙ[°ê\šXÛËY\Û[È]X[™È]šXH[HØ\ÛÈ˜ÛÜ™Hˆ\]Z]˜[[H°èBœİ\ÜYËˆ›Ü›X]ÜÈ™XZ\È\È[š[\ÈÈ\İpè\š[È]YH^[š[HÈYÎ‚˜›[KŞ^H˜
+™[H\İ]˜H˜HX™[JK™ÛKŞ^H˜
+Ù[H™Y[˜Ú[Y[ÈB™\›ÊKHÛØœ™]YÈ›Ü›X]ÜÈÛÛH™Yš^ÈHØØ[YYKØÛÜˆÈ^Ù[ÛÛ[Â˜–ÉMM—[[[W^^NĞ˜8 %È™Yš^ÈÉMM—XHHÙpéğèÛÈH^ÈĞš[\YX[HÈX]Ú^]ÈY\Û[ÈÛÛH›[[K^^H˜Ù[˜[°èH™\Ù[H˜BX™[K‚‚ŠŠ’[\[Y[YÊŠˆ[H\œÙ\ˆH™\™YK°èÛÈXZ\È[˜Y\È˜HX™[B™š^H
+]YHğìÈ[\\œ˜\šXHÈY\Û[È›Ø›[XH›È°ìŞ[[È›Ü›X]ÈB›ØØ[YYH°èÛÈ™]š\İÊN‚‹Hš\œİÙ›Ü›X]ÜÙXİ[Û˜ÛÜH˜Hš[YZ\˜HÙpéğèÛÈÈğìÙYÛÂˆ
+ÜÜÚ]]›ÎÛ™YØ]]›ÎŞ™\›Îİ^Ø
+KYÛ›Ü˜[™ÈØ[›ÈBˆ\Ü\ËØÛÛÚ]\Ë‚‹HÚÙ[š^™WÙ]WÙ›Ü›X]Ù\\˜HÈğìÙYÛÈ[HÚÙ[œÈHKÛKÙÚÜÂˆ
+ÛÛ[™È™\]péğèÛÈH]˜K^ˆ›[Hˆ8¡¤ˆŠHH]\˜Z\È
+\Ü\Ë\ØØ\BˆÙ\\˜YÜ™\ÊNÈ\ØØ\HÜ\ÜÈË‹‹—X[Z\›ÜÈ
+ØØ[YYKØÛÜ‹ÂˆÛÛ™péğèÛÊHHÖØ
+–
+\ÜpéØ[Y[Èš\İX[È^Ù[Ù[HY™Z]Âˆ^X[
+K‚‹H™\ÛÛ™WÛ[ÛÛZ[]X™\ÛÛ™HH[XšYİZYYHÛ0è\ÜÚXØH›HˆpêœË]œËBˆZ[]È[HY\ÛXH™YÜ˜HÈ^Ù[ˆ0êHZ[]ÈğìÈ]X[™ÈÈÚÙ[‚ˆÚYÛšYšXØ]]›ÈXZ\È°ìŞ[[È[\È0êHÜ˜KİHÈXZ\È°ìŞ[[È\Ú\È0êBˆÙYİ[™ÎÈÙ[°èÛÈ0êHpêœË‚‹H™[™\—Ù]WİÚÙ[˜™[™\š^˜HØYHÚÙ[ˆ[›È‹Í0ëYÚ]ÜËpêœÂˆ°î›Y\›ËŞ™\›Ë\YYØXœ™]šXYËÛ›ÛYHÛÛ\]ËXHY[H
+È›ÛYHÈXHBˆÙ[X[˜HšXH[ÛÜš][ÈHØZØ[[İÈ
+^WÛÙ—İÙYZØ[™\[™[HÂˆÙ\šX[^Ù[
+KÜ˜HL‹ÌÛÛ™›Ü›YH™\Ù[°éØHH[KÜK[KÜHİ\Âˆ
+H‹È”ŠHœËˆÛ™ÛÈ
+SH‹È”HŠK‚‚HX™[Hš^HÜšYÚ[˜[ÛÛ[XH[XİHÛÛHš[ÜšYYH8 %È\œÙ\‚™Ù[°ê\šXÛÈğìÈ›ÙH›È˜[˜XÚËÙ[Hš\ØÛÈH™YÜ™\ÜğèÛÈ›ÜÈ›Ü›X]ÜÈ°èB\İYÜË‚‚ŠŠ•™\šYšXØpéğèÛÈÙ[HÛÛ\[péğèÛÈØØ[
+ŠˆÈØ[™›Ş\İHÙ\ÜğèÛÈ°èÛÈ[šØB›™[HØ\™ÛÈÚXÚØ
+˜[H›ÜÈZ[ØÜš\È\È\[™0ê›˜ÚX\È[\ÈB˜[Ø[°éØ\ˆÈÜ˜]H8 %°èÛÈ0êH\œ›ÈÈğìÙYÛÈ›İ›Ë\İYÈ\ÛÛY[Y[N‚™˜[HY0ê›XØH›Ù[™ÈØ\™ÛÈÚXÚØ[HÜ˜]H˜^š[ÊKˆ[\ÈB˜ÛÛ[Z]\‹™]š\ğèÛÈX[X[ÛÛ\]H˜péØ[™È0èpèÛÈØYH[HÜÈˆ\İ\Â››İ›ÜÈÛÛ˜HH[\[Y[péğèÛÈ
+ÚÙ[œÈÙ\˜YÜË™\ÛÛpéğèÛÈpêœËÛZ[]Ëœ™[™\ˆš[˜[
+H8 %ğìÈ\Ú\È\ÜÛÈÈğìÙYÛÈ›ÚHÛÛ[Z]YÈH[šXYÈ˜BÒKˆØ\™ÛÈ›]KXÚXÚØ\›İ˜YÈØØ[Y[K‚‚ŠŠ”™\İ[YÈ™X[šXHÚÛÜšÙ›İÈ[ˆØ\ÛKXZ[[[
+Šˆ
+X[KZ[ŠÈØ\™ÛÈ\İH™\™YJNˆŒH\İ\È[š]0è\š[ÜÈ\ÜØ[™È
+MH8¡¤ˆŒKÜÈ‚››İ›ÜÈ\İHÙpéğèÛÊK˜[\È8 %ÛÛ™š\›XH]YHH™]š\ğèÛÈX[X[˜]]B˜Ù\ÈÛÛHÈÛÛ\[YÜˆH™\™YKˆš[°è\š[ÈØ\ÛX™XÛÛœİpëYÈBœ™]™\šYšXØYÈÛÛ˜HÈÛÜœ\È™X[ˆ
+Š™\›È]™\™ğê›˜ÚXH[HŞ
+Šˆ
+L‚™›Û\È™XZ\ËØ]HKÍH™XÚYË[YÚX›NˆYX[Hš[YZ\˜H™^ŠHBŠŠ™\›È]™\™ğê›˜ÚXH[HÛJŠˆ
+È›Û\È™XZ\ËZ[™HËÍHğìÈÜˆ›Û[YK›°èÛÈXZ\ÈÜˆ]X[YYHHZ]\˜JKˆÜÈ\œ]Z]›ÜÈ]YH]™\™ÚX[H˜BœÙpéğèÛÈL
+ÈŞ™\İ[H
+ÈÜÈÈÛX
+H›Ü˜[HÙÜÈÛÜœšYÚYÜË‚‚ŠŠ‘[YÚXš[YYH0êXÛšXØH°èÛÈ0êH›Û[ğéğèÛÊŠˆ[YÚX›NˆYX›ÈØ]HÖ°êH[XHpê]šXØHØ[İ[YK°èÛÈ[XHpéğèÛÈ8 %°èÛÈ›Û[İ™HÈ\İÕĞTÓH˜B›Z]Üˆš[pè\š[È›Ü˜HHÚYİÈ[ÙHÛŞš[šËˆ\ÜÛÈÛÛ[XHÙ[™Â™XÚ\ğèÛÈH›Ù]ÈÈ\İpè\š[Ë™YÚ\İ˜YHÛÛ[È[™0ê›˜ÚXH^0ëXÚ]BŠ°èÛÈÛXYH™\İHÙ\ÜğèÛÊK‚‚˜œH[ˆØ\ÛN˜ÛÜœ\Øœš]\İ[˜
+MÈ\ÜÛİKH[YÊKœØÈK[›Ñ[Z]œH[ˆZ[œ^]ÜšYÚ\İ
+L‘JH\›İ˜YÜÂ˜ÛÛHÈš[°è\š[È™XÛÛœİpëYË‚‚ˆÈÈL‹ˆİ›
+Ô^ÜHÈZ[™[ÛÛ[Èˆ[H™^ˆH[\š[Z\‚‚”YYÈ\™]ÈÈ\İpè\š[Îˆ˜YXÚ[Û™Hİ›
+Ô›È›Ú™]Ë˜H\ˆÛÛ[Âš[\š[Z\ˆ‹ˆÈ\°èH[šH^ÜpéğèÛÈHˆÛÛ\]H
+^Ü˜[B˜\ÙKY\Ú›Ø\™Y^ÜØYÚ[˜YKÛÛH\ÜÚ[˜]\˜HÛT]X[YYKX™[\ÈÛÛ\]\È[H™^ˆHğìÈÈ]YH\İ0èHš\ğë]™[˜H[JHšXHY[Bˆ‘^Ü\ˆˆ8 %Èpè[ÙÛÈH[\™\ÜğèÛÈ˜]]›ÈÈ˜]™YØYÜˆÙ\šXB™\İš][Y[H[Üˆ™\ÜÙHØ\ÛÈ
+[\š[YHğìÈÈšY]ÜÜ]X[™[™\š^˜YËœÙ[HYÚ[˜péğèÛÈ™X[™[HÜÈYÜÈÛÛ\]ÜÈHX™[H][YJK‚‚ŠŠ’[\[Y[YÊŠˆ^Ü”™Y˜
+Y\Û[ÈY°èÛÈ°èH\ØYÈÜ‚˜[™Ô™Y˜Ø™YÔ™Y˜[H›İ]\ËÚ[™^Ş
+HX[0ê[HH™\œğèÛÈXZ\È™XÙ[B™H^Ü˜XÙ\Üğë]™[[›ÈÈ\İ[™\ˆHÙ^YİÛ˜ÛÛH\Â˜^šX\È
+\ÙQY™™Xİ
+
+
+HOˆÈ^Ü”™Y‹˜İ\œ™[H
+
+HOˆ›ÚY™^ÜŠ
+NÈJXÙ[H\œ˜^HH\[™0ê›˜ÚX\Ë›ÙHHØYH™[™\ŠK‚İ›
+Ôø£&[\˜Ù\HÈ][È˜]]›ÈÈ˜]™YØYÜˆ
+Kœ™]™[Y˜][
+
+X
+B™HÚ[XH^Ü”™Y‹˜İ\œ™[
+
+XˆYXÚ[Û˜YÈ[Èpè[ÙÛÈH][ÜÂŠİ›
+ËÊH˜HšXØ\ˆ\ØÛØœ°ë]™[‚‚ŠŠ•™\šYšXØpéğèÛÈ[H˜]™YØYÜˆ™X[[˜ÛZ[™È[H[\›YH˜[ÛÂš[™\İYØYÊŠˆİ›
+Ô\Ü\˜YÈšXH\Ü]Ú]™[[Üİ›İHÈY[Bˆ‘^Ü\ˆˆ™\ÛÈ[H‘Ù\˜[™È¸ )ˆˆÜˆXZ\ÈHÌÙYİ[™ÜÈ8 %\™XÚXH[B˜YÈ›İ›Ëˆ\ÛÛYÈÛXØ[™ÈÈ][HHY[H”ˆÈZ[™[ˆÜšYÚ[˜[Š°êKY^\İ[KÙ[H™[š[XH[šHØØYH™\İHÙ\ÜğèÛÊHÈY\Û[È™Z]Î‚›Y\Û[È˜]˜[Y[ÈY0ê›XÛËˆÛÛ™š\›XH]YH0êH[HÛÛ\Ü[Y[È°êKY^\İ[B™H[˜Ø[˜\Ë\›Ø
+›İ˜]™[Y[H[ÈİH™\ÛÈØ\\˜[™È\İBœZ[™[H[[Ûœİ˜péğèÛÈ\ÜXÚYšXØ[Y[H›È˜]™YØYÜˆ]]ÛX]^˜YÈ\İBœÙ\ÜğèÛË°èÛÈ™\›Ù^šYÈ™[H[™\İYØYÈH[™ÈÜˆ\İ\ˆ›Ü˜HÂ™\ØÛÜÈÈYYÊH8 %°èÛÈ[XH™YÜ™\ÜğèÛÈ\İH]Y[°éØKˆØİ[Y[™›ÛÂ‹œ™XYX
+İ\ÜZ]È[šXÚX[
+H™\ÛÛ™H›Ü›X[Y[K[0èÛÈ°èÛÈ0êHHØ]\ØK‚İ›
+ÒÈ
+[]HHÛÛX[™ÜÊHHİ›
+ËÈ
+][ÜÊH\İYÜÈ\Ú\Ë™[˜Ú[Û˜[™È›Ü›X[Y[H8 %Ù[H™YÜ™\ÜğèÛÈ›ÜÈİ]›ÜÈ][ÜÈÈY\Û[Â›\İ[™\‹‚‚˜œš]\İ[˜
+MÈ\ÜÛİKH[YÊKœØÈK[›Ñ[Z]œ™\Û[›ÜÈˆ\œ]Z]›ÜÈØØYÜÈ
+ğìÈpëYÈHÔ“ˆ°êKY^\İ[K˜ÛÛ™š\›XYÈÛÛHÈÛÛÜ››È™]Y\ˆÔ“‹\ØY™JKœH[ˆZ[Hœœ^]ÜšYÚ\İ
+L‘JH\›İ˜YÜË‚‚ˆÈÈLËˆ\[™X›İÛÙTSHØ]HH]Y]ÜšXHH\[™0ê›˜ÚX\È˜HÒB‚”°ìŞ[[È][HH\İHHÙYİ\˜[°éØHH[™œ˜Y\İ]\˜H™YÚ\İ˜YH›Â˜˜XÚÛÙÈ
+][HHÈÑPÓÓ‘Ğ”RSŠNˆœ˜]H[Z]\İšXpëYË›İpéğèÛÈ˜B˜›Ü™KœH]Y]
+ÜØØ[ˆHÙYÜ™YÜÊÑ\[™X›İÔ™[›İ˜]JĞÛÙTS˜HÒKœÛ0ë]XØHHYÜÈHPHXZ\Èš\ğë]™[Û[ÚÙH\İXZ\ÈÛÛ\]È‹‚‘\ØÛÛYÜÈÜÈ°êœÈ][œÈYXğè›šXÛÜÈÙ[HXÚ\ğèÛÈH›Ù]È[™[BŠ˜]H[Z]\İšXpëYÈ^YÙH\ØÛÛ\ˆ[H›İ™YÜˆH[™œ˜Y\İ]\˜H8 %”™Y\ËÕ\İ\Ú8 %›Ü˜HÈ\ØÛÜÈÙ[H\ÜØHXÚ\ğèÛÈÈ\İpè\š[ÊK‚‚ŠŠ’[\[Y[YÊŠ‚‹H™Ú]X‹Ù\[™X›İ[[8 %]X[^˜péğíY\ÈÙ[X[˜Z\ÈYÜ\Y\Âˆ
+Z[›Ü‹Ü]Ú
+H˜HœX
+˜Z^ŠKØ\™ÛØˆ
+\İÛÛK[ÛŞ[XÛÜ™X
+HHÚ]X‹XXİ[ÛœØ‚‹H™Ú]X‹İÛÜšÙ›İÜËØÛÙ\[[[8 %[°è[\ÙHÛÙTS[H\ÚÔˆ˜BˆXZ[˜
+ÈÙ[X[˜[
+Ü›ÛŠKˆğìÈ˜]˜\ØÜš\]\\ØÜš\HXİ[ÛœØ8 %ˆ\İ°èÛÈ[Hİ\ÜHÙšXÚX[›ÈÛÙTS
+\İHH[™İXYÙ[œÂˆİ\ÜY\È˜HØİ[Y[péğèÛÈÙšXÚX[°èÛÈ[˜ÛZH\İ
+K‚‹H›İ›È›Øˆ\[™[˜ŞKX]Y][H\XØ][Û‹[[8 %œH]Y]ˆKX]Y][]™[ZYÚ›Ü]YX[HH™\™YH
+›ÙH[HÙHˆH\Úˆ˜HXZ[˜Y\Û[ÈY°èÛÈÜÈİ]›ÜÈ›ØœÊK‚‚ŠŠ‘XÚ\ğèÛÈÛØœ™HÈ™\ÚÛ
+ŠˆKX]Y][]™[ZYÚ°èÛÈ[Ù\˜]X›™[HÙ[H™\ÚÛˆÈ›Ú™]È°èH[Hˆ[™\˜Xš[YY\È[Ù\˜]Xœ°êKY^\İ[\È
+XÛİH]ZYšXH^Ù[œØ
+H\ØÛØ™\\È[È›Ù\‚˜œH]Y]ØØ[[\ÈHXÚY\ˆÈ™\ÚÛ8 %^Ù[œØ0êB™\[™0ê›˜ÚXH\™]HH\ØYHH™\™YBŠÛÜšØ›ÛÚË[Y]Y]KØØÛÜšØ›ÛÚË]™\šYšY\‹Ø\HÈY°èÛÈB›pî›\ÜÈZ]Ü™\È˜H™\šYšXØpéğèÛÈÜ^˜YJKHÛÜœ™péğèÛÈ^YÚ\šXB˜œH]Y]š^KY›Ü˜ÙXÛÛHİÛ™Ü˜YHHXZ›Üˆ™\œÚ[Ûˆ
+^Ù[œĞËŒ›XZ\È[YÛÈ]YHÈŒ]X[
+H8 %°èÛÈ0êH[ÛÈ˜H›Ü°éØ\ˆ0èÈÙYØ\È[XBœÙ\ÜğèÛÈÛØœ™HÒKH›Ü]YX\ˆHÒHš\ÜÛÈÙ[HÛÜœ™péğèÛÈ\ÜÛ°ë]™[B™\™YHğìÈÙ\˜\šXH[HÚXÚØ›Ş™\›Y[È\›X[™[HÙ[HpéğèÛÈÜÜğë]™[Š[İ]›È°èH™YÚ\İ˜YÈ[\È˜H™YÜ˜H›°èÛÈ™Y^˜H\İ\ËØÜš]0ê\š[ÜÈ˜B™›Ü°éØ\ˆ™\™Hˆ8 %\]ZHÈÜÜİÎˆ°èÛÈÜšYH[HØ]H]YH[˜ØHÙHšXØ\‚™\™HH›Ü›XHYğë][XJKˆYÚØÜš]XØ[ÛÛ[X[H›Ü]YX[™ÈB™\™YNÈ[Ù\˜]XØİØšXØ[HH›Ü˜HÈØ]H]]ÛX]^˜YËœ™]š\ğè]™Z\ÈÛÛHœH]Y]ØØ[Ù[HKX]Y][]™[]X[™È™XÚ\Ø\‚™È]XY›ÈÛÛ\]Ë‚‚ŠŠYÈ™X[YÛÈ[\ÈHÛÛ[Z]\ŠŠˆHš[YZ\˜H[]]˜HH[œÙ\š\ˆÂš›Øˆ\[™[˜ŞKX]Y]›ÈYZ[ÈÈ\œ]Z]›ËšXHY]\YÛİHÙ[Bœ]Y\™\ˆ\ÈX\È[š\ÈHØX™péØ[ÈÈ›ØˆÙXİ\š]K\Û[ÚÙX°èH^\İ[B›ÙÛÈ\Ú\È
+ÙXİ\š]K\Û[ÚÙN˜
+È˜[YNˆ‹‹˜
+KZ^[™È[œË[Û˜Â˜[Y[İ][Z[]\Ø0ìÜ™°èÛÜÈÛØˆÈ›Øˆ›İ›È8 %PSSÚ[]XØ[Y[H[°è[YË\šXH]YXœ˜YÈHÒH[Z\˜Kˆ\ØÛØ™\È˜[Y[™ÈÛÛHœË^X[[Š›ÙHYHX[[›ØY
+‹‹ŠH˜\İ[™È\ÈÚ]™\ÈH›ØœØ\Ü\˜Y\ÊB˜[\ÈÈÛÛ[Z]°èÛÈÛÛ™šX[™ÈğìÈ[HZ]\˜Hš\İX[ÈY™‹‚‚˜œH]Y]KX]Y][]™[ZYÚÛÛ™š\›XYÈ[\ÈØØ[Y[H
+^]\ÂŒˆ[™\˜Xš[YY\È°êKY^\İ[\ÈšXØ[HX˜Z^ÈÈ™\ÚÛ
+Kˆœš]\İ[˜
+MÈ\ÜÛİKH[YÊKœØÈK[›Ñ[Z]œ™]Y\‚‹KXÚXÚØ›ÜÈÈ\œ]Z]›ÜÈ
+[[
+H\›İ˜YÜËˆ°èÛÈ0êHÜÜğë]™[›Ù\‚ÛÙTSÑ\[™X›İØØ[Y[H8 %™\šYšXØpéğèÛÈ™X[šXØH˜H]X[™ÈH‚™›ÜˆX™\H›ÈÚ]X‹‚‚ŠŠ”[™[KY\ÛXHÙpéğèÛÈÈ˜XÚÛÙÈÈ\İpè\š[Ë°èÛÈX˜[™Û˜YÊŠˆ˜]B›[Z]\İšXpëYÈ
+™Y\ËÕ\İ\Ú
+K›İpéğèÛÈ˜H›Ü™H›Â˜Ø\KÙÙ[Z[šKÊ˜Û0ë]XØHHYÜÈHPHXZ\Èš\ğë]™[Üˆ\Ú›Ø\™œÛ[ÚÙH\İÛØœš[™È\›Z\ÜÚ[ÛœËTÛXŞXØÜ›ÜÜËSÜšYÚ[‹SÜ[™\‹TÛXŞXÂ˜ØXÚKÛpê]ÙÜÈ[™\Ü\˜YÜËˆØØ[ˆHÙYÜ™YÜÈ
+^ˆÚ]XZÜËÂY™›ZÙÈ˜HÒJH[X°ê[H°èÛÈ›ÚHYXÚ[Û˜YÈ™\İHÙpéğèÛÈ8 %ÛÛœÚY\˜\‚˜ÛÛ[È°ìŞ[[È][HHY\ÛXHœ™[K‚‚ˆÈÈLˆØØ[ˆHÙYÜ™YÜÎˆ™Xİ\œÛÈ˜]]›ÈÈÚ]XˆXš[]YÈ
+°èÛÈ™XÚ\ÛİHHÚ]XZÜËİY™›ZÙÈ˜HÒJB‚”°ìŞ[[È][H˜]\˜[HÙpéğèÛÈLÈ
+ØØ[ˆHÙYÜ™YÜËZ^YÈÛÛ[Âœ[™0ê›˜ÚXH[JKˆ[\ÈHYXÚ[Û˜\ˆÚ]XZÜØØY™›ZÙØÛÛ[ÂÛÜšÙ›İÈHÒH
+HÛÛpéğèÛÈ\Üİ[ZYH˜HÙpéğèÛÈ[\š[ÜŠK™\šYšXØYÈšXB˜Ú\H™\ÜËÛÛ]™MÛÛ\]X[YYXÙHÈÚ]Xˆ°èHÙ™\™XÚXH[ÛÂ›˜]]›È8 %\ØÛØ™\È]YHÚ[Nˆ
+ŠœÙXÜ™]ØØ[›š[™ÈH\Ú›İXİ[ÛˆğèÛÂ™Ü˜]Z]ÜÈH]]Ûpè]XÛÜÈ[H™\ÜÚ]0ìÜš[ÜÈ0î˜›XÛÜÊŠ‹HÈ™\ÜÚ]0ìÜš[Â[šHXØX˜YÈHš\˜\ˆ0î˜›XÛÈ
+XÚ\ğèÛÈÈ\İpè\š[Ë[İ]˜YH[B›™XÙ\ÜÚYYHHXš[]\ˆÛÙTS˜HÙpéğèÛÈLÈ8 %Ú]XˆY˜[˜ÙYÙXİ\š]Bœ\˜H™\ÜÚ]0ìÜš[Èš]˜YÈ°èÛÈ^\İH[HÛÛH\ÜÛØ[œ™YKÔ›ËğìÈ[Bœ[›ÜÈ[\œš\ÙJK‚‚ŠŠ‘\İYÈÛÛ™š\›XYÈšXHTJŠˆ
+ÙXİ\š]WØ[™Ø[˜[\Ú\ØÈ™\ÜÚ]0ìÜš[ÊN‚˜ÙXÜ™]ÜØØ[›š[™ØHÙXÜ™]ÜØØ[›š[™×Ü\ÚÜ›İXİ[Û˜°èHš[š[B˜[˜X›YÛŞš[šÜÈ[ÈÜ›˜\ˆÈ™\È0î˜›XÛÈ8 %˜YH˜H˜^™\ˆ›ÈğìÙYÛË‚XÚYÈH°í\Ë[X°ê[HšXHTNˆ
+Š‘\[™X›İ[\ÊŠ‚Š[™\˜Xš[]KX[\ØH˜\ÙH]YHÙ\˜HÜÈ]š\ÛÜÈH\[™0ê›˜ÚXB[™\°è]™[]YHHÙpéğèÛÈLÈ\Üİ[ZXH°èHš\ˆ[ÈÈ\[™X›İ[[X\Â°êH[XHÛÛ™šYİ\˜péğèÛÈÙ\\˜YJH\İ]˜H
+Š™\ØXš[]YÊŠ‹ˆÛÛ™š\›XYÈÛÛHÂ\İpè\š[È[\ÈH]Y\ˆ
+0êHÛÛ™šYİ\˜péğèÛÈHÛÛKÜ™\ÜÚ]0ìÜš[ËØ]YÛÜšXBœ]YH^YÙH\›Z\ÜğèÛÈ^0ëXÚ]JHHXš[]YÈšXHÚ\HVUœ™\ÜËË‹‹‹İ[™\˜Xš[]KX[\Ø
+ŒÙ[HÛÜœÊH
+ÈÚ\HVUÒœ™\ÜËË‹‹ˆY‚œÙXİ\š]WØ[™Ø[˜[\Ú\ÖÙ\[™X›İÜÙXİ\š]Wİ\]\×VÜİ]\×OY[˜X›YŠœÈ]]Ûpè]XÛÜÈHÛÜœ™péğèÛÈ]X[™È[XH\[™0ê›˜ÚXH[HÕ‘HÛÛšXÚYÈ8 %˜ÛÛ\[Y[HÈ\[™X›İ[[HÙpéğèÛÈLË]YHğìÈÛØœšXH]X[^˜péğèÛÂ™H›İ[˜HÜˆÜ›Û›ÙÜ˜[XK°èÛÈ[™\˜Xš[YYH\ÜXğëYšXØJK‚‚“™[š[HğìÙYÛÈ›İ›Ë™[š[XHˆ8 %]Y[°éØHHÛÛ™šYİ\˜péğèÛÈÂœ™\ÜÚ]0ìÜš[ÈšXHTK›Ü˜HÈ\ØÛÜÈHÚ]ˆ™YÚ\İ˜YÈ\]ZH˜H°èÛÂ™\XØ\ˆÈXÚYÈ[XHÙ\ÜğèÛÈ]\˜K‚‚ŠŠ”[™[KY\ÛXHœ™[JŠˆ˜]H[Z]\İšXpëYÈ
+™Y\ËÕ\İ\Ú
+Kœ›İpéğèÛÈ˜H›Ü™H›ÈØ\KÙÙ[Z[šKÊ˜Û0ë]XØHHYÜÈHPHXZ\Âš\ğë]™[Üˆ\Ú›Ø\™Û[ÚÙH\İÛØœš[™È\›Z\ÜÚ[ÛœËTÛXŞXÂ˜Ü›ÜÜËSÜšYÚ[‹SÜ[™\‹TÛXŞXØØXÚKÛpê]ÙÜÈ[™\Ü\˜YÜË‚‚ˆÈÈLKˆ™]š\ğèÛÈÜÈMœÈX™\ÜÈ[È\[™X›İˆHH˜Z^Èš\ØÛÈY\ØÛY\Ë\TØÜš\È™Z™Z]YÈÜˆ[˜ÛÛ\]Xš[YYH™X[‚“È\[™X›İ
+Xš[]YÈ˜HÙpéğèÛÈLÊHXœš]HMœÈ˜Hš[YZ\˜B˜\œ™Y\˜Nˆ[\ÈHÚ]XˆXİ[ÛœËHÜ\ÈZ[›Ü‹Ü]ÚÈœH
+BœXÛİ\ÊHHH[\ÈHXZ›Üˆ™\œÚ[ÛˆÈœKˆYYÈÈ\İpè\š[Îˆ™]š\Ø\‚œÜˆÜ™[HHš\ØÛËÛÛYpéØ[™È[\ÈH˜Z^Èš\ØÛË‚‚ŠŠ“Y\ØÛY\ÈÙ[H[˜ÚY[JŠˆ
+Xİ[ÛœËğìÈ[™œ˜Y\İ]\˜HHÒJN‚˜Xİ[ÛœËØÚXÚÛİ]8¡¤ËXİ[ÛœËİ\ØYX\Y˜Xİ8¡¤Ë˜Ú]X‹ØÛÙ\[XXİ[Û˜ø¡¤Xİ[ÛœËÜÙ]\[›ÙX8¡¤Ë‚‚ŠŠ‘Ü\ÈZ[›Ü‹Ü]ÚÈœJŠˆ
+ÛÚÙ›Ü›KÜ™\ÛÛ™\œØ˜[œİXÚËÜ™XXİ\›İ]\˜[œİXÚËÜ™XXİ\İ\˜\Û[\YÚ[‹\™XXİ\™Yœ™\ÚXZ\È[JH8 %XÚYÈ™X[[\ÈB›Y\ØÛ\ˆÈØÚÙš[H]YHÈ°ìÜš[È\[™X›İÙ\›İH\˜H\ÜØHˆ\İ]˜B™›Ü˜HHÚ[˜Ü›ÛšXH
+KXØXÚPLKKŒ˜˜[[™ÊKœHÚX˜[]˜HÛÛBˆœXÚØYÙKšœÛÛˆHXÚØYÙK[ØÚËšœÛÛˆ‹‹ˆ\™H[ˆŞ[˜Èˆ8 %Y\ÛXH\›XY[H°èB™Øİ[Y[YHÈ›Ú™]È
+™\ÛÛpéğèÛÈHØÚÙš[H]™\™ÙH[™HœHØØ[BÒJKˆÛÜœšYÚYÈ›Ù[™ÈœœPL[œİ[\™]È›Èœ˜[˜ÚHˆÂ‘\[™X›İ
+Ú]ÚXÚÛİ]Xˆ‹‹ˆÜšYÚ[‹Ù\[™X›İË‹‹˜[œİ[\‹˜ÛÛ[Z]\ˆÈØÚÙš[H™YÙ[™\˜YËÚ]\ÚH›ÛH›Èœ˜[˜Ú™[[İÈÂ‘\[™X›İ
+H8 %ÒHšXÛİH™\™H\Ú\ËY\ØÛYH›Ü›X[Y[Kˆ™\šYšXØYÂ›ØØ[Y[H[\ÎˆœHÚX[\Ëœš]\İ[˜œØÈK[›Ñ[Z]˜œH[ˆZ[œ^]ÜšYÚ\İ
+L‘K™[]˜[HÜˆ[›Û™\‚•[”İXÚÈ›İ]\‹Ôİ\
+HÙÜÈ\›İ˜YÜÈÛÛH\È\[™0ê›˜ÚX\È›İ˜\Ë‚‚ŠŠ•\TØÜš\KKŒÈ8¡¤ˆËŒŒ‹™Z™Z]YÊŠˆ8 %YYÈÈ\İpè\š[È˜HÛÛYpéØ\‚œ[\ÈXZ›ÜœÈÜˆ\İKˆÈËŒ0êHH™Y\ØÜš]HÈÛÛ\[YÜˆ[HÛÈB™\]Z\H\TØÜš\
+H[Y\˜péğèÛÈ[HH‹™\Ù\˜YH˜H[XH™[X\ÙHB˜[œÚpéğèÛÈğìÈÛÛH]š\ÛÜÈH\™XÚXpéğèÛÊKˆ\İYÈØØ[Y[H
+Ú]˜ÚXÚÛİ]Èœ˜[˜ÚÈ\[™X›İ
+ÈœœPLÚX
+Nˆ˜[H™X[BœY\ˆ\[™[˜ŞK°èÛÈ0êHØÚÙš[H8 %\\ØÜš\Y\Û[ËŒ
+™\œğèÛÂ˜]X[È›Ú™]ÊH^YÙH\\ØÜš\M‹ŒKŒ˜[˜ÛÛ\]0ë]™[ÛÛB•ÈÈÜˆÛÛ\]Ëˆ°èÛÈ›Ü°éØYÈÛÛHK[YØXŞK\Y\‹Y\Ø
+X\ØØ\˜\šXH[XBš[œİ[péğèÛÈÙ[Z[˜[Y[H]YXœ˜YJKˆÛÛY[YÈÈXÚYÈ˜HˆHYYÂ˜\[™X›İYÛ›Ü™H\ÈXZ›Üˆ™\œÚ[Û˜8 %\[™X›İ™XÚİHH‚œÛŞš[šË\˜HH™XXœš\ˆHY\ÛXH›ÜÜİH]0êHÈXÛÜÜÚ\İ[XH
+[ÈY[›ÜÂ˜\\ØÜš\Y\Û[
+Hİ\Ü\ˆÈÈH™\™YK‚‚ŠŠZ[™H[™[\Ë°èÛÈ™]š\ØY\È™\İHÙ\ÜğèÛÊŠˆ\Û[x¡¤ŒL˜\Û[ÚœØx¡¤ŒLÛØ˜[ØMx¡¤ŒMÈ
+›İ°è]™Z\È\[™0ê›˜ÚX\È[™HÚHB˜ÛÛH\\ØÜš\Y\Û[™]š\Ø\ˆ[ÜÊK›Ùø¡¤
+]Y[°éØHHTB˜ÛÛšXÚYK\ØYÈ[H°è\šX\È˜[YpéğíY\ÊK™XXİY^K\XÚÙ\˜x¡¤ŒL˜XÚYK\™XXİ8¡¤ŒK[˜Ø[˜\Ë\›ØK¸¡¤Œ‹ŒË\\ËÛ›ÙXŒ¸¡¤Œ‹‚‚ˆÈÈL‹ˆ™\ÜÚ]0ìÜš[È›ÛİHHÙ\ˆš]˜YÎÈÛÙTS™[[İšYÈ
+\[™0ê›˜ÚXH\™]HHXÚ\ğèÛÈHÙpéğèÛÈLÊB‚‘XÚ\ğèÛÈÈ\İpè\š[Îˆ™]™\\ˆHš\ÚXš[YYH0î˜›XØH]YH[šHÚYÂ˜YİYHğìÈ˜HšXXš[^˜\ˆÈÛÙTS˜HÙpéğèÛÈLËˆÛÛœÙ\]pê›˜ÚXH0êXÛšXØB˜]š\ØYH[\ÈHYÚ\ˆÛÙTSØÛÙHØØ[›š[™È[H™\ÜÚ]0ìÜš[Èš]˜YÂ›°èÛÈ^\İH[HÛÛH\ÜÛØ[œ™YKÔ›È
+ğìÈ[\œš\ÙJH8 %›Û\ˆHšXØ\‚œš]˜YÈ˜\šXHÈÛÜšÙ›İÈÛÙ\[[[›Û\ˆH˜[\ˆ[HÙH‹Â›Y\Û[È™Z]È]YHH[™\İYØpéğèÛÈHÙpéğèÛÈLÈ[˜ÛÛ›İHÜšYÚ[˜[Y[K‚‚ÛÛ™š\›XYÈÛÛHÈ\İpè\š[È]X[ÜÈ°êœÈØ[Z[šÜÈÙYİZ\ˆ
+X[\‚œ0î˜›XÛËZ^\ˆ˜[[™ËİH™[[İ™\ŠH[\ÈHYÚ\ˆ8 %]Y[°éØHBš\ÚXš[YYHH™\ÜÚ]0ìÜš[È0êHØ]YÛÜšXH]YH^YÙH\›Z\ÜğèÛÈ^0ëXÚ]K‚‘\ØÛÛYÈ™[[İ™\ˆÈÛÜšÙ›İË‚‚ŠŠ‘™Z]ÊŠ‚‹HÚ\HVUÒ™\ÜËÛÛ]™MÛÛ\]X[YYHYˆš]˜]O]YX8 %ˆ™\ÜÚ]0ìÜš[Èš]˜YÈH›İ›Ë‚‹H™Ú]X‹İÛÜšÙ›İÜËØÛÙ\[[[™[[İšYÈ
+Ú]›X
+H8 %°èÛÈ˜^ˆÙ[YÂˆX[\ˆ[HÛÜšÙ›İÈ]YH[˜ØH˜ZHÛÛœÙYİZ\ˆšXØ\ˆ™\™H™\İHÛÛK‚‹HÙXÜ™]ÜØØ[›š[™ØØÙXÜ™]ÜØØ[›š[™×Ü\ÚÜ›İXİ[Û˜›Û[Bˆ]]ÛX]XØ[Y[H˜H\ØX›Y
+ğìÈ^\İ[HHÜ˜péØH[H™\È0î˜›XÛËˆÛÛ™š\›XYÈšXHTJH8 %\™H\Ü\˜YK°èH]š\ØYH˜HÙpéğèÛÈLÛÛ[ÂˆÛÛœÙ\]pê›˜ÚXH[\0ëXÚ]HH]X[]Y\ˆ™]™\œğèÛÈ]\˜HHš\ÚXš[YYK‚ˆ\[™X›İÜÙXİ\š]Wİ\]\ØÛÛ[XH[˜X›Y
+°èÛÈ\[™HBˆš\ÚXš[YYJK‚‚‘\[™X›İHÈØ]H\[™[˜ŞKX]Y]
+œH]Y]KX]Y][]™[ZYÚ
+B˜ÛÛ[X[H[˜Ú[Û˜[™È›Ü›X[Y[H[H™\ÜÚ]0ìÜš[Èš]˜YÈ8 %™[š[HÜÂ™Ú\È\[™HHÒTË‚‚ˆÈÈLËˆ[˜Ø[˜\Ë\›Ø]X[^˜YÈ
+K‹È8¡¤ˆ‹ŒË
+HH[š[XpéğèÛÈH[˜YH\È˜\œ˜\ÈH™Y[˜Ú[Y[Â‚•\İpè\š[ÈY]H˜H™]š\Ø\ˆğìÈÈ[˜Ø[˜\Ë\›Ø[™H\ÈXZ›ÜœÂœ[™[\ÈHÙpéğèÛÈLH8 %0êHHXˆ\ØYH›È^ÜH‹Ô‘ÈÈZ[™[°î›šXØHÛÛHÚ[˜ÙH™X[HY[Ü˜\ˆ[ÛÈÛÛ˜Ü™]È
+Ú[™Ù[ÙÈ[šBˆ”\™›Ü›X[˜ÙH[\›İ™[Y[ÈˆØXÚH•H˜HÜ˜YY[\È[™X\™\ËØXÚHBœ\œÙHHÔÔÊKˆ\İYÈØØ[Y[H
+Ú]ÚXÚÛİ]Èœ˜[˜ÚÂ‘\[™X›İ
+ÈœœPLÚX
+NˆY\ÛXH\›XY[HHØÚÙš[H›Ü˜HBœÚ[˜Ü›ÛšXH°èHš\İHX\È™^™\È™\İHÙ\ÜğèÛÈ
+KXØXÚX˜[[™ÊK˜ÛÜœšYÚYHÈY\Û[È™Z]Ëˆœš]\İ[˜œØÈK[›Ñ[Z]œBœ[ˆZ[œ^]ÜšYÚ\İ
+L‘JH\›İ˜YÜÈÛÛHH™\œğèÛÈ›İ˜K‚“Y\ØÛYÈÙ[HXZ\È[™\İYØpéğèÛÈ8 %°èÛÈXÚYÈ˜YH]YH]YXœ˜\ÜÙK‚‚ŠŠ[š[XpéğèÛÈH[˜YH\È˜\œ˜\ÈH™Y[˜Ú[Y[ÊŠˆ8 %YYÈÙ\\˜YÂ™È\İpè\š[Îˆ™\XØ\ˆ\È[š[XpéğíY\ÈH[HÛÛ\Û™[HH^[\È
+Ø\™Âˆ˜™[ÈˆÛÛHœ˜[Y\‹[[İ[Û˜Üš[™È\ÚXÜËİ™\ˆÜ
+H›ÜÈÚYÙ]È]YB™š^™\ÜÙ[HÙ[YËX[[™ÈÈ\ÚYÛˆ]X[ÈÚ]Kˆ[™\İYØpéğèÛÈ°ê]šXBš[\Ü[NˆHXZ[Üˆ\HH[™œ˜Y\İ]\˜HH[š[XpéğèÛÈ
+Šš°èH^\İXJŠ‚™H°èH\˜H™[H\Ù[šYH8 %Ù^Yœ˜[Y\ÈÛX[KZ[˜
+˜YH
+È]™HİXšYJHÛÛB˜[š[X][Û‘[^X°èHšXYÈÚYÙ]HÚYÙ]\ÙH›İ]\ËÚ[™^ŞŠX]›Z[ŠK
+H
+ˆ
+H]˜]°ê\ÈHÚYÙ]XØ\™Ş]0êHØYB˜
+‹]ÚYÙ]X›ÙKŞİ™\ˆÛÛH[]˜péğèÛÈHÛÛXœ˜KH™\ÜZ]ÈB˜™Y™\œË\™YXÙY[[İ[Û˜°èH[\[Y[YËˆÈÜ°èYšXÛÈH˜\œ˜\ÈÂ”™XÚ\È[HH[š[XpéğèÛÈH[˜YH
+Š™[X™\˜Y[Y[JŠˆ\ÛYØYBŠ\Ğ[š[X][ÛXİ]™O^Ù˜[Ù_XÛÛHÛÛY[0è\š[È^XØ[™È[HYÈ™X[B™›XÚÙ\ˆ›ÈZ^ÈHHØYHİ™\‹°èHÛÜœšYÚYÈ[HÙ\ÜğèÛÈ[\š[ÜŠH8 %°èÛÂ›Y^YËÜˆ™\ÜZ]È0èÛÜœ™péğèÛÈ°èHØİ[Y[YK‚‚“È]YH˜[]˜HH™\™YNˆ\ÈÈ˜\œ˜\ÈH™Y[˜Ú[Y[ÈÜˆÜ˜Ù[YÙ[B™È\
+˜[šÚ[™Ë]ÚYÙ]X›ÙKŞ˜][™Ë]ÚYÙ]X›ÙKŞ˜[œÚYÚ\ÚYX˜\‹ŞÙ\È™X\›İ™Z][™È›ÛX[K\˜[šÚ[™ËYš[
+H°èB[š[H[XH˜[œÚ][Û˜HÚY™[HØ[Xœ˜YKX\È[HğìÈ\Ü\˜Bœ]X[™ÈÈYÈ
+›]YH\Ú\Êˆ8 %H\™İ\˜H˜\ØÙH\™]È›È˜[Üˆš[˜[›Âœš[YZ\›È™[™\ˆ
+Ù]YHšXH[›[™Hİ[JK[0èÛÈ[˜ØH˜Ü™\ØÙHˆ˜B™[˜YHš\ğë]™[Y\Û[ÈÛÛHH˜[œÚ][Ûˆ›ÛK‚‚YXÚ[Û˜YÈÙ^Yœ˜[Y\ÈÛX[KYš[Z[˜
+ØØ[V8¡¤ŒK˜˜[œÙ›Ü›K[ÜšYÚ[ˆY8 %XZ\È˜\˜]È]YH[š[X\ˆÚYH™\™YKœ›ÙHğìÈ›ÈÛÛ\ÜÚ]ÜŠHÛÛ[È[š[X][Û˜˜H°ìÜšXH›ÛX[K\˜[šÚ[™ËYš[˜ÛÛH]˜\ÛÈ\ØØ[Û˜YÈÜˆ0ë[™XÙH˜\È\İ\È
+ML
+ÈZ[ŠKL
+JX\È[B˜˜[šÚ[™Ë]ÚYÙ]X›ÙKŞØ[œÚYÚ\ÚYX˜\‹Ş
+HH]˜\ÛÈš^ÈHML\Â›˜H]˜[XpéğèÛÈ
+˜\œ˜H0î›šXØJKˆÈ]˜\ÛÈØ\˜[H]YHH˜\œ˜HğìÈÛÛYpéØHB˜Ü™\ØÙ\ˆ\Ú\È]YHÈØ\™ÈÚYÙ]\›Z[˜HH[˜\‹°èÛÈÚ[][0è›™[Ë‚˜™Y™\œË\™YXÙY[[İ[Û˜\ÛYØHH[š[XpéğèÛÈ›İ˜H[ÈÛÛHH^\İ[K‚”Ù[Hœ˜[Y\‹[[İ[Û˜™[H™[š[XH\[™0ê›˜ÚXH›İ˜H8 %™\›Èİ\İÈB˜[™KY\ÛXHš[ÜÛÙšXHH[š[XpéğèÛÈÔÔË[Û›H°èH\ØYH[HÙÈÈ\‚‚ŠŠ•™\šYšXØpéğèÛÈ[H˜]™YØYÜˆ™X[ÛÛH[H[\›YH˜[ÛÈ[™\İYØYÊŠˆB˜˜\œ˜H\™XÙ]H˜]˜YH[HØØ[V
+
+XÜˆ°è\š[ÜÈÙYİ[™ÜÈ[ÈÚXØ\ˆšXB˜Ù][š[X][ÛœÊ
+X8 %^Tİ]Nˆœ[›š[™È˜X\Èİ\œ™[[YNˆ˜ÛÛ™Ù[YËˆ\ÛÛYÈÛÛ[È[Z]péğèÛÈÈ[XšY[HH\İK°èÛÈYÎˆÂœ›İÜÙ\ˆ[™H°èÛÈ\İ]˜H[Hš[YZ\›È[›È
+Hœ›İÜÙ\ˆ[™H\È›İ™\Ü^YYˆ›È\œ›ÈÈØÜ™Y[œÚİ
+KHÈÚ›ÛYH\ØXÙ[\˜KÜ]\ØHÂ˜]˜[°éÛÈH[\ÈH[š[XpéğíY\ÈÔÔÈ[HX˜\È[HÙYİ[™È[›È8 %Y\ÛXB˜Û\ÜÙHH[Z]péğèÛÈ°èH[˜ÛÛ˜YHÛÛHÈ[™ÈÈ[˜Ø[˜\Ø[XBœÙ\ÜğèÛÈ[\š[Ü‹ˆÛÛ™š\›XYÈ›Ü°éØ[™È[š[K™š[š\Ú
+
+XšXH”ÎˆH˜\œ˜B˜ÚYØH^][Y[H›È˜[Üˆš[˜[ÛÜœ™]È
+MËœHL	HÈÛÛZ[™\ŠK‚‚˜œš]\İ[˜
+MÈ\ÜÛİKH[YÊKœØÈK[›Ñ[Z]œ™\Û[›ÜÈ\œ]Z]›ÜÈØØYÜÈ
+ğìÈpëYÈHÔ“ˆ°êKY^\İ[JKœBœ[ˆZ[
+™\›È]Y[°éØH›ÈÜ°éØ[Y[ÈH[™JH\›İ˜YÜË‚‚ˆÈÈLˆXYÛ°ìÜİXÛÈH[\ÜpéğèÛÈ˜Z^0è]™[H•[\ˆ[ÙÈHÛÛ\]Xš[YYHˆ˜H™]š\ğèÛÈ
+][HH\İHHY[ÜšX\ÈÈZ]Üˆ˜^šYH[È\İpè\š[ÊB‚•\İpè\š[È›İ^H[XH\İHÜ˜[™HHY[ÜšX\È›ÈZ]Ü‹Ü™]š\ğèÛÈBš[\ÜpéğèÛÈ
+›ÙÜ™\ÜÛÈÜˆ\İ0èYÚ[ËÛÛ\\˜péğèÛÈš\İX[\™š\Âœ™]][^°è]™Z\Ë[ÙÈHÛÛ\]Xš[YYKXYÛ°ìÜİXÛÈ˜Z^0è]™[œ™[X\X[Y[ÈHÛÜ™\ËİX™[\Ëİ˜[YpéğíY\ËÜ]›İÙYİ\˜[°éØHH›Ü™K™]š\ğèÛÈH[\ÜØØİ[\Ë˜ÜÜØ
+Kˆ\ØÛÛYÈÛÛYpéØ\ˆ[ÜÈÚ\Âš][œÈXZ\È]]ËXÛÛYÜË[X›ÜÈ˜H[HH™]š\ğèÛÈ
+™]šY]ËŞ
+KÙ[Bš[™œ˜Y\İ]\˜H›İ˜K‚‚ŠŠXÚYÈ°ê]š[È[\Ü[K[\ÈH[\[Y[\ˆ]X[]Y\ˆÛÚ\ØJŠ‚š[™\İYØpéğèÛÈ[˜ÛÛ›İH]YH”™YÜ˜\ÈH[\ÜpéğèÛÈ™]][^°è]™Z\ÈÜ‚›[Ù[ÈH[š[Hˆ8 %][H]YHÈÑPÓÓ‘Ğ”RS‹›Y\İ]˜HÛÛ[Âœ[™[H›È˜XÚÛÙÈ
+ÙpéğèÛÈJH8 %
+Šš°èH\İ]˜H[\[Y[YÈH[H\ÛÊŠ‚™\ÙHœÈ[YØ\È
+ÌM‹ÌŒKÌÍÊNˆ[\Ü›Ùš[XØØ]™R[\Ü›Ùš[XÂ˜X]Ú[™Ò[\Ü›Ùš[XØY\[\Ü›Ùš[XŠÜ˜ËÛX‹Ú[\Ü]ÛÜšØ™[˜ÚØ
+KÛÛHRHÛÛ\]H[H™]šY]ËŞŠ›İ0èÛÈ”Ø[˜\ˆ\™š[‹]š\ÛÈH™X\XØpéğèÛËØY\péğèÛÈ]]Ûpè]XØH[Âœ™XXœš\ˆ[XH[š[HÈY\Û[È[Ù[ÊKˆÈ˜XÚÛÙÈ\İ]˜H\Ø]X[^˜YÂ›™\ÜÙH][H8 %ÛÜœšYÚYÈ[ÈÛÛH\İHÙ\ÜğèÛËÙ[H™Z[\[Y[\ˆ˜YK‚‚ŠŠ‘XYÛ°ìÜİXÛÈ˜Z^0è]™[
+Šˆ[\ÜXYÛ›ÜİXÜÑ^Ü^[ØYŠÜ˜ËÛX‹Ü™]šY]ËY^ÜØ
+H[ÛHÈÙ[™\˜]Y]š[KÚY]™šY[]T\˜Ù[]Y]XYÛ›ÜİXÜÈXH\\ˆÈ]YHÚY]Ô›İÜØÂ˜XYÛ›ÜÙR[\ÜYÚY]°èHØ[İ[[H8 %™[š[HYÈ›İ›ÈÛÛ\]YËˆ0æ›šXÛÂ˜İZYYÎˆ[XYÙ\Ö×K™]U\›
+˜\ÙMH[XYÙ[H[X]YK˜ÛÜšØ›ÛÚË[Y]Y]KØ
+H0êH™[[İšYÈ[\ÈÈİÛ›ØYÜœ]YH[™›HÂ˜\œ]Z]›ÈÙ[HZY\ˆHXYÛ›ÜİXØ\ˆ[H›Ø›[XHH[\ÜpéğèÛÎÈÈ™\İÈÂš[™[0è\š[È
+˜[YXØ[˜ÚÜ˜Ø›Ü›X]
+H0êH™\Ù\˜YËˆ›İ0èÛÈ˜Z^\‚™XYÛ°ìÜİXÛÈˆ›ÈØX™péØ[ÈÈZ[™[”™[]0ìÜš[ÈHšY[YYHBš[\ÜpéğèÛÈˆ°èH^\İ[H
+™]šY]ËŞÙpéğèÛÈN
+KÛÛB˜™]™[Y˜][ØİÜ›ÜYØ][Û˜˜H°èÛÈÙÙÛX\ˆÈ]Z[Ï˜[Â˜ÛXØ\‹ˆ™X\›İ™Z]HÈY\Û[ÈY°èÛÈ›ØŠØHİÛ›ØY˜°èH\ØYÈ
+Ù[Bš[\ˆÛÛ\\[YÊH[H\ÙKY\Ú›Ø\™Y^ÜØÂ˜^Ù\[Û‹\[™[]ÚYÙ]X›ÙKŞ‚‚ŠŠˆ•[\ˆ[ÙÈHÛÛ\]Xš[YYHŠŠˆ]0êHYÛÜ˜K]X[™ÈHÛÛ™šX[°éØHB˜ØX™péØ[ËÜ™YÚpèÛÈ0êH˜Z^H
+™YYĞÛÛ™š\›X][Û˜
+KğìÈ^\İX[HÚ\Â˜Ø[Z[šÜÈ8 %HPHİYÙ\š\ˆ[ÛÈ]]ÛX]XØ[Y[H
+ğìÈÛØœ™H[İ[œÈØ\ÛÜÊHİKœÙHİ]™\ÜÙHpî›\\È™YÚpíY\È]XİY\Ë•\Ø\ˆ\İH™YÚpèÛÈˆÜ‚œ™YÚpèÛÈ
+™]šY]ËŞ›İ0èÛÈ°èH^\İ[JKˆ°èÛÈ^\İXH™[š[H˜[˜XÚÂœ›ÈØ\ÛÈXZ\ÈÚ[\\Îˆ›°èÛÈÛÛ™š[È[H˜YH\ÜÛË0êHğìÈ[XHX™[Bœ[˜H‹ˆÛÛ\]Xš[]S[ÙTÙ[Xİ[Û˜
+Ü˜ËÛX‹Ú[\Ü]ÛÜšØ™[˜ÚØ
+H0êBœ\˜[Y[H\İ]\˜[8 %XÚHHš[YZ\˜H[šHHÜ˜YHÜšYÚ[˜[ŠÛİ\˜ÙQÜšY
+HÛÛH]X[]Y\ˆYË\ØHÛÛ[ÈØX™péØ[ËHÙÈÈ™\İÈB™Ü˜YHÛÛ[ÈYËÙ[H™[š[XH[]]˜HH[\ˆ0ë][ÜÈY\ØÛYÜÈİB˜Y]š[š\ˆÙ[pè›XØH
+Øİ[Y[YÈ›È°ìÜš[ÈÛÛY[0è\š[ÈH[°éğèÛÎˆ0êBˆ˜\œ›ÈˆH›Ü0ìÜÚ]Ë0êHÈ0î›[[È™Xİ\œÛÊKˆ[ÛHÈY\Û[È›Ü›X]ÈB˜[\ÜÙ[Xİ[Û˜ØÛİ\˜ÙTÙ[Xİ[Û˜]YHÈ›İ0èÛÈ•\Ø\ˆ\İH™YÚpèÛÈˆ°èB›[ÛHX[X[Y[H8 %Ü[[™ÈÙ]Ù[Xİ[Û˜Ù[H\XØ\ˆÛŞš[šÎÈÂ\İpè\š[È™]š\ØH˜H˜[˜ØYHH[\ÜpéğèÛÈ
+]YH°èH]YH˜H[ÙÈ”Ù[XÚ[Û˜\‚›˜HÜ˜YHÜšYÚ[˜[ˆ]]ÛX]XØ[Y[JHHÛXØH\XØ\ˆÙ[péğèÛÈˆÛÛ[ÂœÙ[\™Kˆ™\›È\İYÈ›İ›Ë™\›È[™œ˜Y\İ]\˜H›İ˜K‚‚”Z[™[›İ›È[H™]šY]ËŞš\ğë]™[]X[™È™YYĞÛÛ™š\›X][Ûˆ	‰‚˜Xİ]™OËœÛİ\˜ÙQÜšYÙÛÈ\0ìÜÈÈZ[™[HØ\›š[™ÜÈ^\İ[K‚‚•™\šYšXØYÈ[Èš]›ÈÛÛHÚ\ÈÛÜšØ›ÛÚÜÈÚ[0ê]XÛÜÎˆ[HÛÛH™YÚpíY\Âİ[Y[HÙ\\˜Y\ÈÜˆÛÛ[˜H˜^šXH
+]]Ë\Ü]È[\ÜØ°èBœ™\ÛÛ™H\ÜÛÈÛŞš[šËZ[™[HÛÛ\]Xš[YYH°èÛÈ\\™XÙH8 %ÛÛ™š\›XBœ]YHÈØ]H™YYĞÛÛ™š\›X][Û˜\İ0èHÛÜœ™]ÊHHİ]›ÈÛÛH[š\ÈB˜ÛÛYÙ[HHÛÛ[˜H\œ™Yİ[\ˆÙ[H™[š[XH[šHÛ\˜[Y[H^X[ŠØX™péØ[È]XİYÈH	HHÛÛ™šX[°éØJH8 %Z[™[\\™XÙKÛ\]YB›ØØHH˜[˜ØYH˜H”Ù[XÚ[Û˜\ˆ˜HÜ˜YHÜšYÚ[˜[ˆÛÛHØX™péØ[È˜B›[šHHHYÜÈ˜\È[š\ÈÙYİZ[\Ë^][Y[HÛÛ[Â˜ÛÛ\]Xš[]S[ÙTÙ[Xİ[Û˜Ø[İ[NÈ\XØ\ˆÙ[péğèÛÈˆ\Ú\È\ÜÛÂ›°èÛÈ]YXœ˜H˜YKˆXYÛ°ìÜİXÛÈ˜Z^0è]™[™\šYšXØYÈ[\˜Ù\[™Â˜T“˜Ü™X]SØš™XİT“›È˜]™YØYÜˆ™X[ˆ”ÓÓˆHKHĞ‹Ù[H˜\ÙM››ÈÛÛpî™ËÛÛHÜÈØ[\ÜÈ\Ü\˜YÜË‚‚˜œš]\İ[˜
+MÌˆ\ÜÛİKH[YÈ8 %H\İ\È›İ›ÜÊKœØÂ‹K[›Ñ[Z]œ\Û[›ÜÈH\œ]Z]›ÜÈØØYÜÈ
+Ô“ˆ›Ü›X[^˜YÈ[\Ë˜\›XY[HÛÛšXÚYJKœH[ˆZ[
+ÈœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØŠ™\›È™YÜ™\ÜğèÛÈHÜ°éØ[Y[ÊH\›İ˜YÜË‚‚ˆÈÈLKˆ™]š\ğèÛÈHXZ\ÈœÈÈ\[™X›İˆ›ÙH™XXİY^K\XÚÙ\ˆLY\ØÛY\ËÜ\È\Û[L™XÚYÈÜˆ™YÜ™\ÜğèÛÈ™X[H\™›Ü›X[˜ÙH
+°èÛÈ[˜ÛÛ\]Xš[YYJB‚ÛÛ[XpéğèÛÈHÙpéğèÛÈLKÌLËˆ›Ù
+ø¡¤ˆÌMŒÊHH™XXİY^K\XÚÙ\˜Šx¡¤ŒLˆÌMŒ
+HY\ØÛY\È\Ú\ÈHÛÛ™š\›X\ˆ]YH™[š[HÜÈÚ\È0êB\ØYÈH˜]È›ÈğìÙYÛËY›ÛH
+›Ù0êH\[™0ê›˜ÚXH\™]H0ìÜ™°èÈ8 %ğìÂ\ØYÈ˜[œÚ]]˜[Y[HÜˆÛÚÙ›Ü›KÜ™\ÛÛ™\œØÕ[”İXÚÈ[\›˜[Y[NÂ˜™XXİY^K\XÚÙ\˜ØØ[[™\˜0êHØØY™›Û[™ÈÈÚYÛ‹İZH[˜ØBš[\ÜYÈÜˆ™[š[XH›İJH8 %š\ØÛÈH™YÜ™\ÜğèÛÈ\ÜÙ[˜ÚX[Y[H™\›Ë›X\È\İYÈHY\ÛXH›Ü›XHšYÛÜ›ÜØHY\Û[È\ÜÚ[KˆXÚYÈ™X[˜HˆÂ˜™XXİY^K\XÚÙ\˜ˆHŒL™[›ÛY[İHHÚ]™HX›XÈRX[[H˜B˜[ÛÙÜšY8 %ØØYÛİHÈ\œ›ÈH\È[HØ[[™\‹ŞÛÜœšYÚYÂ˜ÛÛ[È\HÈY\™ÙH
+ZYÜ˜péğèÛÈ™X[°èÛÈØ[XšX\œ˜JKˆ[X˜\È\ÈœÂ]™\˜[HÈY\Û[È›Ø›[XH™XÛÜœ™[HHØÚÙš[H›Ü˜HHÚ[˜Ü›ÛšXB™Ù\˜YÈ[È\[™X›İ
+KXØXÚX]X\H™^ˆ™\İHÙ\ÜğèÛÊK˜ÛÜœšYÚYÈÈY\Û[È™Z]ÈHÙ[\™K‚‚˜XÚYK\™XXİ
+8¡¤ŒKˆÌMÊH[X°ê[HY\ØÛYH8 %ğìÈ0ëXÛÛ™\Â˜YXÚ[Û˜YÜÈ[™HMÍHHKŒÌK™[š[XH]Y[°éØHHTH]YHY™]\ÜÙHÂœ›Ú™]È
+[\ÜÈ›ÛYXYÜÈÛÛ[X[H™\ÛÛ™[™ÊKˆØÚÙš[H[X°ê[Bœ™XÚ\ÛİHHY\ÛXHÛÜœ™péğèÛË‚‚˜\\ËÛ›ÙX
+Œ¸¡¤Œ‹ˆÌM
+NˆÛÛ™š\›XYÈH›İ›È
+ÒH›ÙB˜›ÙK]™\œÚ[ÛˆŒ˜^0ëXÚ]È[HÙÜÈÜÈ›ØœÈB˜™Ú]X‹İÛÜšÙ›İÜËØ\XØ][Û‹[[È›ÙpéğèÛÈ™\˜Ù[\ØB˜›ÙZœÌ
+H]YHH™\œğèÛÈˆšXØH0èœ™[HÜÈÚ\È[XšY[\È™XZ\È8 %˜ÛÛY[YÈHZ^YÈX™\ËÙ[HYÛ›Ü™X
+°èÛÈ0êH™Z™ZpéğèÛÈ\›X[™[JK‚‚ŠŠ‘Ü\È\Û[
+\Û[LŒH
+È\Û[ÚœÈLŒŒH
+ÈÛØ˜[ÈMËŒLKŒ”œÈÌMŒ‹ÈÌM‹ÈÌMŒJJŠˆXÚYÈ[HX\È]\\Ë‚‚ŒKˆš[YZ\˜H[]]˜HHY\™ÙH\È°êœÈ[\ÎˆœHÚX˜[HÛÛBˆT‘TÓÓ‘H™X[8 %\Û[\YÚ[‹\™XXİZÛÚÜĞKŒ‹Œ
+™\œğèÛÈ]X[Âˆ›Ú™]ÊHğìÈXÛ\˜Hİ\ÜHH\Û[]0êHKŒŒÛÛ[ÈY\‹‚ˆÛÛY[YÈ˜\È°êœÈœËZ^Y\ÈX™\\È
+›Ü]YZ[È™\ÛÛ0î™[[ÂˆÛÛ°è\š[ÈÈØ\ÛÈÈ\TØÜš\È˜HÙpéğèÛÈLJK‚Œ‹ˆ[™\İYØpéğèÛÈH\Ø›Ü]YZ[Îˆ\Û[\YÚ[‹\™XXİZÛÚÜĞËŒKŒX°èBˆXÛ\˜Hİ\ÜHH\Û[ŒLŒŒ8 %[œİ[HÙ[HÛÛ™›]ËˆX\ÈÂˆ[ÛÛ\]ÈÈ™\È
+\Û[˜
+K]YH›ÙH[H
+ŠŒNKÊŠˆ˜HXZ[˜ˆÜšYÚ[˜[
+YYYÈ[XHÚ]ÛÜšİ™YXÙ\\˜YKÛÛ[È[šHH˜\ÙJKˆ\ÜÛİHH
+ŠŒLZ[]ÜÈÙ[H\›Z[˜\ŠŠˆÛÛHÈÛÛX›È\Û[L
+Âˆ™XXİZÛÚÜÈËŒKŒH8 %ÛÛ™š\›XYÈ]YH°èÛÈ\˜H˜]˜[Y[È
+›ØÙ\ÜÛÂˆ›ÙXÛÛHÔH]]˜HŒL	HH[HÛÜ™HÈ[\È[Z\›Ë°èÛÂˆXYØÚËĞÔH™\˜YJHšXHÙ]T›ØÙ\ÜØ›ÈİÙ\”Ú[ˆ\ÛÛYÈÜ‚ˆ\™]0ìÜš[È
+Ü˜ËÛX‹ØÜ˜ËØÛÛ\Û™[ËÛÛX[KØˆÜ˜ËÜ›İ]\ËÚ[™^Ş[™]šYX[Y[H8 %ÙÜÈ°è\YÜËMNLÊH°èÛÂˆ™\›Ù^š]HÈ›Ø›[XNÈğìÈÈ\Û[˜È™\È[Z\›È[È˜]˜Bˆ[Ëˆİ\ÜZ]Nˆ\È™YÜ˜\ÈH[°è[\ÙH”™XXİÛÛ\[\ˆˆ]YHÂˆ\Û[\YÚ[‹\™XXİZÛÚÜØ\ÜÛİHH[˜ÛZ\ˆÜˆY°èÛÈH\\ˆBˆˆ˜^™[H[™™\°ê›˜ÚXHXZ\È\ØYH
+ÜÜÚ]™[Y[HÛÛHİ\İÈ°èÛË[[™X\‚ˆ›È[X[šÈÈ›Ú™]ÊH]YHHH[˜ØH]™K‚‚‘XÚ\ğèÛÎˆ
+Š˜\È°êœÈœÈÈÜ\È\Û[›Ü˜[H™XÚY\ÊŠˆ
+°èÛÈY\ØÛY\Ë›°èÛÈğìÈ[H\[™X›İYÛ›Ü™X
+H8 %[H[HL
+ÈZ[]ÜÈ[šXXš[^˜\šXB˜HÒKˆY™\™[HH™Z™ZpéğèÛÈÈ\TØÜš\È
+[˜ÛÛ\]Xš[YYB™\İ]\˜[\›X[™[JK\]ZHHÛÛXš[˜péğèÛÈXÛšXØ[Y[H[œİ[HB™[˜Ú[Û˜KğìÈ0êH[H[XZ\È˜H\Ø\‹ˆ™]š\Ú]\ˆÙHÂ˜\Û[\YÚ[‹\™XXİZÛÚÜØ[°éØ\ˆ[XH™\œğèÛÈ]YH™\ÛÛ˜H\ÜØB›[Y0èÛËİHÙHİ\™Ú\ˆ[XH›Ü›XHHX[\ˆ\È™YÜ˜\ÈHÛÚÜÂ™\ÜÙ[˜ÚXZ\ÈÙ[H\™\ˆ\È›İ˜\È™YÜ˜\È\ØY\ÈÈ™XÛÛ[Y[™Y‚‚˜œš]\İ[˜œØÈK[›Ñ[Z]œH[ˆZ[
+Â˜œH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØ\›İ˜YÜÈ˜\ÈX\ÈœÈY\ØÛY\È
+›Ùœ™XXİY^K\XÚÙ\ŠH[\ÈÈY\™ÙNÈXÚYK\™XXİ[X°ê[H\ÜÛİH[B›Y\ÛXH˜]\šXH[\ÈÈY\™ÙK‚‚ˆÈÈLLˆÛÜœ™péğèÛÈÈÛÛ\H˜\œ˜KÜHİ™\ˆ[H˜\œ˜KÜ^˜KÛİÈ›È˜[šÚ[™ËH›İ›ÈÚYÙ]”˜Y\ˆ‚‚•\İpè\š[ÈÛÛİHÈğìÙYÛÈH[HÛÛ\Û™[HH^[\È
+™[È\Ú›Ø\™‹™œ˜[Y\‹[[İ[Û‹š\İX[œ][\İJHHY]H°êœÈÛÚ\Ø\ËXÚYY\ÈÜ‚œ\™İ[\ÈH\ØÛ\™XÚ[Y[È[\ÈH[\[Y[\ˆ
+JH]˜\ˆÂŠ™\Ü0ë\š]ÊˆH[š[XpéğèÛËÚİ™\ˆÈ^[\È›ÜÈÚYÙ]ÈH˜[šÚ[™ËØ˜\œ˜KÂœ^˜H°èH^\İ[\ËÙ[HYİ\ˆœ˜[Y\‹[[İ[Ûˆ™[HÈš\İX[œ][\İBŠY\ÛXHXÚ\ğèÛÈHÙpéğèÛÈLÊNÈ
+ŠHÛÜœšYÚ\ˆÈÛÛ\ÈÜ°èYšXÛÈB˜˜\œ˜\Ë]YH\\™XÚXH[H]X[]Y\ˆÛÈHÛÛ[˜HHØ]YÛÜšXK°èÛÈğìÂœÛØœ™HH˜\œ˜NÈ
+ÊHYXÚ[Û˜\ˆÈÜ°èYšXÛÈœ˜Y\‹Üİ]ÈˆÈ^[\ÈÛÛ[Â\ÈHÚYÙ]H™\™YKÛÛHYÜÈ™XZ\ËÈ[X[šÈH^˜K‚‚ŠŠ•ÛÛ\H˜\œ˜JŠˆØ]\ØH˜Z^ˆÛÛ™š\›XYH[™Â˜›ÙWÛ[Ù[\ËÜ™XÚ\ËÙ\Í‹ØØ\\ÚX[‹Ğ˜\‹šœØ8 %ÈÛÛ\İ\œÛÜ^Ë‹‹ŸO˜™È™XÚ\È˜\İ™ZXHHÜÚpéğèÛÈÈ[İ\ÙHH]]˜H˜HÙHH˜Z^HB˜Ø]YÛÜšXH
+Z^ÊK[™\[™[HH[\˜H™X[H˜\œ˜Kˆ[H\˜[[È°èB™^\İXHXİ]™P˜\’[™^Ù]YÈšXHÛ“[İ\ÙQ[\˜ØÛ“[İ\ÙSX]™XÂœ°ìÜš[È˜\˜8 %]YHÈ™XÚ\È\Ü\˜HÜˆ˜\œ˜H™X[™[™\š^˜YBŠ[™\ˆ™XÙX™H
+]K[™^]™[
+XYXØ[š\Û[ÈXZ\È™XÚ\ÛÊK‚ÛÜœ™péğèÛÎˆİ\œÛÜ^Ù˜[Ù_X
+™[[İ™HÈ™]0è›™İ[ÈH[™È]YH[]˜HB˜ÛÛ[˜H[Z\˜JH
+ÈÛÛ[ÈÚ\ÛÛ\˜YÛÜ˜HğìÈ™[™\š^˜B˜˜\•ÛÛ\˜]X[™ÈXİ]™P˜\’[™^OOH[ˆ™[š[XH]Y[°éØH[B˜]XØ˜\”Ù\šY\ØØ\Ğ[š[X][ÛXİ]™X8 %š\ØÛÈ™\›ÈH™Z[›Ù^š\ˆÂ˜YÈH›XÚÙ\ˆÈZ^ÈH
+ÙpéğèÛÈ
+Kˆ™\šYšXØYÈ[Èš]›È\ÜXÚ[™Â™]™[ÜÈH[İ\ÙHÚ[0ê]XÛÜÈ\™]È›È[[Y[ÈH˜\œ˜H
+°èÛÈ›Â˜[[Y[œ›ÛTÚ[H[XHÛÛÜ™[˜YK]YH\]ZH°èÛÈ]˜]™\ÜØHÈÕ‘ÈÜ‚˜[İ[XHXİ[X\šYYHH^[İ]°èÛÈ[™\İYØYJNˆÛØœ™HH˜\œ˜KÂÛÛ\[Üİ˜H”]X\H‰[šHÈÈ^Ù[8¡¤ÈL‰HÈ›È\ÜpéÛÈ˜^š[Â™HY\ÛXHÛÛ[˜H
+XÚ[XHH˜\œ˜Hİ\JKÈÛÛ[™]Ü›˜H˜^š[Ë‚‚ŠŠ”ÜHİ™\ˆ[H˜\œ˜HH^˜JŠˆ˜\œ˜HØ[šİHİ›ÚÙXØİ›ÚÙUÚY˜ÛÛ™XÚ[Û˜Z\È›ÈÙ[˜°èH^\İ[H
+Y\Û[ÈY°èÛÈÈÙ[˜Bœ^˜JKˆ^˜HØ[šİHXİ]™TÚ\X˜]]›ÈÈ™XÚ\È
+ÙXİÜ˜ÛÛB˜İ]\”˜Y]\Ø
+Íˆ˜H˜]XH]]˜JH8 %Ù[H\İYÈ›İ›Ë™X\›İ™Z]B˜\Ü^YYYR[™^]YH°èH^\İXKˆ™\šYšXØYÈ[Èš]›Îˆ˜Z[ÈÈÙ]Ü‚œÛØˆÈ[İ\ÙH›ÚHHÌKŒˆ˜HÍËŒˆ
+È
+Íˆ\Ü\˜YÊH[È\ÜXÚ\ˆ]™[ÜÂ™H[İ\ÙH›È[[Y[È™X[‚‚ŠŠ‘ÛİÈHİ™\ˆ›È˜[šÚ[™ËØ]˜[XpéğèÛËÜÚYX˜\ŠŠˆ›ÛX[K\˜[šÚ[™ËYš[Š™X\›İ™Z]YH[ÜÈÈYØ\™\È\ÙHHÙpéğèÛÈLÊHØ[šİB˜š[\ˆœšYÚ™\ÜÊKŒLŠX
+È[È
+›Ş\ÚYİØ
+H›Èšİ™\˜Ù[HY^\‚™[H[\˜KØ˜[œÙ›Ü›NˆØØ[X8 %H˜XÚÈ[Hİ™\™›İÎˆY[˜H[\˜B™š^H
+Ü
+KÜ™\ØÙ\šXHÛÜYKˆ\ÛYØYÈ[X°ê[H[B˜™Y™\œË\™YXÙY[[İ[Ûˆ™YXÙXY\Û[ÈY°èÛÈ°èH\ØYÈ›È\œ]Z]›Ë‚ŠŠ“°èÛÈ™\šYšXØYÈ[\˜]]˜[Y[JŠˆšİ™\˜0êH\İYÈ˜]]›ÈÂ›˜]™YØYÜ‹°èÛÈ\Ü\°è]™[Üˆ]™[ÈH[İ\ÙHÚ[0ê]XÛÈ
+Y™\™[HÂ˜Û“[İ\ÙQ[\˜È™XXİ]YH™\ÜÛ™HH]X[]Y\ˆ[İ\ÙQ]™[™\ÜXÚYÊH8 %H\İHØ[™›Ş°èÛÈÛÛœÙYİYH\˜\ˆØÜ™Y[œÚİÛ[İ™\ˆÂ›[İ\ÙHH™\™YH
+[™H°èÛÈÛÛ\0íYHœ˜[Y\È[HÙYİ[™È[›ËY\ÛXB›[Z]péğèÛÈ°èHØİ[Y[YH˜HQ‹ÜØÜ™Y[œÚİ
+KˆÛÛ™š\›XYÈ\[˜\È]YHBœ™YÜ˜HÔÔÈÛÛ\[İHÛÜœ™][Y[H›Èİ[\ÚY]Ù\šYÈ
+œšYÚ™\ÜÊKŒLŠXœ™\Ù[JHH]YHHÚ[^H0êHY0ê›XØH[È›ÛX[K\˜[šÚ[™Ë\›İÎšİ™\˜°èB˜ÛÛ\›İ˜YÈ[˜Ú[Û˜[™Ë‚‚ŠŠ“›İ›ÈÚYÙ]”˜Y\ˆŠŠˆY\ÛXHÙ[pè›XØHÈ˜[šÚ[™È
+Ü›İ\Ù^X˜Ø]YğìÜšXØH
+È˜[YRÙ^X[pê\šXØH
+ÈÜÜÜ˜ÛÛ[ÈZ^ÜËY°èÛÂJK™X\›İ™Z][™ÈÚ\Ù\šY\Ø\™][Y[H8 %™[š[XHYÜ™YØpéğèÛÈ›İ˜K‚”™[™\š^˜péğèÛÈL	H™XÚ\È˜]]›È
+˜Y\Ú\ØÛ\‘ÜšYÂ˜Û\[™ÛP^\ØØÛ\”˜Y]\Ğ^\ØØ˜Y\˜
+KÛÜ™\ÈšXH˜\špè]™Z\ÈÔÔÈ°èB\ØY\È[Hİ]›ÜÈÜ°èYšXÛÜËˆ\œ]Z]›È°ìÜš[Â˜Ü˜ËØÛÛ\Û™[ËÛÛX[KÜ˜Y\‹]ÚYÙ]X›ÙKŞ
+°èÛÈ[[ÛØYÈ[B˜Ú\]ÚYÙ]X›ÙKŞ]YH°èH0êHÜ˜[™HHğìÈYÜ\H˜\‹ÜYKÛ[™KØ\™XBœÜˆÛÛ\\[\™[H\İYÈ8 %˜Y\ˆ°èÛÈÛÛ\\[H˜YHÛÛH[\ÊK‚”™YÚ\İ˜YÈ›ÜÈˆÛÜÈÈÚXÚÛ\İHÙpéğèÛÈÎˆ\\ËØ
+[špèÛÈ
+Â˜ÚYÙ]\SX™[Ø
+KÚYÙ]\İ\ÜŞŠÚYÙ]\Q\ØÜš\[ÛœØ
+ØÚYÙ]XÚÙ\’XÛÛ˜0ëXÛÛ™H˜Y\˜Â›XÚYK\™XXİ
+KÚYÙ]ËØ
+Y˜][Ü[˜ØY˜][Ú^™X˜HY\ÛXB˜ÛÛ™péğèÛÈHœYH˜
+Èœ˜[˜ÚHÜ™X]UÚYÙ]
+KÚYÙ]XØ\™ŞŠ\Ü]Ú\ŠK›İ]\ËÚ[™^Ş
+Ø[YY\ÛXHÛÛ™péğèÛÈHYX
+K‚“Y\ÛXHXÚ\ğèÛÈHÙpéğèÛÈÎˆ
+Š›°èÛÊŠˆ[˜H˜H™XÛÛY[™péğèÛÈ]]Ûpè]XØBŠ]]ËY\Ú›Ø\™Ø°èÛÈ›ÚHØØYÊKğìÈ\\™XÙH›ÈÙ[]ÜˆX[X[ˆYXÚ[Û˜\ˆÚYÙ]‹‚‚•™\šYšXØYÈ[Èš]›È
+YÜÈÛÛYÜËØ]YÛÜšXH”]X\HˆÛÛH˜[Üˆ™[B›Y[›Üˆ]YH\Èİ]˜\È˜H›Ü°éØ\ˆ[XH˜\œ˜Hİ\JNˆÈ][HÈÙ[]Ü‚ˆ•ÚYÙ]ˆ™XÚ\ÛİHÈY\Û[ÈÛÛÜ››È°èHØİ[Y[YÈ˜H›ÜİÛ“Y[X™È˜Y^
+˜ÛXÚÊ
+XÚ[0ê]XÛÈ°èÛÈXœ™HÈY[NÈÙ\]pê›˜ÚXB˜Ú[\™İÛ˜ØÚ[\\ØÛXÚØ\ÜXÚYHšXH\Ü]Ú]™[Ú[JB¸ %‘Ü°èYšXÛÈ˜Y\ˆˆ\\™XÙH˜H\İKÚYÙ]ÜšXYÈÛÛH0ë][È”˜Y\ˆ0­Â”ÛÛXHH˜[ÜˆÜˆØ]YÛÜšXHˆ
+YÜÈ™XZ\ÊKÛ\ÜÙB˜Î˜ÛÛ\Ü[‹LHZ[‹ZN
+Y0ê›XØH0èH^˜JKZ^ÜÈ[Üİ˜[™È\ÈB›XZ[Ü™\ÈØ]YÛÜšX\ÈÛÜœ™]\ËÛ0ëYÛÛ›ÈÈ˜Y\ˆ™[™\š^˜YËˆ™\›È\œ›Â››ÈÛÛœÛÛK‚‚˜œš]\İ[˜
+MÌˆ\ÜÛİKH[YÈ8 %Y\ÛXHÛÛYÙ[K™[š[XB™[°éğèÛÈ\˜H›İ˜JKœØÈK[›Ñ[Z]œ\Û[›ÜÈÈ\œ]Z]›ÜÂØØYÜÈ
+ğìÈ]š\ÛÜÈ°êKY^\İ[\ÈH™XXİ\™Yœ™\ÚÛÛ›KY^ÜXÛÛ\Û™[Ø›°èÛÈ™[XÚ[Û˜YÜÊKœH[ˆZ[
+ÈœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØŠ™XÚ\Ë]™[™ÜˆİXš]HHÈ˜HNÚPˆ[È˜Y\Ú\›İ›Ë›Ü°éØ[Y[ÈÛÛ[XH\›İ˜YÊH\›İ˜YÜË‚‚ˆÈÈLLKˆYÈ™X[™\ÜYÈ[È\İpè\š[ÎˆZ^ÜÈ\XØYÜÈ›ÈÚYÙ]˜Y\ˆ
+\™İH[ÙÈ›[šHH[šHˆÈY°èÛÈH˜[šÚ[™ËØ˜\œ˜JB‚•\İpè\š[È™\ÜİH
+ÛÛHØÜ™Y[œÚİ
+H]YH[HÚYÙ]˜Y\ˆ™Xğê[KXÜšXYÂ›[Üİ˜]˜HZ^ÜÈ™\]YÜÈ
+“X[š0èÈˆŞ•\™Hˆ“›Ú]HˆŞŠHH™[š[BœÛ0ëYÛÛ›Èš\ğë]™[8 %YÜ\[™ÈÜˆ•\››Èˆ
+ğìÈÈ˜[Ü™\ÈÜÜğë]™Z\ÊHB˜YÜ™YØ[™È[[Üİ˜\È‹‚‚ŠŠØ]\ØH˜Z^ŠŠˆ]S[ÙX[H˜Y\‹]ÚYÙ]X›ÙKŞ›ÚHÛÜXYÂ™\˜˜][HÈY°èÛÈH˜[šÚ[™Ë]ÚYÙ]X›ÙKŞ
+ÙpéğèÛÈLL
+N‚˜Ë™]S[ÙHÏÈ
+ÜOOH˜Ûİ[ˆÈ˜YÙÜ™YØ]Hˆˆœ˜]ÈŠXˆ˜Bœ˜[šÚ[™ËØ˜\œ˜K[ÙÈ›[šHH[šHˆ
+˜]ÊH˜^ˆÙ[YÈ8 %ØYH[šHš\˜B[XHX\˜ØH°ìÜšXKY\Û[È™\][™ÈÈ›ÛYHHØ]YÛÜšXKˆ˜H˜Y\‹›°èÛÎˆÈZ^ÈÈÛ0ëYÛÛ›È0êHÜÚXÚ[Û˜[
+Û\[™ÛP^\Ø
+K[XHÜÚpéğèÛÂœÜˆØ]YÛÜšXH8 %[H[ÙÈ˜]ËØYHS’HH[š[Hš\˜]˜H[HZ^ÂœÙ\\˜YËH[š\ÈÛÛHÈY\Û[È˜[ÜˆHØ]YÛÜšXH
+ÈØ\ÛÈ›Ü›X[°èBœ]YH•\››ÈˆğìÈ[HÈ˜[Ü™\ÈÜÜğë]™Z\È˜H°è\šX\È[š\ÊHÙ\˜]˜[HZ^ÜÂ˜ÛÛHÈY\Û[È°ìİ[È[HÜÚpéğíY\ÈY™\™[\ÈÈğë\˜İ[ËÙ[H™[š[B˜YÜ™YØYÈ™X[8 %ÈÛ0ëYÛÛ›È™\İ[[H\˜HYÙ[™\˜YËÜÙ[HÙ[YË‚‚ŠŠÛÜœ™péğèÛÊŠˆ˜Y\ˆYÛÜ˜HÙ[\™H\ØH]S[ÙNˆ˜YÙÜ™YØ]H˜ŠÛÛœİ[KYÛ›Ü˜HË™]S[ÙX
+H8 %[˜ØHÙ™\™XÙH™[H\™H[ÙÈ˜]Ë‚”™[[İšYÈ[X°ê[H[İÔ˜]ØØÛ”˜]ØÈØ[İ[][Û]Û˜È˜Y\ˆ
+B›Ü0éğèÛÈH›ØØ\ˆ˜H›[šHH[šHˆ™[H\\™XÙHXZ\È˜HRJKˆÚYÙ]Âœ˜Y\ˆ°èHØ[›ÜÈÛÛH]S[ÙNˆœ˜]È˜HÙ\ÜğíY\È[\š[Ü™\ÈÙB˜]]ØÛÜœšYÙ[H›È°ìŞ[[È™[™\‹Ù[H™XÚ\Ø\ˆHZYÜ˜péğèÛÈ8 %ÈØ[\È0êBœÚ[\\ÛY[HYÛ›Ü˜YÈYÛÜ˜K‚‚•™\šYšXØYÈ[Èš]›È™\›Ù^š[™ÈÈÙ[°è\š[È^]ÈÈ\İpè\š[È
+\››ÈÛÛB˜[Ü™\È™\]YÜÈ
+È[[Üİ˜\È[pê\šXØJNˆZ^ÜÈYÛÜ˜H[Üİ˜[B˜È•\™H‹“X[šH‹“›Ú]H—X
+0î›šXÛÜÊKÛ0ëYÛÛ›È™[™\š^˜HÛÛH˜[Ü™\Âœ™XZ\È
+˜Y\ˆ0­ÈpêYXHH[[Üİ˜\ÈÜˆ\››ØÜ\˜péğèÛÈ›pêYXH‚˜]]ËY\ØÛÛYJKˆœš]\İ[˜
+MÌˆ\ÜÛİKH[YÊKœØÂ‹K[›Ñ[Z]œ\Û[›È\œ]Z]›ÈØØYÈ\›İ˜YÜË‚‚ˆÈÈLL‹ˆ°êœÈXÚYÜÈ™XZ\È›ÈÚYÙ]˜Y\ˆpê]šXØHY°èÛÈÙ[HÙ[YËÜ0éğèÛÈH‘Z^ÜÈˆÙ[HY™Z]ËH˜[HHİ™\‹Ûpê]šXØ\ÈÛÛ[È^˜KØ˜\œ˜B‚•\İpè\š[È\İİHÈÚYÙ]˜Y\ˆ
+ÙpéğèÛÈLLÌLLJHÛÛHYÜÈ™XZ\ÈH›İ^B°êœÈ›Ø›[X\ÈÛÛ˜Ü™]ÜË[HÜˆ™^‹ØYH[HÛÛHXÚYÈ™X[Üˆ°è\ÂŠ™[š[H\˜H›ÈÙ[]Üˆ°èÛÈ[˜Ú[Û˜Hˆ8 %Hİ\ÜZ]H[šXÚX[HÙpéğèÛÈLL™›ÚH\ØØ\YHÜˆ\İH[Èš]›ÎˆÙ[Xİ˜Ù[\™H™\ÜÛ™]B˜ÛÜœ™][Y[HH]Y[°éØH™X[H˜[ÜŠK‚‚ŠŠŒKˆpê]šXØHY°èÛÈÙ[HÙ[YÈ[ÈÜšX\ˆÈÚYÙ]
+Šˆ8 %[H˜Y\ˆ›İ›Â˜YÜ\[™È•\››Èˆ˜\ØÚXHÛÛ[™ÈÛÛ™›Ü›ZYYHˆ
+™YÚ\İ›ÜÈÜ‚•\››Ø
+KY\Û[È^\İ[™È[XHÛÛ[˜HÙ[Z[˜[Y[HÛÛpè]™[Š[[Üİ˜\ÈŠKˆØ]\ØH™X[ˆÜ™X]UÚYÙ]
+ÚYÙ]ËØ
+H\ØÛÛXB˜[\ÖÌX
+š[YZ\˜HÛÛ[˜H[pê\šXØHÜˆÜÚpéğèÛÊHÙ[HÛÛœÚY\˜\ˆÙH[BœÛØœ™]š]™HÛÛ[Èpê]šXØHYÜ™Yğè]™[8 %HYÜ˜YpéğèÛÈ˜H˜ÛÛYÙ[H‚˜XÛÛXÚXHH™\™YKX\ÈğìÈ›È
+œ™[™\Šˆ
+Ù[X[XĞYÙÜ™YØ][Û“ÜØ\ØB›È\™š[Ù[pè›XÛÈHÛÛ[˜K^ˆYÙÜ™YØX›Nˆ˜[ÙX˜H[XHÛÛ[˜B\È^KÜØÛÜ™HˆY\Û[ÈÛÛHÚ[™ˆ›[X™\ˆ˜
+KÜœ]YHÜ™X]UÚYÙ]›[˜ØH™XÙXšXH\ÜÙH\™š[ˆÛÜœšYÚYÈ™XY[™ÈÙ[X[XÔ›Ùš[\Ø˜]˜]°ê\ÈHÜ™X]UÚYÙ]
+›İ›Èp®ˆ\°è›Y]›ÈÜÚ[Û˜[˜ÚY]š[[YÙ[˜ÙOË˜ÛÛ[[œØ›È0î›šXÛÈØ[Ú]H]YH[\ÜK˜\ÙK]ÚYÙ]XXİ[ÛœËØ
+H8 %˜Y\ˆYÛÜ˜H™Y™\™HHš[YZ\˜HÛÛ[˜B›[pê\šXØH]YHÛØœ™]š]™HÛÛ[ÈÛÛXKÛpêYXHH™\™YKØZ[™È›ÈY°èÛÂ˜[YÛÈ
+[\ÖÌX
+HğìÈÙH™[š[XH]X[YšXØ\‹ˆ\İH›İ›È[B˜ÚYÙ]Ë\İØ™\›Ù^ˆÈÙ[°è\š[È^]È
+ÛÛ[˜HÛÛ™›Ü›ZYYHˆÛÛB˜YÙÜ™YØX›Nˆ˜[ÙX[[Üİ˜\ÈˆØ]Y0è]™[
+H8 %[\ÈÈš^˜[]˜BŠ\ØÛÛXHÛÛ™›Ü›ZYYJK\Ú\È\ÜØK‚‚ŠŠŒ‹ˆÜ0éğèÛÈ‘Z^ÜÎˆˆÙ[H™[š[HY™Z]Èš\ğë]™[
+Šˆ8 %ÛÛHğìÈÈØ]YÛÜšX\ÂœÜÜğë]™Z\È˜HÛÛ[˜HHYÜ\[Y[Ë]X[]Y\ˆ˜[ÜˆH‘Z^ÜÈˆ8¢iLÂ™\Ù[šHÈY\Û[Èšpè›™İ[ËX\ÈH\İHš^HÌËKXÙ[\™B›Ù™\™XÚXH\È°êœÈÜ0éğíY\Ë\™XÙ[™È[HÙ[]Üˆ]YXœ˜YËˆÛÜœšYÚYÎ‚˜^\ÓÜ[ÛœØYÛÜ˜Hš[˜HH\İHš^HX[[™ÈğìÈ˜[Ü™\ÈİZ›Âœ™\İ[YÈ
+™Y™]]›Êˆ
+X]›Z[Š‹Ø]YÛÜšX\Ñ\ÜÛ°ë]™Z\ÊX
+H0êHY™\™[B™È˜[Üˆ[\š[Üˆ8 %ÛÛHÈØ]YÛÜšX\ËğìÈŒÈˆ\\™XÙNÈÛÛKYØ[[ÜËˆŒÈˆHHˆ\\™XÙ[H
+HÙYİ[™H°èH[Üİ˜HYÊHX\ÈˆÛÛYKÜœ]YB\šXHÈY\Û[ÈY™Z]ÈHH‹‚‚ŠŠŒËˆÙ[Hİ™\‹Ş›ÛÛKÛpê]šXØ\ÈÛÛ[È^˜HH˜\œ˜JŠˆ8 %YYÈ^0ëXÚ]ÈÂ\İpè\š[Îˆœ]Y\›È]YH\ÈÛ\ÈÈ˜Y\ˆY[H[H]™H›ÛÛHH[Üİ™[HÜÂ™YÜËYİX[H^˜H‹ˆ^˜KØ˜\œ˜H°èH[š[H\ÜÙHY°èÛÂŠXİ]™TÚ\XØÙ[ÛÛHÜXÚYYH
+ÈÙ\šY\ĞÛÛ\\š\ÛÛ”[™[ÛÛB˜YPÛÛ\\š\ÛÛ‘›Ü˜[X›ÜÈÙ[°ê\šXÛÜÈÛØœ™HÛ˜[YKİ[V×X\ÙHBœÙpéğèÛÈÊH8 %˜Y\ˆ™X\›İ™Z]HÜÈÚ\ÈÙ[H™[š[XH0ìÙÚXØH›İ˜Nˆİ˜İ\İÛZ^˜YÈ›È˜Y\˜
+ØYHÛH0êH[HÚ\˜ÛO˜ÛÛB˜Û“[İ\ÙQ[\˜ØÛ“[İ\ÙSX]™X°ìÜš[ÜË˜H8¡¤È›Èİ™\‹Y\ÛXB˜[œÚpéğèÛÈİXšXËX™^šY\ˆ°èH\ØYH[Hİ]›ÜÈYØ\™\ÊHB˜Ù\šY\ĞÛÛ\\š\ÛÛ”[™[X˜Z^ÈÈÜ°èYšXÛË\Ø[™ÈYPÛÛ\\š\ÛÛ‘›Ü˜œÛØœ™H^\ØˆÈÛÛXÚØ[YÛÈÈ˜Y\Ú\
+˜\ÙXYÈ[B˜İ]K˜Xİ]™SX™[˜\İ™X[Y[ÈÜˆZ^È8 %Y\Û[ÈY°èÛÈ›Ø›[pè]XÛÂ™HÙpéğèÛÈLL›ÈÛÛ\H˜\œ˜JH›ÚH™[[İšYÎˆÈÛ\]YHYÛÜ˜Hš]™B››È°ìÜš[ÈÚ\˜ÛO˜HØYHÛK™XÚ\ÛÈÜˆ›Ü›XH™X[B›X[\ˆÜÈÚ\È[ÜÈØ]\Ø\šXH\ÈÙÙÛH
+š[›ÈYØYÈ[Â˜Ú\˜ÛO˜\ÛYØYÈH›İ›È[ÈÛÛXÚØÈÚ\Ø[˜Ù[[™È[B˜[Èİ]›ÊK‚‚•™\šYšXØYÈ[Èš]›È™[[İ™[™ÈÜÈÚYÙ]ÈH\İH[YÛÜÈHÜšX[™È[B”˜Y\ˆÈ™\›Îˆ0ë][È˜\ØÙ]H˜Y\ˆ0­ÈpêYXHH[[Üİ˜\ÈÜˆ\››ØŠ°èÛÈXZ\ÈÛÛ™›Ü›ZYYKØÛÛYÙ[JNÈÙ[]ÜˆHZ^ÜÈ[Üİ›İHğìÈÈŒÈ—XÂšİ™\ˆ[HÚ\˜ÛO˜™X[ÛÛ™š\›[İH˜Z[È8¡¤ÈHÈZ[™[HÛÛ\\˜péğèÛÂ›ØØ[™È\˜HHØ]YÛÜšXHÛØˆÈ[İ\ÙH
+“X[šK‹‹ˆ˜[ÜˆHX[šHL‹‹‚‘Y™\™[°éØH\˜H\™HNH0­ÈMË	H˜
+Kˆ™\›È\œ›È›ÈÛÛœÛÛK‚‚˜œš]\İ[˜
+MÌÈ\ÜÛİKH[YÈ8 %H\İH›İ›ÊKœØÂ‹K[›Ñ[Z]œ\Û[›ÜÈ\œ]Z]›ÜÈØØYÜÈ
+Ô“ˆ›Ü›X[^˜YÂ˜[\ÊKœH[ˆZ[
+ÈœH[ˆ\™›Ü›X[˜ÙN˜ÚXÚØ\›İ˜YÜË‚‚ˆÈÈLLËˆ[ÙÈH[™\İYØpéğèÛÈİZXYHÛÛ™XİH›İZ\›ËØ]\Ø\ÈH™YÚ\İ›ÜÂ‚“È›İZ\›È[˜[0ë]XÛÈØ[šİHHpéğèÛÈ[™\İYØ\˜˜\È\™İ[\È°èHÛØ™\\ÈÜ‚™Ü°èYšXÛËˆHpéğèÛÈXœ™H[XHZ]\˜HİZXYH[›ÈH°ìÜšXHš\ğèÛÈÙ\˜[Ù[B˜ÜšX\ˆ[XHÙYİ[™H[™İXYÙ[HH[°è[\ÙNˆ\ØHHpê]šXØHš[pè\šXKHY[Ü‚™[Y[œğèÛÈØ]YğìÜšXØKHÜ\˜péğèÛÈÙ[pè›XØH°èH™\ÛÛšYHHÜÈYÜÈ\Ú\ÈÜÂ™š[›ÜÈ]]›ÜË‚‚”]X[™È^\İ[H[ÈY[›ÜÈÚ\È\°ë[ÙÜÈ°è[YÜËZ[[™\İYØ][Û˜˜ÛÛ\\˜HÜÈÚ\ÈXZ\È™XÙ[\ÈHØ[İ[HHY™\™[°éØHHØYHØ]YÛÜšXKˆBœ\XÚ\péğèÛÈ0êHXœÊY™\™[°éØHHØ]YÛÜšXJHÈÛÛXJXœÊY™\™[°éØ\ÊJX°èÛÈ[XB™]š\ğèÛÈ[È[İš[Y[È0ë\]ZYËÜœ]YH][Y[ÜÈH™YpéğíY\ÈÙ[HÙHØ[˜Ù[\‹‚’\ÜÛÈ[X°ê[H\›Z]H˜[Ü™\È™YØ]]›ÜÈÙ[H]šXZ\ˆ[Ø[Y[ÈH™YğìØÚ[ËˆÙ[B™Ú\È\°ë[ÙÜËÈ[ÙÈXÛ\˜YÈ\ÜØHHÙ\ˆÛÛšXZpéğèÛÈ]X[H™[š[XB˜ÛÛ\\˜péğèÛÈ0êH[™[YK‚‚“ÈZ[™[[Üİ˜NˆÈ]YHXÛÛXÙ]K]X[™Ë\È°êœÈØ]YÛÜšX\È]YHXZ\Â›[İš[Y[\˜[HÈ™\İ[YË]0êHŒ™YÚ\İ›ÜÈHš\ğèÛÈ\ØYÜÈ˜H^XØpéğèÛÈH[Bœ°ìŞ[[È\ÜÛËˆÈ°ìŞ[[È\ÜÛÈ\ÛH\˜H\™]È]X[™È\ÈÛÛšXZpéğíY\È0ê›B[XH0î›šXØH\™péğèÛÈH\˜H˜\œ˜\È]X[™È0èH[İš[Y[ÜÈZ\İÜÎÈÈÚYÙ]0êHX™\ÂœÙH°èH^\İHİHÜšXYÈ[ÈÛÛ˜]ÈÈ›İZ\›ÈÙH\İ]™\ˆ˜[[™Ë‚‚“[Z]H[X™\˜YÎˆÜÈ™YÚ\İ›ÜÈ^XšYÜÈğèÛÈÜÈ™YÚ\İ›ÜÈHš\ğèÛÈš[˜YK˜ÛÛH0ë[™XÙHØØ[Hš\ğèÛËH°èÛÈ›ÛY][H[™\™péÛÈHğê[[HÜšYÚ[˜[ˆBœ›İ™[špê›˜ÚXHHğê[[HÛÛ[XH™\ÜÛœØXš[YYHÈÛİ\˜ÙT›İÜÔ[™[È[YÜ˜\‚›ÜÈÚ\È^YÙH\ÜØ\ˆÜÈY]YYÜÈHÜšYÙ[H]0êHHÚYX˜\ˆHšXØHÛÛ[È^[œğèÛÂœÜİ\š[Ü‹Ù[H[™[\ˆ°ë[˜İ[Ë‚‚ÛØ™\\˜HYXÚ[Û˜YH\˜H]Y[°éØH[™H\°ë[ÙÜË˜[˜XÚÈÙ[H]K˜[Ü™\Â›™YØ]]›ÜÈH›^È[Øš[HÛÛ\]ÈÛÛHX™\\˜HH[™\İYØpéğèÛÈH™YÚ\İ›ÜË‚

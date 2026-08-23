@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { CheckCircle2, CircleHelp, Plus, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, CircleHelp, Plus, Search, X } from "lucide-react";
 import type { AutoDashboardPlan } from "@/lib/auto-dashboard";
 import type { AnalysisTrustSummary } from "@/lib/analysis-trust";
 import type { AnalyticalQuestion, QuestionCoverage } from "@/lib/analytical-narrative";
@@ -7,6 +7,7 @@ import { aggregate, aggregationLabels, type AggregationOp } from "@/lib/data-pip
 import { conditionalColor, conditionalStyle, fmt, parseNumericValue } from "@/lib/format";
 import type { Column, FilterRule, Row } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { InvestigationPanel } from "./investigation-panel";
 
 export function InsightSidebar(p: {
   open: boolean;
@@ -33,6 +34,21 @@ export function InsightSidebar(p: {
 }) {
   const { cat, primary, dateCol, open, onOpenChange } = p;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const [investigating, setInvestigating] = useState<AnalyticalQuestion | null>(null);
+
+  const openInvestigationNextStep = (type: "pareto" | "bar") => {
+    const id = type === "pareto" ? "root-causes" : "who-is-bigger";
+    const nextQuestion = p.questionCoverage?.questions.find((question) => question.id === id);
+    if (!nextQuestion) return;
+    setInvestigating(null);
+    if (nextQuestion.coveredByWidgetId) {
+      onOpenChange(false);
+      p.onOpenQuestionWidget(nextQuestion.coveredByWidgetId);
+    } else if (nextQuestion.answerable) {
+      onOpenChange(false);
+      p.onCreateQuestionWidget(nextQuestion);
+    }
+  };
 
   const questionAnswer = (question: AnalyticalQuestion): string => {
     if (!question.answerable)
@@ -174,16 +190,28 @@ export function InsightSidebar(p: {
                         Evidência: {questionEvidence(question)}
                       </p>
                       {question.coveredByWidgetId ? (
-                        <button
-                          type="button"
-                          className="mt-2 text-[11px] font-semibold text-primary underline-offset-2 hover:underline"
-                          onClick={() => {
-                            onOpenChange(false);
-                            p.onOpenQuestionWidget(question.coveredByWidgetId!);
-                          }}
-                        >
-                          Ver gráfico
-                        </button>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <button
+                            type="button"
+                            className="text-[11px] font-semibold text-primary underline-offset-2 hover:underline"
+                            onClick={() => {
+                              onOpenChange(false);
+                              p.onOpenQuestionWidget(question.coveredByWidgetId!);
+                            }}
+                          >
+                            Ver gráfico
+                          </button>
+                          {p.primary && p.cat && (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary underline-offset-2 hover:underline"
+                              onClick={() => setInvestigating(question)}
+                            >
+                              <Search className="size-3" />
+                              Investigar
+                            </button>
+                          )}
+                        </div>
                       ) : question.answerable ? (
                         <button
                           type="button"
@@ -204,6 +232,18 @@ export function InsightSidebar(p: {
             })}
           </ol>
         </div>
+      )}
+      {investigating && p.primary && p.cat && (
+        <InvestigationPanel
+          rows={p.data}
+          metric={p.primary}
+          dimension={p.cat}
+          date={p.dateCol}
+          operation={p.metricOperations.get(p.primary.key) ?? "sum"}
+          question={investigating.label}
+          onClose={() => setInvestigating(null)}
+          onNextStep={openInvestigationNextStep}
+        />
       )}
       {p.autoDashboard && (
         <div className="border-b border-border p-4">
