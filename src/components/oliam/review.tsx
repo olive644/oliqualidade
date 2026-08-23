@@ -625,8 +625,8 @@ export function Review(p: {
             <p className="mt-1 text-xs text-muted-foreground">
               O modo de compatibilidade ignora a detecção automática e usa a primeira linha com dado
               da planilha como cabeçalho e considera todo o restante como dado. Isso é útil quando a
-              estrutura é simples, mas a formatação confundiu a leitura automática. Você pode ajustar
-              manualmente depois, na Bancada de importação abaixo.
+              estrutura é simples, mas a formatação confundiu a leitura automática. Você pode
+              ajustar manualmente depois, na Bancada de importação abaixo.
             </p>
             <Button size="sm" variant="outline" className="mt-2" onClick={applyCompatibilityMode}>
               Tentar modo de compatibilidade
@@ -864,8 +864,8 @@ export function Review(p: {
             </summary>
             <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
               Só cor sólida com RGB direto é lida; sombreamento por cor de tema do Excel não é
-              resolvido. Essa informação ainda não é usada para colorir os widgets. Por enquanto, ela
-              serve apenas como inventário.
+              resolvido. Essa informação ainda não é usada para colorir os widgets. Por enquanto,
+              ela serve apenas como inventário.
             </p>
             <ul className="grid max-h-64 gap-2 overflow-y-auto border-t border-border p-3 sm:grid-cols-3">
               {active.diagnostics.cellFills.slice(0, 200).map((fill, index) => (
