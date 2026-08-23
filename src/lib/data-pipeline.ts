@@ -489,6 +489,15 @@ export function histogramBins(rows: Row[], valueKey: string, binCount?: number):
   }));
 }
 
+/**
+ * Mantém os intervalos vazios no cálculo estatístico, mas não os transforma
+ * em categorias visuais. O widget informa separadamente quantas faixas sem
+ * registros foram omitidas, preservando a transparência da distribuição.
+ */
+export function histogramBinsWithData(bins: HistogramBin[]): HistogramBin[] {
+  return bins.filter((bin) => bin.count > 0);
+}
+
 export type BoxPlotStats = {
   name: string;
   /** Menor valor dentro da cerca inferior (não é necessariamente o mínimo bruto — valores abaixo da cerca são outliers, não whisker). */
