@@ -6555,3 +6555,70 @@ Rótulos de dados desligando sozinhos acima de um número de barras; aviso quand
 o eixo vertical de linha e área não começa no zero; rótulo direto no fim da
 série no gráfico de área; e redundância além da cor para leitura com
 daltonismo.
+
+## 119. Acabamento de leitura dos gráficos, e um item do backlog que se provou inexistente
+
+Fecha os quatro itens restantes do backlog da seção 117. Três viraram código;
+um se provou baseado em premissa errada e está registrado aqui como tal, em
+vez de virar um aviso que nunca dispararia.
+
+### Rótulos de valor que somem quando não cabem
+
+O `LabelList` das barras ficava sempre ligado. Com muitas categorias em um
+cartão estreito os números se sobrepunham e viravam uma faixa ilegível em cima
+do gráfico, atrapalhando a leitura que deveriam facilitar.
+
+`barValueLabelsFit` (`data-pipeline.ts`) decide por largura disponível, não por
+uma contagem fixa de barras: quando o gráfico rola na horizontal cada categoria
+tem uma fatia fixa de `BAR_SLOT_PX`, independente do tamanho do cartão; sem
+rolagem, as categorias dividem a largura do span. O rótulo mais comprido da
+série decide por todos, porque basta um valor largo demais para o conjunto se
+sobrepor.
+
+As constantes de largura são estimativas conservadoras e estão documentadas
+como tal (`BAR_LABEL_CHAR_PX`, `PLOT_WIDTH_BY_SPAN`): errar para baixo esconde
+um rótulo que caberia, errar para cima recria o defeito. Medir a largura real
+exigiria `ResizeObserver` no caminho de render de todo gráfico, custo que não
+se justifica para uma decisão de mostrar/esconder.
+
+### Legenda das séries no gráfico de área
+
+O gráfico de área desenha quatro coisas (resultado observado, referência,
+variação acima e variação abaixo) e não tinha legenda nenhuma: identificar cada
+faixa exigia passar o mouse e ler o tooltip, uma por vez — impossível no painel
+exportado, onde não há mouse.
+
+`ChartSeriesLegend` (`widget-support.tsx`) mostra cada série com o traço real
+dela, em HTML abaixo do gráfico. Mesma razão da legenda de eixos da seção 117:
+a área de plotagem rola na horizontal, então rótulo colado no fim da série
+ficaria fora da vista até alguém rolar até lá.
+
+A série de referência passou a se chamar pelo que ela é ("Período anterior",
+"Média móvel", "Meta: X") em vez do genérico "Referência", no gráfico e no
+tooltip. Legenda e tooltip chamando a mesma série de nomes diferentes seria
+pior que não ter legenda.
+
+### Distinção que não depende de cor
+
+A variação abaixo da referência ganhou traço tracejado, e a legenda desenha o
+traço real de cada série em vez de um quadrado colorido. Antes, cor era a única
+pista para separar as séries. Nenhuma cor da paleta foi alterada.
+
+### O item que não existia: aviso de eixo truncado
+
+O backlog da seção 117 previa avisar quando o eixo vertical de linha e área não
+começasse no zero. A verificação no código do Recharts instalado (2.15.4)
+mostrou que a premissa estava errada: `getDefaultDomainByAxisType`
+(`generateCategoricalChart.js`) devolve `[0, "auto"]` para eixo numérico, e
+`parseSpecifiedDomain` resolve o piso como `Math.min(0, dataMin)` quando
+`allowDataOverflow` é falso, que é o padrão. Ou seja, linha e área **já**
+incluem o zero, inclusive com dados negativos, sem nenhuma configuração nossa —
+o mesmo resultado que o gráfico de barras obtém com `domain` explícito.
+
+Não há caso em que o aviso apareceria. Construí-lo seria acrescentar um texto
+morto ao painel. Registrado aqui para que o item não volte ao backlog numa
+próxima revisão.
+
+### Versão
+
+`0.2.0-beta.2` → `0.2.0-beta.3`.

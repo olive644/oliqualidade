@@ -99,6 +99,50 @@ export function seriesAverage(series: { total: number }[]): number | null {
 const BAR_SLOT_PX = 88;
 const BAR_SCROLL_THRESHOLD = 8;
 
+/**
+ * Largura média de um caractere do rótulo de valor, em pixels, na fonte 10px
+ * usada pelo `LabelList` das barras. É uma estimativa: a fonte é
+ * proporcional, então "111" ocupa menos que "999". Serve para decidir
+ * caber/não caber, não para posicionar nada.
+ */
+const BAR_LABEL_CHAR_PX = 5.6;
+
+/**
+ * Largura útil aproximada da área de plotagem por span do widget, já
+ * descontados o recuo do cartão e a faixa do eixo vertical. Números
+ * conservadores: errar para baixo esconde um rótulo que caberia, errar para
+ * cima deixa rótulos se sobreporem, que é o defeito que esta conta existe
+ * para evitar.
+ */
+const PLOT_WIDTH_BY_SPAN: Record<number, number> = { 1: 236, 2: 576, 3: 916 };
+
+/**
+ * Decide se os valores cabem escritos em cima das barras.
+ *
+ * Eles ficavam sempre ligados: com muitas categorias em um cartão estreito os
+ * números se sobrepunham e viravam uma faixa ilegível em cima do gráfico,
+ * atrapalhando justamente a leitura que deveriam facilitar.
+ *
+ * Quando o gráfico rola na horizontal cada categoria tem uma fatia fixa
+ * (`BAR_SLOT_PX`), independente do tamanho do cartão; sem rolagem, as
+ * categorias dividem a largura disponível do span.
+ */
+export function barValueLabelsFit({
+  count,
+  scrollable,
+  longestLabelChars,
+  span,
+}: {
+  count: number;
+  scrollable: boolean;
+  longestLabelChars: number;
+  span: number;
+}): boolean {
+  if (count <= 0) return false;
+  const slot = scrollable ? BAR_SLOT_PX : (PLOT_WIDTH_BY_SPAN[span] ?? 916) / count;
+  return longestLabelChars * BAR_LABEL_CHAR_PX + 6 <= slot;
+}
+
 export function barChartPresentation(categoryCount: number) {
   const scrollable = categoryCount > BAR_SCROLL_THRESHOLD;
   return {

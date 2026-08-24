@@ -4,6 +4,7 @@ import {
   aggregate,
   applyMissingRules,
   barChartPresentation,
+  barValueLabelsFit,
   buildAreaComparisonSeries,
   chartSeries,
   collapsePieSeries,
@@ -247,6 +248,40 @@ describe("seriesAverage", () => {
     expect(seriesAverage([{ total: 10 }])).toBeNull();
     expect(seriesAverage([{ total: 10 }, { total: 20 }])).toBeNull();
     expect(seriesAverage([])).toBeNull();
+  });
+});
+
+describe("barValueLabelsFit", () => {
+  it("mostra os valores quando poucas barras dividem um cartão largo", () => {
+    expect(barValueLabelsFit({ count: 4, scrollable: false, longestLabelChars: 6, span: 3 })).toBe(
+      true,
+    );
+  });
+
+  it("esconde os valores quando as barras dividem um cartão estreito", () => {
+    // Oito barras num cartão de um terço deixam cerca de 30px por barra:
+    // "1.234,56" não cabe e os números viram uma faixa sobreposta.
+    expect(barValueLabelsFit({ count: 8, scrollable: false, longestLabelChars: 8, span: 1 })).toBe(
+      false,
+    );
+  });
+
+  it("mantém os valores quando o gráfico rola, porque cada barra tem fatia fixa", () => {
+    expect(barValueLabelsFit({ count: 300, scrollable: true, longestLabelChars: 8, span: 1 })).toBe(
+      true,
+    );
+  });
+
+  it("esconde os valores mesmo com rolagem quando o rótulo é largo demais para a fatia", () => {
+    expect(
+      barValueLabelsFit({ count: 300, scrollable: true, longestLabelChars: 20, span: 3 }),
+    ).toBe(false);
+  });
+
+  it("não tenta desenhar rótulo em gráfico sem categoria", () => {
+    expect(barValueLabelsFit({ count: 0, scrollable: false, longestLabelChars: 3, span: 3 })).toBe(
+      false,
+    );
   });
 });
 
