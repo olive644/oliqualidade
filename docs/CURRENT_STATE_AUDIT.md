@@ -7482,3 +7482,60 @@ suprimentos seria contraditório.
 ### Versão
 
 `0.9.0-beta.2` → `0.10.0-beta.1`.
+
+## 134. Retenção centralizada dos caches e teste responsivo em cinco larguras
+
+### Retenção
+
+Cada cache decidia sozinho quanto tempo viver, e dois decidiam "para sempre".
+O cache de geocodificação crescia a cada nome de cidade consultado, sem nada
+capaz de dizer se uma coordenada ainda interessava — nem o painel excluído
+meses atrás liberava as suas. As métricas de importação tinham teto de
+quantidade (200) e nenhuma noção de idade.
+
+`lib/retention.ts` reúne as regras: geocodificação 180 dias e 2.000 entradas,
+métricas 90 dias e 200, histórico de painel 365 dias e 30. Estar em um lugar só
+é o que permite a central de privacidade descrever o comportamento sem risco de
+divergir dele.
+
+Três decisões de implementação valem registro:
+
+- **Idade antes do teto.** Na ordem inversa, uma rajada de entradas novas
+  empurraria para fora entradas antigas que ainda estariam no prazo.
+- **Data implausível conta como desconhecida.** Registro com data zerada ou de
+  1970 é dado corrompido, não dado antigo; ele fica sob o teto de quantidade em
+  vez de ser apagado em silêncio por um defeito de gravação. Isso apareceu na
+  prática: a primeira versão apagou as entradas dos testes de métricas, que
+  usam timestamps simbólicos.
+- **A retenção não reordena.** A primeira versão devolvia a lista da mais
+  recente para a mais antiga e quebrou o contrato de ordem cronológica das
+  métricas de importação. Selecionar quais entradas ficam é atribuição da
+  retenção; decidir a ordem em que elas aparecem não é.
+
+O cache de geocodificação nasceu sem data por entrada, então ganhou uma forma
+nova com a data ao lado do ponto. A leitura aceita as duas formas, e a data
+entra na próxima gravação — cache existente continua valendo. E a data só é
+renovada quando o valor muda: renovar tudo a cada gravação faria o prazo nunca
+alcançar nada, já que o widget salva o cache inteiro a cada consulta.
+
+Versão marcada pelo usuário escapa da poda por idade, pelo mesmo motivo que já
+escapava da poda por quantidade.
+
+### Teste responsivo em cinco larguras
+
+O teste de celular cobria só 390px. Quebra de layout não costuma aparecer na
+largura em que foi desenhada: aparece no extremo estreito, onde falta espaço, e
+na fronteira, onde duas regras disputam.
+
+Agora são 320px (iPhone SE, o piso do que ainda aparece), 360px (Android
+intermediário, a largura mais comum), 390px, 414px (iPhone Max) e 768px (tablet
+em retrato, exatamente onde o layout de celular termina). Cada uma verifica
+transbordo horizontal na tela inicial e no painel, alvos de toque de 44px e a
+presença ou ausência da barra inferior conforme o ponto de corte.
+
+As cinco passam. Nenhuma quebra foi encontrada, o que faz do teste uma trava
+para o futuro, não um conserto do presente.
+
+### Versão
+
+`0.10.0-beta.1` → `0.10.0-beta.2`.

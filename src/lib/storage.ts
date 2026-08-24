@@ -7,6 +7,7 @@ import type {
 } from "@/lib/folder-monitor";
 import type { ImportMetricEntry } from "@/lib/import-metrics";
 import type { DashboardVersion } from "@/lib/dashboard-history";
+import { applyRetention, RETENTION } from "@/lib/retention";
 
 export const DASH_KEY = "oliam-dashboards";
 export const THEME_KEY = "oliam-theme";
@@ -230,6 +231,23 @@ export type GeoPoint = { lat: number; lng: number };
 export type GeocodeCache = Record<string, GeoPoint | null>;
 
 /**
+ * Forma guardada de cada entrada: o ponto mais a data em que foi consultado.
+ *
+ * O cache nasceu sem data, e por isso crescia para sempre — nada sabia dizer
+ * se uma coordenada ainda interessava. A leitura aceita as duas formas: quem
+ * já tem cache guardado com a forma antiga continua funcionando, e a data
+ * entra na próxima gravação.
+ */
+type StoredGeocodeEntry = { point: GeoPoint | null; at: number };
+type StoredGeocodeCache = Record<string, StoredGeocodeEntry | GeoPoint | null>;
+
+const isDatedEntry = (value: StoredGeocodeEntry | GeoPoint | null): value is StoredGeocodeEntry =>
+  value !== null && typeof value === "object" && "at" in value;
+
+const entryPoint = (value: StoredGeocodeEntry | GeoPoint | null): GeoPoint | null =>
+  isDatedEntry(value) ? value.point : value;
+
+/**
  * Cache de geocodificação (nome de lugar -> coordenadas), compartilhado entre
  * todos os painéis. Evita repetir consultas ao serviço de geocodificação
  * para o mesmo nome de cidade/estado/país em widgets de mapa diferentes.
@@ -244,12 +262,41 @@ export async function loadGeocodeCache(): Promise<GeocodeCache> {
       return {};
     }
   }
-  const existing = await idbGet<GeocodeCache>(db, GEOCODE_KEY);
-  return existing ?? {};
+  const existing = await idbGet<StoredGeocodeCache>(db, GEOCODE_KEY);
+  return normalizeGeocodeCache(existing ?? {});
+}
+
+/**
+ * Aplica a retenção e devolve o cache na forma simples que os widgets usam.
+ *
+ * Entrada sem data sobrevive à poda por idade — ela pode ter sido consultada
+ * ontem, e só o teto de quantidade a alcança. Depois da primeira gravação ela
+ * passa a ter data como as outras.
+ */
+function normalizeGeocodeCache(stored: StoredGeocodeCache): GeocodeCache {
+  const mantidas = applyRetention(Object.entries(stored), RETENTION.geocode, ([, value]) =>
+    isDatedEntry(value) ? value.at : Number.NaN,
+  );
+  return Object.fromEntries(mantidas.map(([key, value]) => [key, entryPoint(value)]));
 }
 
 export async function saveGeocodeCache(cache: GeocodeCache): Promise<void> {
   const db = await openDb();
+  // Data preservada por entrada: só quem mudou de valor recebe data nova,
+  // senão salvar o cache inteiro renovaria o prazo de tudo a cada consulta e
+  // a retenção nunca alcançaria nada.
+  const anterior = db ? ((await idbGet<StoredGeocodeCache>(db, GEOCODE_KEY)) ?? {}) : {};
+  const agora = Date.now();
+  const datado: StoredGeocodeCache = Object.fromEntries(
+    Object.entries(cache).map(([key, point]) => {
+      const antes = anterior[key];
+      const mesmoValor =
+        antes !== undefined &&
+        JSON.stringify(entryPoint(antes)) === JSON.stringify(point) &&
+        isDatedEntry(antes);
+      return [key, { point, at: mesmoValor ? antes.at : agora }];
+    }),
+  );
   if (!db) {
     try {
       localStorage.setItem(GEOCODE_KEY, JSON.stringify(cache));
@@ -258,7 +305,7 @@ export async function saveGeocodeCache(cache: GeocodeCache): Promise<void> {
     }
     return;
   }
-  await idbSet(db, GEOCODE_KEY, cache);
+  await idbSet(db, GEOCODE_KEY, datado);
 }
 
 export const IMPORT_METRICS_KEY = "oliam-import-metrics";
@@ -293,7 +340,13 @@ export async function loadImportMetrics(): Promise<ImportMetricEntry[]> {
   return existing ?? [];
 }
 
-export async function saveImportMetrics(entries: ImportMetricEntry[]): Promise<void> {
+/**
+ * Grava as métricas já podadas pela política de retenção. A poda acontece na
+ * gravação, e não na leitura, para o que está no disco corresponder ao que a
+ * central de privacidade mostra como ocupado.
+ */
+export async function saveImportMetrics(input: ImportMetricEntry[]): Promise<void> {
+  const entries = applyRetention(input, RETENTION.importMetrics, (entry) => entry.timestamp);
   if (isPrivateMode()) {
     try {
       sessionStorage.setItem(PRIVATE_IMPORT_METRICS_KEY, JSON.stringify(entries));
@@ -400,7 +453,17 @@ export async function saveDashboardHistory(
   if (isPrivateMode()) return;
   const db = await openDb();
   if (!db) return;
-  await idbSet(db, `${HISTORY_PREFIX}${dashboardId}`, versions);
+  // Versão marcada pelo usuário escapa da poda por idade, pelo mesmo motivo
+  // que escapa da poda por quantidade em `pruneVersions`: ela existe porque
+  // alguém quis poder voltar ali depois.
+  const manuais = versions.filter((version) => version.manual);
+  const automaticas = applyRetention(
+    versions.filter((version) => !version.manual),
+    RETENTION.dashboardHistory,
+    (version) => version.createdAt,
+  );
+  const mantidas = [...manuais, ...automaticas].sort((a, b) => b.createdAt - a.createdAt);
+  await idbSet(db, `${HISTORY_PREFIX}${dashboardId}`, mantidas);
 }
 
 export async function removeDashboardHistory(dashboardId: string): Promise<void> {

@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.1";
+export const APP_VERSION = "0.10.0-beta.2";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-retencao-de-caches",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "O que fica guardado agora tem prazo de validade",
+    summary:
+      "Os dados que o aplicativo guarda no navegador passaram a ter limite de idade, além do limite de quantidade que já existia.",
+    highlights: [
+      "O cache de localizações do mapa guardava coordenadas para sempre, inclusive de planilhas que você não tem mais. Agora expira em 180 dias.",
+      "O histórico de desempenho das importações guarda 90 dias.",
+      "O histórico de versões dos painéis guarda um ano, e as versões que você marcou nunca são descartadas.",
+      "Os prazos ficam em um só lugar do código, então a central de privacidade mostra exatamente o que o aplicativo faz.",
+    ],
+  },
   {
     id: "2026-08-24-arquivo-pelo-conteudo",
     version: APP_VERSION,
