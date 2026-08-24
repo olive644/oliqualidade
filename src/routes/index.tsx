@@ -66,6 +66,7 @@ import {
   groupableKinds,
   pickBestGroupColumn,
   schedulePeriodColumns,
+  widgetsAffectedByFilters,
 } from "@/lib/widgets";
 import { infer, parseDateValue, parseNumericValue, withCalculatedColumns } from "@/lib/format";
 import {
@@ -2353,6 +2354,7 @@ function Dashboard(p: {
               totalRowCount={sheet.rows.length}
               periodLabel={periodLabel}
               filterCount={activeFilterCount}
+              affectedWidgetCount={widgetsAffectedByFilters(sheet.widgets ?? [])}
               trust={analysisTrust}
             />
             {sourceNotesPanel}
@@ -2437,6 +2439,7 @@ function Dashboard(p: {
               totalRowCount={sheet.rows.length}
               periodLabel={periodLabel}
               filterCount={activeFilterCount}
+              affectedWidgetCount={widgetsAffectedByFilters(sheet.widgets ?? [])}
               trust={analysisTrust}
             />
             {sourceNotesPanel}

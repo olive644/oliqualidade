@@ -7,10 +7,23 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.4.0-beta.1";
+export const APP_VERSION = "0.4.0-beta.2";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-filtro-alcance",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "O painel diz quantos widgets um filtro alcançou",
+    summary:
+      "Ao filtrar, o contexto da análise passa a informar quantos widgets foram recalculados, além de quantas linhas sobraram.",
+    highlights: [
+      'Com um filtro ativo, o topo do painel mostra "12 de 12 widgets atualizados".',
+      "O filtro sempre valeu para o painel inteiro; o que faltava era dizer isso, para ninguém precisar conferir widget por widget.",
+      "Widgets que não leem as linhas da planilha, como uma imagem embutida ou a lista de planilhas monitoradas, ficam de fora da conta.",
+    ],
+  },
   {
     id: "2026-08-24-hierarquia-dos-widgets",
     version: APP_VERSION,

@@ -6947,3 +6947,37 @@ produto.
 A adoção dos três modos de densidade (seção 122) fora dos widgets de gráfico.
 A casca já é um container de consulta, então cada widget pode passar a reagir
 ao próprio espaço quando houver decisão de conteúdo que dependa disso.
+
+## 124. Alcance do filtro dito por extenso: "12 de 12 widgets atualizados"
+
+Terceira e última das frentes escolhidas pelo usuário. É a menor das três, e o
+diagnóstico dele já continha a resposta: como os filtros sempre valeram para
+todos os widgets, isso é reforço de confiança e comunicação, não mudança de
+comportamento.
+
+### O que faltava
+
+O contexto da análise dizia quantos filtros estavam ativos e quantas linhas
+sobraram, mas deixava sem resposta a pergunta que aparece quando alguém filtra
+clicando em uma barra: *o filtro pegou o painel inteiro ou só este widget?* Sem
+essa frase, a única forma de saber era conferir widget por widget.
+
+### Como é contado
+
+`widgetsAffectedByFilters` (`lib/widgets.ts`) conta os widgets que leem as
+linhas da planilha. Dois tipos ficam de fora, e a exclusão é o ponto que
+importa: uma imagem embutida no arquivo (`image`) e a lista de planilhas de uma
+pasta monitorada (`folder-files`) não dependem das linhas, então incluí-los na
+conta seria prometer uma atualização que não aconteceu.
+
+A frase só aparece com filtro ativo — sem filtro, ela não informa nada.
+
+### Verificação
+
+No painel de demonstração, clicar em uma barra de "Unidade" leva o contexto de
+`12 de 12 linhas` para `4 de 12 linhas (filtradas) · 1 filtro ativo · 12 de 12
+widgets atualizados`.
+
+### Versão
+
+`0.4.0-beta.1` → `0.4.0-beta.2`.
