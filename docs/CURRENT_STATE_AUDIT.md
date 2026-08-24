@@ -6236,3 +6236,58 @@ Diferença para Tarde -9 · -47,4%"`). Zero erro no console.
 `npx vitest run` (573 passou, 1 pulado — 1 teste novo), `npx tsc
 --noEmit`, `npx eslint` nos 4 arquivos tocados (CRLF normalizado
 antes), `npm run build` + `npm run performance:check` aprovados.
+
+## 113. Modo de investigação guiada conecta roteiro, causas e registros
+
+O roteiro analítico ganhou a ação `Investigar` nas perguntas já cobertas por
+gráfico. A ação abre uma leitura guiada dentro da própria visão geral, sem
+criar uma segunda linguagem de análise: usa a métrica primária, a melhor
+dimensão categórica, a operação semântica já resolvida e os dados depois dos
+filtros ativos.
+
+Quando existem pelo menos dois períodos válidos, `buildInvestigation`
+compara os dois mais recentes e calcula a diferença de cada categoria. A
+participação é `abs(diferença da categoria) / soma(abs(diferenças))`, não uma
+divisão pelo movimento líquido, porque aumentos e reduções podem se cancelar.
+Isso também permite valores negativos sem atribuir julgamento de negócio. Sem
+dois períodos, o modo declarado passa a ser contribuição atual e nenhuma
+comparação é inventada.
+
+O painel mostra: o que aconteceu, quando, as três categorias que mais
+movimentaram o resultado, até 20 registros da visão usados na explicação e um
+próximo passo. O próximo passo aponta para Pareto quando as contribuições têm
+uma única direção e para barras quando há movimentos mistos; o widget é aberto
+se já existe ou criado pelo contrato do roteiro se estiver faltando.
+
+Limite deliberado: os registros exibidos são os registros da visão filtrada,
+com índice local da visão, e não prometem endereço da célula original. A
+proveniência de célula continua responsabilidade do `SourceRowsPanel`; integrar
+os dois exige passar os metadados de origem até a sidebar e fica como extensão
+posterior, sem inventar vínculo.
+
+Cobertura adicionada para mudança entre períodos, fallback sem data, valores
+negativos e fluxo mobile completo com abertura da investigação e registros.
+
+## 114. Centro de atualizações torna as entregas visíveis no produto
+
+O produto ganhou um sino de atualizações nos cabeçalhos da entrada, da lista de
+painéis, da revisão de importação e do painel analítico. O mesmo componente abre
+um histórico cronológico com título, resumo e benefícios de cada entrega. O
+texto é orientado ao usuário e não expõe detalhes de commit como se fossem uma
+explicação de produto.
+
+`src/lib/product-updates.ts` funciona como fonte única e mantém as entradas da
+mais nova para a mais antiga. `CURRENT_UPDATE_ID` deriva da primeira entrada.
+Quando esse identificador não coincide com o último lido no navegador, o sino
+recebe um indicador na cor primária e o rótulo acessível muda para `Novidades
+disponíveis`. Abrir o painel grava o identificador em
+`oliam-last-read-update`; o histórico permanece disponível, mas o indicador é
+apagado. Uma nova entrada no topo reativa o aviso sem migração de estado.
+
+O estado de leitura é deliberadamente local ao navegador. Não existe conta de
+usuário nem sincronização remota que justifique transmitir esse dado. Falhas ou
+ausência de `localStorage` não impedem a abertura do histórico.
+
+Há teste unitário para vínculo da versão atual, unicidade, conteúdo e detecção
+de não lido. O E2E abre o histórico, verifica as novidades atuais, recarrega a
+página e confirma que a leitura foi preservada.

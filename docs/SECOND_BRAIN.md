@@ -699,6 +699,41 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 | Todo parser regex de `workbook-metadata.ts` (namespace principal do spreadsheetML) tolera um prefixo de namespace opcional (`<x:dataValidation>` além de `<dataValidation>`); `normalizePart` usa o `Target` de relacionamento direto quando começa com `/` (absoluto, raiz do pacote) em vez de sempre combinar com a pasta base | um gerador de OOXML fora do Excel/openpyxl/exceljs (script próprio do usuário) produziu arquivos espec-válidos com prefixo explícito de namespace e `Target` absoluto — a combinação zerava hyperlinks/validações/cores/comentários/tabelas em silêncio, sem nenhum erro, porque a parte do worksheet resolvia pra um caminho de ZIP inexistente | não se aplica às namespaces de desenho/gráfico (`xdr:`/`a:`/`c:`), sempre prefixadas por convenção mesmo em arquivos do Excel — sem evidência de quebra ali; ver [[CURRENT_STATE_AUDIT#83. Usuário trouxe corpus sintético de 6 planilhas próprias: bug real de dois estágios no inventário avançado OOXML (namespace prefixada + Target absoluto)]] |
 | `eslint-plugin-react-hooks` não pode passar de `5.x` neste projeto por enquanto | `6.x`/`7.x` já suportam `eslint@10` (resolve o ERESOLVE), mas passaram a incluir regras de análise "React Compiler" pesadas por padrão no `recommended` — `eslint .` completo foi de 19,8s pra mais de 10 minutos sem terminar (CPU ativa o tempo todo, não é travamento) | grupo `eslint`+`@eslint/js`+`globals` 10.x do Dependabot fechado por isso, não só rejeitado; ver [[CURRENT_STATE_AUDIT#109. Revisão de mais PRs do Dependabot: zod 4 e react-day-picker 10 mescladas, grupo eslint 10 fechado por regressão real de performance (não incompatibilidade)]] |
 
+## Modo de investigação guiada
+
+- O roteiro analítico não termina no gráfico: perguntas respondidas podem abrir
+  uma investigação que explica o resultado, compara os dois períodos mais
+  recentes, decompõe o movimento por categoria e mostra os registros usados.
+- A participação de uma causa é calculada sobre a soma dos movimentos
+  absolutos. Isso evita porcentagens enganosas quando aumentos e reduções se
+  anulam no total.
+- A direção é sempre descrita como aumento ou redução. Sem uma preferência
+  explícita de negócio, o sistema nunca chama uma direção de boa ou ruim.
+- Sem dois períodos válidos, a investigação muda declaradamente para
+  contribuição na visão atual. Ela não inventa uma comparação temporal.
+- O próximo passo reutiliza um Pareto ou uma barra existente; se estiver
+  faltando, usa o mesmo contrato do roteiro para criar o widget.
+- Implementação central: `src/lib/investigation.ts` e
+  `src/components/oliam/investigation-panel.tsx`. Decisão e limites completos
+  em [[CURRENT_STATE_AUDIT#113. Modo de investigação guiada conecta roteiro, causas e registros]].
+
+## Centro de atualizações
+
+- O sino nos cabeçalhos principais abre um histórico de mudanças escrito para
+  quem usa o produto, sem exigir que a pessoa acompanhe commits ou PRs.
+- `src/lib/product-updates.ts` é a fonte única. As entradas ficam da mais nova
+  para a mais antiga e `CURRENT_UPDATE_ID` sempre aponta para a primeira.
+- Para publicar uma novidade, adicione uma entrada no topo com `id` estável,
+  data, resumo e benefícios explícitos. Isso faz o sino voltar ao estado não
+  lido automaticamente.
+- A leitura é salva em `localStorage` pela chave
+  `oliam-last-read-update`. O conteúdo continua acessível depois que a
+  notificação deixa de estar acesa.
+- O indicador usa a cor primária e nunca vermelho. O botão mantém rótulos
+  acessíveis diferentes para novidade disponível e histórico já lido.
+- Implementação visual: `src/components/oliam/update-center.tsx`. Decisão e
+  cobertura completas em [[CURRENT_STATE_AUDIT#114. Centro de atualizações torna as entregas visíveis no produto]].
+
 ## Checklist antes de publicar
 
 1. Adicionar ou atualizar um teste que reproduza a mudança.

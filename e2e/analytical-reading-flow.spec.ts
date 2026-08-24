@@ -120,6 +120,17 @@ test.describe("fluxo de leitura analítica", () => {
     await expect(insightDialog.getByText("Roteiro de análise", { exact: true })).toBeVisible();
     await expect(insightDialog.getByText("Respondida", { exact: true }).first()).toBeVisible();
     await expect(insightDialog.getByRole("button", { name: "Ver gráfico" }).first()).toBeVisible();
+    await insightDialog.getByRole("button", { name: "Investigar" }).first().click();
+    const investigation = insightDialog.getByRole("region", { name: "Investigação guiada" });
+    await expect(investigation).toBeVisible();
+    await expect(investigation.getByText("O que aconteceu", { exact: true })).toBeVisible();
+    await expect(investigation.getByText("Quando", { exact: true })).toBeVisible();
+    await expect(
+      investigation.getByText("Categorias que mais movimentaram o resultado", { exact: true }),
+    ).toBeVisible();
+    await investigation.getByRole("button", { name: /Ver .* registros usados/ }).click();
+    await expect(investigation.getByRole("columnheader", { name: "Resultado" })).toBeVisible();
+    await expect(investigation.getByRole("button", { name: /Próximo passo:/ })).toBeVisible();
     await expect(
       insightDialog.getByRole("button", { name: "Criar gráfico" }).first(),
     ).toBeVisible();
