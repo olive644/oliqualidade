@@ -7297,3 +7297,72 @@ escolha, com os indicadores intactos no topo nos dois casos:
 ### Versão
 
 `0.7.0-beta.1` → `0.8.0-beta.1`.
+
+## 131. Histórico persistente de versões do painel
+
+Último item do inventário de experiência. O undo/redo existia, mas vivia na
+memória da aba: reiniciava ao trocar de painel ou de aba, sumia ao fechar o
+aplicativo e não permitia voltar a um arranjo de dias atrás.
+
+### O que uma versão guarda, e o que ela deliberadamente não guarda
+
+Guarda a **montagem**: widgets, filtros, ordem e visibilidade das colunas, aba
+ativa e nome do painel. Não guarda as linhas da planilha, por dois motivos que
+se somam:
+
+1. Guardá-las multiplicaria o tamanho de cada versão pelo tamanho da base. Uma
+   planilha de 50 mil linhas viraria dezenas de megabytes de histórico.
+2. Restaurar ressuscitaria dados que o usuário já substituiu por uma
+   importação nova. O histórico responde "como o painel estava montado", não
+   "quais eram os dados naquele dia" — para dados, o produto já tem a
+   comparação entre versões da planilha importada.
+
+O resultado prático é uma versão de poucos quilobytes.
+
+### Captura sem poluir
+
+Duas travas, e as duas existem por motivo concreto:
+
+- **Estabilidade de 4 segundos antes de gravar.** Sem a pausa, arrastar um
+  widget ou digitar um título geraria uma versão por quadro de animação, e o
+  histórico ficaria inútil justamente por excesso.
+- **Referência da última montagem gravada** (`lastSnapshotRef`). Sem ela, abrir
+  um painel geraria uma versão idêntica à anterior a cada visita, porque o
+  efeito de captura roda na montagem do componente.
+
+`describeChange` resume o que mudou em uma frase ("1 filtro a mais", "2 widgets
+a menos", "renomeado para X"). Uma lista de versões com data e hora e nada mais
+obrigaria o usuário a restaurar às cegas para descobrir o que havia ali.
+
+### Limpeza que respeita a intenção
+
+`pruneVersions` mantém 30 versões por painel, mas **versão marcada pelo usuário
+nunca é descartada**: ele a criou justamente porque queria poder voltar ali
+depois. As automáticas é que cedem lugar.
+
+### Restauração
+
+As colunas da versão guardam ordem e visibilidade, não a definição. Ao
+restaurar, vale a coluna atual (com tipo, descrição e formatação de hoje) na
+ordem e visibilidade da versão. Colunas que passaram a existir depois da versão
+ficam no fim, visíveis, em vez de sumirem sem aviso.
+
+### Privacidade
+
+Nada é gravado em modo privado — o histórico é exatamente o tipo de rastro que
+esse modo existe para não deixar. A central de privacidade (seção 129) ganhou a
+categoria "Histórico de versões dos painéis", com tamanho e botão de limpar.
+
+### Verificação, do começo ao fim, no navegador
+
+Guardar uma versão manual, aplicar um filtro clicando numa barra, esperar a
+captura automática, **recarregar a página** e restaurar:
+
+- depois do filtro: `4 de 12 linhas (filtradas) · 1 filtro ativo`
+- histórico após recarregar: duas versões, "1 filtro a mais" e "guardada por
+  você · Primeira versão guardada"
+- depois de restaurar a mais antiga: `12 de 12 linhas`, sem filtro
+
+### Versão
+
+`0.8.0-beta.1` → `0.9.0-beta.1`.

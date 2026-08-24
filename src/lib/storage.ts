@@ -6,6 +6,7 @@ import type {
   LocalDirectoryHandle,
 } from "@/lib/folder-monitor";
 import type { ImportMetricEntry } from "@/lib/import-metrics";
+import type { DashboardVersion } from "@/lib/dashboard-history";
 
 export const DASH_KEY = "oliam-dashboards";
 export const THEME_KEY = "oliam-theme";
@@ -371,4 +372,39 @@ export async function removeStoredKey(key: string): Promise<void> {
   if (db) await idbDelete(db, key);
   if (typeof localStorage !== "undefined") localStorage.removeItem(key);
   if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(key);
+}
+
+const HISTORY_PREFIX = "oliam-history:";
+
+/**
+ * Histórico de montagem de um painel.
+ *
+ * Fica em uma chave por painel, e não numa lista única: assim carregar o
+ * histórico de um painel não traz o dos outros, e apagar um painel não exige
+ * reescrever um registro compartilhado. Em modo privado nada é gravado — o
+ * histórico é justamente o tipo de rastro que esse modo existe para não
+ * deixar.
+ */
+export async function loadDashboardHistory(dashboardId: string): Promise<DashboardVersion[]> {
+  if (isPrivateMode()) return [];
+  const db = await openDb();
+  if (!db) return [];
+  const stored = await idbGet<DashboardVersion[]>(db, `${HISTORY_PREFIX}${dashboardId}`);
+  return Array.isArray(stored) ? stored : [];
+}
+
+export async function saveDashboardHistory(
+  dashboardId: string,
+  versions: DashboardVersion[],
+): Promise<void> {
+  if (isPrivateMode()) return;
+  const db = await openDb();
+  if (!db) return;
+  await idbSet(db, `${HISTORY_PREFIX}${dashboardId}`, versions);
+}
+
+export async function removeDashboardHistory(dashboardId: string): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  await idbDelete(db, `${HISTORY_PREFIX}${dashboardId}`);
 }

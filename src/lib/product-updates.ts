@@ -7,10 +7,25 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.8.0-beta.1";
+export const APP_VERSION = "0.9.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-historico-do-painel",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Histórico do painel: volte a como estava semana passada",
+    summary:
+      "O painel passa a guardar como esteve montado ao longo do tempo, com o que mudou em cada ponto, e isso sobrevive a fechar o aplicativo.",
+    highlights: [
+      "Cada alteração relevante vira uma versão, com uma frase dizendo o que mudou: widgets a mais, filtro a menos, colunas alteradas.",
+      'O botão "Guardar como está agora" marca uma versão que nunca é descartada pela limpeza automática.',
+      "Restaurar traz de volta widgets, filtros e colunas visíveis. As linhas da planilha não mudam.",
+      "O histórico é do arranjo do painel, não dos dados: por isso ocupa poucos quilobytes e não ressuscita dado antigo.",
+      "No modo privado nada é gravado, e a central de privacidade mostra quanto o histórico ocupa.",
+    ],
+  },
   {
     id: "2026-08-24-modelos-por-finalidade",
     version: APP_VERSION,
