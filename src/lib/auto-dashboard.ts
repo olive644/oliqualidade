@@ -120,8 +120,7 @@ const VISUALIZATION_PRIORITY: Partial<Record<WidgetType, number>> = {
   pie: 70,
 };
 
-function supportsPareto(rows: Row[], groupKey: string, valueKey: string): boolean {
-  const groups = groupedNumericValues(rows, groupKey, valueKey);
+function supportsPareto(groups: ReadonlyMap<string, number[]>): boolean {
   return groups.size > RANKING_TOP_N && paretoChartValidity(groups).valid;
 }
 
@@ -619,6 +618,17 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
     dimensions.slice(0, 2).forEach((dimension, index) => {
       const cardinality = distinctCount(input.rows, dimension.key);
       const isGeo = GEO_NAME.test(`${dimension.key} ${dimension.label}`);
+      // Pareto e box plot (mais abaixo, ambos só para index === 0) podem
+      // avaliar a mesma dimensão quando a cardinalidade cai na faixa comum
+      // a ambos (6-8 categorias) — agrupa uma vez só em vez de duas
+      // passagens idênticas por input.rows. A faixa do box plot (2-8)
+      // sempre cabe dentro do teto do Pareto (40), então o mesmo `<= 40`
+      // cobre os dois sem calcular pra cardinalidades que nenhum dos dois
+      // usaria.
+      const groupedForDimension =
+        index === 0 && cardinality <= 40
+          ? groupedNumericValues(input.rows, dimension.key, primaryMetric.key)
+          : null;
       recommendations.push(
         recommendation(input, {
           id: slug(isGeo ? "mapa" : "barras", dimension.key, primaryMetric.key),
@@ -679,7 +689,8 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
         if (
           index === 0 &&
           cardinality <= 40 &&
-          supportsPareto(input.rows, dimension.key, primaryMetric.key)
+          groupedForDimension &&
+          supportsPareto(groupedForDimension)
         ) {
           recommendations.push(
             recommendation(input, {
@@ -705,8 +716,8 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
       // sentido quando cada categoria tem repetições suficientes para
       // calcular quartis de verdade — com 1 ou 2 linhas por categoria, o
       // "box" seria só um traço sem informação além do que a barra já mostra.
-      if (index === 0 && cardinality >= 2 && cardinality <= 8 && !isGeo) {
-        const groups = groupedNumericValues(input.rows, dimension.key, primaryMetric.key);
+      if (index === 0 && cardinality >= 2 && cardinality <= 8 && !isGeo && groupedForDimension) {
+        const groups = groupedForDimension;
         if (groups.size === cardinality && boxPlotChartValidity(groups).valid) {
           const smallestGroup = Math.min(...[...groups.values()].map((values) => values.length));
           recommendations.push(
