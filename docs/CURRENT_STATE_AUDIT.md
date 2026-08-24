@@ -7033,3 +7033,45 @@ evidência (11). A escolha sobrevive ao recarregar a página.
 ### Versão
 
 `0.4.0-beta.2` → `0.5.0-beta.1`: modo novo no produto.
+
+## 126. Barra de navegação inferior no celular
+
+Item do inventário: "barra inferior de navegação mobile", ainda não
+implementada.
+
+### O problema
+
+No telefone, as ações principais do painel estavam espalhadas entre a barra
+superior (menu de painéis, visão geral) e uma barra de ferramentas que rola na
+horizontal, onde filtrar e acrescentar widget ficavam fora da tela até alguém
+arrastar. Nenhuma delas caía perto do polegar.
+
+### O que foi feito
+
+`MobileNavBar` (`components/oliam/mobile-nav-bar.tsx`) fixa cinco ações no
+rodapé: painéis, buscar, filtrar, widget e visão geral. Ela só existe abaixo de
+700px de largura — no computador as mesmas ações já estão visíveis o tempo
+todo, e repetir a barra ali seria ruído.
+
+O botão de acrescentar widget leva `data-edit-only`, então some no modo leitura
+(seção 125) junto com o resto das ferramentas de montagem. O seletor de widget
+virou menu controlado por estado, porque agora tem dois pontos de abertura: o
+botão da barra de ferramentas e o da barra inferior.
+
+### Três ajustes que só a medição no aparelho revelou
+
+1. **O recuo do conteúdo não pegava.** A regra nova de `padding-bottom` perdia
+   para uma regra de celular já existente, marcada `!important`. Em vez de
+   competir com `!important` próprio, a reserva de espaço foi para dentro
+   daquela regra, que é a canônica do assunto. Sem isso, o último widget
+   terminava escondido atrás da barra.
+2. **O balão do assistente cobria o último item.** Ele flutua no canto
+   inferior direito, exatamente onde passou a ficar "Visão geral". Subiu a
+   altura da barra — e aqui de novo a correção precisou ir na última das oito
+   regras que definem a posição dele, porque as anteriores perdiam na cascata.
+3. Confirmado sem transbordo horizontal em 390px, e com alvos de 56px de
+   altura, acima dos 44pt da Apple e dos 48dp do Material.
+
+### Versão
+
+`0.5.0-beta.1` → `0.5.0-beta.2`.

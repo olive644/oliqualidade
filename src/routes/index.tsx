@@ -190,6 +190,7 @@ import { FilterChipsBar } from "@/components/oliam/filter-chips-bar";
 import { ColumnPanel } from "@/components/oliam/column-panel";
 import { DashboardNavSidebar } from "@/components/oliam/dashboard-nav-sidebar";
 import { InsightSidebar } from "@/components/oliam/insight-sidebar";
+import { MobileNavBar } from "@/components/oliam/mobile-nav-bar";
 import { CommandPalette } from "@/components/oliam/command-palette";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
@@ -1282,6 +1283,10 @@ function Dashboard(p: {
     [draftName, setDraftName] = useState(d.name);
   const [missingPanel, setMissingPanel] = useState(false);
   const [filterMenu, setFilterMenu] = useState(false);
+  // Aberto pelo botão da barra de ferramentas e também pela barra inferior do
+  // celular, por isso é estado, e não o controle interno do próprio menu.
+  const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   // Modo de uso do painel. Nasce em "editing" no servidor e na primeira
   // renderização, e só então lê o que estava salvo — ler localStorage durante
   // a renderização quebraria a hidratação, o mesmo erro já corrigido na tela
@@ -2172,6 +2177,7 @@ function Dashboard(p: {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <input
+              ref={searchInputRef}
               className="oliam-input h-9 w-full pl-9"
               placeholder="Buscar em todas as colunas…"
               value={search}
@@ -2220,7 +2226,7 @@ function Dashboard(p: {
               </div>
             )}
           </div>
-          <DropdownMenu>
+          <DropdownMenu open={widgetPickerOpen} onOpenChange={setWidgetPickerOpen}>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" data-edit-only>
                 <Plus />
@@ -2473,6 +2479,17 @@ function Dashboard(p: {
             ))}
           </div>
         )}
+        <MobileNavBar
+          onOpenPanels={() => setSidebar(true)}
+          onSearch={() => {
+            searchInputRef.current?.scrollIntoView({ block: "nearest" });
+            searchInputRef.current?.focus();
+          }}
+          onFilter={() => setFilterMenu(true)}
+          onAddWidget={() => setWidgetPickerOpen(true)}
+          onToggleInsight={() => setInsightOpen((v) => !v)}
+          insightOpen={insightOpen}
+        />
       </section>
       {presentation && (
         <div className="oliam-presentation fixed inset-0 z-50 flex flex-col bg-canvas">
