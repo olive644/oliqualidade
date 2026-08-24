@@ -26,7 +26,6 @@ import { fmt } from "@/lib/format";
 import {
   aggregationLabels,
   chartSeries,
-  countMissingGroupRows,
   NOT_INFORMED,
   pieComparisonFor,
   relevantAggregationOps,
@@ -37,7 +36,6 @@ import {
 import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import {
   CalculationButton,
-  ChartReadingGuide,
   FieldDropSlot,
   FilterChip,
   isCoarsePointer,
@@ -234,16 +232,6 @@ export function RadarWidgetBody({
         </label>
       </WidgetConfigBar>
       {sizeControls}
-      {groupCol && valueCol && (
-        <ChartReadingGuide
-          group={groupCol.label}
-          metric={valueCol.label}
-          mode={dataMode}
-          op={op}
-          rowCount={data.length}
-          missingGroupCount={countMissingGroupRows(data, groupCol.key)}
-        />
-      )}
       {!groupCol || !valueCol || axes.length < 3 ? (
         <p className="p-6 text-center text-xs text-muted-foreground">
           {!groupCol || !valueCol

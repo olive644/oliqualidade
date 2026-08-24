@@ -99,9 +99,12 @@ function analyticalQuestions(
   const hasMetric = metricCount > 0;
   const hasDimension = classifications.some((c) => c.role === "dimension");
   const hasTemporal = classifications.some((c) => c.role === "temporal-dimension");
-  const metrics = classifications.filter((c) => c.role === "metric");
-  const dimensions = classifications.filter((c) => c.role === "dimension");
-  const temporal = classifications.filter((c) => c.role === "temporal-dimension");
+  // Mesma ordenação por confiança de classifiedRoles/widgetCoversQuestion —
+  // usar uma ordem diferente aqui faria o metricKey/groupKey da pergunta
+  // apontar pra uma coluna diferente da que widgetCoversQuestion usa pra
+  // decidir cobertura, e um widget recém-criado pra essa pergunta nunca
+  // bateria com o "Sem gráfico" dela.
+  const { metrics, dimensions, temporal } = classifiedRoles(classifications);
   const metricKey = metrics[0]?.key;
   const metricKey2 = metrics[1]?.key;
   const dimensionKey = dimensions[0]?.key;
@@ -240,7 +243,12 @@ function widgetCoversQuestion(
     case "distribution":
       return widget.valueKey === metric;
     case "anomalies":
-      if (widget.type === "exception-panel") return true;
+      // control-chart, como exception-panel, escolhe suas próprias colunas
+      // pelo vocabulário operacional da planilha (ver createWidget em
+      // widgets.ts) e nunca preenche valueKey/metricKey — exigir esses
+      // campos aqui faria a cobertura nunca reconhecer um control-chart já
+      // existente no painel.
+      if (widget.type === "exception-panel" || widget.type === "control-chart") return true;
       return (
         (widget.valueKey === metric || widget.metricKey === metric) &&
         (widget.type !== "box-plot" || widget.groupKey === dimension)

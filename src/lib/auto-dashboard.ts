@@ -120,8 +120,7 @@ const VISUALIZATION_PRIORITY: Partial<Record<WidgetType, number>> = {
   pie: 70,
 };
 
-function supportsPareto(rows: Row[], groupKey: string, valueKey: string): boolean {
-  const groups = groupedNumericValues(rows, groupKey, valueKey);
+function supportsPareto(groups: ReadonlyMap<string, number[]>): boolean {
   return groups.size > RANKING_TOP_N && paretoChartValidity(groups).valid;
 }
 
@@ -134,7 +133,9 @@ function limitAutomaticVisualizations(
   if (visualizations.length <= MAX_AUTOMATIC_VISUALIZATIONS) return recommendations;
 
   const ordered = [...visualizations].sort((a, b) => {
-    const primaryDelta = Number(b.item.primary) - Number(a.item.primary);
+    // `primary` é opcional — a maioria das recomendações não define. `Number(undefined)`
+    // é NaN, que quebraria o contrato do comparador; Boolean(...) normaliza pra 0/1 antes.
+    const primaryDelta = Number(Boolean(b.item.primary)) - Number(Boolean(a.item.primary));
     if (primaryDelta !== 0) return primaryDelta;
     const priorityDelta =
       (VISUALIZATION_PRIORITY[b.item.widgetType] ?? 50) -
@@ -321,15 +322,19 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   );
   const byRole = (role: DashboardColumnRole) =>
     classifications.filter((item) => item.role === role);
-  const metrics = byRole("metric");
-  // As dimensões entram nos gráficos automáticos (barra/ranking/pizza) na
-  // ordem de melhor confiança/qualidade primeiro, não na ordem em que a
-  // coluna aparece na planilha — com muitas dimensões candidatas, só as
-  // primeiras (`dimensions.slice(0, 2)`, mais abaixo) viram widget; sem
-  // essa ordenação, uma coluna de ótima qualidade em 3º lugar nunca
-  // aparecia, enquanto duas colunas ruins mas bem no início sempre
-  // ganhavam. Sort é estável, então colunas com confiança igual mantêm a
-  // ordem original da planilha entre si.
+  // Mesmo raciocínio pras duas linhas abaixo: metricas e dimensões entram
+  // nos gráficos automáticos (barra/ranking/pizza/KPI) na ordem de melhor
+  // confiança/qualidade primeiro, não na ordem em que a coluna aparece na
+  // planilha — com várias candidatas, só as primeiras viram widget (
+  // `metrics.slice(0, 3)`/`dimensions.slice(0, 2)`, mais abaixo); sem essa
+  // ordenação, uma coluna de ótima qualidade em 3º lugar nunca aparecia,
+  // enquanto duas colunas ruins mas bem no início sempre ganhavam. Sort é
+  // estável, então colunas com confiança igual mantêm a ordem original da
+  // planilha entre si. Também mantém `primaryMetric` (= metrics[0]) igual
+  // ao que analytical-narrative.ts usa pra decidir cobertura de pergunta —
+  // ordens diferentes faziam um widget recém-criado nunca bater com a
+  // pergunta que o gerou.
+  const metrics = [...byRole("metric")].sort((a, b) => b.confidence - a.confidence);
   const dimensions = [...byRole("dimension")].sort((a, b) => b.confidence - a.confidence);
   const temporal = byRole("temporal-dimension");
   const identifiers = byRole("identifier");
@@ -613,6 +618,17 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
     dimensions.slice(0, 2).forEach((dimension, index) => {
       const cardinality = distinctCount(input.rows, dimension.key);
       const isGeo = GEO_NAME.test(`${dimension.key} ${dimension.label}`);
+      // Pareto e box plot (mais abaixo, ambos só para index === 0) podem
+      // avaliar a mesma dimensão quando a cardinalidade cai na faixa comum
+      // a ambos (6-8 categorias) — agrupa uma vez só em vez de duas
+      // passagens idênticas por input.rows. A faixa do box plot (2-8)
+      // sempre cabe dentro do teto do Pareto (40), então o mesmo `<= 40`
+      // cobre os dois sem calcular pra cardinalidades que nenhum dos dois
+      // usaria.
+      const groupedForDimension =
+        index === 0 && cardinality <= 40
+          ? groupedNumericValues(input.rows, dimension.key, primaryMetric.key)
+          : null;
       recommendations.push(
         recommendation(input, {
           id: slug(isGeo ? "mapa" : "barras", dimension.key, primaryMetric.key),
@@ -673,7 +689,8 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
         if (
           index === 0 &&
           cardinality <= 40 &&
-          supportsPareto(input.rows, dimension.key, primaryMetric.key)
+          groupedForDimension &&
+          supportsPareto(groupedForDimension)
         ) {
           recommendations.push(
             recommendation(input, {
@@ -699,8 +716,8 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
       // sentido quando cada categoria tem repetições suficientes para
       // calcular quartis de verdade — com 1 ou 2 linhas por categoria, o
       // "box" seria só um traço sem informação além do que a barra já mostra.
-      if (index === 0 && cardinality >= 2 && cardinality <= 8 && !isGeo) {
-        const groups = groupedNumericValues(input.rows, dimension.key, primaryMetric.key);
+      if (index === 0 && cardinality >= 2 && cardinality <= 8 && !isGeo && groupedForDimension) {
+        const groups = groupedForDimension;
         if (groups.size === cardinality && boxPlotChartValidity(groups).valid) {
           const smallestGroup = Math.min(...[...groups.values()].map((values) => values.length));
           recommendations.push(

@@ -88,11 +88,11 @@ test.describe("fluxo de leitura analítica", () => {
     await expect(area.getByText("Resultado observado", { exact: true })).toBeVisible();
     await expect(area.getByText("Acima da referência", { exact: true })).toBeVisible();
     await expect(area.getByText("Abaixo da referência", { exact: true })).toBeVisible();
-    await expect(area.locator('.recharts-line-curve[stroke="#22d3ee"]')).toBeVisible();
+    await expect(area.locator('.recharts-line-curve[stroke="var(--primary)"]')).toBeVisible();
     await expect(
       area.locator('.recharts-area-curve[stroke="var(--secondary-accent)"]'),
     ).toBeVisible();
-    await expect(area.locator('.recharts-area-curve[stroke="#d59b32"]')).toBeVisible();
+    await expect(area.locator('.recharts-area-curve[stroke="var(--chart-4)"]')).toBeVisible();
     await area
       .getByRole("button", { name: "Mostrar configuração de Evolução de Resultado (área)" })
       .click();

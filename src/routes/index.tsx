@@ -77,7 +77,14 @@ import {
   type AggregationOp,
 } from "@/lib/data-pipeline";
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
-import { resolveSourceCellProvenance } from "@/lib/cell-provenance";
+import { resolveSourceCellProvenance, type SourceCellProvenance } from "@/lib/cell-provenance";
+
+// Referência estável pra quando a planilha não tem proveniência de célula.
+// `?? []` no local de uso criaria um array novo a cada render, invalidando
+// o useMemo de evidência do widget (buildWidgetEvidence) o tempo todo — ele
+// recomputava em toda renderização em vez de só quando os dados mudassem de
+// verdade.
+const EMPTY_SOURCE_CELL_PROVENANCE: SourceCellProvenance[] = [];
 import {
   analyzeQuestionCoverage,
   buildExecutiveSummary,
@@ -1280,11 +1287,12 @@ function Dashboard(p: {
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
   // No desktop, a visão geral funciona como coluna lateral e pode nascer
   // aberta. No celular, ela é um drawer modal e começa fechada para não
-  // encobrir o dashboard logo após a geração do relatório.
-  const [insightOpen, setInsightOpen] = useState(false);
-  useEffect(() => {
-    setInsightOpen(window.matchMedia("(min-width: 1024px)").matches);
-  }, []);
+  // encobrir o dashboard logo após a geração do relatório. Inicializador
+  // preguiçoso (em vez de false + useEffect) evita um render extra em que
+  // o painel aparece fechado e reabre em seguida no desktop.
+  const [insightOpen, setInsightOpen] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
+  );
   const [sourceRowsPanel, setSourceRowsPanel] = useState<{
     title: string;
     rowIndexes: number[];
@@ -1315,15 +1323,6 @@ function Dashboard(p: {
   const currentAutoDashboard = useMemo(
     () => generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows }),
     [sheet.columns, sheet.rows],
-  );
-  const analysisTrust = useMemo(
-    () =>
-      buildAnalysisTrustSummary(
-        currentAutoDashboard,
-        effectiveIntelligence,
-        sheet.exceptionDecisions,
-      ),
-    [currentAutoDashboard, effectiveIntelligence, sheet.exceptionDecisions],
   );
   const semanticProfilesByKey = useMemo(
     () => new Map(effectiveIntelligence.columns.map((profile) => [profile.key, profile])),
@@ -1476,10 +1475,9 @@ function Dashboard(p: {
   }, [filteredData, metricOperations, nums, previousFilteredData, sheet.previousSnapshot]);
   const detailedVersionDiff = useMemo(() => {
     if (!sheet.previousSnapshot) return null;
-    if (sheet.filters.length > 0 || search.trim()) {
-      return compareVersions(previousFilteredData, filteredData);
-    }
-    return backgroundReview?.versionDiff ?? compareVersions(previousFilteredData, filteredData);
+    const hasActiveFilter = sheet.filters.length > 0 || Boolean(search.trim());
+    const cached = !hasActiveFilter ? backgroundReview?.versionDiff : undefined;
+    return cached ?? compareVersions(previousFilteredData, filteredData);
   }, [
     backgroundReview,
     filteredData,
@@ -1505,6 +1503,19 @@ function Dashboard(p: {
           exception.rowIndex === undefined || visibleSourceRows.has(exception.rowIndex),
       ),
     [effectiveIntelligence.exceptions, visibleSourceRows],
+  );
+  // Usa `visibleExceptions` (já restrito às linhas visíveis com o filtro
+  // atual), não `effectiveIntelligence.exceptions` inteiro — senão a
+  // contagem de pendências no banner/sidebar nunca bate com o que o painel
+  // de exceções realmente mostra enquanto algum filtro está ativo.
+  const analysisTrust = useMemo(
+    () =>
+      buildAnalysisTrustSummary(
+        currentAutoDashboard,
+        { ...effectiveIntelligence, exceptions: visibleExceptions },
+        sheet.exceptionDecisions,
+      ),
+    [currentAutoDashboard, effectiveIntelligence, visibleExceptions, sheet.exceptionDecisions],
   );
   const primary = nums[0];
   // Colunas candidatas a agrupamento: categoria, texto ou data.
@@ -1605,20 +1616,27 @@ function Dashboard(p: {
     setFocusedCell,
   });
   const openQuestionWidget = (widgetId: string) => {
-    setTimeout(() => {
-      const wrapper = document.querySelector<HTMLElement>(
-        `[data-assistant-widget-id="${widgetId}"]`,
-      );
-      const target = (wrapper?.firstElementChild as HTMLElement | null) ?? wrapper;
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
-      target?.animate(
-        [
-          { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
-          { boxShadow: "0 0 0 5px color-mix(in oklab, var(--primary) 35%, transparent)" },
-          { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
-        ],
-        { duration: 1200, easing: "ease-out" },
-      );
+    // setTimeout(fn) sem delay só garante rodar depois da macrotask atual,
+    // não depois do React de fato commitar e pintar o novo widget no DOM —
+    // sob render concorrente/adiado, o querySelector podia rodar cedo
+    // demais e não achar nada. Duplo requestAnimationFrame é o jeito
+    // padrão de esperar a pintura do frame seguinte ao commit.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const wrapper = document.querySelector<HTMLElement>(
+          `[data-assistant-widget-id="${widgetId}"]`,
+        );
+        const target = (wrapper?.firstElementChild as HTMLElement | null) ?? wrapper;
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        target?.animate(
+          [
+            { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
+            { boxShadow: "0 0 0 5px color-mix(in oklab, var(--primary) 35%, transparent)" },
+            { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
+          ],
+          { duration: 1200, easing: "ease-out" },
+        );
+      });
     });
   };
   const createQuestionWidget = (question: AnalyticalQuestion) => {
@@ -1859,7 +1877,7 @@ function Dashboard(p: {
               exceptions={visibleExceptions}
               semanticProfiles={effectiveIntelligence.columns}
               sourceSheetName={sheet.name}
-              sourceCellProvenance={sheet.sourceCellProvenance ?? []}
+              sourceCellProvenance={sheet.sourceCellProvenance ?? EMPTY_SOURCE_CELL_PROVENANCE}
               activeFilterCount={sheet.filters.length + (search ? 1 : 0)}
               exceptionDecisions={sheet.exceptionDecisions ?? {}}
               auditTrail={sheet.auditTrail ?? []}
@@ -2478,7 +2496,7 @@ function Dashboard(p: {
             }
           }
           rows={sheet.rows}
-          sourceCellProvenance={sheet.sourceCellProvenance ?? []}
+          sourceCellProvenance={sheet.sourceCellProvenance ?? EMPTY_SOURCE_CELL_PROVENANCE}
           fileName={d.sourceFileName ?? d.name}
           sheetName={sheet.name}
         />

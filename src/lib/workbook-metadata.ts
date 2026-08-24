@@ -529,11 +529,17 @@ function parseCharts(
   return charts;
 }
 
+// Ordem do atributo `theme="N"` em styles.xml — NÃO é a ordem de documento
+// de <a:clrScheme> (que é dk1, lt1, dk2, lt2, ...). O Excel troca dk1/lt1 e
+// dk2/lt2 de posição só para esse índice: 0=lt1, 1=dk1, 2=lt2, 3=dk2,
+// 4-9=accent1-6, 10=hlink, 11=folHlink. Indexar com a ordem do documento
+// inverteria branco e preto (e os dois tons secundários) sempre que uma
+// célula usar `theme="0"` ou `theme="1"`.
 const THEME_COLOR_ORDER = [
-  "dk1",
   "lt1",
-  "dk2",
+  "dk1",
   "lt2",
+  "dk2",
   "accent1",
   "accent2",
   "accent3",

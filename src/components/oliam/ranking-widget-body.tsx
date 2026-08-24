@@ -17,7 +17,6 @@ import { conditionalColor, fmt } from "@/lib/format";
 import {
   aggregationLabels,
   chartSeries,
-  countMissingGroupRows,
   NOT_INFORMED,
   pieComparisonFor,
   rankingCoverageFor,
@@ -29,7 +28,6 @@ import {
 import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import {
   CalculationButton,
-  ChartReadingGuide,
   FieldDropSlot,
   FilterChip,
   isCoarsePointer,
@@ -222,16 +220,6 @@ export function RankingWidgetBody({
         </label>
       </WidgetConfigBar>
       {sizeControls}
-      {groupCol && valueCol && (
-        <ChartReadingGuide
-          group={groupCol.label}
-          metric={valueCol.label}
-          mode={dataMode}
-          op={op}
-          rowCount={data.length}
-          missingGroupCount={countMissingGroupRows(data, groupCol.key)}
-        />
-      )}
       {groupCol && valueCol && ranked.length > 0 && coverage.remainingCount > 0 && (
         <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
           {coverage.topShare !== null

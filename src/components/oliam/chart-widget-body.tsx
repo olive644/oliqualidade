@@ -225,9 +225,15 @@ export function ChartWidgetBody({
         ? "previous"
         : (w.areaReference ?? (areaGoalCol ? "goal" : "previous"))
       : "previous";
+  // Usa o mesmo op/dataMode da série principal — comparar uma soma
+  // observada com uma meta em média (ou linha a linha com meta agregada)
+  // mistura grandezas diferentes e desalinha os nomes de categoria entre as
+  // duas séries. "count" não se aplica a uma coluna de meta (não é uma
+  // contagem de linhas), então cai em "avg" nesse caso, como antes.
+  const goalOp: AggregationOp = op === "count" ? "avg" : op;
   const goalSeries =
     w.type === "area" && groupCol && areaGoalCol
-      ? chartSeries(data, groupCol.key, areaGoalCol.key, "avg", "aggregate")
+      ? chartSeries(data, groupCol.key, areaGoalCol.key, goalOp, dataMode)
       : [];
   const goalsByName = new Map(goalSeries.map((entry) => [entry.name, entry.total]));
   const areaSeries =
@@ -890,9 +896,9 @@ export function ChartWidgetBody({
           <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/30">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-1 pt-4 text-[11px] text-muted-foreground">
               {[
-                ["#22d3ee", "Resultado observado"],
+                ["var(--primary)", "Resultado observado"],
                 ["var(--secondary-accent)", "Acima da referência"],
-                ["#d59b32", "Abaixo da referência"],
+                ["var(--chart-4)", "Abaixo da referência"],
               ].map(([color, label]) => (
                 <span key={label} className="inline-flex items-center gap-1.5">
                   <span
@@ -939,8 +945,8 @@ export function ChartWidgetBody({
                           />
                         </linearGradient>
                         <linearGradient id={`area-below-${w.id}`} x1="0" y1="1" x2="0" y2="0">
-                          <stop offset="0%" stopColor="#d59b32" stopOpacity={0.5} />
-                          <stop offset="100%" stopColor="#d59b32" stopOpacity={0.06} />
+                          <stop offset="0%" stopColor="var(--chart-4)" stopOpacity={0.5} />
+                          <stop offset="100%" stopColor="var(--chart-4)" stopOpacity={0.06} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -1000,7 +1006,7 @@ export function ChartWidgetBody({
                         yAxisId="variation"
                         dataKey="belowReference"
                         name="Variação abaixo da referência"
-                        stroke="#d59b32"
+                        stroke="var(--chart-4)"
                         strokeWidth={1.5}
                         fill={`url(#area-below-${w.id})`}
                         dot={false}
@@ -1022,7 +1028,7 @@ export function ChartWidgetBody({
                         yAxisId="observed"
                         dataKey="total"
                         name="Resultado observado"
-                        stroke="#22d3ee"
+                        stroke="var(--primary)"
                         strokeWidth={3.5}
                         dot={(dotProps: ChartDotProps) => {
                           const { key, ...rest } = dotProps as ChartDotProps & {
