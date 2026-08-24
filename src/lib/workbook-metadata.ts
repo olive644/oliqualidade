@@ -8,6 +8,16 @@ export type StructuredTableDiagnostic = {
   range: string | null;
   columns: string[];
   calculatedColumns: string[];
+  /**
+   * Quantas linhas do fim do intervalo são a linha de totais da tabela do
+   * Excel (`totalsRowCount`). É quase sempre 0 ou 1, e é a informação que
+   * distingue "R$ 2.060 é o total de Moradia" de "R$ 2.060 é mais uma
+   * despesa de Moradia" — sem ela, somar a coluna conta cada bloco duas
+   * vezes.
+   */
+  totalsRowCount: number;
+  /** Quantas linhas do começo do intervalo são cabeçalho (`headerRowCount`). */
+  headerRowCount: number;
 };
 
 export type PivotTableDiagnostic = {
@@ -654,11 +664,21 @@ function parseTable(xml: string): StructuredTableDiagnostic {
     if (new RegExp(`<${NS}calculatedColumnFormula\\b`, "i").test(body))
       calculatedColumns.push(name);
   }
+  // O Excel omite `headerRowCount` quando é 1 (o caso normal) e omite
+  // `totalsRowCount` quando é 0, então ausente não é o mesmo que zero.
+  const countAttribute = (name: string, whenMissing: number) => {
+    const raw = attr(root, name);
+    if (raw === undefined || raw === null || raw === "") return whenMissing;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : whenMissing;
+  };
   return {
     name: decodeXml(attr(root, "displayName") ?? attr(root, "name") ?? "Tabela"),
     range: attr(root, "ref"),
     columns,
     calculatedColumns,
+    totalsRowCount: countAttribute("totalsRowCount", 0),
+    headerRowCount: countAttribute("headerRowCount", 1),
   };
 }
 

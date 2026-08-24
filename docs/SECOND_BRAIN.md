@@ -198,6 +198,7 @@ audit inteiro.
 | Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) — ver [[CURRENT_STATE_AUDIT#73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo]] |
 | Interpretar um Value como número tolerando vírgula decimal brasileira, sem nunca virar NaN | `parseNumericValue` (`format.ts`) — usado em `fmt`, `evalFormula`, `resolveConditionalFormat`, e em todo `data-pipeline.ts`/`operational-widgets.ts`/`widget-card.tsx`/`format-rules-editor.tsx` que antes fazia `Number(valorDeCelula)` direto | `format.test.ts`, `data-pipeline.test.ts`, `operational-widgets.test.ts` |
 | Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
+| Linhas de total das Tabelas do Excel ficarem fora dos registros | `tableTotalsRegions` (`excel-table-totals.ts`) a partir de `totalsRowCount` lido em `parseTable` (`workbook-metadata.ts`); limpeza por célula na cópia de análise em `sheetToRows`, ao lado do tratamento de linhas ocultas | `excel-table-totals.test.ts` — ver [[CURRENT_STATE_AUDIT#120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma]] |
 | Corte e intervalo dos nomes de categoria no eixo X | `axisLabelPresentation` (`data-pipeline.ts`): devolve quantos caracteres cabem e de quantos em quantos rótulos desenhar; quando nem o corte mínimo cabe, o eixo pula rótulos em vez de sobrepor | `data-pipeline.test.ts` (`describe("axisLabelPresentation")`) — ver seção 119 do audit |
 | Mostrar ou esconder o valor escrito em cima das barras | `barValueLabelsFit` (`data-pipeline.ts`), por largura disponível (fatia fixa quando o gráfico rola, divisão do span quando não rola) e pelo rótulo mais comprido da série | `data-pipeline.test.ts` (`describe("barValueLabelsFit")`) — ver [[CURRENT_STATE_AUDIT#119. Acabamento de leitura dos gráficos, e um item do backlog que se provou inexistente]] |
 | Legenda das séries do gráfico de área (a única que existe nesse widget — não acrescentar outra) | `ChartSeriesLegend` (`widget-support.tsx`), alimentada por `areaLegendItems` em `chart-widget-body.tsx`, no bloco acima do gráfico; desenha o traço real de cada série, então a distinção não depende só de cor | `e2e/analytical-reading-flow.spec.ts` (falha por texto duplicado se alguém acrescentar uma segunda legenda) — ver seção 119 do audit |
@@ -775,6 +776,11 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   e rótulos de valor que somem quando não cabem) fecha o backlog de leitura
   aberto na seção 117. Ver
   [[CURRENT_STATE_AUDIT#119. Acabamento de leitura dos gráficos, e um item do backlog que se provou inexistente]].
+
+- `v0.2.0-beta.4` (linhas de total declaradas pelas tabelas do Excel deixam de
+  entrar como registro) corrige um erro de número encontrado com planilha real
+  do usuário. Ver
+  [[CURRENT_STATE_AUDIT#120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma]].
 
 ## Checklist antes de publicar
 

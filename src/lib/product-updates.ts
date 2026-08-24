@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.2.0-beta.3";
+export const APP_VERSION = "0.2.0-beta.4";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-linhas-de-total",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Linhas de total da planilha não entram mais em dobro nas contas",
+    summary:
+      "Planilhas montadas com tabelas do Excel, como os modelos de orçamento e de controle, têm uma linha de total em cada bloco. Essas linhas deixam de virar registros.",
+    highlights: [
+      "O OliQualidade lê a definição das tabelas do próprio arquivo para saber quais linhas são totais, em vez de adivinhar pelo texto.",
+      "Em um orçamento pessoal real, a soma das despesas passou de R$ 4.120 para os R$ 2.060 que a própria planilha mostra.",
+      "Em planilhas com blocos lado a lado, só as colunas do bloco que declarou o total são ignoradas, preservando os dados do bloco vizinho na mesma linha.",
+      "A revisão de importação avisa quantas linhas de total ficaram de fora e por quê.",
+    ],
+  },
   {
     id: "2026-08-24-acabamento-de-leitura",
     version: APP_VERSION,

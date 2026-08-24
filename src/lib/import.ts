@@ -3,6 +3,7 @@ import type { Row } from "@/lib/types";
 import { isVolatileFormula, resolveFormulaCell } from "@/lib/formula";
 import { diagnoseImportedSheet, type ImportDiagnostics } from "@/lib/import-intelligence";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
+import { tableTotalsRegions } from "@/lib/excel-table-totals";
 import { scheduleToLong, type LongScheduleRow } from "@/lib/schedule-normalizer";
 import { isPeriodColumnLabel } from "@/lib/widgets";
 import {
@@ -47,6 +48,8 @@ export type ImportAudit = {
   columnsIgnored: number;
   notesPreserved?: number;
   repeatedHeaderRowsIgnored?: number;
+  /** Linhas de totais declaradas por Tabelas do Excel, mantidas fora dos registros. */
+  totalsRowsIgnored?: number;
   /** Regiões independentes detectadas nesta aba, mas mantidas juntas por segurança (ver regionsAreSafeToSplit). */
   regionsKeptTogether?: number;
 };
@@ -1627,6 +1630,31 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
   }
   const hiddenRowsIgnored = hiddenRows.size;
   const aoa = sourceAoa.map((row, index) => (hiddenRows.has(index) ? [] : [...row]));
+
+  // Linhas de totais declaradas pelas Tabelas do Excel desta aba: somam as
+  // linhas do próprio bloco, então entram em dobro em qualquer total do
+  // painel. Só as colunas da tabela que declarou o total são limpas, porque
+  // nesses modelos há blocos lado a lado e o resto da linha costuma ser dado
+  // real do bloco vizinho. Mesma escolha das linhas ocultas: a grade de
+  // origem permanece intacta para auditoria, só a cópia de análise muda.
+  const totalsRegions = tableTotalsRegions(
+    (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"]?.structuredTables ?? [],
+    range.s.r,
+    range.s.c,
+  );
+  let totalsRowsIgnored = 0;
+  for (const region of totalsRegions) {
+    const row = aoa[region.row];
+    if (!row) continue;
+    let cleared = false;
+    for (let column = region.startColumn; column <= region.endColumn; column++) {
+      const value = row[column];
+      if (value === null || value === undefined || value === "") continue;
+      row[column] = null;
+      cleared = true;
+    }
+    if (cleared) totalsRowsIgnored++;
+  }
   const hiddenRowsMessage = hiddenRowsIgnored
     ? `${hiddenRowsIgnored} linha${hiddenRowsIgnored > 1 ? "s ocultas foram preservadas" : " oculta foi preservada"} na grade original, mas ignorada${hiddenRowsIgnored > 1 ? "s" : ""} nos registros, métricas e widgets para reproduzir a visualização do Excel.`
     : "";
@@ -2349,6 +2377,12 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
       `${blankSkipped} linha${blankSkipped > 1 ? "s" : ""} em branco no meio dos dados ${blankSkipped > 1 ? "foram" : "foi"} ignorada${blankSkipped > 1 ? "s" : ""}.`,
     );
   }
+  if (totalsRowsIgnored > 0) {
+    messages.push(
+      `${totalsRowsIgnored} linha${totalsRowsIgnored > 1 ? "s de totais declaradas" : " de totais declarada"} pelas tabelas do Excel ${totalsRowsIgnored > 1 ? "ficaram" : "ficou"} fora dos registros. ${totalsRowsIgnored > 1 ? "Elas somam" : "Ela soma"} as linhas do próprio bloco, então ${totalsRowsIgnored > 1 ? "entrariam" : "entraria"} em dobro em qualquer total do painel.`,
+    );
+  }
+
   if (repeatedHeaderRowsSkipped > 0) {
     messages.push(
       `${repeatedHeaderRowsSkipped} linha${repeatedHeaderRowsSkipped > 1 ? "s repetiam" : " repetia"} o cabeçalho no meio dos dados (comum em relatórios paginados) e ${repeatedHeaderRowsSkipped > 1 ? "foram ignoradas" : "foi ignorada"}, em vez de virar${repeatedHeaderRowsSkipped > 1 ? "em" : ""} um registro com o próprio texto do cabeçalho.`,
@@ -2379,6 +2413,7 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
       columnsIgnored: emptyColumns.length + ghostColumns.length + redundantColumns.length,
       notesPreserved: diagnostics.sourceNotes.length,
       repeatedHeaderRowsIgnored: repeatedHeaderRowsSkipped,
+      totalsRowsIgnored,
     },
   };
 }

@@ -6660,3 +6660,87 @@ rótulos que não cabiam.
 ### Versão
 
 `0.2.0-beta.2` → `0.2.0-beta.3`.
+
+## 120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma
+
+Investigação pedida pelo usuário depois que ele enviou duas planilhas reais
+(modelos do Office: um planejador de lista de compras e um orçamento pessoal
+mensal). O que começou como uma verificação de rótulo de gráfico expôs um erro
+de número.
+
+### O dano, medido
+
+Somando "Custo previsto" no orçamento pessoal importado: **R$ 4.120**. O valor
+certo é **R$ 2.060** — e não é conta nossa, é o que a própria planilha mostra na
+célula "PREVISÃO DE DESPESA TOTAL". Exatamente o dobro.
+
+A aba tem 12 blocos (Moradia, Transporte, Seguro, Alimentação, Entretenimento,
+Empréstimos, Impostos...), empilhados verticalmente **e** lado a lado. A
+importação achatava tudo em 52 linhas, e junto com os itens entravam 12 linhas
+de "Total" (uma por bloco) e 5 linhas de cabeçalho repetido.
+
+### A informação estava no arquivo o tempo todo
+
+O arquivo declara 12 Tabelas do Excel de verdade, cada uma com intervalo exato e
+marcação de linha de totais:
+
+```
+Moradia         B10:E21   totalsRowCount=1
+Entretenimento  G10:J20   totalsRowCount=1
+Transporte      B23:E31   totalsRowCount=1
+...mais nove
+```
+
+`parseTable` (`workbook-metadata.ts`) já lia essas definições — nome, intervalo
+e colunas — mas o resultado servia só de inventário para o painel de
+diagnóstico e para o cálculo de confiança. O atributo `totalsRowCount` nem
+chegava a ser lido. Agora é, junto de `headerRowCount`, com o cuidado de que
+**ausente não é zero**: o Excel omite `headerRowCount` quando é 1 e
+`totalsRowCount` quando é 0.
+
+Um sintoma confirmava o diagnóstico antes mesmo da correção: as 36 fórmulas que
+a importação marcava como "não recalculada" eram todas
+`SUBTOTAL(109, Moradia[Custo previsto])` e equivalentes — precisamente as
+linhas de totais dessas tabelas.
+
+### Por que a limpeza é por célula, e não por linha
+
+A primeira versão descartava a linha inteira e chegou a R$ 2.310, não a
+R$ 2.060. O motivo é que os blocos ficam lado a lado: a linha de totais de
+"Moradia" (linha 21) é uma linha comum de outro bloco nas colunas à direita.
+Descartar a linha inteira ora perdia dado real do vizinho, ora era recusada por
+uma trava de segurança e deixava o total passar.
+
+`tableTotalsRegions` (`src/lib/excel-table-totals.ts`) devolve **região de
+células**: linha mais o intervalo de colunas da tabela que declarou aquele
+total. A limpeza acontece na cópia de análise (`aoa`), do mesmo jeito e no mesmo
+lugar em que linhas ocultas já eram tratadas — a grade de origem permanece
+intacta para auditoria e para a seleção manual.
+
+Com isso, as duas somas do arquivo real batem com as células de total da própria
+planilha: previsto R$ 2.060 e real R$ 2.040.
+
+### Detalhe que só um teste pegou
+
+`XLSX.utils.decode_range` aceita uma string inválida sem reclamar e devolve a
+célula A1. Sem validar a forma do intervalo antes de decodificar, uma tabela com
+`ref` corrompido apagaria a primeira linha de dados da planilha. A função valida
+o formato antes, e o teste que cobre esse caso existe por isso.
+
+### Alcance
+
+A outra planilha do usuário (lista de compras) tem quatro tabelas, todas com
+`totalsRowCount=0`: importa exatamente como antes, 16 itens, sem aviso novo. A
+correção só age onde o arquivo declara totais.
+
+### Versão
+
+`0.2.0-beta.3` → `0.2.0-beta.4`.
+
+### Backlog imediato
+
+Usar os intervalos das tabelas também para **dividir as regiões** da aba e
+transformar o nome de cada tabela em dimensão. Hoje a coluna de itens do
+orçamento se chama "MORADIA", que é o cabeçalho do primeiro bloco, embora
+contenha itens dos doze — e não há como agrupar por bloco. É mudança
+estrutural em `import.ts`, com PR própria.

@@ -70,6 +70,8 @@ describe("metadados avançados de XLSX", () => {
         range: "A1:C5",
         columns: ["Produto", "Quantidade", "Total"],
         calculatedColumns: ["Total"],
+        totalsRowCount: 0,
+        headerRowCount: 1,
       },
     ]);
     expect(metadata?.pivotTables).toEqual([{ name: "ResumoVendas", range: "E3:H12" }]);
@@ -300,7 +302,16 @@ describe("tolerância a namespace prefixado e Target absoluto (corpus real do us
 
 describe("sliceAdvancedMetadata", () => {
   const base: AdvancedSheetMetadata = {
-    structuredTables: [{ name: "T", range: "A1:A1", columns: [], calculatedColumns: [] }],
+    structuredTables: [
+      {
+        name: "T",
+        range: "A1:A1",
+        columns: [],
+        calculatedColumns: [],
+        totalsRowCount: 0,
+        headerRowCount: 1,
+      },
+    ],
     pivotTables: [{ name: "P", range: "A1:A1" }],
     autoFilterRange: "A1:C5",
     comments: [{ address: "B3", text: "nota" }],
