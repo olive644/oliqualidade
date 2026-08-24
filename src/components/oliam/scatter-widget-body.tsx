@@ -25,6 +25,7 @@ import {
   WidgetMetricStrip,
   type WidgetDragProps,
   type WidgetMetric,
+  WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 
@@ -322,6 +323,7 @@ export function ScatterWidgetBody({
           )}
         </>
       )}
+      <WidgetEvidencePanel />
     </article>
   );
 }

@@ -6,7 +6,12 @@ import { sizeClass, spanClass } from "@/lib/widgets";
 import { parseEditedValue, suggestCorrection, type AuditEntry } from "@/lib/data-review";
 import type { ExceptionDecision, SpreadsheetException } from "@/lib/spreadsheet-intelligence";
 import { Button } from "@/components/ui/button";
-import { exceptionGuidance, WidgetHead, type WidgetDragProps } from "./widget-support";
+import {
+  exceptionGuidance,
+  WidgetHead,
+  type WidgetDragProps,
+  WidgetEvidencePanel,
+} from "./widget-support";
 
 export function ExceptionPanelWidgetBody({
   widget: w,
@@ -408,6 +413,7 @@ export function ExceptionPanelWidgetBody({
           )}
         </>
       )}
+      <WidgetEvidencePanel />
     </article>
   );
 }

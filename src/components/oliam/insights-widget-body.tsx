@@ -31,6 +31,7 @@ import {
   FilterChip,
   WidgetHead,
   type WidgetDragProps,
+  WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 
@@ -220,6 +221,7 @@ export function InsightsWidgetBody({
           ))}
         </ul>
       )}
+      <WidgetEvidencePanel />
     </article>
   );
 }

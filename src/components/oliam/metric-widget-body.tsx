@@ -24,6 +24,7 @@ import {
   FieldDropSlot,
   WidgetHead,
   type WidgetDragProps,
+  WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
@@ -291,6 +292,7 @@ export function MetricWidgetBody({
           </div>
         )}
       </div>
+      <WidgetEvidencePanel />
     </article>
   );
 }

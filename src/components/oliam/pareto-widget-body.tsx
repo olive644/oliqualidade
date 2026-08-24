@@ -43,6 +43,7 @@ import {
   WidgetMetricStrip,
   type WidgetDragProps,
   type WidgetMetric,
+  WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
@@ -409,6 +410,7 @@ export function ParetoWidgetBody({
           )}
         </>
       )}
+      <WidgetEvidencePanel />
     </article>
   );
 }

@@ -6884,3 +6884,66 @@ mas só o widget de gráfico consome a medida hoje, porque é onde havia decisã
 conteúdo dependente de largura. Por isso a versão avança a iteração
 (`0.3.0-beta.2`) e não o minor: a capacidade está disponível, a adoção é
 parcial, e ela se completa na frente de padronização de hierarquia dos widgets.
+
+## 123. Hierarquia padronizada: o resultado antes da procedência, em todos os widgets
+
+Segunda das três frentes escolhidas pelo usuário. A queixa era precisa: alguns
+widgets exibiam metadado técnico demais antes da leitura principal.
+
+### O que acontecia
+
+`WidgetHead` renderizava, logo abaixo do título, uma faixa com sete campos —
+fonte, cálculo, registros válidos, filtros ativos, unidade, confiança e
+fórmula. Como todo widget usa essa casca, o efeito era universal: em um widget
+de métrica, o número que o widget existe para mostrar aparecia **depois** de
+sete informações sobre como ele foi calculado.
+
+### A ordem padrão
+
+Todo widget passa a seguir a mesma sequência:
+
+1. **Resultado** — o número ou a resposta.
+2. **Visualização** — o gráfico, a tabela, o mapa.
+3. **Explicação** — resumo de tendência, comparação entre pontos.
+4. **Evidências** — quantos registros sustentam a conta, quantos filtros estão
+   ativos.
+5. **Configuração técnica** — fonte, cálculo, unidade, confiança, fórmula.
+
+Os degraus 4 e 5 saíram do topo e viraram `WidgetEvidencePanel`, inserido antes
+do fechamento de cada um dos 14 corpos de widget. O degrau 4 fica sempre
+visível, porque é o mínimo para confiar no número; o degrau 5 abre no botão
+"Ver cálculo", porque é configuração, não leitura.
+
+### Por que não foi resolvido com CSS
+
+Reordenar visualmente com `order` de flexbox custaria uma linha e teria sido
+errado: a ordem do DOM continuaria a antiga, e leitor de tela segue o DOM. A
+faixa técnica seria anunciada logo após o título e desenhada no rodapé —
+exatamente a divergência entre ordem visual e ordem de leitura que a WCAG 1.3.2
+trata. A inserção nos 14 arquivos é mecânica e mantém as duas ordens iguais.
+
+### Exportação
+
+O bloco técnico nasce recolhido, e o painel exportado circula sem ninguém por
+perto para clicar. `.oliam-export-mode .oliam-widget-technical` força a
+exibição, para o PDF continuar carregando fonte, operação, unidade, confiança e
+fórmula como antes desta mudança. Sem essa regra, a padronização teria
+silenciosamente removido a procedência do material exportado.
+
+### Efeito observado
+
+No painel de demonstração, os três widgets de métrica passaram a abrir com o
+número em corpo grande (12, 95,91 e 25,67) seguido do sparkline, com a linha de
+evidências no pé. Antes, entre o título e cada um desses números havia sete
+campos técnicos.
+
+### Versão
+
+`0.3.0-beta.2` → `0.4.0-beta.1`: muda a ordem de leitura de todos os widgets do
+produto.
+
+### O que continua aberto desta frente
+
+A adoção dos três modos de densidade (seção 122) fora dos widgets de gráfico.
+A casca já é um container de consulta, então cada widget pode passar a reagir
+ao próprio espaço quando houver decisão de conteúdo que dependa disso.
