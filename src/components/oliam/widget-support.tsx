@@ -562,6 +562,52 @@ export function BarTooltip({
  * útil desses widgets (224px a 256px) não sobra para mais uma faixa de
  * texto dentro da área de plotagem sem achatar as barras.
  */
+/**
+ * Legenda das séries de um gráfico de linha/área.
+ *
+ * Cada item desenha o traço real da série, e não um quadrado colorido: o
+ * tracejado distingue as séries sem depender de enxergar a diferença de cor,
+ * que era a única pista disponível antes.
+ *
+ * Fica em HTML, e não como `<Legend>` dentro do SVG, pelo mesmo motivo da
+ * legenda de eixos: a área de plotagem rola na horizontal, e qualquer coisa
+ * desenhada no SVG acompanha a rolagem em vez de ficar fixa à vista.
+ */
+export function ChartSeriesLegend({
+  items,
+  className,
+}: {
+  items: { name: string; color: string; dashed?: boolean }[];
+  className?: string;
+}) {
+  return (
+    <ul
+      className={cn(
+        "flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-1 pt-4 text-[11px] text-muted-foreground",
+        className,
+      )}
+    >
+      {items.map((item) => (
+        <li key={item.name} className="flex items-center gap-1.5">
+          <svg width="18" height="8" aria-hidden="true" className="shrink-0">
+            <line
+              x1="0"
+              y1="4"
+              x2="18"
+              y2="4"
+              stroke={item.color}
+              strokeWidth={2}
+              strokeLinecap="round"
+              {...(item.dashed ? { strokeDasharray: "4 3" } : {})}
+            />
+          </svg>
+          {item.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ChartAxisLegend({
   x,
   y,
@@ -591,10 +637,13 @@ export function AxisTick({
   x,
   y,
   payload,
+  max,
 }: {
   x?: number;
   y?: number;
   payload?: { value?: string | number };
+  /** Quantos caracteres cabem sem colidir com o rótulo vizinho. */
+  max?: number;
 }) {
   const value = String(payload?.value ?? "");
   const missing = value === NOT_INFORMED;
@@ -608,7 +657,7 @@ export function AxisTick({
       fill={missing ? "var(--muted-foreground)" : "var(--foreground)"}
     >
       <title>{value}</title>
-      {truncateLabel(value)}
+      {truncateLabel(value, max)}
     </text>
   );
 }

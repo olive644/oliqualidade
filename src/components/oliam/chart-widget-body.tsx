@@ -40,8 +40,12 @@ import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/forma
 import {
   aggregationLabels,
   buildAreaComparisonSeries,
+  axisLabelPresentation,
+  BAR_SLOT_PX,
   barChartPresentation,
+  barValueLabelsFit,
   chartSeries,
+  TIME_SERIES_SLOT_PX,
   collapsePieSeries,
   limitChartSeriesForRendering,
   pieComparisonFor,
@@ -62,6 +66,7 @@ import {
   BarTooltip,
   CalculationButton,
   ChartAxisLegend,
+  ChartSeriesLegend,
   ChartDot,
   compactAxisValue,
   FieldDropSlot,
@@ -268,6 +273,27 @@ export function ChartWidgetBody({
     selectedPointIndex >= 0 ? pieComparisonFor(series, selectedPointIndex) : null;
   const barSeries = series;
   const barPresentation = barChartPresentation(barSeries.length);
+  // O rótulo mais comprido decide por todos: basta um valor largo demais para
+  // a faixa de números virar uma linha sobreposta em cima das barras.
+  const longestBarLabelChars = valueCol
+    ? barSeries.reduce(
+        (longest, entry) =>
+          Math.max(longest, (fmt(entry.total, valueCol.kind) ?? String(entry.total)).length),
+        0,
+      )
+    : 0;
+  const barAxisLabels = axisLabelPresentation({
+    count: barSeries.length,
+    scrollable: barPresentation.scrollable,
+    span: w.span,
+    slotPx: BAR_SLOT_PX,
+  });
+  const barLabelsFit = barValueLabelsFit({
+    count: barSeries.length,
+    scrollable: barPresentation.scrollable,
+    longestLabelChars: longestBarLabelChars,
+    span: w.span,
+  });
   // "Quem está acima da média" é a primeira pergunta de quem lê um ranking,
   // e sem a linha de referência essa conta ficava por conta do leitor.
   const barAverage = w.type === "bar" ? seriesAverage(barSeries) : null;
@@ -277,6 +303,24 @@ export function ChartWidgetBody({
   // planilha, que não é necessariamente cronológica. Em nenhum dos dois a
   // barra vizinha é "o período anterior".
   const barAxisKind: ChartAxisKind = "category";
+  // A legenda do gráfico de área já existia, mas identificava as séries só
+  // pela cor de um quadradinho e não incluía a linha de referência, que é
+  // justamente a série contra a qual todas as outras são lidas. Agora ela
+  // desenha o traço real de cada série e nomeia a referência pelo que ela é
+  // ("Período anterior", "Média móvel", "Meta: X"), em vez do genérico
+  // "Referência" que aparecia só no tooltip.
+  const areaReferenceLabel =
+    areaReference === "goal"
+      ? `Meta: ${areaGoalCol?.label ?? ""}`
+      : areaReference === "moving-average"
+        ? "Média móvel"
+        : "Período anterior";
+  const areaLegendItems = [
+    { name: "Resultado observado", color: "var(--primary)" },
+    { name: areaReferenceLabel, color: "var(--muted-foreground)", dashed: true },
+    { name: "Acima da referência", color: "var(--secondary-accent)" },
+    { name: "Abaixo da referência", color: "var(--chart-4)", dashed: true },
+  ];
   // A ordem por valor é a esperada num gráfico de barras e não precisa ser
   // dita. As outras precisam: sem isso, um gráfico de meses fora da ordem de
   // tamanho parece desordenado em vez de sequencial.
@@ -289,6 +333,12 @@ export function ChartWidgetBody({
         ? "alfabética"
         : null;
   const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
+  const timeAxisLabels = axisLabelPresentation({
+    count: series.length,
+    scrollable: timeSeriesPresentation.scrollable,
+    span: w.span,
+    slotPx: TIME_SERIES_SLOT_PX,
+  });
   const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
   const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
   const displayedPieIndex = activePieIndex ?? selectedPieIndex;
@@ -530,10 +580,10 @@ export function ChartWidgetBody({
                     <XAxis
                       type="category"
                       dataKey="name"
-                      tick={(props) => <AxisTick {...props} />}
+                      tick={(props) => <AxisTick {...props} max={barAxisLabels.maxChars} />}
                       tickLine={false}
                       axisLine={{ stroke: "var(--border)" }}
-                      interval={0}
+                      interval={barAxisLabels.interval}
                     />
                     <YAxis
                       type="number"
@@ -648,13 +698,15 @@ export function ChartWidgetBody({
                           }
                         />
                       ))}
-                      <LabelList
-                        dataKey="total"
-                        position="top"
-                        fontSize={10}
-                        fill="var(--muted-foreground)"
-                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                      />
+                      {barLabelsFit && (
+                        <LabelList
+                          dataKey="total"
+                          position="top"
+                          fontSize={10}
+                          fill="var(--muted-foreground)"
+                          formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                        />
+                      )}
                     </Bar>
                     <ReferenceLine
                       y={0}
@@ -966,22 +1018,7 @@ export function ChartWidgetBody({
       ) : w.type === "area" ? (
         <div className="p-3">
           <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/30">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-1 pt-4 text-[11px] text-muted-foreground">
-              {[
-                ["var(--primary)", "Resultado observado"],
-                ["var(--secondary-accent)", "Acima da referência"],
-                ["var(--chart-4)", "Abaixo da referência"],
-              ].map(([color, label]) => (
-                <span key={label} className="inline-flex items-center gap-1.5">
-                  <span
-                    className="size-2.5 shrink-0 rounded-sm"
-                    style={{ backgroundColor: color }}
-                    aria-hidden="true"
-                  />
-                  {label}
-                </span>
-              ))}
-            </div>
+            <ChartSeriesLegend items={areaLegendItems} />
             <div className="relative">
               <div
                 ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
@@ -1024,8 +1061,8 @@ export function ChartWidgetBody({
                       <CartesianGrid vertical={false} stroke="var(--border)" />
                       <XAxis
                         dataKey="name"
-                        tick={(props) => <AxisTick {...props} />}
-                        interval={0}
+                        tick={(props) => <AxisTick {...props} max={timeAxisLabels.maxChars} />}
+                        interval={timeAxisLabels.interval}
                         padding={{ left: 20, right: 20 }}
                       />
                       <YAxis
@@ -1080,6 +1117,7 @@ export function ChartWidgetBody({
                         name="Variação abaixo da referência"
                         stroke="var(--chart-4)"
                         strokeWidth={1.5}
+                        strokeDasharray="4 3"
                         fill={`url(#area-below-${w.id})`}
                         dot={false}
                         activeDot={{ r: 4 }}
@@ -1088,7 +1126,7 @@ export function ChartWidgetBody({
                         type="monotone"
                         yAxisId="observed"
                         dataKey="reference"
-                        name="Referência"
+                        name={areaReferenceLabel}
                         stroke="var(--muted-foreground)"
                         strokeWidth={1.5}
                         strokeDasharray="5 4"
@@ -1208,7 +1246,11 @@ export function ChartWidgetBody({
                 <ResponsiveContainer>
                   <LineChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
                     <CartesianGrid vertical={false} stroke="var(--border)" />
-                    <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} interval={0} />
+                    <XAxis
+                      dataKey="name"
+                      tick={(props) => <AxisTick {...props} max={timeAxisLabels.maxChars} />}
+                      interval={timeAxisLabels.interval}
+                    />
                     <YAxis
                       tick={{ fontSize: 10 }}
                       width={52}

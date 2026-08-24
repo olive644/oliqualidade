@@ -198,6 +198,12 @@ audit inteiro.
 | Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) — ver [[CURRENT_STATE_AUDIT#73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo]] |
 | Interpretar um Value como número tolerando vírgula decimal brasileira, sem nunca virar NaN | `parseNumericValue` (`format.ts`) — usado em `fmt`, `evalFormula`, `resolveConditionalFormat`, e em todo `data-pipeline.ts`/`operational-widgets.ts`/`widget-card.tsx`/`format-rules-editor.tsx` que antes fazia `Number(valorDeCelula)` direto | `format.test.ts`, `data-pipeline.test.ts`, `operational-widgets.test.ts` |
 | Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
+| Aba formada por vários blocos com a mesma estrutura virar uma tabela com o bloco como coluna | `detectTableBlockGroup`/`buildTableBlocksGrid` (`excel-table-blocks.ts`), oferecidos como opção "Blocos unificados" por `unifiedBlocksOption` (`import.ts`); a leitura da aba inteira continua como segunda opção | `excel-table-blocks.test.ts` — ver [[CURRENT_STATE_AUDIT#121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão]] |
+| Linhas de total das Tabelas do Excel ficarem fora dos registros | `tableTotalsRegions` (`excel-table-totals.ts`) a partir de `totalsRowCount` lido em `parseTable` (`workbook-metadata.ts`); limpeza por célula na cópia de análise em `sheetToRows`, ao lado do tratamento de linhas ocultas | `excel-table-totals.test.ts` — ver [[CURRENT_STATE_AUDIT#120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma]] |
+| Corte e intervalo dos nomes de categoria no eixo X | `axisLabelPresentation` (`data-pipeline.ts`): devolve quantos caracteres cabem e de quantos em quantos rótulos desenhar; quando nem o corte mínimo cabe, o eixo pula rótulos em vez de sobrepor | `data-pipeline.test.ts` (`describe("axisLabelPresentation")`) — ver seção 119 do audit |
+| Mostrar ou esconder o valor escrito em cima das barras | `barValueLabelsFit` (`data-pipeline.ts`), por largura disponível (fatia fixa quando o gráfico rola, divisão do span quando não rola) e pelo rótulo mais comprido da série | `data-pipeline.test.ts` (`describe("barValueLabelsFit")`) — ver [[CURRENT_STATE_AUDIT#119. Acabamento de leitura dos gráficos, e um item do backlog que se provou inexistente]] |
+| Legenda das séries do gráfico de área (a única que existe nesse widget — não acrescentar outra) | `ChartSeriesLegend` (`widget-support.tsx`), alimentada por `areaLegendItems` em `chart-widget-body.tsx`, no bloco acima do gráfico; desenha o traço real de cada série, então a distinção não depende só de cor | `e2e/analytical-reading-flow.spec.ts` (falha por texto duplicado se alguém acrescentar uma segunda legenda) — ver seção 119 do audit |
+| Piso do eixo vertical de linha e área | Padrão do Recharts: `[0, "auto"]` resolvido como `Math.min(0, dataMin)` — o zero já está sempre incluído, não há eixo truncado a corrigir nem a avisar | ver seção 119 do audit |
 | Ordem das categorias no gráfico de barras (natural x por valor x alfabética) | `sortBarCategories` (`data-pipeline.ts`) decidindo com `ordinalRanks` (`ordinal-categories.ts`); modo guardado em `Widget.barSort`, padrão `auto`; mesma função usada por `assistant-context.ts` para o assistente não descrever uma ordem diferente da exibida | `ordinal-categories.test.ts` + `data-pipeline.test.ts` (`describe("sortBarCategories")`) — ver [[CURRENT_STATE_AUDIT#118. Ordem das categorias no gráfico de barras: sequência reconhecida vence ordenação por tamanho]] |
 | Que comparação o tooltip do gráfico de barras pode afirmar (variação vs. período anterior x proporção da maior categoria) | `barTooltipReading` (`lib/chart-reading.ts`), decidida pelo `ChartAxisKind` que o gráfico declara — barra é sempre `"category"`, porque as barras são reordenadas por valor e nunca garantem ordem cronológica | `chart-reading.test.ts` — ver [[CURRENT_STATE_AUDIT#117. Leitura de gráficos: eixos nomeados, média entre categorias e comparação honesta no tooltip]] |
 | Quantos registros sustentam cada barra | `count` devolvido por `groupAndAggregate` (`data-pipeline.ts`) — conta valores que entraram na conta, não linhas do balde; linha com métrica vazia não entra na soma nem na média | `data-pipeline.test.ts` (`describe("groupAndAggregate")`) |
@@ -766,6 +772,21 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   gráfico de barras, com seletor de ordem) refina a leitura entregue em
   `0.2.0`, por isso avança a iteração e não o minor. Ver
   [[CURRENT_STATE_AUDIT#118. Ordem das categorias no gráfico de barras: sequência reconhecida vence ordenação por tamanho]].
+
+- `v0.2.0-beta.3` (legenda de séries no gráfico de área, distinção por traço
+  e rótulos de valor que somem quando não cabem) fecha o backlog de leitura
+  aberto na seção 117. Ver
+  [[CURRENT_STATE_AUDIT#119. Acabamento de leitura dos gráficos, e um item do backlog que se provou inexistente]].
+
+- `v0.2.0-beta.4` (linhas de total declaradas pelas tabelas do Excel deixam de
+  entrar como registro) corrige um erro de número encontrado com planilha real
+  do usuário. Ver
+  [[CURRENT_STATE_AUDIT#120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma]].
+
+- `v0.3.0-beta.1` (leitura unificada de abas montadas em blocos, com o nome da
+  tabela do Excel virando dimensão) avança o minor por ser capacidade nova de
+  leitura. Ver
+  [[CURRENT_STATE_AUDIT#121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão]].
 
 ## Checklist antes de publicar
 

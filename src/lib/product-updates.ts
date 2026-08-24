@@ -7,10 +7,53 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.2.0-beta.2";
+export const APP_VERSION = "0.3.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-blocos-unificados",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Planilhas feitas de vários blocos viram uma tabela analisável",
+    summary:
+      "Modelos como o de orçamento pessoal são montados com várias tabelas do Excel, uma por categoria. Agora dá para lê-las como uma tabela só, com o nome do bloco virando coluna.",
+    highlights: [
+      'A importação oferece uma opção nova, "Blocos unificados", quando a aba é formada por blocos com a mesma estrutura.',
+      "O nome de cada bloco (Moradia, Transporte, Alimentação) vira uma coluna, então dá para agrupar, filtrar e comparar por bloco.",
+      "As linhas de cabeçalho e de total de cada bloco ficam de fora, sem inflar nenhuma conta.",
+      "A leitura da aba inteira continua disponível como segunda opção, para quem preferir o formato original.",
+    ],
+  },
+  {
+    id: "2026-08-24-linhas-de-total",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Linhas de total da planilha não entram mais em dobro nas contas",
+    summary:
+      "Planilhas montadas com tabelas do Excel, como os modelos de orçamento e de controle, têm uma linha de total em cada bloco. Essas linhas deixam de virar registros.",
+    highlights: [
+      "O OliQualidade lê a definição das tabelas do próprio arquivo para saber quais linhas são totais, em vez de adivinhar pelo texto.",
+      "Em um orçamento pessoal real, a soma das despesas passou de R$ 4.120 para os R$ 2.060 que a própria planilha mostra.",
+      "Em planilhas com blocos lado a lado, só as colunas do bloco que declarou o total são ignoradas, preservando os dados do bloco vizinho na mesma linha.",
+      "A revisão de importação avisa quantas linhas de total ficaram de fora e por quê.",
+    ],
+  },
+  {
+    id: "2026-08-24-acabamento-de-leitura",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Gráfico de área com legenda e valores que não se sobrepõem mais",
+    summary:
+      "O gráfico de área passou a identificar cada série sem precisar do mouse, e os valores escritos em cima das barras somem quando não cabem.",
+    highlights: [
+      "A legenda do gráfico de área passou a incluir a linha de referência, que antes só aparecia ao passar o mouse.",
+      "A referência é chamada pelo que ela é (período anterior, média móvel ou a meta escolhida), no gráfico e no detalhe ao passar o mouse.",
+      "As séries também se distinguem pelo traço, e não só pela cor, o que ajuda quem tem dificuldade para diferenciar cores.",
+      "Os valores escritos em cima das barras somem automaticamente quando não cabem, em vez de virar uma faixa de números sobrepostos.",
+      "Os nomes das categorias no eixo do gráfico deixam de se sobrepor em cartões estreitos: o gráfico mostra menos nomes, inteiros, e o nome completo continua ao passar o mouse.",
+    ],
+  },
   {
     id: "2026-08-24-ordem-das-categorias",
     version: APP_VERSION,

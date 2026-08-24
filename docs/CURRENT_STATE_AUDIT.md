@@ -6555,3 +6555,275 @@ Rótulos de dados desligando sozinhos acima de um número de barras; aviso quand
 o eixo vertical de linha e área não começa no zero; rótulo direto no fim da
 série no gráfico de área; e redundância além da cor para leitura com
 daltonismo.
+
+## 119. Acabamento de leitura dos gráficos, e um item do backlog que se provou inexistente
+
+Fecha os quatro itens restantes do backlog da seção 117. Três viraram código;
+um se provou baseado em premissa errada e está registrado aqui como tal, em
+vez de virar um aviso que nunca dispararia.
+
+### Rótulos de valor que somem quando não cabem
+
+O `LabelList` das barras ficava sempre ligado. Com muitas categorias em um
+cartão estreito os números se sobrepunham e viravam uma faixa ilegível em cima
+do gráfico, atrapalhando a leitura que deveriam facilitar.
+
+`barValueLabelsFit` (`data-pipeline.ts`) decide por largura disponível, não por
+uma contagem fixa de barras: quando o gráfico rola na horizontal cada categoria
+tem uma fatia fixa de `BAR_SLOT_PX`, independente do tamanho do cartão; sem
+rolagem, as categorias dividem a largura do span. O rótulo mais comprido da
+série decide por todos, porque basta um valor largo demais para o conjunto se
+sobrepor.
+
+As constantes de largura são estimativas conservadoras e estão documentadas
+como tal (`BAR_LABEL_CHAR_PX`, `PLOT_WIDTH_BY_SPAN`): errar para baixo esconde
+um rótulo que caberia, errar para cima recria o defeito. Medir a largura real
+exigiria `ResizeObserver` no caminho de render de todo gráfico, custo que não
+se justifica para uma decisão de mostrar/esconder.
+
+### Legenda das séries no gráfico de área
+
+Correção de rota registrada porque o erro é instrutivo: a primeira versão desta
+entrega **acrescentou** uma legenda ao gráfico de área, na premissa de que ele
+não tinha nenhuma. Tinha. Ela é um bloco inline acima do gráfico, sem a palavra
+"Legend" em lugar nenhum do código, e por isso não apareceu na busca que
+precedeu a implementação. O resultado foram duas legendas no mesmo widget,
+detectado pelo E2E `analytical-reading-flow.spec.ts`, que falhou por encontrar
+"Resultado observado" duas vezes onde esperava uma. A lição prática: buscar
+pelo texto que o usuário vê, e não só pelo nome técnico do componente.
+
+A legenda que existia tinha dois problemas reais, e são esses que esta seção
+corrige. Ela identificava as séries por um quadradinho de cor, ou seja, a
+distinção dependia inteiramente de enxergar diferença de cor. E ela listava
+três séries, deixando de fora justamente a linha de referência, que é aquela
+contra a qual todas as outras são lidas — a referência só aparecia nomeada no
+tooltip, e como o genérico "Referência".
+
+`ChartSeriesLegend` (`widget-support.tsx`) substitui aquele bloco no mesmo
+lugar: desenha o traço real de cada série, inclui a referência e a nomeia pelo
+que ela é ("Período anterior", "Média móvel", "Meta: X"), no gráfico e no
+tooltip.
+
+Continua em HTML, e não como `<Legend>` do Recharts, pela mesma razão da
+legenda de eixos da seção 117: a área de plotagem rola na horizontal, e o que é
+desenhado dentro do SVG acompanha a rolagem em vez de ficar à vista.
+
+### Distinção que não depende de cor
+
+A variação abaixo da referência ganhou traço tracejado, e a legenda desenha o
+traço real de cada série em vez de um quadrado colorido. Antes, cor era a única
+pista para separar as séries. Nenhuma cor da paleta foi alterada.
+
+### O item que não existia: aviso de eixo truncado
+
+O backlog da seção 117 previa avisar quando o eixo vertical de linha e área não
+começasse no zero. A verificação no código do Recharts instalado (2.15.4)
+mostrou que a premissa estava errada: `getDefaultDomainByAxisType`
+(`generateCategoricalChart.js`) devolve `[0, "auto"]` para eixo numérico, e
+`parseSpecifiedDomain` resolve o piso como `Math.min(0, dataMin)` quando
+`allowDataOverflow` é falso, que é o padrão. Ou seja, linha e área **já**
+incluem o zero, inclusive com dados negativos, sem nenhuma configuração nossa —
+o mesmo resultado que o gráfico de barras obtém com `domain` explícito.
+
+Não há caso em que o aviso apareceria. Construí-lo seria acrescentar um texto
+morto ao painel. Registrado aqui para que o item não volte ao backlog numa
+próxima revisão.
+
+### Nomes de categoria sobrepostos no eixo X, achado com planilha real
+
+O usuário forneceu duas planilhas reais (um planejador de lista de compras e um
+orçamento pessoal mensal, ambos modelos do Excel) para verificar o caso em que
+os rótulos de valor somem. A verificação confirmou o comportamento — e a
+captura de tela expôs, no mesmo cartão, um defeito vizinho que nenhum teste
+pegava: os **nomes das categorias** no eixo X se sobrepunham, saindo como
+"HipBagameNtúmero VídeosDV".
+
+`AxisTick` cortava em dez caracteres fixos, sem olhar o espaço. Encurtar mais
+não resolvia: medido no navegador, seis categorias em um cartão de um terço
+deixam cerca de 24px por barra, e mesmo "Hip…" ocupa 28px. Não existe corte que
+caiba e ainda identifique a categoria.
+
+`axisLabelPresentation` devolve corte **e** intervalo: quando nem o corte
+mínimo cabe, o eixo passa a pular rótulos. No caso real, o cartão estreito
+passou de seis pedaços sobrepostos para três nomes legíveis ("Hipote…", "Gás",
+"Luz"), com zero sobreposição medida por `getComputedTextLength`; o cartão
+inteiro continua mostrando os seis. O nome completo nunca se perde: o `<title>`
+do tick mostra o texto inteiro no hover.
+
+As constantes de largura foram recalibradas contra medição real no navegador, e
+não contra estimativa: os cartões medem 237px, 474px e 712px em viewport de
+1280px com a barra lateral aberta, e cada caractere do eixo ocupa entre 6 e 7px
+na fonte 11px. A primeira versão dessas constantes supunha a largura do cartão
+inteiro, sem descontar o recuo e a faixa do eixo vertical, e por isso liberava
+rótulos que não cabiam.
+
+### Versão
+
+`0.2.0-beta.2` → `0.2.0-beta.3`.
+
+## 120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma
+
+Investigação pedida pelo usuário depois que ele enviou duas planilhas reais
+(modelos do Office: um planejador de lista de compras e um orçamento pessoal
+mensal). O que começou como uma verificação de rótulo de gráfico expôs um erro
+de número.
+
+### O dano, medido
+
+Somando "Custo previsto" no orçamento pessoal importado: **R$ 4.120**. O valor
+certo é **R$ 2.060** — e não é conta nossa, é o que a própria planilha mostra na
+célula "PREVISÃO DE DESPESA TOTAL". Exatamente o dobro.
+
+A aba tem 12 blocos (Moradia, Transporte, Seguro, Alimentação, Entretenimento,
+Empréstimos, Impostos...), empilhados verticalmente **e** lado a lado. A
+importação achatava tudo em 52 linhas, e junto com os itens entravam 12 linhas
+de "Total" (uma por bloco) e 5 linhas de cabeçalho repetido.
+
+### A informação estava no arquivo o tempo todo
+
+O arquivo declara 12 Tabelas do Excel de verdade, cada uma com intervalo exato e
+marcação de linha de totais:
+
+```
+Moradia         B10:E21   totalsRowCount=1
+Entretenimento  G10:J20   totalsRowCount=1
+Transporte      B23:E31   totalsRowCount=1
+...mais nove
+```
+
+`parseTable` (`workbook-metadata.ts`) já lia essas definições — nome, intervalo
+e colunas — mas o resultado servia só de inventário para o painel de
+diagnóstico e para o cálculo de confiança. O atributo `totalsRowCount` nem
+chegava a ser lido. Agora é, junto de `headerRowCount`, com o cuidado de que
+**ausente não é zero**: o Excel omite `headerRowCount` quando é 1 e
+`totalsRowCount` quando é 0.
+
+Um sintoma confirmava o diagnóstico antes mesmo da correção: as 36 fórmulas que
+a importação marcava como "não recalculada" eram todas
+`SUBTOTAL(109, Moradia[Custo previsto])` e equivalentes — precisamente as
+linhas de totais dessas tabelas.
+
+### Por que a limpeza é por célula, e não por linha
+
+A primeira versão descartava a linha inteira e chegou a R$ 2.310, não a
+R$ 2.060. O motivo é que os blocos ficam lado a lado: a linha de totais de
+"Moradia" (linha 21) é uma linha comum de outro bloco nas colunas à direita.
+Descartar a linha inteira ora perdia dado real do vizinho, ora era recusada por
+uma trava de segurança e deixava o total passar.
+
+`tableTotalsRegions` (`src/lib/excel-table-totals.ts`) devolve **região de
+células**: linha mais o intervalo de colunas da tabela que declarou aquele
+total. A limpeza acontece na cópia de análise (`aoa`), do mesmo jeito e no mesmo
+lugar em que linhas ocultas já eram tratadas — a grade de origem permanece
+intacta para auditoria e para a seleção manual.
+
+Com isso, as duas somas do arquivo real batem com as células de total da própria
+planilha: previsto R$ 2.060 e real R$ 2.040.
+
+### Detalhe que só um teste pegou
+
+`XLSX.utils.decode_range` aceita uma string inválida sem reclamar e devolve a
+célula A1. Sem validar a forma do intervalo antes de decodificar, uma tabela com
+`ref` corrompido apagaria a primeira linha de dados da planilha. A função valida
+o formato antes, e o teste que cobre esse caso existe por isso.
+
+### Alcance
+
+A outra planilha do usuário (lista de compras) tem quatro tabelas, todas com
+`totalsRowCount=0`: importa exatamente como antes, 16 itens, sem aviso novo. A
+correção só age onde o arquivo declara totais.
+
+### Versão
+
+`0.2.0-beta.3` → `0.2.0-beta.4`.
+
+### Backlog imediato
+
+Usar os intervalos das tabelas também para **dividir as regiões** da aba e
+transformar o nome de cada tabela em dimensão. Hoje a coluna de itens do
+orçamento se chama "MORADIA", que é o cabeçalho do primeiro bloco, embora
+contenha itens dos doze — e não há como agrupar por bloco. É mudança
+estrutural em `import.ts`, com PR própria.
+
+## 121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão
+
+Segunda parte da investigação da seção 120, e a que muda o que dá para
+perguntar aos dados. A seção 120 corrigiu o número (linhas de total fora dos
+registros); esta corrige a estrutura.
+
+### O que estava perdido
+
+O orçamento pessoal do usuário tem 12 Tabelas do Excel com a mesma assinatura
+de colunas, diferindo só no nome da primeira, que é o rótulo do próprio bloco:
+
+```
+Moradia         [MORADIA,        Custo previsto, Custo Real, Diferença]
+Entretenimento  [ENTRETENIMENTO, Custo previsto, Custo Real, Diferença]
+Transporte      [TRANSPORTE,     Custo previsto, Custo Real, Diferença]
+```
+
+Achatada, a aba virava uma tabela cuja coluna de itens se chamava "MORADIA"
+embora contivesse itens dos doze blocos, com as colunas do bloco vizinho
+repetidas ao lado (`Custo previsto_2`). A pergunta mais natural sobre um
+orçamento — quanto foi gasto por bloco — não tinha como ser feita, porque o
+bloco não existia como dado.
+
+### Como funciona
+
+`detectTableBlockGroup` (`src/lib/excel-table-blocks.ts`) agrupa as tabelas por
+assinatura de colunas e `buildTableBlocksGrid` remonta uma grade única:
+
+```
+Bloco    | Item                 | Custo previsto | Custo Real | Diferença
+Moradia  | Hipoteca ou aluguel  | 1500           | 1400       | 100
+Moradia  | Número do telefone   | 60             | 100        | -40
+...
+```
+
+Resultado com o arquivo real: 65 linhas, 12 blocos, soma por bloco somando
+R$ 2.060 — o mesmo total da célula da planilha.
+
+Decisões que valem registro:
+
+- **O rótulo da coluna de item é genérico ("Item") quando cada bloco nomeia a
+  primeira coluna por si.** "MORADIA" seria um nome errado para uma coluna com
+  itens de doze blocos. Quando todos os blocos usam o mesmo nome, esse nome é
+  mantido.
+- **Células são copiadas, não recriadas**, preservando tipo, formato e fórmula;
+  o mapa de endereços alimenta `sliceAdvancedMetadata` para que comentário,
+  hyperlink e cor de preenchimento acompanhem a linha na nova posição — mesma
+  mecânica que a separação por região já usava.
+- **Sem remapeador de intervalo.** Um intervalo do arquivo original (validação
+  de dados, autofiltro) não tem equivalente numa grade remontada a partir de
+  blocos espalhados pela planilha, e inventar um seria pior do que perdê-lo.
+- **Sublinhado no nome do bloco vira espaço** ("Animais_de_estimação" →
+  "Animais de estimação"), porque nome de tabela do Excel não aceita espaço e o
+  sublinhado é só a limitação do formato. Maiúsculas coladas
+  ("CuidadosPessoais") ficam como estão: separar por conta própria erraria em
+  siglas, e inventar tipografia no nome que o usuário deu ao bloco é pior do
+  que exibi-lo como foi salvo.
+
+### Por que é uma opção, e não a única leitura
+
+A aba inteira continua disponível como segunda opção no seletor de importação.
+A unificação descarta o que não couber na assinatura comum, e essa escolha é do
+usuário. A opção unificada vem primeiro porque `preferredSheetIndex` seleciona
+a primeira com linhas.
+
+### Trava contra falso positivo
+
+Unificar blocos que não são equivalentes misturaria grandezas diferentes na
+mesma coluna, então a detecção exige: pelo menos dois blocos, pelo menos três
+colunas, assinatura idêntica depois da primeira coluna, e que o grupo cubra ao
+menos 60% das tabelas da aba. Duas tabelas iguais entre dez diferentes são
+coincidência, não um formato de blocos.
+
+### Estrutura
+
+O corpo de `sheetsWithData` virou `sheetOptionsForName`, sem mudança de
+comportamento, para que a opção unificada possa ser acrescentada antes das
+opções existentes sem duplicar o encadeamento de retornos.
+
+### Versão
+
+`0.2.0-beta.4` → `0.3.0-beta.1`: capacidade nova de leitura, não correção.
