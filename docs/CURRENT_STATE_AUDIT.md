@@ -7237,3 +7237,63 @@ ele rola dentro da própria caixa em vez de empurrar o diálogo.
 ### Versão
 
 `0.6.0-beta.2` → `0.7.0-beta.1`: capacidade nova.
+
+## 130. Modelos por finalidade: vendas, financeiro, qualidade e estudos
+
+Item do inventário. O painel automático é bom em reconhecer o que cada coluna
+é, e cego para o que a planilha serve.
+
+### O problema
+
+Uma base de vendas e uma base de controle de qualidade podem ter a mesma forma
+— uma data, uma categoria e um número — e pedirem leituras opostas. A de vendas
+quer ranking e participação no total; a de qualidade quer dispersão, valores
+fora da curva e comparação com o limite. A classificação por papel de coluna
+não tem como distinguir as duas, porque a diferença não está nos dados: está no
+uso.
+
+### O que o modelo faz, e o que ele não faz
+
+Ele **reordena** o que a análise automática já recomendou, pondo na frente o
+que aquela finalidade lê primeiro. Não inventa widget, não muda cálculo e não
+descarta nada: o que não está na lista de prioridade da finalidade vai para o
+fim das visualizações, na ordem em que a análise já o tinha colocado.
+
+A consequência prática dessa escolha é que um modelo aplicado a uma planilha
+que não combina com ele degrada para o painel automático de sempre, em vez de
+produzir bobagem.
+
+### Erro de desenho corrigido na verificação
+
+A primeira versão ordenava a lista inteira de recomendações. No navegador, o
+efeito foi imediato e errado: os indicadores do topo foram parar no fim do
+painel, porque `metric` não está na lista de prioridade de nenhuma finalidade.
+
+A finalidade tem o direito de escolher qual gráfico vem antes; não o de
+desmontar a página. `applyTemplateOrder` passou a permutar **apenas** as
+recomendações de visualização, entre as posições que elas já ocupavam. KPIs no
+topo e tabela no fim são estrutura de painel, não preferência de finalidade.
+
+### Detecção
+
+`detectTemplate` sugere a finalidade pelo vocabulário dos nomes de coluna, e é
+deliberadamente tímida: exige pelo menos duas colunas casando e recusa em caso
+de empate. Propor um modelo por uma única coincidência ou por desempate
+arbitrário seria pedir que o usuário confie num sorteio.
+
+A sugestão aparece marcada no seletor; a escolha continua sendo dele, e "sem
+finalidade declarada" é o padrão.
+
+### Verificação
+
+Na planilha de demonstração (Resultado, Meta, Amostras, Conformidade), a
+sugestão foi "Qualidade". A ordem das visualizações muda de fato conforme a
+escolha, com os indicadores intactos no topo nos dois casos:
+
+- **Qualidade**: evolução temporal, depois as comparações por categoria.
+- **Estudos**: comparações por categoria e radar primeiro, evolução temporal
+  por último.
+
+### Versão
+
+`0.7.0-beta.1` → `0.8.0-beta.1`.
