@@ -1616,20 +1616,27 @@ function Dashboard(p: {
     setFocusedCell,
   });
   const openQuestionWidget = (widgetId: string) => {
-    setTimeout(() => {
-      const wrapper = document.querySelector<HTMLElement>(
-        `[data-assistant-widget-id="${widgetId}"]`,
-      );
-      const target = (wrapper?.firstElementChild as HTMLElement | null) ?? wrapper;
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
-      target?.animate(
-        [
-          { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
-          { boxShadow: "0 0 0 5px color-mix(in oklab, var(--primary) 35%, transparent)" },
-          { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
-        ],
-        { duration: 1200, easing: "ease-out" },
-      );
+    // setTimeout(fn) sem delay só garante rodar depois da macrotask atual,
+    // não depois do React de fato commitar e pintar o novo widget no DOM —
+    // sob render concorrente/adiado, o querySelector podia rodar cedo
+    // demais e não achar nada. Duplo requestAnimationFrame é o jeito
+    // padrão de esperar a pintura do frame seguinte ao commit.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const wrapper = document.querySelector<HTMLElement>(
+          `[data-assistant-widget-id="${widgetId}"]`,
+        );
+        const target = (wrapper?.firstElementChild as HTMLElement | null) ?? wrapper;
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        target?.animate(
+          [
+            { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
+            { boxShadow: "0 0 0 5px color-mix(in oklab, var(--primary) 35%, transparent)" },
+            { boxShadow: "0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent)" },
+          ],
+          { duration: 1200, easing: "ease-out" },
+        );
+      });
     });
   };
   const createQuestionWidget = (question: AnalyticalQuestion) => {

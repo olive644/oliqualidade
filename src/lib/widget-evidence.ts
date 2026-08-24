@@ -4,6 +4,7 @@ import {
   semanticAggregationOps,
   type AggregationOp,
 } from "@/lib/data-pipeline";
+import { decodeCellAddress, encodeCellAddress } from "@/lib/cell-address";
 import { sourceRowIndexOf } from "@/lib/data-review";
 import { parseNumericValue } from "@/lib/format";
 import type { SourceCellProvenance } from "@/lib/cell-provenance";
@@ -40,25 +41,6 @@ const ANALYTICAL_WIDGETS = new Set<WidgetType>([
   "matrix-heatmap",
 ]);
 
-function coordinates(address: string) {
-  const match = address.replaceAll("$", "").match(/^([A-Z]+)(\d+)$/i);
-  if (!match) return null;
-  let column = 0;
-  for (const letter of match[1]!.toUpperCase()) column = column * 26 + letter.charCodeAt(0) - 64;
-  return { column, row: Number(match[2]) };
-}
-
-function columnLabel(index: number) {
-  let current = index;
-  let label = "";
-  while (current > 0) {
-    current -= 1;
-    label = String.fromCharCode(65 + (current % 26)) + label;
-    current = Math.floor(current / 26);
-  }
-  return label;
-}
-
 function sourceRange(
   provenance: SourceCellProvenance[],
   columnKeys: string[],
@@ -72,15 +54,21 @@ function sourceRange(
     (cell) => keys.has(cell.columnKey) && (!visibleRows.size || visibleRows.has(cell.rowIndex)),
   );
   const positions = cells
-    .map((cell) => coordinates(cell.sourceAddress))
-    .filter((cell): cell is NonNullable<ReturnType<typeof coordinates>> => cell !== null);
+    .map((cell) => {
+      try {
+        return decodeCellAddress(cell.sourceAddress);
+      } catch {
+        return null;
+      }
+    })
+    .filter((cell): cell is NonNullable<typeof cell> => cell !== null);
   if (!positions.length) return null;
   const minColumn = Math.min(...positions.map((cell) => cell.column));
   const maxColumn = Math.max(...positions.map((cell) => cell.column));
   const minRow = Math.min(...positions.map((cell) => cell.row));
   const maxRow = Math.max(...positions.map((cell) => cell.row));
-  const start = `${columnLabel(minColumn)}${minRow}`;
-  const end = `${columnLabel(maxColumn)}${maxRow}`;
+  const start = encodeCellAddress(minRow, minColumn);
+  const end = encodeCellAddress(maxRow, maxColumn);
   return start === end ? start : `${start}:${end}`;
 }
 
