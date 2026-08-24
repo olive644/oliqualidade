@@ -209,6 +209,7 @@ export function WidgetHead({
         <div className="flex min-w-0 items-center gap-2 px-1">
           <GripVertical
             data-export-controls
+            data-edit-only
             className={cn(
               "size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-muted-foreground",
               draggable && "cursor-grab",
@@ -224,6 +225,7 @@ export function WidgetHead({
           <div
             className="flex shrink-0 items-center gap-0.5 pointer-coarse:gap-1"
             data-export-controls
+            data-edit-only
           >
             <Button
               variant="ghost"

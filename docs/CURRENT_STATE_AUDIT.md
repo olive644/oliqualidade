@@ -6981,3 +6981,55 @@ widgets atualizados`.
 ### Versão
 
 `0.4.0-beta.1` → `0.4.0-beta.2`.
+
+## 125. Modo leitura separado do modo edição
+
+Item do inventário de "parcialmente implementado": o modo apresentação cobria
+parte da necessidade, mas não havia separação formal entre ler e editar, e os
+controles de edição continuavam presentes na experiência normal.
+
+### O que existia
+
+O modo apresentação é um overlay de tela cheia que alterna marcadores
+sozinho — serve para exibir o painel a uma sala, não para trabalhar nele.
+Entre ele e a tela de montagem não havia nada: quem só queria ler convivia com
+alça de arrastar, botão de remover, barra de configuração e as ações de
+montagem na barra superior.
+
+### Como funciona
+
+`lib/view-mode.ts` define os dois modos e o valor salvo. Os controles de
+montagem ganharam o atributo `data-edit-only`, e uma regra de CSS
+(`.oliam-reading-mode [data-edit-only]`) os esconde.
+
+Três decisões que valem registro:
+
+- **Atributo novo, e não reaproveitar `data-export-controls`.** A tentação era
+  usar o marcador que já existe para esconder controles na exportação, mas os
+  dois conjuntos não coincidem: as setas de rolagem do gráfico são marcadas
+  para exportação e são navegação, não edição — escondê-las na leitura
+  quebraria justamente a leitura. O botão "Ver cálculo" é o caso inverso:
+  escondido na exportação (onde o bloco técnico é forçado aberto) e necessário
+  na leitura.
+- **A marca vai na raiz do documento.** Marcar o contêiner do painel não
+  alcançaria a barra superior, que fica acima dele, nem os menus suspensos, que
+  são renderizados em portal fora da árvore do painel.
+- **O modo é lido do armazenamento em `useEffect`, não durante a
+  renderização.** Ler `localStorage` no corpo do componente quebraria a
+  hidratação do SSR — o mesmo erro já corrigido na seção 97.
+
+### O que continua visível na leitura
+
+Filtrar, qualidade dos dados, dados ausentes, marcadores, apresentação e
+exportar. São ações de quem analisa. Somem: acrescentar widget, colar, colunas,
+formatação, combinar planilha, e toda a moldura de edição dentro dos widgets.
+
+### Verificação
+
+No painel de demonstração, alternar para leitura leva os elementos de edição
+visíveis de 29 para 0, sem mudar a contagem de gráficos (9) nem de blocos de
+evidência (11). A escolha sobrevive ao recarregar a página.
+
+### Versão
+
+`0.4.0-beta.2` → `0.5.0-beta.1`: modo novo no produto.

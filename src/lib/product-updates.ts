@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.4.0-beta.2";
+export const APP_VERSION = "0.5.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-modo-leitura",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Modo leitura: o painel sem as ferramentas de montagem",
+    summary:
+      "Um botão novo na barra alterna entre ler e editar. No modo leitura, o painel fica só com a análise.",
+    highlights: [
+      "As alças de arrastar, os botões de remover e copiar widget e a barra de configuração somem da tela.",
+      "Acrescentar widget, colar, colunas, formatação e combinar planilha saem da barra superior.",
+      "Filtrar, qualidade dos dados, marcadores, apresentação e exportar continuam disponíveis: são leitura, não montagem.",
+      "O modo escolhido fica salvo neste navegador e continua valendo ao voltar.",
+    ],
+  },
   {
     id: "2026-08-24-filtro-alcance",
     version: APP_VERSION,
