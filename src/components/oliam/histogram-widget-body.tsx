@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type FilterRule, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
-import { conditionalColor, parseNumericValue } from "@/lib/format";
+import { parseNumericValue } from "@/lib/format";
 import {
   barChartPresentation,
   histogramBins,
@@ -297,13 +297,12 @@ export function HistogramWidgetBody({
                         <Cell
                           key={i}
                           className="oliam-chart-bar-cell"
-                          fill={
-                            conditionalColor(
-                              entry.total,
-                              valueCol!.kind,
-                              valueCol!.conditionalFormat,
-                            ) ?? `url(#bar-grad-${w.id})`
-                          }
+                          // Sem conditionalColor aqui: `entry.total` é a
+                          // contagem de linhas da faixa, não um valor de
+                          // valueCol — testar contra a regra de formatação
+                          // condicional da coluna compararia grandezas
+                          // diferentes (contagem x valor real).
+                          fill={`url(#bar-grad-${w.id})`}
                           opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
                           stroke={displayedIndex === i ? "var(--primary)" : "none"}
                           strokeWidth={displayedIndex === i ? 1 : 0}

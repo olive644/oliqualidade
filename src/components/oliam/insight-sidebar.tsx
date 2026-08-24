@@ -36,6 +36,17 @@ export function InsightSidebar(p: {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [investigating, setInvestigating] = useState<AnalyticalQuestion | null>(null);
 
+  // O botão "Investigar" abria sempre com a métrica global (p.primary),
+  // ignorando de qual pergunta o clique veio — clicar em "Duas variáveis têm
+  // relação?" ou em "Como mudou no tempo?" investigava a métrica errada.
+  // Resolve pelo metricKey da própria pergunta (mesmo padrão já usado em
+  // questionEvidence, linhas 89-90), caindo na métrica global só quando a
+  // pergunta não aponta pra nenhuma. A dimensão continua sendo a categoria
+  // padrão (cat): a barra lateral só recebe uma dimensão candidata, não a
+  // lista completa de colunas categóricas para resolver por groupKey.
+  const investigationMetricFor = (question: AnalyticalQuestion): Column | undefined =>
+    p.nums.find((column) => column.key === question.metricKey) ?? p.primary;
+
   const openInvestigationNextStep = (type: "pareto" | "bar") => {
     const id = type === "pareto" ? "root-causes" : "who-is-bigger";
     const nextQuestion = p.questionCoverage?.questions.find((question) => question.id === id);
@@ -201,7 +212,7 @@ export function InsightSidebar(p: {
                           >
                             Ver gráfico
                           </button>
-                          {p.primary && p.cat && (
+                          {investigationMetricFor(question) && p.cat && (
                             <button
                               type="button"
                               className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary underline-offset-2 hover:underline"
@@ -233,18 +244,23 @@ export function InsightSidebar(p: {
           </ol>
         </div>
       )}
-      {investigating && p.primary && p.cat && (
-        <InvestigationPanel
-          rows={p.data}
-          metric={p.primary}
-          dimension={p.cat}
-          date={p.dateCol}
-          operation={p.metricOperations.get(p.primary.key) ?? "sum"}
-          question={investigating.label}
-          onClose={() => setInvestigating(null)}
-          onNextStep={openInvestigationNextStep}
-        />
-      )}
+      {investigating &&
+        (() => {
+          const metric = investigationMetricFor(investigating);
+          if (!metric || !p.cat) return null;
+          return (
+            <InvestigationPanel
+              rows={p.data}
+              metric={metric}
+              dimension={p.cat}
+              date={p.dateCol}
+              operation={p.metricOperations.get(metric.key) ?? "sum"}
+              question={investigating.label}
+              onClose={() => setInvestigating(null)}
+              onNextStep={openInvestigationNextStep}
+            />
+          );
+        })()}
       {p.autoDashboard && (
         <div className="border-b border-border p-4">
           <div className="flex items-center justify-between gap-3">

@@ -240,7 +240,12 @@ function widgetCoversQuestion(
     case "distribution":
       return widget.valueKey === metric;
     case "anomalies":
-      if (widget.type === "exception-panel") return true;
+      // control-chart, como exception-panel, escolhe suas próprias colunas
+      // pelo vocabulário operacional da planilha (ver createWidget em
+      // widgets.ts) e nunca preenche valueKey/metricKey — exigir esses
+      // campos aqui faria a cobertura nunca reconhecer um control-chart já
+      // existente no painel.
+      if (widget.type === "exception-panel" || widget.type === "control-chart") return true;
       return (
         (widget.valueKey === metric || widget.metricKey === metric) &&
         (widget.type !== "box-plot" || widget.groupKey === dimension)

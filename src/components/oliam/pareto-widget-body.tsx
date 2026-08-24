@@ -308,12 +308,19 @@ export function ParetoWidgetBody({
                         <Cell
                           key={i}
                           className="oliam-chart-bar-cell"
+                          // Só compara com a regra de formatação condicional
+                          // quando `entry.total` de fato está na unidade de
+                          // valueCol (soma/média/mín/máx). Em op "count",
+                          // `entry.total` é uma contagem de linhas — outra
+                          // grandeza — e não deve ser testada contra a regra.
                           fill={
-                            conditionalColor(
-                              entry.total,
-                              valueCol.kind,
-                              valueCol.conditionalFormat,
-                            ) ?? `url(#bar-grad-${w.id})`
+                            (op !== "count"
+                              ? conditionalColor(
+                                  entry.total,
+                                  valueCol.kind,
+                                  valueCol.conditionalFormat,
+                                )
+                              : null) ?? `url(#bar-grad-${w.id})`
                           }
                           opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
                           stroke={displayedIndex === i ? "var(--primary)" : "none"}

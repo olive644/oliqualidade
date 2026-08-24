@@ -1,5 +1,5 @@
 import { aggregate, type AggregationOp } from "@/lib/data-pipeline";
-import { parseNumericValue } from "@/lib/format";
+import { parseDateValue, parseNumericValue } from "@/lib/format";
 import type { Column, Row } from "@/lib/types";
 
 export type InvestigationCause = {
@@ -32,9 +32,13 @@ function metricValue(rows: Row[], metricKey: string, operation: AggregationOp): 
   );
 }
 
+// Datas da planilha chegam como texto "dd/mm/aaaa" (ver formatDateCell em
+// import.ts) — Date.parse lê isso como mm/dd e erra o mês, ou retorna NaN
+// pra dia > 12. parseDateValue é o mesmo parser que sortChronologically já
+// usa em todo o resto do app pra essas strings.
 function periodOrder(value: string): number | string {
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? value : timestamp;
+  const timestamp = parseDateValue(value);
+  return timestamp === null ? value : timestamp;
 }
 
 export function buildInvestigation(input: {

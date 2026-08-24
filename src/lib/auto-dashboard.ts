@@ -134,7 +134,9 @@ function limitAutomaticVisualizations(
   if (visualizations.length <= MAX_AUTOMATIC_VISUALIZATIONS) return recommendations;
 
   const ordered = [...visualizations].sort((a, b) => {
-    const primaryDelta = Number(b.item.primary) - Number(a.item.primary);
+    // `primary` é opcional — a maioria das recomendações não define. `Number(undefined)`
+    // é NaN, que quebraria o contrato do comparador; Boolean(...) normaliza pra 0/1 antes.
+    const primaryDelta = Number(Boolean(b.item.primary)) - Number(Boolean(a.item.primary));
     if (primaryDelta !== 0) return primaryDelta;
     const priorityDelta =
       (VISUALIZATION_PRIORITY[b.item.widgetType] ?? 50) -
