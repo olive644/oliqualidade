@@ -36,6 +36,7 @@ import {
   type Widget,
 } from "@/lib/types";
 import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
+import { isReferenceMetric } from "@/lib/reference-metrics";
 import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/format";
 import {
   aggregationLabels,
@@ -320,7 +321,12 @@ export function ChartWidgetBody({
   // "Referência" que aparecia só no tooltip.
   const areaReferenceLabel =
     areaReference === "goal"
-      ? `Meta: ${areaGoalCol?.label ?? ""}`
+      ? // A coluna quase sempre já se chama "Meta": prefixar produziria
+        // "Meta: Meta". O prefixo só entra quando o nome da coluna sozinho
+        // não diria que aquilo é a referência.
+        isReferenceMetric(areaGoalCol?.label, areaGoalCol?.key)
+        ? (areaGoalCol?.label ?? "Meta")
+        : `Meta: ${areaGoalCol?.label ?? ""}`
       : areaReference === "moving-average"
         ? "Média móvel"
         : "Período anterior";
@@ -442,6 +448,7 @@ export function ChartWidgetBody({
 
   return (
     <article
+      data-widget-id={w.id}
       className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
       style={{ animationDelay: `${animationDelay}ms` }}
     >

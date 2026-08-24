@@ -181,6 +181,53 @@ describe("generateAutoDashboardPlan", () => {
     ).toBe(true);
   });
 
+  describe("coluna de meta", () => {
+    // Bug real relatado pelo usuário: num painel novo, o gráfico de área
+    // aparecia "sem dados". A planilha tinha "Meta" constante em 95, e o
+    // painel automático escolhia a própria meta como métrica principal — o
+    // gráfico existia, mas era uma linha reta comparada com ela mesma.
+    const comMeta = [...columns, column("meta", "number")];
+    const linhasComMeta = rows.map((row) => ({ ...row, meta: 95 }));
+    const diagnosticoComMeta = diagnostics([
+      diagnostic("data_venda", "date"),
+      diagnostic("faturamento", "currency"),
+      diagnostic("custo", "currency"),
+      diagnostic("meta", "number"),
+      diagnostic("produto", "category", { unique: 3 }),
+      diagnostic("cidade", "category", { unique: 2 }),
+      diagnostic("id_pedido", "id"),
+    ]);
+
+    it("não usa a meta como métrica principal do gráfico temporal", () => {
+      const plan = generateAutoDashboardPlan({
+        columns: comMeta,
+        rows: linhasComMeta,
+        diagnostics: diagnosticoComMeta,
+      });
+      const area = plan.recommendations.find((item) => item.widgetType === "area");
+      expect(area?.valueKey).not.toBe("meta");
+    });
+
+    it("usa a meta como referência do gráfico de área", () => {
+      const plan = generateAutoDashboardPlan({
+        columns: comMeta,
+        rows: linhasComMeta,
+        diagnostics: diagnosticoComMeta,
+      });
+      const widgets = buildRecommendedWidgets(plan, comMeta, linhasComMeta);
+      const area = widgets.find((w) => w.type === "area");
+      expect(area?.areaGoalKey).toBe("meta");
+      expect(area?.areaReference).toBe("goal");
+    });
+
+    it("sem meta, o gráfico de área segue comparando com o período anterior", () => {
+      const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
+      const widgets = buildRecommendedWidgets(plan, columns, rows);
+      const area = widgets.find((w) => w.type === "area");
+      expect(area?.areaGoalKey).toBeUndefined();
+    });
+  });
+
   it("marca a série temporal como gráfico principal (largura cheia) quando há coluna de data", () => {
     const plan = generateAutoDashboardPlan({ columns, rows, diagnostics: importDiagnostics });
     const areaRecommendation = plan.recommendations.find((item) => item.widgetType === "area");

@@ -192,6 +192,7 @@ import { DashboardNavSidebar } from "@/components/oliam/dashboard-nav-sidebar";
 import { InsightSidebar } from "@/components/oliam/insight-sidebar";
 import { MobileNavBar } from "@/components/oliam/mobile-nav-bar";
 import { CommandPalette } from "@/components/oliam/command-palette";
+import { buildGlobalSearchEntries, type GlobalSearchEntry } from "@/lib/global-search";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
 // código uma tabela com aparência de dado empresarial real e ainda exercita
@@ -1287,6 +1288,49 @@ function Dashboard(p: {
   // celular, por isso é estado, e não o controle interno do próprio menu.
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  // Índice da busca global. Recalcula quando o painel muda de forma, não a
+  // cada tecla digitada: quem filtra o texto é a própria paleta.
+  const searchEntries = useMemo(
+    () =>
+      buildGlobalSearchEntries({
+        columns: sheet.columns,
+        widgets: sheet.widgets ?? [],
+        sheetNames: d.sheets.map((item) => item.name),
+        dashboards: p.dashboards.map((item) => ({ id: item.id, name: item.name })),
+        widgetTypeLabels,
+      }),
+    [sheet.columns, sheet.widgets, d.sheets, p.dashboards],
+  );
+  const handleSearchEntry = (entry: GlobalSearchEntry) => {
+    setCommand(false);
+    const [, alvo = ""] = entry.id.split(":");
+    if (entry.kind === "column") {
+      // Só acrescenta o filtro se ainda não houver um para a coluna; repetir
+      // criaria duas linhas de filtro concorrentes para o mesmo campo.
+      if (!sheet.filters.some((filter) => filter.key === alvo))
+        setFilters([...sheet.filters, { key: alvo, value: "", min: "", max: "" }]);
+      return;
+    }
+    if (entry.kind === "metric") {
+      addWidget("metric", { metricKey: alvo });
+      return;
+    }
+    if (entry.kind === "widget") {
+      // O widget pode estar fora da área visível; rolar até ele é o que
+      // transforma "encontrei" em "estou vendo".
+      requestAnimationFrame(() => {
+        document
+          .querySelector(`[data-widget-id="${alvo}"]`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+      return;
+    }
+    if (entry.kind === "sheet") {
+      switchSheet(Number(alvo));
+      return;
+    }
+    if (entry.kind === "dashboard") p.openDash(alvo);
+  };
   // Modo de uso do painel. Nasce em "editing" no servidor e na primeira
   // renderização, e só então lê o que estava salvo — ler localStorage durante
   // a renderização quebraria a hidratação, o mesmo erro já corrigido na tela
@@ -2512,6 +2556,8 @@ function Dashboard(p: {
         </div>
       )}
       <CommandPalette
+        searchEntries={searchEntries}
+        onSelectSearchEntry={handleSearchEntry}
         open={command}
         onOpenChange={setCommand}
         undo={undo}

@@ -1,4 +1,5 @@
 import type { ColumnDiagnostic, ImportDiagnostics } from "@/lib/import-intelligence";
+import { isReferenceMetric } from "@/lib/reference-metrics";
 import type { ChartAggregationOp, Column, Row, Widget, WidgetType } from "@/lib/types";
 import {
   boxPlotChartValidity,
@@ -49,6 +50,8 @@ export type DashboardRecommendation = {
   blockKey?: string;
   blockValue?: string;
   columnKey?: string;
+  /** Coluna de referência (meta/alvo) contra a qual o gráfico de área compara o resultado. */
+  goalKey?: string;
   /** "Gráfico principal" da estrutura de painel: a primeira visualização recomendada, que deve ocupar a largura cheia em vez do span padrão do tipo. */
   primary?: boolean;
 };
@@ -334,7 +337,18 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   // ao que analytical-narrative.ts usa pra decidir cobertura de pergunta —
   // ordens diferentes faziam um widget recém-criado nunca bater com a
   // pergunta que o gerou.
-  const metrics = [...byRole("metric")].sort((a, b) => b.confidence - a.confidence);
+  // Colunas de referência (meta, alvo, limite, target) são numéricas e o
+  // vocabulário de métrica as reconhece, mas elas dizem onde o resultado
+  // deveria chegar, não o que aconteceu. Como `metrics[0]` vira a métrica
+  // principal do painel, deixá-las competir por esse posto produzia o gráfico
+  // temporal da própria meta: uma linha reta comparada com ela mesma. Elas
+  // continuam disponíveis como métrica — só perdem a disputa pelo primeiro
+  // lugar para qualquer resultado de verdade.
+  const metrics = [...byRole("metric")].sort((a, b) => {
+    const referenceGap =
+      Number(isReferenceMetric(a.label, a.key)) - Number(isReferenceMetric(b.label, b.key));
+    return referenceGap !== 0 ? referenceGap : b.confidence - a.confidence;
+  });
   const dimensions = [...byRole("dimension")].sort((a, b) => b.confidence - a.confidence);
   const temporal = byRole("temporal-dimension");
   const identifiers = byRole("identifier");
@@ -539,6 +553,12 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
 
   const primaryMetric = metrics[0];
   const primaryTime = temporal[0];
+  // Existindo uma coluna de referência, o gráfico temporal deixa de comparar o
+  // resultado com o período anterior e passa a compará-lo com a meta, que é a
+  // leitura que essa planilha pede.
+  const referenceMetric = metrics.find(
+    (metric) => metric.key !== primaryMetric?.key && isReferenceMetric(metric.label, metric.key),
+  );
   if (primaryMetric && primaryTime) {
     recommendations.push(
       recommendation(input, {
@@ -549,6 +569,7 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
         groupKey: primaryTime.key,
         valueKey: primaryMetric.key,
         op: "sum",
+        ...(referenceMetric ? { goalKey: referenceMetric.key } : {}),
         columns: [primaryTime.key, primaryMetric.key],
         baseConfidence: 96,
         reasons: [
@@ -983,6 +1004,10 @@ export function recommendationToWidget(
     widget.sectionKey = "";
   }
   if (item.columnKey) widget.columnKey = item.columnKey;
+  if (item.goalKey) {
+    widget.areaGoalKey = item.goalKey;
+    widget.areaReference = "goal";
+  }
   return widget;
 }
 

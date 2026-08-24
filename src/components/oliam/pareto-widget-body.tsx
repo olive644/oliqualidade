@@ -141,6 +141,7 @@ export function ParetoWidgetBody({
 
   return (
     <article
+      data-widget-id={w.id}
       className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
       style={{ animationDelay: `${animationDelay}ms` }}
     >
