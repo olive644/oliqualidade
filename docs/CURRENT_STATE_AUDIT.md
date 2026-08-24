@@ -6583,20 +6583,30 @@ se justifica para uma decisão de mostrar/esconder.
 
 ### Legenda das séries no gráfico de área
 
-O gráfico de área desenha quatro coisas (resultado observado, referência,
-variação acima e variação abaixo) e não tinha legenda nenhuma: identificar cada
-faixa exigia passar o mouse e ler o tooltip, uma por vez — impossível no painel
-exportado, onde não há mouse.
+Correção de rota registrada porque o erro é instrutivo: a primeira versão desta
+entrega **acrescentou** uma legenda ao gráfico de área, na premissa de que ele
+não tinha nenhuma. Tinha. Ela é um bloco inline acima do gráfico, sem a palavra
+"Legend" em lugar nenhum do código, e por isso não apareceu na busca que
+precedeu a implementação. O resultado foram duas legendas no mesmo widget,
+detectado pelo E2E `analytical-reading-flow.spec.ts`, que falhou por encontrar
+"Resultado observado" duas vezes onde esperava uma. A lição prática: buscar
+pelo texto que o usuário vê, e não só pelo nome técnico do componente.
 
-`ChartSeriesLegend` (`widget-support.tsx`) mostra cada série com o traço real
-dela, em HTML abaixo do gráfico. Mesma razão da legenda de eixos da seção 117:
-a área de plotagem rola na horizontal, então rótulo colado no fim da série
-ficaria fora da vista até alguém rolar até lá.
+A legenda que existia tinha dois problemas reais, e são esses que esta seção
+corrige. Ela identificava as séries por um quadradinho de cor, ou seja, a
+distinção dependia inteiramente de enxergar diferença de cor. E ela listava
+três séries, deixando de fora justamente a linha de referência, que é aquela
+contra a qual todas as outras são lidas — a referência só aparecia nomeada no
+tooltip, e como o genérico "Referência".
 
-A série de referência passou a se chamar pelo que ela é ("Período anterior",
-"Média móvel", "Meta: X") em vez do genérico "Referência", no gráfico e no
-tooltip. Legenda e tooltip chamando a mesma série de nomes diferentes seria
-pior que não ter legenda.
+`ChartSeriesLegend` (`widget-support.tsx`) substitui aquele bloco no mesmo
+lugar: desenha o traço real de cada série, inclui a referência e a nomeia pelo
+que ela é ("Período anterior", "Média móvel", "Meta: X"), no gráfico e no
+tooltip.
+
+Continua em HTML, e não como `<Legend>` do Recharts, pela mesma razão da
+legenda de eixos da seção 117: a área de plotagem rola na horizontal, e o que é
+desenhado dentro do SVG acompanha a rolagem em vez de ficar à vista.
 
 ### Distinção que não depende de cor
 

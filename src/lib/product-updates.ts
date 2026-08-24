@@ -19,7 +19,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
     summary:
       "O gráfico de área passou a identificar cada série sem precisar do mouse, e os valores escritos em cima das barras somem quando não cabem.",
     highlights: [
-      "O gráfico de área ganhou legenda: resultado, referência e as variações acima e abaixo aparecem nomeados abaixo do gráfico.",
+      "A legenda do gráfico de área passou a incluir a linha de referência, que antes só aparecia ao passar o mouse.",
       "A referência é chamada pelo que ela é (período anterior, média móvel ou a meta escolhida), no gráfico e no detalhe ao passar o mouse.",
       "As séries também se distinguem pelo traço, e não só pela cor, o que ajuda quem tem dificuldade para diferenciar cores.",
       "Os valores escritos em cima das barras somem automaticamente quando não cabem, em vez de virar uma faixa de números sobrepostos.",

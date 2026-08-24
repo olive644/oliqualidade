@@ -565,26 +565,28 @@ export function BarTooltip({
 /**
  * Legenda das séries de um gráfico de linha/área.
  *
- * O gráfico de área desenha quatro coisas (resultado, referência, variação
- * acima e variação abaixo) e não tinha nenhuma legenda: para saber o que era
- * cada faixa era preciso passar o mouse e ler o tooltip, um por vez. Pior
- * ainda para quem exporta o painel, onde não existe mouse nenhum.
- *
- * Cada item mostra o traço real da série, e não um quadrado colorido: o
+ * Cada item desenha o traço real da série, e não um quadrado colorido: o
  * tracejado distingue as séries sem depender de enxergar a diferença de cor,
- * que é a única pista que o gráfico dava antes.
+ * que era a única pista disponível antes.
  *
- * Fica em HTML abaixo do gráfico pelo mesmo motivo da legenda de eixos: a
- * área de plotagem rola na horizontal, e rótulo colado no fim da série
- * ficaria fora da vista até alguém rolar até lá.
+ * Fica em HTML, e não como `<Legend>` dentro do SVG, pelo mesmo motivo da
+ * legenda de eixos: a área de plotagem rola na horizontal, e qualquer coisa
+ * desenhada no SVG acompanha a rolagem em vez de ficar fixa à vista.
  */
 export function ChartSeriesLegend({
   items,
+  className,
 }: {
   items: { name: string; color: string; dashed?: boolean }[];
+  className?: string;
 }) {
   return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+    <ul
+      className={cn(
+        "flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-1 pt-4 text-[11px] text-muted-foreground",
+        className,
+      )}
+    >
       {items.map((item) => (
         <li key={item.name} className="flex items-center gap-1.5">
           <svg width="18" height="8" aria-hidden="true" className="shrink-0">
