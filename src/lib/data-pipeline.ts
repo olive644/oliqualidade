@@ -29,6 +29,23 @@ export function sortAllBarCategories<T extends { total: number }>(series: T[]): 
 }
 
 /**
+ * Média aritmética dos valores de uma série de categorias, usada como linha
+ * de referência no gráfico de barras. É a média entre categorias (soma dos
+ * valores das barras dividida pelo número de barras), não a média entre
+ * linhas da planilha — as duas só coincidem quando todas as categorias têm a
+ * mesma quantidade de registros.
+ *
+ * Devolve null com menos de três categorias: com uma barra a média é a
+ * própria barra e com duas ela cai exatamente entre as duas, sem separar
+ * ninguém em "acima" e "abaixo".
+ */
+export function seriesAverage(series: { total: number }[]): number | null {
+  if (series.length < 3) return null;
+  const sum = series.reduce((acc, entry) => acc + entry.total, 0);
+  return sum / series.length;
+}
+
+/**
  * Barras sempre lado a lado (layout horizontal), pra permitir comparar a
  * variação entre categorias visualmente de forma direta. Quando há muitas
  * categorias, em vez de trocar de layout, o gráfico ganha uma largura maior
@@ -246,7 +263,7 @@ export function groupAndAggregate(
   groupKey: string,
   valueKey: string,
   op: AggregationOp,
-): { name: string; total: number; sourceRowIndexes?: number[] }[] {
+): { name: string; total: number; count: number; sourceRowIndexes?: number[] }[] {
   const buckets = new Map<
     string,
     { values: number[]; valueRowIndexes: number[]; rowCount: number; rowIndexes: number[] }
@@ -273,12 +290,13 @@ export function groupAndAggregate(
       if (sourceRowIndex !== null) bucket.valueRowIndexes.push(sourceRowIndex);
     }
   }
-  const result: { name: string; total: number; sourceRowIndexes?: number[] }[] = [];
+  const result: { name: string; total: number; count: number; sourceRowIndexes?: number[] }[] = [];
   for (const [name, bucket] of buckets) {
     if (op === "count") {
       result.push({
         name,
         total: bucket.rowCount,
+        count: bucket.rowCount,
         ...(bucket.rowIndexes.length ? { sourceRowIndexes: bucket.rowIndexes } : {}),
       });
       continue;
@@ -287,6 +305,12 @@ export function groupAndAggregate(
     result.push({
       name,
       total: aggregate(bucket.values, op),
+      // Quantos valores numéricos sustentam este ponto. Uma barra apoiada em
+      // dois registros e outra apoiada em novecentos têm o mesmo peso visual,
+      // e sem esse número a leitura trata as duas como igualmente confiáveis.
+      // É a contagem de valores usados na conta, não de linhas do balde:
+      // linhas com a métrica vazia não entram na média nem na soma.
+      count: bucket.values.length,
       ...(bucket.valueRowIndexes.length ? { sourceRowIndexes: bucket.valueRowIndexes } : {}),
     });
   }
@@ -344,6 +368,7 @@ export function chartSeries(
 ): Array<{
   name: string;
   total: number;
+  count?: number;
   sourceRow?: number;
   sourceRowIndex?: number;
   sourceRowIndexes?: number[];

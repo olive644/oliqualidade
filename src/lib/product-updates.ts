@@ -7,10 +7,25 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.1.0-beta.2";
+export const APP_VERSION = "0.2.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-leitura-de-graficos",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Gráficos que dizem o que está sendo medido",
+    summary:
+      "Cada gráfico agora informa o que está em cada eixo, marca a média entre as categorias e explica a comparação que mostra ao passar o mouse.",
+    highlights: [
+      "Uma linha sob o gráfico diz o que está no eixo horizontal e o que está no vertical, com a operação e a métrica por extenso.",
+      "O gráfico de barras ganhou uma linha tracejada na média entre as categorias, para separar quem está acima e quem está abaixo sem fazer a conta de cabeça.",
+      "Ao passar o mouse em uma barra, o gráfico mostra quantos registros sustentam aquele valor, evitando conclusão em cima de duas ou três linhas.",
+      "Em ranking, a comparação passou a ser com a maior barra do gráfico, escrita por extenso, no lugar de uma variação percentual que parecia queda sem ter havido queda.",
+      "A variação em relação ao período anterior continua aparecendo nos gráficos com eixo de tempo, agora identificada como tal.",
+    ],
+  },
   {
     id: "2026-08-24-correcoes-de-estabilidade",
     version: APP_VERSION,

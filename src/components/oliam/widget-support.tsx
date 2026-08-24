@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import {
   kinds,
   type Column,
+  type ChartAxisKind,
   type ChartDataMode,
   type FilterRule,
   type Kind,
@@ -68,6 +69,7 @@ import {
 } from "@/lib/widgets";
 import type { ScheduleCellState } from "@/lib/schedule-normalizer";
 import { conditionalColor, fmt } from "@/lib/format";
+import { barTooltipReading } from "@/lib/chart-reading";
 import {
   aggregationLabels,
   NOT_INFORMED,
@@ -437,13 +439,19 @@ export function truncateLabel(value: string, max = 10): string {
 }
 
 /**
- * Tooltip do gráfico de barras: mostra o valor do período junto com a
- * variação percentual em relação ao item anterior da série (na ordem em
- * que aparece no eixo), com uma cápsula colorida de alta/baixa — mesma
- * ideia do tooltip de "Revenue" de referência que o usuário mandou.
- * "Anterior" aqui é sempre o item anterior na ordem exibida, não
- * necessariamente uma data — pra grupos não cronológicos (ex.: por
- * vendedor) ainda funciona como "comparado à barra à esquerda".
+ * Tooltip do gráfico de barras.
+ *
+ * A cápsula de alta/baixa só aparece quando o eixo é cronológico (axis =
+ * "time"), porque ela compara o ponto com o item anterior da série. Em um
+ * eixo de categorias esse vizinho não é "antes": as barras chegam ordenadas
+ * da maior para a menor, então o item anterior é apenas a categoria de valor
+ * mais alto, e um "queda de 18%" ali era lido como piora quando significava
+ * "18% menor que o primeiro colocado". Para categorias, a comparação honesta
+ * é com a maior barra do gráfico, escrita por extenso.
+ *
+ * O tooltip também mostra quantos registros sustentam a barra no modo
+ * agrupado — sem esse número, uma barra de dois registros e uma de
+ * novecentos parecem igualmente confiáveis.
  */
 export function BarTooltip({
   active,
@@ -452,13 +460,16 @@ export function BarTooltip({
   series,
   kind,
   mode,
+  axis,
 }: {
   active: boolean | undefined;
   payload: { value?: number; payload?: { sourceRow?: number } }[] | undefined;
   label: string | undefined;
-  series: { name: string; total: number; sourceRow?: number }[];
+  series: { name: string; total: number; count?: number; sourceRow?: number }[];
   kind: Kind;
   mode: ChartDataMode;
+  /** "time" quando o eixo X é cronológico; "category" para agrupamentos. */
+  axis: ChartAxisKind;
 }) {
   if (!active || !payload?.length) return null;
   const value = payload[0]?.value;
@@ -467,12 +478,10 @@ export function BarTooltip({
   const idx = sourceRow
     ? series.findIndex((item) => item.sourceRow === sourceRow)
     : series.findIndex((item) => item.name === label);
-  const prevTotal = idx > 0 ? series[idx - 1]?.total : undefined;
-  const pct =
-    idx > 0 && typeof prevTotal === "number" && prevTotal !== 0
-      ? ((value - prevTotal) / Math.abs(prevTotal)) * 100
-      : null;
+  const reading = barTooltipReading({ index: idx, series, mode, axis });
+  const pct = reading.changeFromPrevious;
   const up = (pct ?? 0) >= 0;
+  const { shareOfLargest, count } = reading;
   return (
     <div
       style={{
@@ -511,11 +520,66 @@ export function BarTooltip({
               background: `color-mix(in oklab, ${up ? "var(--chart-2)" : "var(--destructive)"} 18%, transparent)`,
             }}
           >
-            {up ? "↑" : "↓"} {Math.abs(pct).toFixed(0)}%
+            {up ? "↑" : "↓"} {Math.abs(pct).toFixed(0)}% vs. anterior
           </span>
         )}
       </div>
+      {(count !== null || shareOfLargest !== null) && (
+        <div
+          style={{
+            marginTop: 4,
+            display: "flex",
+            gap: 8,
+            color: "var(--muted-foreground)",
+            fontSize: 10,
+          }}
+        >
+          {count !== null && (
+            <span>
+              {count.toLocaleString("pt-BR")} {count === 1 ? "registro" : "registros"}
+            </span>
+          )}
+          {shareOfLargest !== null && <span>{shareOfLargest.toFixed(0)}% da maior categoria</span>}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Legenda de leitura sob o gráfico: diz o que está em cada eixo e, quando o
+ * gráfico desenha a linha de média, qual é o valor dela.
+ *
+ * Sem isso o eixo vertical mostra "1,2 mil" e cabe ao leitor adivinhar se
+ * aquilo é reais, peças ou horas — o título do widget carrega essa
+ * informação, mas ela se perde quando o gráfico é exportado ou impresso e
+ * circula sozinho.
+ *
+ * O texto fica em HTML abaixo do gráfico, e não em um <Label> dentro do
+ * SVG, por dois motivos concretos: os gráficos com muitas categorias rolam
+ * na horizontal, e um título de eixo desenhado no SVG ficaria centralizado
+ * no conteúdo rolável, fora da vista até que se role até ele; e a altura
+ * útil desses widgets (224px a 256px) não sobra para mais uma faixa de
+ * texto dentro da área de plotagem sem achatar as barras.
+ */
+export function ChartAxisLegend({
+  x,
+  y,
+  average,
+  kind,
+}: {
+  x: string;
+  y: string;
+  average?: number | null;
+  kind: Kind;
+}) {
+  const averageLabel = typeof average === "number" ? fmt(average, kind) : null;
+  return (
+    <p className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+      <span className="font-medium text-foreground">Horizontal:</span> {x} ·{" "}
+      <span className="font-medium text-foreground">Vertical:</span> {y}
+      {averageLabel ? ` · Linha tracejada: média de ${averageLabel}` : ""}
+    </p>
   );
 }
 
