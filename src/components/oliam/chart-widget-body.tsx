@@ -84,6 +84,7 @@ import {
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
+import { useMeasuredWidth } from "./use-measured-width";
 
 export function ChartWidgetBody({
   widget: w,
@@ -123,6 +124,11 @@ export function ChartWidgetBody({
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
     useChartHorizontalScroll();
+  // Largura real da área do gráfico, medida no navegador. O recuo interno
+  // (16px de cada lado) e a faixa do eixo vertical (52px) saem da conta
+  // porque nenhum dos dois é espaço de plotagem.
+  const { ref: plotBoxRef, width: plotBoxWidth } = useMeasuredWidth<HTMLDivElement>();
+  const measuredPlotWidth = plotBoxWidth > 0 ? Math.max(0, plotBoxWidth - 32 - 52) : 0;
   const handleGroupClick = (groupKey: string, value: string) => {
     setFilters(toggleClickFilter(filters, groupKey, value));
   };
@@ -287,12 +293,14 @@ export function ChartWidgetBody({
     scrollable: barPresentation.scrollable,
     span: w.span,
     slotPx: BAR_SLOT_PX,
+    plotWidth: measuredPlotWidth,
   });
   const barLabelsFit = barValueLabelsFit({
     count: barSeries.length,
     scrollable: barPresentation.scrollable,
     longestLabelChars: longestBarLabelChars,
     span: w.span,
+    plotWidth: measuredPlotWidth,
   });
   // "Quem está acima da média" é a primeira pergunta de quem lê um ranking,
   // e sem a linha de referência essa conta ficava por conta do leitor.
@@ -338,6 +346,7 @@ export function ChartWidgetBody({
     scrollable: timeSeriesPresentation.scrollable,
     span: w.span,
     slotPx: TIME_SERIES_SLOT_PX,
+    plotWidth: measuredPlotWidth,
   });
   const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
   const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
@@ -543,11 +552,14 @@ export function ChartWidgetBody({
         </p>
       ) : w.type === "bar" ? (
         <>
-          <div className="relative">
+          <div className="relative" ref={plotBoxRef}>
             <div
               ref={barPresentation.scrollable ? chartScrollRef : undefined}
               className={cn(
-                "h-64 overflow-x-auto overflow-y-hidden p-4",
+                // Altura pelo espaço do próprio widget, não pelo da janela:
+                // um widget de um terço fica baixo mesmo em monitor grande, e
+                // um widget inteiro ganha altura mesmo em tela média.
+                "h-56 overflow-x-auto overflow-y-hidden p-4 @[420px]:h-64 @[720px]:h-80",
                 barPresentation.scrollable && "oliam-chart-drag-scroll",
               )}
               onPointerDown={barPresentation.scrollable ? handleChartScrollPointerDown : undefined}
@@ -1019,11 +1031,11 @@ export function ChartWidgetBody({
         <div className="p-3">
           <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/30">
             <ChartSeriesLegend items={areaLegendItems} />
-            <div className="relative">
+            <div className="relative" ref={plotBoxRef}>
               <div
                 ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
                 className={cn(
-                  "h-56 overflow-x-auto overflow-y-hidden p-4",
+                  "h-56 overflow-x-auto overflow-y-hidden p-4 @[420px]:h-64 @[720px]:h-80",
                   timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
                 )}
                 onPointerDown={
@@ -1223,11 +1235,11 @@ export function ChartWidgetBody({
         </div>
       ) : (
         <>
-          <div className="relative">
+          <div className="relative" ref={plotBoxRef}>
             <div
               ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
               className={cn(
-                "h-56 overflow-x-auto overflow-y-hidden p-4",
+                "h-56 overflow-x-auto overflow-y-hidden p-4 @[420px]:h-64 @[720px]:h-80",
                 timeSeriesPresentation.scrollable && "oliam-chart-drag-scroll",
               )}
               onPointerDown={

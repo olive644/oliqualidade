@@ -253,6 +253,32 @@ describe("seriesAverage", () => {
 });
 
 describe("barValueLabelsFit", () => {
+  it("usa a largura medida quando ela existe, no lugar da estimativa por span", () => {
+    // Mesmo widget de um terço: pela estimativa (150px) oito rótulos de oito
+    // caracteres não caberiam, mas o navegador informou 600px de plotagem.
+    expect(
+      barValueLabelsFit({
+        count: 8,
+        scrollable: false,
+        longestLabelChars: 8,
+        span: 1,
+        plotWidth: 600,
+      }),
+    ).toBe(true);
+  });
+
+  it("esconde o rótulo quando a medida real é menor que a estimativa", () => {
+    expect(
+      barValueLabelsFit({
+        count: 4,
+        scrollable: false,
+        longestLabelChars: 8,
+        span: 3,
+        plotWidth: 120,
+      }),
+    ).toBe(false);
+  });
+
   it("mostra os valores quando poucas barras dividem um cartão largo", () => {
     expect(barValueLabelsFit({ count: 4, scrollable: false, longestLabelChars: 6, span: 3 })).toBe(
       true,
@@ -287,6 +313,17 @@ describe("barValueLabelsFit", () => {
 });
 
 describe("axisLabelPresentation", () => {
+  it("corta e pula rótulos pela largura medida, não pela estimativa do span", () => {
+    const medido = axisLabelPresentation({
+      count: 6,
+      scrollable: false,
+      span: 1,
+      slotPx: 88,
+      plotWidth: 600,
+    });
+    expect(medido).toEqual({ maxChars: 10, interval: 0 });
+  });
+
   it("pula rótulos quando nem o corte mínimo cabe entre as barras", () => {
     // Caso real: seis categorias de um orçamento pessoal em um cartão de um
     // terço deixam cerca de 24px por barra, e mesmo "Hip…" ocupa 28px. Ler

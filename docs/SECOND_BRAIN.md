@@ -200,6 +200,7 @@ audit inteiro.
 | Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
 | Aba formada por vários blocos com a mesma estrutura virar uma tabela com o bloco como coluna | `detectTableBlockGroup`/`buildTableBlocksGrid` (`excel-table-blocks.ts`), oferecidos como opção "Blocos unificados" por `unifiedBlocksOption` (`import.ts`); a leitura da aba inteira continua como segunda opção | `excel-table-blocks.test.ts` — ver [[CURRENT_STATE_AUDIT#121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão]] |
 | Linhas de total das Tabelas do Excel ficarem fora dos registros | `tableTotalsRegions` (`excel-table-totals.ts`) a partir de `totalsRowCount` lido em `parseTable` (`workbook-metadata.ts`); limpeza por célula na cópia de análise em `sheetToRows`, ao lado do tratamento de linhas ocultas | `excel-table-totals.test.ts` — ver [[CURRENT_STATE_AUDIT#120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma]] |
+| Widget reagir ao próprio espaço (não ao tamanho da tela) | `container: oliam-widget / inline-size` em `.oliam-widget` (`styles.css`) habilita as variantes `@[420px]:`/`@[720px]:` do Tailwind; `useMeasuredWidth` (`components/oliam/use-measured-width.ts`) dá a mesma medida ao JavaScript; limites em `lib/widget-density.ts`, fonte única dos dois lados | `widget-density.test.ts` — ver [[CURRENT_STATE_AUDIT#122. Widgets adaptáveis: container queries e três modos formais de densidade]] |
 | Corte e intervalo dos nomes de categoria no eixo X | `axisLabelPresentation` (`data-pipeline.ts`): devolve quantos caracteres cabem e de quantos em quantos rótulos desenhar; quando nem o corte mínimo cabe, o eixo pula rótulos em vez de sobrepor | `data-pipeline.test.ts` (`describe("axisLabelPresentation")`) — ver seção 119 do audit |
 | Mostrar ou esconder o valor escrito em cima das barras | `barValueLabelsFit` (`data-pipeline.ts`), por largura disponível (fatia fixa quando o gráfico rola, divisão do span quando não rola) e pelo rótulo mais comprido da série | `data-pipeline.test.ts` (`describe("barValueLabelsFit")`) — ver [[CURRENT_STATE_AUDIT#119. Acabamento de leitura dos gráficos, e um item do backlog que se provou inexistente]] |
 | Legenda das séries do gráfico de área (a única que existe nesse widget — não acrescentar outra) | `ChartSeriesLegend` (`widget-support.tsx`), alimentada por `areaLegendItems` em `chart-widget-body.tsx`, no bloco acima do gráfico; desenha o traço real de cada série, então a distinção não depende só de cor | `e2e/analytical-reading-flow.spec.ts` (falha por texto duplicado se alguém acrescentar uma segunda legenda) — ver seção 119 do audit |
@@ -787,6 +788,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   tabela do Excel virando dimensão) avança o minor por ser capacidade nova de
   leitura. Ver
   [[CURRENT_STATE_AUDIT#121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão]].
+
+- `v0.3.0-beta.2` (container queries no widget e três modos de densidade;
+  adoção ainda parcial, só nos gráficos) avança a iteração, não o minor. Ver
+  [[CURRENT_STATE_AUDIT#122. Widgets adaptáveis: container queries e três modos formais de densidade]].
 
 ## Checklist antes de publicar
 

@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.3.0-beta.1";
+export const APP_VERSION = "0.3.0-beta.2";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-widgets-adaptaveis",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Cada widget passa a se ajustar ao espaço que ele tem",
+    summary:
+      "Antes os widgets reagiam ao tamanho da tela. Agora cada um reage à própria largura dentro do painel, que é o que de fato decide o que cabe.",
+    highlights: [
+      "Gráficos ganham altura quando o widget é largo e ficam mais baixos quando o widget é estreito, mesmo sem mudar o tamanho da janela.",
+      "Os valores em cima das barras e os nomes das categorias passaram a ser decididos pela largura medida do gráfico, e não por uma estimativa.",
+      "Em telas largas, um widget de um terço agora mostra todos os nomes das categorias, que antes eram cortados sem necessidade.",
+      "Três modos de densidade (compacto, normal e expandido) passaram a ser um conceito único do produto, usado tanto pelo layout quanto pelas decisões de conteúdo.",
+    ],
+  },
   {
     id: "2026-08-24-blocos-unificados",
     version: APP_VERSION,

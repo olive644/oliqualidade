@@ -1463,6 +1463,14 @@
 }
 
 @utility oliam-widget {
+  /* O widget é um container de consulta: as regras de dentro dele passam a
+   * reagir ao espaço que ele tem, e não ao tamanho da janela. Um widget de um
+   * terço num monitor grande e um widget inteiro num tablet têm a mesma
+   * largura e precisam do mesmo tratamento, coisa que ponto de quebra de tela
+   * não consegue expressar. Os três modos (compacto, normal, expandido) e
+   * seus limites vivem em `lib/widget-density.ts`, que é a fonte usada
+   * também pelas decisões feitas em JavaScript. */
+  container: oliam-widget / inline-size;
   content-visibility: auto;
   contain-intrinsic-size: auto 360px;
   animation: oliam-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
