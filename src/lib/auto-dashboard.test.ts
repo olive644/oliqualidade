@@ -734,6 +734,24 @@ describe("generateAutoDashboardPlan", () => {
         expect.arrayContaining(["histogram", "scatter", "box-plot", "pareto", "radar"]),
       );
       expect(plan.warnings.join(" ")).toContain("manter o painel legível");
+
+      // O comparador que decide o corte usava `Number(item.primary)` — como
+      // `primary` é undefined na maioria das recomendações, isso dava NaN e
+      // tornava a ordenação (inclusive a garantia de que o item "principal"
+      // nunca é cortado) indeterminada. Roda o mesmo plano várias vezes: com
+      // NaN no comparador o resultado poderia variar entre chamadas: aqui
+      // deve ser sempre o mesmo, e a série temporal (marcada `primary`)
+      // nunca pode ser cortada mesmo havendo mais de 10 candidatas.
+      const repeated = Array.from({ length: 5 }, () =>
+        generateAutoDashboardPlan({ columns, rows: denseRows, diagnostics: denseDiagnostics })
+          .recommendations.filter((item) => item.kind === "visualization")
+          .map((item) => item.id),
+      );
+      const [first, ...rest] = repeated;
+      for (const attempt of rest) expect(attempt).toEqual(first);
+      const primaryItem = plan.recommendations.find((item) => item.primary);
+      expect(primaryItem).toBeDefined();
+      expect(visualTypes).toContain(primaryItem!.widgetType);
     });
   });
 });

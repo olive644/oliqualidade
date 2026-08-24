@@ -6311,3 +6311,82 @@ Até a estabilidade, correções compatíveis avançam `beta.N`. Uma entrega que
 altere de forma relevante a capacidade do produto avança o minor, por exemplo
 `0.2.0-beta.1`. A primeira versão considerada estável remove o sufixo e deve ser
 acompanhada por tag Git correspondente.
+
+## 116. Revisão retroativa das PRs #225-#243 (8 subagentes) e correção de processo: versão, sino, testes e este registro ficaram para trás
+
+A sessão que corrigiu os bugs desta seção (commit `2d8434b`, PR #244) seguiu o
+fluxo de branch/PR/CI/autorização corretamente, mas não avançou a versão, não
+publicou a entrega no centro de atualizações, não registrou as decisões aqui e
+deixou lacunas de cobertura automatizada em vários dos achados. Esta seção
+existe para fechar essas lacunas retroativamente e documentar o processo
+correto daqui em diante: **uma entrega de bugs corrigidos não está completa só
+porque o CI ficou verde e o usuário autorizou o merge** — versionamento, sino e
+Second Brain fazem parte da entrega, não um passo opcional posterior.
+
+Os bugs em si (achados por `/code-review` em nível alto, 8 subagentes
+especializados, contra o intervalo `6ca81a8..HEAD`) foram triados e corrigidos
+em três levas dentro da mesma PR:
+
+- **Cor fora da paleta**: o gráfico de área ganhara dois hex literais novos
+  (`#22d3ee`, `#d59b32`) que não existiam antes — revertidos para
+  `var(--primary)`/`var(--chart-4)`, a paleta existente.
+- **Cor condicional testando a grandeza errada**: histograma e Pareto
+  aplicavam a regra de formatação condicional sobre `entry.total`, que em
+  histograma é sempre uma contagem de linhas (não um valor da coluna) e em
+  Pareto só é um valor real quando `op !== "count"`.
+- **Meta do gráfico de área em op/dataMode fixo**: a série de meta usava
+  sempre `"avg"`/`"aggregate"`, ignorando o op/dataMode real da série
+  principal — comparava soma com média.
+- **`control-chart` nunca cobria a pergunta "há valores fora da curva?"**:
+  `widgetCoversQuestion` exigia `valueKey`/`metricKey`, que esse tipo nunca
+  preenche (escolhe colunas pelo vocabulário operacional da planilha, como
+  `exception-panel`, que já tinha esse tratamento).
+- **NaN no comparador de `limitAutomaticVisualizations`**: `Number(item.primary)`
+  em item opcional vira `NaN` na maioria dos casos; trocado por
+  `Number(Boolean(item.primary))`.
+- **`Date.parse("dd/mm/aaaa")` em `investigation.ts`**: lê como `mm/dd`,
+  invertendo mês e dia (ou `NaN` para dia > 12); trocado por `parseDateValue`,
+  o parser já usado no resto do app para esse formato.
+- **`THEME_COLOR_ORDER` na ordem de documento do `clrScheme`**: o atributo
+  `theme="N"` do `styles.xml` usa outra ordem (`0=lt1, 1=dk1, 2=lt2, 3=dk2`,
+  só then `accent1-6/hlink/folHlink`) — células com `theme="0"` ou `"1"`
+  mostravam branco e preto trocados.
+- **Botão "Investigar" sempre com a métrica global**: agora resolve pelo
+  `metricKey` da pergunta clicada (`investigationMetricFor`,
+  `insight-sidebar.tsx`, extraída nesta consolidação para ficar testável).
+- Mais uma segunda leva: `metrics` (auto-dashboard.ts) não era ordenado por
+  confiança como `dimensions` já era, dessincronizando a cobertura de
+  perguntas; `sourceCellProvenance={sheet.sourceCellProvenance ?? []}`
+  invalidava o `useMemo` de evidência do widget a cada render; `analysisTrust`
+  contava exceções da planilha inteira em vez das linhas visíveis com filtro
+  ativo; ranking/radar mostravam o guia de leitura duplicado.
+
+O que ficou para trás e foi corrigido nesta consolidação:
+
+1. **Versão**: `0.1.0-beta.1` → `0.1.0-beta.2` (`package.json`,
+   `package-lock.json`, `APP_VERSION` em `product-updates.ts`) — a regra da
+   seção 115 já previa isso ("correções compatíveis avançam `beta.N`"), só
+   não foi aplicada na hora.
+2. **Centro de atualizações**: nova entrada
+   `2026-08-24-correcoes-de-estabilidade` no topo de `PRODUCT_UPDATES`, em
+   linguagem de produto (datas brasileiras, cores de célula do Excel,
+   investigação, pendências, roteiro de perguntas), não uma lista de nomes de
+   função.
+3. **Cobertura automatizada dos casos antes só verificados manualmente**:
+   `investigation.test.ts` (datas `dd/mm/aaaa` com dia > 12, caso que dava
+   `NaN` no `Date.parse` antigo), `workbook-metadata.test.ts` (`theme="0"`
+   a `"3"` resolvendo para a cor certa), `auto-dashboard.test.ts`
+   (determinismo do corte de visualizações e garantia de que o item
+   `primary` nunca é cortado, mesmo com >10 candidatas),
+   `insight-sidebar.test.ts` (novo arquivo — `investigationMetricFor`
+   extraída e testada isoladamente). A contagem de pendências filtradas por
+   linha visível (`analysisTrust`) permanece sem teste automatizado: a lógica
+   vive em `routes/index.tsx`, que não tem infraestrutura de teste de
+   componente hoje (mesma lacuna documentada em outros pontos da tabela "Onde
+   mexer") — verificado manualmente no navegador, registrado aqui como dívida
+   em vez de fingir cobertura que não existe.
+4. **Este registro.**
+
+Backlog: se `routes/index.tsx` ganhar infraestrutura de teste de componente
+no futuro, o caso de pendências filtradas por filtro ativo é o primeiro
+candidato a cobrir.
