@@ -7418,3 +7418,67 @@ um caso raro por uma classe nova de erros.
 ### Versão
 
 `0.9.0-beta.1` → `0.9.0-beta.2`.
+
+## 133. Arquivo reconhecido pelo conteúdo, actions fixadas por SHA e SBOM
+
+Três itens da lista de segurança, agrupados porque tratam da mesma pergunta:
+o que exatamente entra no sistema.
+
+### Validação binária unificada
+
+Até aqui a importação confiava na extensão. A checagem estrutural do ZIP
+existia, mas só para `.xlsx`, `.xlsm`, `.xltx` e `.xltm` — `.ods`, `.numbers` e
+`.xlsb` passavam sem nenhuma conferência, e um arquivo renomeado tomava o
+caminho errado antes de qualquer validação.
+
+`detectFileSignature` (`lib/file-signature.ts`) lê os primeiros bytes e
+identifica o contêiner real: ZIP (`PK\x03\x04` e variações), OLE2
+(`D0 CF 11 E0 A1 B1 1A E1`, o Excel antigo) ou texto. Reconhece também oito
+formatos que chegam renomeados com frequência (PDF, PNG, JPEG, GIF, RAR, 7z,
+GZIP, fonte).
+
+**A decisão que define o recurso**: não é um porteiro que recusa por
+divergência de extensão. Recusar seria errado nos dois casos que mais
+aparecem — um `.xls` antigo renomeado para `.xlsx` e uma tabela HTML exportada
+com nome `.xls`, comuns em sistema corporativo, são arquivos que o leitor
+**consegue** abrir. Então a função diz o que o arquivo é, a leitura usa o
+formato certo, e a recusa acontece só quando o conteúdo não é planilha nenhuma.
+
+Efeito colateral bom: a validação estrutural do ZIP passou a valer para
+qualquer arquivo cujo conteúdo é ZIP, cobrindo os três formatos que estavam
+descobertos.
+
+### A mensagem precisava atravessar duas fronteiras
+
+A recusa nasce dentro do worker de leitura e é reconstruída no cliente, onde só
+o **texto** do erro sobrevive: tipo e propriedades se perdem no
+`postMessage`. Pior, a tela substituía qualquer erro desconhecido pela mensagem
+genérica "use um formato válido" — que apagaria justamente a informação útil.
+
+`isWorkbookContentRejection` mora ao lado de quem escreve as mensagens, e um
+teste verifica que as duas recusas geradas passam por ele. Assim, mudar o texto
+sem atualizar o reconhecimento quebra no teste, e não em produção.
+
+Confirmado no navegador: enviar um PDF chamado `falso.xlsx` mostra "Este
+arquivo é um PDF, não uma planilha. Confira se o arquivo enviado é o correto";
+uma planilha OLE2 chamada `renomeado.xlsx` chega normalmente à revisão.
+
+### Actions fixadas por SHA
+
+As oito referências de action nos três workflows passaram de tag para SHA
+completo, com a tag preservada em comentário. Tag é ponteiro móvel: quem
+controla o repositório da action pode reapontar `v7` para outro commit, e o CI
+executaria código diferente sem nenhuma mudança aqui.
+
+### SBOM
+
+O job de auditoria passou a gerar o inventário de dependências em CycloneDX e
+publicá-lo como artefato, com retenção de 90 dias.
+
+Gerado pelo próprio `npm sbom`, e não por uma action de terceiro: acrescentar
+mais um fornecedor à cadeia de suprimentos para documentar a cadeia de
+suprimentos seria contraditório.
+
+### Versão
+
+`0.9.0-beta.2` → `0.10.0-beta.1`.

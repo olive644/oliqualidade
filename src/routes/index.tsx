@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { isWorkbookContentRejection } from "@/lib/file-signature";
 import {
   parseViewMode,
   VIEW_MODE_STORAGE_KEY,
@@ -540,11 +541,15 @@ export function OliAm({ routeId }: { routeId?: string }) {
       }
       const message = error instanceof Error ? error.message : "";
       setImportError(
-        /password|encrypt|senha/i.test(message)
-          ? "Esta planilha é protegida por senha. Remova a proteção ou informe uma cópia desbloqueada."
-          : /limite|excede|ultrapassa|milhões de células|mais de \d+ abas/i.test(message)
-            ? message
-            : `Não foi possível ler esse arquivo. Use um formato válido: ${WORKBOOK_FORMATS_LABEL}.`,
+        // Recusa por conteúdo explica o que o arquivo é; trocar por
+        // "use um formato válido" apagaria a única informação útil.
+        isWorkbookContentRejection(message)
+          ? message
+          : /password|encrypt|senha/i.test(message)
+            ? "Esta planilha é protegida por senha. Remova a proteção ou informe uma cópia desbloqueada."
+            : /limite|excede|ultrapassa|milhões de células|mais de \d+ abas/i.test(message)
+              ? message
+              : `Não foi possível ler esse arquivo. Use um formato válido: ${WORKBOOK_FORMATS_LABEL}.`,
       );
     } finally {
       if (importAbort.current === controller) importAbort.current = null;
