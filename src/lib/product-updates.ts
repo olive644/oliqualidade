@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.2.0-beta.4";
+export const APP_VERSION = "0.3.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-blocos-unificados",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Planilhas feitas de vários blocos viram uma tabela analisável",
+    summary:
+      "Modelos como o de orçamento pessoal são montados com várias tabelas do Excel, uma por categoria. Agora dá para lê-las como uma tabela só, com o nome do bloco virando coluna.",
+    highlights: [
+      'A importação oferece uma opção nova, "Blocos unificados", quando a aba é formada por blocos com a mesma estrutura.',
+      "O nome de cada bloco (Moradia, Transporte, Alimentação) vira uma coluna, então dá para agrupar, filtrar e comparar por bloco.",
+      "As linhas de cabeçalho e de total de cada bloco ficam de fora, sem inflar nenhuma conta.",
+      "A leitura da aba inteira continua disponível como segunda opção, para quem preferir o formato original.",
+    ],
+  },
   {
     id: "2026-08-24-linhas-de-total",
     version: APP_VERSION,

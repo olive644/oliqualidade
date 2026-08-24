@@ -4,6 +4,7 @@ import { isVolatileFormula, resolveFormulaCell } from "@/lib/formula";
 import { diagnoseImportedSheet, type ImportDiagnostics } from "@/lib/import-intelligence";
 import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
 import { tableTotalsRegions } from "@/lib/excel-table-totals";
+import { buildTableBlocksGrid, detectTableBlockGroup } from "@/lib/excel-table-blocks";
 import { scheduleToLong, type LongScheduleRow } from "@/lib/schedule-normalizer";
 import { isPeriodColumnLabel } from "@/lib/widgets";
 import {
@@ -2915,69 +2916,98 @@ function regionsAreSafeToSplit(
  * vazia que sobrou de um template). Usada para montar o seletor de aba
  * quando o arquivo tem mais de uma aba com dado.
  */
-export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
-  return wb.SheetNames.flatMap((name) => {
-    const ws = wb.Sheets[name];
-    if (!ws) return [];
-    const preview = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
-      header: 1,
-      defval: null,
-      raw: false,
-    });
-    const compatibilityText = preview
-      .slice(0, 12)
-      .flat()
-      .filter((value) => value !== null && value !== "")
-      .map(String)
-      .join(" ");
-    if (
-      /Compatibility Report for/i.test(compatibilityText) &&
-      /loss of functionality|loss of fidelity/i.test(compatibilityText)
-    )
-      return [];
-    const result = sheetToRows(ws, wb);
-    if (result.tableMode !== "repeated-blocks") {
-      const sections = detectIndependentSections(ws);
-      if (sections.length > 1) {
-        const labelTotals = new Map<string, number>();
-        for (const section of sections)
-          labelTotals.set(section.label, (labelTotals.get(section.label) ?? 0) + 1);
-        const split = sections.flatMap((section, index) => {
-          const sectionSheet = independentSectionWorksheet(ws, section);
-          if (!sectionSheet) return [];
-          const imported = sheetToRows(sectionSheet, wb);
-          if (!imported.rows.length) return [];
-          const separationWarning = `A aba "${name}" continha ${sections.length} tabelas independentes empilhadas e foi separada automaticamente. Esta opção corresponde à tabela ${index + 1}.`;
-          return [
-            {
-              name: `${name} · ${section.label || `Tabela ${index + 1}`}${(labelTotals.get(section.label) ?? 0) > 1 ? ` · Tabela ${index + 1}` : ""}`,
-              ...imported,
-              ...(scheduleToLong(imported.rows).length
-                ? { longScheduleRows: scheduleToLong(imported.rows) }
-                : {}),
-              warning: imported.warning
-                ? `${separationWarning} ${imported.warning}`
-                : separationWarning,
-            },
-          ];
-        });
-        if (split.length === sections.length) return split;
-      }
-    }
-    if (
-      result.tableMode !== "repeated-blocks" &&
-      result.diagnostics &&
-      regionsAreSafeToSplit(ws, result.diagnostics.tableRegions)
-    ) {
-      const split = result.diagnostics.tableRegions.flatMap((region, index) => {
-        const regionSheet = independentRegionWorksheet(ws, region);
-        if (!regionSheet) return [];
-        const imported = sheetToRows(regionSheet, wb);
+/**
+ * Leitura unificada de uma aba montada como vários blocos com a mesma
+ * estrutura (ver `detectTableBlockGroup`). Vem antes da leitura da aba
+ * inteira porque é a única em que o nome do bloco existe como dimensão: sem
+ * ela, um orçamento com doze blocos vira uma tabela cuja coluna de itens se
+ * chama "MORADIA" e não permite perguntar quanto foi gasto por bloco.
+ *
+ * A aba inteira continua disponível como segunda opção — a unificação
+ * descarta o que não couber na assinatura comum, e essa escolha é do usuário,
+ * não nossa.
+ */
+function unifiedBlocksOption(name: string, wb: XLSX.WorkBook): SheetOption | null {
+  const ws = wb.Sheets[name];
+  if (!ws) return null;
+  const advanced = (ws as WorksheetWithAdvancedMetadata)["!oliAdvanced"];
+  const group = detectTableBlockGroup(advanced?.structuredTables ?? []);
+  if (!group) return null;
+  const grid = buildTableBlocksGrid((address) => worksheetCellAtAddress(ws, address), group);
+  if (!grid) return null;
+
+  const unified: XLSX.WorkSheet = {
+    "!ref": XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: grid.rows - 1, c: group.sharedColumns.length + 1 },
+    }),
+  };
+  for (const [address, cell] of grid.cells) unified[address] = cell;
+  if (advanced) {
+    // Sem remapeador de intervalo: um intervalo do arquivo original (uma
+    // validação, o autofiltro) não tem equivalente numa grade remontada a
+    // partir de blocos espalhados, e inventar um seria pior que perdê-lo.
+    (unified as WorksheetWithAdvancedMetadata)["!oliAdvanced"] = sliceAdvancedMetadata(
+      advanced,
+      (address) => grid.addressMap.get(address) ?? null,
+    );
+  }
+
+  const imported = sheetToRows(unified, wb);
+  if (!imported.rows.length) return null;
+  const blocksWarning = `A aba "${name}" é formada por ${group.blocks.length} blocos com a mesma estrutura (${group.blocks
+    .map((block) => block.name)
+    .slice(0, 3)
+    .join(
+      ", ",
+    )}${group.blocks.length > 3 ? "…" : ""}). Esta opção junta todos em uma tabela só, com a coluna "${group.blockLabel}" dizendo de onde veio cada linha, e sem as linhas de total de cada bloco.`;
+  return {
+    name: `${name} · Blocos unificados`,
+    ...imported,
+    warning: imported.warning ? `${blocksWarning} ${imported.warning}` : blocksWarning,
+  };
+}
+
+/**
+ * Opções de importação de uma aba, sem contar a leitura unificada por
+ * blocos (ver `unifiedBlocksOption`): a aba inteira, ou as tabelas
+ * independentes quando a separação automática se aplica.
+ */
+function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
+  const ws = wb.Sheets[name];
+  if (!ws) return [];
+  const preview = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+    header: 1,
+    defval: null,
+    raw: false,
+  });
+  const compatibilityText = preview
+    .slice(0, 12)
+    .flat()
+    .filter((value) => value !== null && value !== "")
+    .map(String)
+    .join(" ");
+  if (
+    /Compatibility Report for/i.test(compatibilityText) &&
+    /loss of functionality|loss of fidelity/i.test(compatibilityText)
+  )
+    return [];
+  const result = sheetToRows(ws, wb);
+  if (result.tableMode !== "repeated-blocks") {
+    const sections = detectIndependentSections(ws);
+    if (sections.length > 1) {
+      const labelTotals = new Map<string, number>();
+      for (const section of sections)
+        labelTotals.set(section.label, (labelTotals.get(section.label) ?? 0) + 1);
+      const split = sections.flatMap((section, index) => {
+        const sectionSheet = independentSectionWorksheet(ws, section);
+        if (!sectionSheet) return [];
+        const imported = sheetToRows(sectionSheet, wb);
         if (!imported.rows.length) return [];
-        const separationWarning = `A aba "${name}" continha ${result.diagnostics!.tableRegions.length} tabelas independentes e foi separada automaticamente. Esta opção corresponde à região ${index + 1}.`;
+        const separationWarning = `A aba "${name}" continha ${sections.length} tabelas independentes empilhadas e foi separada automaticamente. Esta opção corresponde à tabela ${index + 1}.`;
         return [
           {
-            name: `${name} · Região ${index + 1}`,
+            name: `${name} · ${section.label || `Tabela ${index + 1}`}${(labelTotals.get(section.label) ?? 0) > 1 ? ` · Tabela ${index + 1}` : ""}`,
             ...imported,
             ...(scheduleToLong(imported.rows).length
               ? { longScheduleRows: scheduleToLong(imported.rows) }
@@ -2988,48 +3018,80 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
           },
         ];
       });
-      if (split.length === result.diagnostics.tableRegions.length) return split;
+      if (split.length === sections.length) return split;
     }
-    const { rows, warning, diagnostics, sourceGrid, audit } = result;
-    // Uma aba sem nenhuma linha de dado tabular normalmente é descartada
-    // (filtro abaixo), mas se ela tiver gráficos, formas com texto ou
-    // imagens nativos do Excel, ainda vale a pena aparecer como opção —
-    // o usuário perderia esse conteúdo silenciosamente. `visualOnlyWarning`
-    // substitui o aviso padrão (que falaria de estrutura de tabela
-    // inexistente) por um específico desse caso.
-    const visualOnlyContent = Boolean(
-      diagnostics &&
-      (diagnostics.charts.length || diagnostics.shapes.length || diagnostics.images.length),
-    );
-    const visualOnlyWarning =
-      !rows.length && visualOnlyContent
-        ? `A aba "${name}" não tem linhas de dado tabular, só conteúdo visual nativo do Excel (${diagnostics!.charts.length} gráfico(s), ${diagnostics!.shapes.length} forma(s) com texto, ${diagnostics!.images.length} imagem(ns)). Sem dados para tabela ou widgets, mas o inventário fica disponível no painel.`
-        : undefined;
-    const longScheduleRows = scheduleToLong(rows);
-    // Regiões independentes foram detectadas (diagnostics.tableRegions), mas a
-    // separação automática não ocorreu acima: ou regionsAreSafeToSplit recusou
-    // por segurança (ex: matriz de identificadores + períodos, cabeçalho
-    // numérico, poucas linhas de dado), ou uma das regiões não produziu linha
-    // nenhuma. Nos dois casos as regiões continuam mescladas numa única aba
-    // sem nenhum registro de que a divisão foi considerada e descartada.
-    const regionsKeptTogether =
-      audit && result.tableMode !== "repeated-blocks" && (diagnostics?.tableRegions.length ?? 0) > 1
-        ? diagnostics!.tableRegions.length
-        : undefined;
-    return [
-      {
-        name,
-        rows,
-        warning: visualOnlyWarning ?? warning,
-        ...(diagnostics ? { diagnostics } : {}),
-        ...(sourceGrid ? { sourceGrid } : {}),
-        ...(audit
-          ? { audit: regionsKeptTogether ? { ...audit, regionsKeptTogether } : audit }
-          : {}),
-        ...(result.rowOrigins ? { rowOrigins: result.rowOrigins } : {}),
-        ...(longScheduleRows.length ? { longScheduleRows } : {}),
-      },
-    ];
+  }
+  if (
+    result.tableMode !== "repeated-blocks" &&
+    result.diagnostics &&
+    regionsAreSafeToSplit(ws, result.diagnostics.tableRegions)
+  ) {
+    const split = result.diagnostics.tableRegions.flatMap((region, index) => {
+      const regionSheet = independentRegionWorksheet(ws, region);
+      if (!regionSheet) return [];
+      const imported = sheetToRows(regionSheet, wb);
+      if (!imported.rows.length) return [];
+      const separationWarning = `A aba "${name}" continha ${result.diagnostics!.tableRegions.length} tabelas independentes e foi separada automaticamente. Esta opção corresponde à região ${index + 1}.`;
+      return [
+        {
+          name: `${name} · Região ${index + 1}`,
+          ...imported,
+          ...(scheduleToLong(imported.rows).length
+            ? { longScheduleRows: scheduleToLong(imported.rows) }
+            : {}),
+          warning: imported.warning
+            ? `${separationWarning} ${imported.warning}`
+            : separationWarning,
+        },
+      ];
+    });
+    if (split.length === result.diagnostics.tableRegions.length) return split;
+  }
+  const { rows, warning, diagnostics, sourceGrid, audit } = result;
+  // Uma aba sem nenhuma linha de dado tabular normalmente é descartada
+  // (filtro abaixo), mas se ela tiver gráficos, formas com texto ou
+  // imagens nativos do Excel, ainda vale a pena aparecer como opção —
+  // o usuário perderia esse conteúdo silenciosamente. `visualOnlyWarning`
+  // substitui o aviso padrão (que falaria de estrutura de tabela
+  // inexistente) por um específico desse caso.
+  const visualOnlyContent = Boolean(
+    diagnostics &&
+    (diagnostics.charts.length || diagnostics.shapes.length || diagnostics.images.length),
+  );
+  const visualOnlyWarning =
+    !rows.length && visualOnlyContent
+      ? `A aba "${name}" não tem linhas de dado tabular, só conteúdo visual nativo do Excel (${diagnostics!.charts.length} gráfico(s), ${diagnostics!.shapes.length} forma(s) com texto, ${diagnostics!.images.length} imagem(ns)). Sem dados para tabela ou widgets, mas o inventário fica disponível no painel.`
+      : undefined;
+  const longScheduleRows = scheduleToLong(rows);
+  // Regiões independentes foram detectadas (diagnostics.tableRegions), mas a
+  // separação automática não ocorreu acima: ou regionsAreSafeToSplit recusou
+  // por segurança (ex: matriz de identificadores + períodos, cabeçalho
+  // numérico, poucas linhas de dado), ou uma das regiões não produziu linha
+  // nenhuma. Nos dois casos as regiões continuam mescladas numa única aba
+  // sem nenhum registro de que a divisão foi considerada e descartada.
+  const regionsKeptTogether =
+    audit && result.tableMode !== "repeated-blocks" && (diagnostics?.tableRegions.length ?? 0) > 1
+      ? diagnostics!.tableRegions.length
+      : undefined;
+  return [
+    {
+      name,
+      rows,
+      warning: visualOnlyWarning ?? warning,
+      ...(diagnostics ? { diagnostics } : {}),
+      ...(sourceGrid ? { sourceGrid } : {}),
+      ...(audit ? { audit: regionsKeptTogether ? { ...audit, regionsKeptTogether } : audit } : {}),
+      ...(result.rowOrigins ? { rowOrigins: result.rowOrigins } : {}),
+      ...(longScheduleRows.length ? { longScheduleRows } : {}),
+    },
+  ];
+}
+
+export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
+  return wb.SheetNames.flatMap((name) => {
+    const unified = unifiedBlocksOption(name, wb);
+    const options = sheetOptionsForName(name, wb);
+    return unified ? [unified, ...options] : options;
   }).filter((s) => s.rows.length > 0 || hasVisualOnlyContent(s));
 }
 

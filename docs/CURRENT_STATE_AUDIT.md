@@ -6744,3 +6744,86 @@ transformar o nome de cada tabela em dimensão. Hoje a coluna de itens do
 orçamento se chama "MORADIA", que é o cabeçalho do primeiro bloco, embora
 contenha itens dos doze — e não há como agrupar por bloco. É mudança
 estrutural em `import.ts`, com PR própria.
+
+## 121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão
+
+Segunda parte da investigação da seção 120, e a que muda o que dá para
+perguntar aos dados. A seção 120 corrigiu o número (linhas de total fora dos
+registros); esta corrige a estrutura.
+
+### O que estava perdido
+
+O orçamento pessoal do usuário tem 12 Tabelas do Excel com a mesma assinatura
+de colunas, diferindo só no nome da primeira, que é o rótulo do próprio bloco:
+
+```
+Moradia         [MORADIA,        Custo previsto, Custo Real, Diferença]
+Entretenimento  [ENTRETENIMENTO, Custo previsto, Custo Real, Diferença]
+Transporte      [TRANSPORTE,     Custo previsto, Custo Real, Diferença]
+```
+
+Achatada, a aba virava uma tabela cuja coluna de itens se chamava "MORADIA"
+embora contivesse itens dos doze blocos, com as colunas do bloco vizinho
+repetidas ao lado (`Custo previsto_2`). A pergunta mais natural sobre um
+orçamento — quanto foi gasto por bloco — não tinha como ser feita, porque o
+bloco não existia como dado.
+
+### Como funciona
+
+`detectTableBlockGroup` (`src/lib/excel-table-blocks.ts`) agrupa as tabelas por
+assinatura de colunas e `buildTableBlocksGrid` remonta uma grade única:
+
+```
+Bloco    | Item                 | Custo previsto | Custo Real | Diferença
+Moradia  | Hipoteca ou aluguel  | 1500           | 1400       | 100
+Moradia  | Número do telefone   | 60             | 100        | -40
+...
+```
+
+Resultado com o arquivo real: 65 linhas, 12 blocos, soma por bloco somando
+R$ 2.060 — o mesmo total da célula da planilha.
+
+Decisões que valem registro:
+
+- **O rótulo da coluna de item é genérico ("Item") quando cada bloco nomeia a
+  primeira coluna por si.** "MORADIA" seria um nome errado para uma coluna com
+  itens de doze blocos. Quando todos os blocos usam o mesmo nome, esse nome é
+  mantido.
+- **Células são copiadas, não recriadas**, preservando tipo, formato e fórmula;
+  o mapa de endereços alimenta `sliceAdvancedMetadata` para que comentário,
+  hyperlink e cor de preenchimento acompanhem a linha na nova posição — mesma
+  mecânica que a separação por região já usava.
+- **Sem remapeador de intervalo.** Um intervalo do arquivo original (validação
+  de dados, autofiltro) não tem equivalente numa grade remontada a partir de
+  blocos espalhados pela planilha, e inventar um seria pior do que perdê-lo.
+- **Sublinhado no nome do bloco vira espaço** ("Animais_de_estimação" →
+  "Animais de estimação"), porque nome de tabela do Excel não aceita espaço e o
+  sublinhado é só a limitação do formato. Maiúsculas coladas
+  ("CuidadosPessoais") ficam como estão: separar por conta própria erraria em
+  siglas, e inventar tipografia no nome que o usuário deu ao bloco é pior do
+  que exibi-lo como foi salvo.
+
+### Por que é uma opção, e não a única leitura
+
+A aba inteira continua disponível como segunda opção no seletor de importação.
+A unificação descarta o que não couber na assinatura comum, e essa escolha é do
+usuário. A opção unificada vem primeiro porque `preferredSheetIndex` seleciona
+a primeira com linhas.
+
+### Trava contra falso positivo
+
+Unificar blocos que não são equivalentes misturaria grandezas diferentes na
+mesma coluna, então a detecção exige: pelo menos dois blocos, pelo menos três
+colunas, assinatura idêntica depois da primeira coluna, e que o grupo cubra ao
+menos 60% das tabelas da aba. Duas tabelas iguais entre dez diferentes são
+coincidência, não um formato de blocos.
+
+### Estrutura
+
+O corpo de `sheetsWithData` virou `sheetOptionsForName`, sem mudança de
+comportamento, para que a opção unificada possa ser acrescentada antes das
+opções existentes sem duplicar o encadeamento de retornos.
+
+### Versão
+
+`0.2.0-beta.4` → `0.3.0-beta.1`: capacidade nova de leitura, não correção.
