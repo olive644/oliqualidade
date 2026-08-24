@@ -61,6 +61,7 @@ export function RatingWidgetBody({
   const belowAverageShare = values.length ? belowAverage / values.length : null;
   return (
     <article
+      data-widget-id={w.id}
       className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
       style={{ animationDelay: `${animationDelay}ms`, ...(ratingStyle ?? {}) }}
     >

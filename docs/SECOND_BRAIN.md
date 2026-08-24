@@ -200,6 +200,8 @@ audit inteiro.
 | Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
 | Aba formada por vários blocos com a mesma estrutura virar uma tabela com o bloco como coluna | `detectTableBlockGroup`/`buildTableBlocksGrid` (`excel-table-blocks.ts`), oferecidos como opção "Blocos unificados" por `unifiedBlocksOption` (`import.ts`); a leitura da aba inteira continua como segunda opção | `excel-table-blocks.test.ts` — ver [[CURRENT_STATE_AUDIT#121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão]] |
 | Linhas de total das Tabelas do Excel ficarem fora dos registros | `tableTotalsRegions` (`excel-table-totals.ts`) a partir de `totalsRowCount` lido em `parseTable` (`workbook-metadata.ts`); limpeza por célula na cópia de análise em `sheetToRows`, ao lado do tratamento de linhas ocultas | `excel-table-totals.test.ts` — ver [[CURRENT_STATE_AUDIT#120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma]] |
+| Coluna de meta/alvo não virar a métrica principal do painel | `isReferenceMetric` (`lib/reference-metrics.ts`) empurra colunas de referência para o fim da ordem de métricas em `auto-dashboard.ts` e as promove a `areaGoalKey` do gráfico de área | `reference-metrics.test.ts` + `auto-dashboard.test.ts` (`describe("coluna de meta")`) — ver [[CURRENT_STATE_AUDIT#128. Bug relatado: gráfico de área "sem dados" em painel novo — a meta virava o resultado]] |
+| Encontrar coluna, widget, métrica, aba ou painel pelo nome | `buildGlobalSearchEntries` (`lib/global-search.ts`) alimenta os grupos novos da `CommandPalette`; `handleSearchEntry` (`routes/index.tsx`) decide a ação de cada tipo; widgets têm `data-widget-id` para a rolagem até eles | `global-search.test.ts` — ver [[CURRENT_STATE_AUDIT#127. Busca global: a paleta de comandos encontra o que existe no painel]] |
 | Ações principais do painel no celular | `MobileNavBar` (`components/oliam/mobile-nav-bar.tsx`) + regras `.oliam-mobile-nav` em `styles.css`, só abaixo de 700px; a reserva de espaço do conteúdo e a posição do balão do assistente ficam nas regras de celular já existentes, que vencem na cascata | verificação manual em viewport de 390px — ver [[CURRENT_STATE_AUDIT#126. Barra de navegação inferior no celular]] |
 | Esconder as ferramentas de montagem sem removê-las (modo leitura) | atributo `data-edit-only` nos controles de edição + regra `.oliam-reading-mode [data-edit-only]` (`styles.css`); a marca vai na raiz do documento para alcançar a barra superior e os menus em portal; estado em `lib/view-mode.ts` | `view-mode.test.ts` — ver [[CURRENT_STATE_AUDIT#125. Modo leitura separado do modo edição]] |
 | Quantos widgets um filtro alcança | `widgetsAffectedByFilters` (`lib/widgets.ts`), exibido em `AnalysisContextBanner` só quando há filtro ativo; `image` e `folder-files` ficam de fora porque não leem as linhas | `widgets-filters.test.ts` — ver [[CURRENT_STATE_AUDIT#124. Alcance do filtro dito por extenso: "12 de 12 widgets atualizados"]] |
@@ -809,6 +811,14 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 - `v0.5.0-beta.2` (barra de navegação inferior no celular). Ver
   [[CURRENT_STATE_AUDIT#126. Barra de navegação inferior no celular]].
+
+- `v0.6.0-beta.1` (busca global por colunas, widgets, métricas, abas e
+  painéis) avança o minor: capacidade nova. Ver
+  [[CURRENT_STATE_AUDIT#127. Busca global: a paleta de comandos encontra o que existe no painel]].
+
+- `v0.6.0-beta.2` (coluna de meta deixa de ser tratada como resultado no painel
+  automático). Ver
+  [[CURRENT_STATE_AUDIT#128. Bug relatado: gráfico de área "sem dados" em painel novo — a meta virava o resultado]].
 
 ## Checklist antes de publicar
 

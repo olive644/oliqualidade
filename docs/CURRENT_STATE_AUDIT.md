@@ -7075,3 +7075,115 @@ botão da barra de ferramentas e o da barra inferior.
 ### Versão
 
 `0.5.0-beta.1` → `0.5.0-beta.2`.
+
+## 127. Busca global: a paleta de comandos encontra o que existe no painel
+
+Item do inventário: a paleta existia, mas não era busca por colunas, widgets,
+métricas, abas, painéis nem ações relacionadas ao resultado pesquisado.
+
+### O que existia
+
+Uma lista fixa de ações — desfazer, exportar, abrir painel de formatação. Útil,
+mas em uma planilha com dezenas de colunas e um painel com dezenas de widgets,
+achar uma coluna ou um widget específico era rolar e procurar com os olhos.
+
+### O que foi indexado
+
+`buildGlobalSearchEntries` (`lib/global-search.ts`) monta uma lista pesquisável
+com colunas, métricas, widgets, abas e painéis. Cada entrada carrega palavras-
+chave além do rótulo, e é isso que faz a busca funcionar de verdade: procurar
+"cidade" encontra o gráfico que agrupa por cidade mesmo que o nome dele não
+mencione a palavra.
+
+Decisões que valem registro:
+
+- **Coluna numérica aparece duas vezes, em grupos diferentes.** Como coluna,
+  para filtrar por ela; como métrica, para virar indicador. São duas intenções
+  com o mesmo nome, e escolher uma sozinha obrigaria o usuário a adivinhar qual
+  a busca decidiu por ele.
+- **Widget sem título é identificado por tipo e posição** ("Métrica 2"), porque
+  o título costuma ser calculado na renderização, que o índice não enxerga.
+  Inventar um nome seria pior que dizer onde ele está.
+- **Escolher um widget rola a tela até ele.** Cada corpo de widget ganhou
+  `data-widget-id`; sem isso, "encontrei" não vira "estou vendo".
+- **Escolher uma coluna já cria o filtro dela**, e não cria um segundo se já
+  houver um para o mesmo campo — dois filtros concorrentes na mesma coluna é
+  estado inválido, não conveniência.
+- `addWidget` passou a aceitar um `patch`, para a busca criar o indicador já
+  apontando para a métrica escolhida em vez de depender do palpite de
+  `createWidget`.
+
+### Verificação
+
+No painel de demonstração: a paleta abre com os seis grupos (Widgets, Colunas,
+Métricas, Abas, Painéis, Ações); digitar "unidade" traz cinco widgets, entre
+eles os que só se relacionam à palavra pela coluna que usam; escolher um widget
+rola o conteúdo até ele; e escolher a coluna "Turno" deixa o painel com filtro
+ativo.
+
+### Versão
+
+`0.5.0-beta.2` → `0.6.0-beta.1`: capacidade nova.
+
+## 128. Bug relatado: gráfico de área "sem dados" em painel novo — a meta virava o resultado
+
+Bug relatado pelo usuário: ao gerar o relatório de um painel novo, o widget de
+gráfico de área não mostrava os dados.
+
+### O que estava acontecendo
+
+O gráfico existia e desenhava, mas o que ele desenhava era inútil. Na planilha
+de demonstração, o painel automático escolhia a coluna **"Meta"** como métrica
+principal do gráfico temporal. Meta é constante (95 em todas as linhas), então:
+
+- a linha do "resultado observado" era uma reta;
+- a referência ("período anterior") coincidia com ela, porque o valor nunca
+  mudava;
+- as duas faixas de variação colapsavam em zero.
+
+O resultado na tela era um gráfico praticamente vazio, com uma linha reta e
+nenhuma área visível — exatamente a descrição de "não aparece os dados".
+
+### A causa
+
+`METRIC_NAME` (`auto-dashboard.ts`) inclui `meta|target|goal` no vocabulário de
+métrica, e com razão: são colunas numéricas e agregáveis. O erro estava em
+deixá-las competir pelo posto de `metrics[0]`, que é a métrica principal do
+painel inteiro.
+
+E o efeito ia muito além do gráfico de área: com "Meta" em primeiro lugar, os
+indicadores do topo, a comparação por categoria e o radar também se apoiavam na
+meta. O painel inteiro descrevia a meta, não o desempenho.
+
+### A correção
+
+`isReferenceMetric` (`lib/reference-metrics.ts`) reconhece o vocabulário de
+referência (meta, alvo, objetivo, limite, target, goal, benchmark). Duas
+mudanças a partir dele:
+
+1. **Ordenação**: colunas de referência vão para o fim da lista de métricas.
+   Continuam disponíveis — só perdem a disputa pelo primeiro lugar para
+   qualquer resultado de verdade.
+2. **Aproveitamento**: existindo uma coluna de referência, o gráfico de área
+   nasce com `areaReference: "goal"` e `areaGoalKey` apontando para ela. A
+   comparação deixa de ser com o período anterior e passa a ser com a meta, que
+   é a leitura que uma planilha com meta pede.
+
+O widget já sabia fazer isso; ninguém nunca configurava assim automaticamente.
+
+Detalhe de acabamento: a legenda escrevia "Meta: Meta", porque prefixava o
+nome da coluna. O prefixo agora só entra quando o nome da coluna sozinho não
+diria que aquilo é a referência.
+
+### Antes e depois, no mesmo painel de demonstração
+
+| | Antes | Depois |
+| --- | --- | --- |
+| Indicadores do topo | Meta, Meta, Amostras | Resultado, Amostras, Conformidade |
+| Gráfico principal | Meta por linha de Data (reta) | Resultado por linha de Data, com a meta como referência |
+| Comparação por categoria | Contagem de registros por Unidade | Média de Resultado por Unidade |
+| Roteiro de análise | 4 de 8 perguntas respondidas | 8 de 8 |
+
+### Versão
+
+`0.6.0-beta.1` → `0.6.0-beta.2`.

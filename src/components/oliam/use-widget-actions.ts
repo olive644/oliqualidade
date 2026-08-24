@@ -32,10 +32,16 @@ export function useWidgetActions(p: {
     p.updateSheet({ widgets: next });
   };
 
-  const addWidget = (type: WidgetType) =>
+  // `patch` existe para quem já sabe o que o widget deve mostrar — a busca
+  // global cria um indicador direto da métrica escolhida, sem passar pelo
+  // seletor e sem depender do palpite de `createWidget`.
+  const addWidget = (type: WidgetType, patch?: Partial<Widget>) =>
     setWidgets([
       ...widgets,
-      createWidget(type, sheet.columns, undefined, sheet.rows, sheet.intelligence?.columns),
+      {
+        ...createWidget(type, sheet.columns, undefined, sheet.rows, sheet.intelligence?.columns),
+        ...patch,
+      },
     ]);
 
   const copyCurrentWidget = (widget: Widget) => {

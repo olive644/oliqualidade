@@ -77,6 +77,7 @@ export function PivotWidgetBody({
   const metricKind = metric?.kind ?? "number";
   return (
     <article
+      data-widget-id={w.id}
       className={cn("oliam-widget group bg-card", spanClass(w.span), sizeClass(w.size, w.type))}
       style={{ animationDelay: `${animationDelay}ms` }}
     >

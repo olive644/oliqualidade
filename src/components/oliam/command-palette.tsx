@@ -16,6 +16,7 @@ import {
   Redo2,
   Sheet as SheetIcon,
   ShieldAlert,
+  Sigma,
   Sun,
   Undo2,
   Upload,
@@ -29,6 +30,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import type { FolderMonitorView } from "@/lib/folder-monitor";
+import type { GlobalSearchEntry } from "@/lib/global-search";
 
 export function CommandPalette(p: {
   open: boolean;
@@ -61,12 +63,46 @@ export function CommandPalette(p: {
   theme: string;
   toggleTheme: () => void;
   backHome: () => void;
+  /** Tudo que existe no painel e pode ser encontrado pelo nome. */
+  searchEntries: GlobalSearchEntry[];
+  onSelectSearchEntry: (entry: GlobalSearchEntry) => void;
 }) {
+  const grupos: { kind: GlobalSearchEntry["kind"]; heading: string; icon: React.ReactNode }[] = [
+    { kind: "widget", heading: "Widgets", icon: <LayoutGrid /> },
+    { kind: "column", heading: "Colunas", icon: <Columns3 /> },
+    { kind: "metric", heading: "Métricas", icon: <Sigma /> },
+    { kind: "sheet", heading: "Abas", icon: <SheetIcon /> },
+    { kind: "dashboard", heading: "Painéis", icon: <LayoutGrid /> },
+  ];
   return (
     <CommandDialog open={p.open} onOpenChange={p.onOpenChange}>
-      <CommandInput placeholder="Filtrar, trocar painel ou exportar…" />
+      <CommandInput placeholder="Buscar coluna, widget, aba, painel ou ação…" />
       <CommandList>
-        <CommandEmpty>Nenhum comando encontrado.</CommandEmpty>
+        <CommandEmpty>Nada encontrado neste painel.</CommandEmpty>
+        {grupos.map((grupo) => {
+          const itens = p.searchEntries.filter((entry) => entry.kind === grupo.kind);
+          if (!itens.length) return null;
+          return (
+            <CommandGroup key={grupo.kind} heading={grupo.heading}>
+              {itens.map((entry) => (
+                <CommandItem
+                  key={entry.id}
+                  // O valor é o que o cmdk compara com o texto digitado. Sem
+                  // as palavras-chave aqui, procurar "cidade" não acharia o
+                  // gráfico que agrupa por cidade mas se chama outra coisa.
+                  value={`${entry.label} ${entry.hint} ${entry.keywords}`}
+                  onSelect={() => p.onSelectSearchEntry(entry)}
+                >
+                  {grupo.icon}
+                  <span className="truncate">{entry.label}</span>
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                    {entry.hint}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          );
+        })}
         <CommandGroup heading="Ações">
           <CommandItem onSelect={p.undo} disabled={!p.canUndo}>
             <Undo2 />

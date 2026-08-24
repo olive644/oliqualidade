@@ -7,10 +7,38 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.5.0-beta.2";
+export const APP_VERSION = "0.6.0-beta.2";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-meta-nao-e-resultado",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Painel automático deixa de montar tudo em cima da coluna de meta",
+    summary:
+      "Colunas como meta, alvo e limite dizem onde o resultado deveria chegar. O painel passou a tratá-las como referência, e não como o resultado em si.",
+    highlights: [
+      "O gráfico de evolução mostrava a meta ao longo do tempo, que é uma linha reta comparada com ela mesma, e parecia um gráfico sem dados.",
+      "Agora ele mostra o resultado, com a meta desenhada como linha de referência e as faixas de quanto ficou acima ou abaixo dela.",
+      "A correção vale para o painel inteiro: indicadores, comparações por categoria e radar passaram a se apoiar no resultado.",
+      "Sem coluna de meta na planilha, o gráfico continua comparando com o período anterior, como antes.",
+    ],
+  },
+  {
+    id: "2026-08-24-busca-global",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Busca global: ache coluna, widget, aba ou painel pelo nome",
+    summary:
+      "A paleta de comandos deixou de listar só ações e passou a encontrar o que existe no painel.",
+    highlights: [
+      "Digite o nome de uma coluna, widget, aba ou painel e vá direto até ele.",
+      "Escolher um widget rola a tela até ele; escolher uma coluna já cria o filtro dela.",
+      "Colunas numéricas aparecem também como métrica, para virar um indicador em um passo.",
+      "Widgets são encontrados também pelas colunas que usam, mesmo que o nome deles não diga isso.",
+    ],
+  },
   {
     id: "2026-08-24-barra-mobile",
     version: APP_VERSION,
