@@ -294,11 +294,12 @@ export function ChartWidgetBody({
   // planilha, que não é necessariamente cronológica. Em nenhum dos dois a
   // barra vizinha é "o período anterior".
   const barAxisKind: ChartAxisKind = "category";
-  // A série de referência passa a se chamar pelo que ela é ("Período
-  // anterior", "Média móvel", "Meta: X") em vez do genérico "Referência", e a
-  // legenda usa exatamente os mesmos nomes do tooltip — legenda e tooltip
-  // chamando a mesma série de duas coisas diferentes é pior que não ter
-  // legenda.
+  // A legenda do gráfico de área já existia, mas identificava as séries só
+  // pela cor de um quadradinho e não incluía a linha de referência, que é
+  // justamente a série contra a qual todas as outras são lidas. Agora ela
+  // desenha o traço real de cada série e nomeia a referência pelo que ela é
+  // ("Período anterior", "Média móvel", "Meta: X"), em vez do genérico
+  // "Referência" que aparecia só no tooltip.
   const areaReferenceLabel =
     areaReference === "goal"
       ? `Meta: ${areaGoalCol?.label ?? ""}`
@@ -308,8 +309,8 @@ export function ChartWidgetBody({
   const areaLegendItems = [
     { name: "Resultado observado", color: "var(--primary)" },
     { name: areaReferenceLabel, color: "var(--muted-foreground)", dashed: true },
-    { name: "Variação acima da referência", color: "var(--secondary-accent)" },
-    { name: "Variação abaixo da referência", color: "var(--chart-4)", dashed: true },
+    { name: "Acima da referência", color: "var(--secondary-accent)" },
+    { name: "Abaixo da referência", color: "var(--chart-4)", dashed: true },
   ];
   // A ordem por valor é a esperada num gráfico de barras e não precisa ser
   // dita. As outras precisam: sem isso, um gráfico de meses fora da ordem de
@@ -1002,22 +1003,7 @@ export function ChartWidgetBody({
       ) : w.type === "area" ? (
         <div className="p-3">
           <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/30">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-1 pt-4 text-[11px] text-muted-foreground">
-              {[
-                ["var(--primary)", "Resultado observado"],
-                ["var(--secondary-accent)", "Acima da referência"],
-                ["var(--chart-4)", "Abaixo da referência"],
-              ].map(([color, label]) => (
-                <span key={label} className="inline-flex items-center gap-1.5">
-                  <span
-                    className="size-2.5 shrink-0 rounded-sm"
-                    style={{ backgroundColor: color }}
-                    aria-hidden="true"
-                  />
-                  {label}
-                </span>
-              ))}
-            </div>
+            <ChartSeriesLegend items={areaLegendItems} />
             <div className="relative">
               <div
                 ref={timeSeriesPresentation.scrollable ? chartScrollRef : undefined}
@@ -1191,7 +1177,6 @@ export function ChartWidgetBody({
                 para os lados
               </p>
             )}
-            <ChartSeriesLegend items={areaLegendItems} />
             <ChartAxisLegend x={horizontalAxisLabel} y={verticalAxisLabel} kind={valueCol.kind} />
             <p className="sr-only">
               Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
