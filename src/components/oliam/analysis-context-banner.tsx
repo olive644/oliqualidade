@@ -15,6 +15,7 @@ export function AnalysisContextBanner({
   totalRowCount,
   periodLabel,
   filterCount,
+  affectedWidgetCount,
   trust,
 }: {
   fileName: string;
@@ -23,6 +24,8 @@ export function AnalysisContextBanner({
   totalRowCount: number;
   periodLabel: string | null;
   filterCount: number;
+  /** Quantos widgets do painel são recalculados quando um filtro muda. */
+  affectedWidgetCount: number;
   trust: AnalysisTrustSummary;
 }) {
   const filtered = rowCount < totalRowCount;
@@ -40,6 +43,16 @@ export function AnalysisContextBanner({
       {filterCount > 0 && (
         <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
           {filterCount} {filterCount === 1 ? "filtro ativo" : "filtros ativos"}
+        </span>
+      )}
+      {filterCount > 0 && affectedWidgetCount > 0 && (
+        // O filtro sempre valeu para o painel inteiro, mas isso não estava
+        // escrito em lugar nenhum: quem filtrava clicando em um widget não
+        // tinha como saber, sem conferir um por um, se os outros também
+        // haviam mudado.
+        <span className="text-muted-foreground">
+          {affectedWidgetCount} de {affectedWidgetCount}{" "}
+          {affectedWidgetCount === 1 ? "widget atualizado" : "widgets atualizados"}
         </span>
       )}
       <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 font-mono text-[10px] text-muted-foreground">

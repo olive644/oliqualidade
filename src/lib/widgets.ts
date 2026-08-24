@@ -674,3 +674,23 @@ export function sizeClass(size: WidgetSize, type: WidgetType): string {
   if (size === "md") return "min-h-80 lg:min-h-64";
   return "min-h-[28rem] lg:min-h-[22rem]";
 }
+
+/**
+ * Tipos de widget que não leem as linhas da planilha e, por isso, não mudam
+ * quando um filtro entra ou sai: uma imagem embutida no arquivo e a lista de
+ * planilhas de uma pasta monitorada.
+ */
+const WIDGETS_IGNORING_FILTERS: WidgetType[] = ["image", "folder-files"];
+
+/**
+ * Quantos widgets do painel são recalculados quando um filtro muda.
+ *
+ * A interface já dizia quantos filtros estavam ativos e quantas linhas
+ * sobraram, mas deixava a pergunta mais importante sem resposta explícita: o
+ * filtro pegou o painel inteiro ou só o widget em que eu cliquei? Como o
+ * filtro sempre valeu para todos, dizer o número é reforço de confiança — e é
+ * a diferença entre confiar no painel e conferir widget por widget.
+ */
+export function widgetsAffectedByFilters(widgets: Pick<Widget, "type">[]): number {
+  return widgets.filter((widget) => !WIDGETS_IGNORING_FILTERS.includes(widget.type)).length;
+}
