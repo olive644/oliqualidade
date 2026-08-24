@@ -9,6 +9,23 @@ import type { Column, FilterRule, Row } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { InvestigationPanel } from "./investigation-panel";
 
+/**
+ * O botão "Investigar" abria sempre com a métrica global (a `primary` do
+ * painel), ignorando de qual pergunta o clique veio — clicar em "Duas
+ * variáveis têm relação?" ou em "Como mudou no tempo?" investigava a métrica
+ * errada. Resolve pelo `metricKey` da própria pergunta (mesmo padrão já
+ * usado em `questionEvidence`), caindo na métrica global só quando a
+ * pergunta não aponta pra nenhuma. Extraída do componente pra ser testável
+ * sem montar toda a barra lateral.
+ */
+export function investigationMetricFor(
+  question: Pick<AnalyticalQuestion, "metricKey">,
+  nums: Column[],
+  primary: Column | undefined,
+): Column | undefined {
+  return nums.find((column) => column.key === question.metricKey) ?? primary;
+}
+
 export function InsightSidebar(p: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -35,17 +52,6 @@ export function InsightSidebar(p: {
   const { cat, primary, dateCol, open, onOpenChange } = p;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [investigating, setInvestigating] = useState<AnalyticalQuestion | null>(null);
-
-  // O botão "Investigar" abria sempre com a métrica global (p.primary),
-  // ignorando de qual pergunta o clique veio — clicar em "Duas variáveis têm
-  // relação?" ou em "Como mudou no tempo?" investigava a métrica errada.
-  // Resolve pelo metricKey da própria pergunta (mesmo padrão já usado em
-  // questionEvidence, linhas 89-90), caindo na métrica global só quando a
-  // pergunta não aponta pra nenhuma. A dimensão continua sendo a categoria
-  // padrão (cat): a barra lateral só recebe uma dimensão candidata, não a
-  // lista completa de colunas categóricas para resolver por groupKey.
-  const investigationMetricFor = (question: AnalyticalQuestion): Column | undefined =>
-    p.nums.find((column) => column.key === question.metricKey) ?? p.primary;
 
   const openInvestigationNextStep = (type: "pareto" | "bar") => {
     const id = type === "pareto" ? "root-causes" : "who-is-bigger";
@@ -223,7 +229,7 @@ export function InsightSidebar(p: {
                           >
                             Ver gráfico
                           </button>
-                          {investigationMetricFor(question) && p.cat && (
+                          {investigationMetricFor(question, p.nums, p.primary) && p.cat && (
                             <button
                               type="button"
                               className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary underline-offset-2 hover:underline"
@@ -257,7 +263,7 @@ export function InsightSidebar(p: {
       )}
       {investigating &&
         (() => {
-          const metric = investigationMetricFor(investigating);
+          const metric = investigationMetricFor(investigating, p.nums, p.primary);
           if (!metric || !p.cat) return null;
           return (
             <InvestigationPanel

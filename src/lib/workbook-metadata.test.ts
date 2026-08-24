@@ -193,6 +193,38 @@ describe("metadados avançados de XLSX", () => {
     ]);
   });
 
+  it('resolve theme="0"/"1"/"2"/"3" na ordem do atributo do styles.xml, não na ordem de documento do clrScheme', () => {
+    // clrScheme guarda dk1(preto)/lt1(branco)/dk2/lt2 nessa ordem de
+    // documento, mas o atributo theme="N" de uma célula usa outra ordem:
+    // 0=lt1, 1=dk1, 2=lt2, 3=dk2. Indexar direto na ordem do documento
+    // (bug já corrigido) trocava branco por preto e vice-versa pra
+    // qualquer célula com theme="0" ou theme="1" — o caso mais comum de
+    // cabeçalho colorido ("Branco, Plano de fundo 1" / "Preto, Texto 1").
+    const zip = zipSync({
+      "xl/workbook.xml": xml(
+        '<workbook xmlns:r="r"><sheets><sheet name="Dados" r:id="rId1"/></sheets></workbook>',
+      ),
+      "xl/_rels/workbook.xml.rels": xml(
+        '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rIdTheme" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/></Relationships>',
+      ),
+      "xl/worksheets/sheet1.xml": xml(
+        '<worksheet xmlns:r="r"><sheetData><row r="1"><c r="A1" s="1"><v>1</v></c><c r="B1" s="2"><v>2</v></c><c r="C1" s="3"><v>3</v></c><c r="D1" s="4"><v>4</v></c></row></sheetData></worksheet>',
+      ),
+      "xl/styles.xml": xml(
+        '<styleSheet><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor theme="0"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor theme="1"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor theme="2"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor theme="3"/><bgColor indexed="64"/></patternFill></fill></fills><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="1" borderId="0" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="4" borderId="0" xfId="0" applyFill="1"/></cellXfs></styleSheet>',
+      ),
+      "xl/theme/theme1.xml": xml(
+        '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F3864"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="5B9BD5"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="4472C4"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme></a:themeElements></a:theme>',
+      ),
+    });
+    expect(inspectWorkbookFeatures(zip).get("Dados")?.cellFills).toEqual([
+      { address: "A1", color: "#FFFFFF" }, // theme="0" → lt1 (branco), não dk1
+      { address: "B1", color: "#000000" }, // theme="1" → dk1 (preto), não lt1
+      { address: "C1", color: "#E7E6E6" }, // theme="2" → lt2
+      { address: "D1", color: "#1F3864" }, // theme="3" → dk2
+    ]);
+  });
+
   it("integra os metadados ao diagnóstico sem alterar os dados", () => {
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["Produto", "Quantidade", "Total"],

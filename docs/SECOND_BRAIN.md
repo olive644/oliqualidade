@@ -747,6 +747,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 - Regra de evolução: correção compatível avança a iteração beta; conjunto
   relevante de recursos avança o minor; versão estável remove o sufixo beta.
 - Decisão completa em [[CURRENT_STATE_AUDIT#115. Versionamento público começa em v0.1.0-beta.1]].
+- `v0.1.0-beta.2` (pacote de correções de datas brasileiras, cores de tema do
+  Excel, investigação guiada e roteiro de perguntas) é o primeiro avanço de
+  iteração beta depois da versão inicial — mesma regra aplicada pela primeira
+  vez. Ver [[CURRENT_STATE_AUDIT#116. Revisão retroativa das PRs #225-#243 (8 subagentes) e correção de processo: versão, sino, testes e este registro ficaram para trás]].
 
 ## Checklist antes de publicar
 
@@ -760,6 +764,15 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
    mantenedor precisará conhecer — incluir wikilink para a seção nova do
    `CURRENT_STATE_AUDIT.md`, e atualizar o [[#Backlog priorizado]] se o item
    resolvido estava lá.
+8. Se a mudança é visível ao usuário (bug corrigido, comportamento novo,
+   não um refactor interno puro): avançar `APP_VERSION`/`package.json`/
+   `package-lock.json` (ver [[#Versionamento público do produto]]) e
+   publicar uma entrada em `PRODUCT_UPDATES` (ver [[#Centro de
+   atualizações]]) **na mesma PR**, não depois. CI verde e autorização de
+   merge não substituem esse passo — ver
+   [[CURRENT_STATE_AUDIT#116. Revisão retroativa das PRs #225-#243 (8 subagentes) e correção de processo: versão, sino, testes e este registro ficaram para trás]],
+   onde isso ficou pra trás numa PR de correções e precisou de uma
+   consolidação depois pra fechar a lacuna.
 
 ## Estado conhecido
 
