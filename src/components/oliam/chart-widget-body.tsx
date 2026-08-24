@@ -40,9 +40,12 @@ import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/forma
 import {
   aggregationLabels,
   buildAreaComparisonSeries,
+  axisLabelPresentation,
+  BAR_SLOT_PX,
   barChartPresentation,
   barValueLabelsFit,
   chartSeries,
+  TIME_SERIES_SLOT_PX,
   collapsePieSeries,
   limitChartSeriesForRendering,
   pieComparisonFor,
@@ -279,6 +282,12 @@ export function ChartWidgetBody({
         0,
       )
     : 0;
+  const barAxisLabels = axisLabelPresentation({
+    count: barSeries.length,
+    scrollable: barPresentation.scrollable,
+    span: w.span,
+    slotPx: BAR_SLOT_PX,
+  });
   const barLabelsFit = barValueLabelsFit({
     count: barSeries.length,
     scrollable: barPresentation.scrollable,
@@ -324,6 +333,12 @@ export function ChartWidgetBody({
         ? "alfabética"
         : null;
   const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
+  const timeAxisLabels = axisLabelPresentation({
+    count: series.length,
+    scrollable: timeSeriesPresentation.scrollable,
+    span: w.span,
+    slotPx: TIME_SERIES_SLOT_PX,
+  });
   const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
   const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
   const displayedPieIndex = activePieIndex ?? selectedPieIndex;
@@ -565,10 +580,10 @@ export function ChartWidgetBody({
                     <XAxis
                       type="category"
                       dataKey="name"
-                      tick={(props) => <AxisTick {...props} />}
+                      tick={(props) => <AxisTick {...props} max={barAxisLabels.maxChars} />}
                       tickLine={false}
                       axisLine={{ stroke: "var(--border)" }}
-                      interval={0}
+                      interval={barAxisLabels.interval}
                     />
                     <YAxis
                       type="number"
@@ -1046,8 +1061,8 @@ export function ChartWidgetBody({
                       <CartesianGrid vertical={false} stroke="var(--border)" />
                       <XAxis
                         dataKey="name"
-                        tick={(props) => <AxisTick {...props} />}
-                        interval={0}
+                        tick={(props) => <AxisTick {...props} max={timeAxisLabels.maxChars} />}
+                        interval={timeAxisLabels.interval}
                         padding={{ left: 20, right: 20 }}
                       />
                       <YAxis
@@ -1231,7 +1246,11 @@ export function ChartWidgetBody({
                 <ResponsiveContainer>
                   <LineChart data={series} margin={{ top: 20, right: 12, left: 0, bottom: 14 }}>
                     <CartesianGrid vertical={false} stroke="var(--border)" />
-                    <XAxis dataKey="name" tick={(props) => <AxisTick {...props} />} interval={0} />
+                    <XAxis
+                      dataKey="name"
+                      tick={(props) => <AxisTick {...props} max={timeAxisLabels.maxChars} />}
+                      interval={timeAxisLabels.interval}
+                    />
                     <YAxis
                       tick={{ fontSize: 10 }}
                       width={52}

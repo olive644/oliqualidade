@@ -6629,6 +6629,34 @@ Não há caso em que o aviso apareceria. Construí-lo seria acrescentar um texto
 morto ao painel. Registrado aqui para que o item não volte ao backlog numa
 próxima revisão.
 
+### Nomes de categoria sobrepostos no eixo X, achado com planilha real
+
+O usuário forneceu duas planilhas reais (um planejador de lista de compras e um
+orçamento pessoal mensal, ambos modelos do Excel) para verificar o caso em que
+os rótulos de valor somem. A verificação confirmou o comportamento — e a
+captura de tela expôs, no mesmo cartão, um defeito vizinho que nenhum teste
+pegava: os **nomes das categorias** no eixo X se sobrepunham, saindo como
+"HipBagameNtúmero VídeosDV".
+
+`AxisTick` cortava em dez caracteres fixos, sem olhar o espaço. Encurtar mais
+não resolvia: medido no navegador, seis categorias em um cartão de um terço
+deixam cerca de 24px por barra, e mesmo "Hip…" ocupa 28px. Não existe corte que
+caiba e ainda identifique a categoria.
+
+`axisLabelPresentation` devolve corte **e** intervalo: quando nem o corte
+mínimo cabe, o eixo passa a pular rótulos. No caso real, o cartão estreito
+passou de seis pedaços sobrepostos para três nomes legíveis ("Hipote…", "Gás",
+"Luz"), com zero sobreposição medida por `getComputedTextLength`; o cartão
+inteiro continua mostrando os seis. O nome completo nunca se perde: o `<title>`
+do tick mostra o texto inteiro no hover.
+
+As constantes de largura foram recalibradas contra medição real no navegador, e
+não contra estimativa: os cartões medem 237px, 474px e 712px em viewport de
+1280px com a barra lateral aberta, e cada caractere do eixo ocupa entre 6 e 7px
+na fonte 11px. A primeira versão dessas constantes supunha a largura do cartão
+inteiro, sem descontar o recuo e a faixa do eixo vertical, e por isso liberava
+rótulos que não cabiam.
+
 ### Versão
 
 `0.2.0-beta.2` → `0.2.0-beta.3`.

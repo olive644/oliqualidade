@@ -96,7 +96,7 @@ export function seriesAverage(series: { total: number }[]): number | null {
  * que a área visível (BAR_SLOT px por categoria) e o container rola na
  * horizontal — inclusive por arrasto com o mouse, não só toque/scrollbar.
  */
-const BAR_SLOT_PX = 88;
+export const BAR_SLOT_PX = 88;
 const BAR_SCROLL_THRESHOLD = 8;
 
 /**
@@ -108,13 +108,17 @@ const BAR_SCROLL_THRESHOLD = 8;
 const BAR_LABEL_CHAR_PX = 5.6;
 
 /**
- * Largura útil aproximada da área de plotagem por span do widget, já
- * descontados o recuo do cartão e a faixa do eixo vertical. Números
- * conservadores: errar para baixo esconde um rótulo que caberia, errar para
- * cima deixa rótulos se sobreporem, que é o defeito que esta conta existe
- * para evitar.
+ * Largura útil aproximada da área de plotagem por span do widget, medida no
+ * navegador com a barra lateral aberta em viewport de 1280px: o cartão de um
+ * terço tem 237px, o de dois terços 474px e o inteiro 712px, e de cada um
+ * ainda saem 32px de recuo e 52px da faixa do eixo vertical.
+ *
+ * São propositalmente os números do caso mais apertado. Em tela larga sobra
+ * espaço e a conta subestima, escondendo um rótulo que caberia; a troca é
+ * deliberada, porque o erro na direção oposta recria a sobreposição que esta
+ * conta existe para evitar.
  */
-const PLOT_WIDTH_BY_SPAN: Record<number, number> = { 1: 236, 2: 576, 3: 916 };
+const PLOT_WIDTH_BY_SPAN: Record<number, number> = { 1: 150, 2: 390, 3: 630 };
 
 /**
  * Decide se os valores cabem escritos em cima das barras.
@@ -143,6 +147,70 @@ export function barValueLabelsFit({
   return longestLabelChars * BAR_LABEL_CHAR_PX + 6 <= slot;
 }
 
+/**
+ * Largura média de um caractere do rótulo de categoria, em pixels, na fonte
+ * 11px do eixo X. Medida no navegador com nomes reais: "Gás" ocupa 20px e
+ * "Hipoteca …" ocupa 60px, o que dá algo entre 6 e 7px por caractere.
+ */
+const AXIS_LABEL_CHAR_PX = 6.5;
+
+/** Corte máximo e mínimo do nome da categoria no eixo X. */
+const AXIS_LABEL_MAX_CHARS = 10;
+const AXIS_LABEL_MIN_CHARS = 4;
+
+export type AxisLabelPresentation = {
+  /** Quantos caracteres do nome cabem sem colidir com o vizinho exibido. */
+  maxChars: number;
+  /** Intervalo do Recharts: 0 mostra todos, 1 mostra um sim outro não. */
+  interval: number;
+};
+
+/**
+ * Decide como escrever os nomes das categorias no eixo X.
+ *
+ * O corte era fixo em dez caracteres, independente do espaço: em um cartão
+ * estreito com várias categorias, "Hipoteca o…", "Pagamento …" e "Número do…"
+ * se sobrepunham e viravam uma linha de letras embaralhadas embaixo do
+ * gráfico.
+ *
+ * Encurtar o texto sozinho não resolve o caso apertado. Com a planilha real de
+ * orçamento pessoal, seis categorias em um cartão de um terço deixam cerca de
+ * 24px por barra, e mesmo "Hip…" ocupa 28px: não existe corte que caiba e
+ * ainda identifique a categoria. Por isso, quando nem o corte mínimo cabe, o
+ * eixo passa a pular rótulos. Ler três nomes inteiros é melhor que ler seis
+ * pedaços sobrepostos, e a barra sem rótulo continua identificada ao passar o
+ * mouse.
+ *
+ * O nome completo nunca se perde: `AxisTick` mantém o `<title>` com o texto
+ * inteiro, que o navegador mostra no hover.
+ */
+export function axisLabelPresentation({
+  count,
+  scrollable,
+  span,
+  slotPx,
+}: {
+  count: number;
+  scrollable: boolean;
+  span: number;
+  slotPx: number;
+}): AxisLabelPresentation {
+  if (count <= 0) return { maxChars: AXIS_LABEL_MAX_CHARS, interval: 0 };
+  const slot = scrollable ? slotPx : (PLOT_WIDTH_BY_SPAN[span] ?? 630) / count;
+  const minimumReadable = AXIS_LABEL_MIN_CHARS * AXIS_LABEL_CHAR_PX;
+  // Quantas fatias um rótulo legível precisa ocupar. Uma fatia por rótulo
+  // (step 1) é o caso normal; acima disso o eixo pula rótulos.
+  const step = Math.max(1, Math.ceil(minimumReadable / slot));
+  const effectiveSlot = slot * step;
+  return {
+    maxChars: Math.min(
+      AXIS_LABEL_MAX_CHARS,
+      Math.max(AXIS_LABEL_MIN_CHARS, Math.floor(effectiveSlot / AXIS_LABEL_CHAR_PX)),
+    ),
+    interval: step - 1,
+  };
+}
+
 export function barChartPresentation(categoryCount: number) {
   const scrollable = categoryCount > BAR_SCROLL_THRESHOLD;
   return {
@@ -155,7 +223,7 @@ export function barChartPresentation(categoryCount: number) {
 // comprimir dezenas de datas na largura fixa do cartão sobrepõe rótulos e
 // transforma a curva em um bloco difícil de ler. A versão compacta é usada
 // pela métrica com tendência, que tem menos altura e pede um passo menor.
-const TIME_SERIES_SLOT_PX = 72;
+export const TIME_SERIES_SLOT_PX = 72;
 const COMPACT_TIME_SERIES_SLOT_PX = 44;
 const TIME_SERIES_SCROLL_THRESHOLD = 8;
 const COMPACT_TIME_SERIES_SCROLL_THRESHOLD = 10;
