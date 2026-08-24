@@ -1527,7 +1527,7 @@ function blocksToRows(blocks: Block[]): { rows: Row[]; blockColumnName: string }
  *   agrupamento e dominam o painel de "Não informado").
  * Um arquivo vazio (sem linhas de dados) retorna rows: [].
  */
-export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
+export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): SheetImportResult {
   const range = ws["!ref"]
     ? XLSX.utils.decode_range(ws["!ref"])
     : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
@@ -1565,8 +1565,9 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
   // zero e o bug fica invisível.
   // Células com fórmula mas sem valor calculado guardado no arquivo (comum
   // em planilhas geradas por script, que escrevem a fórmula mas nunca a
-  // calculam de verdade): tenta recuperar o valor avaliando a fórmula
-  // (só fórmulas simples da mesma aba/linha — ver resolveFormulaCell).
+  // calculam de verdade): tenta recuperar o valor avaliando a fórmula —
+  // inclusive fórmulas que referenciam outra aba (SUMIF/COUNTIF/soma entre
+  // planilhas), quando `workbook` foi informado; ver resolveFormulaCell.
   // `cache` é compartilhado entre todas as células da aba nesta passagem
   // pra não reavaliar a mesma referência várias vezes.
   const formulaCache = new Map<string, number | null>();
@@ -1594,13 +1595,13 @@ export function sheetToRows(ws: XLSX.WorkSheet): SheetImportResult {
         // 2023 mostraria "-556 dias restantes" como se fosse hoje.
         const formula = worksheetCellAtAddress(ws, addr)?.f;
         if (typeof formula !== "string" || !isVolatileFormula(formula)) continue;
-        const recalculated = resolveFormulaCell(ws, addr, new Map(), new Set(), true);
+        const recalculated = resolveFormulaCell(ws, addr, new Map(), new Set(), true, workbook);
         if (recalculated === null || recalculated === v) continue;
         row[c] = recalculated;
         volatileCellsRecalculated++;
         continue;
       }
-      const resolved = resolveFormulaCell(ws, addr, formulaCache);
+      const resolved = resolveFormulaCell(ws, addr, formulaCache, new Set(), false, workbook);
       if (resolved !== null) {
         row[c] = resolved;
         formulaCellsRecovered++;
@@ -2899,7 +2900,7 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
       /loss of functionality|loss of fidelity/i.test(compatibilityText)
     )
       return [];
-    const result = sheetToRows(ws);
+    const result = sheetToRows(ws, wb);
     if (result.tableMode !== "repeated-blocks") {
       const sections = detectIndependentSections(ws);
       if (sections.length > 1) {
@@ -2909,7 +2910,7 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
         const split = sections.flatMap((section, index) => {
           const sectionSheet = independentSectionWorksheet(ws, section);
           if (!sectionSheet) return [];
-          const imported = sheetToRows(sectionSheet);
+          const imported = sheetToRows(sectionSheet, wb);
           if (!imported.rows.length) return [];
           const separationWarning = `A aba "${name}" continha ${sections.length} tabelas independentes empilhadas e foi separada automaticamente. Esta opção corresponde à tabela ${index + 1}.`;
           return [
@@ -2936,7 +2937,7 @@ export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
       const split = result.diagnostics.tableRegions.flatMap((region, index) => {
         const regionSheet = independentRegionWorksheet(ws, region);
         if (!regionSheet) return [];
-        const imported = sheetToRows(regionSheet);
+        const imported = sheetToRows(regionSheet, wb);
         if (!imported.rows.length) return [];
         const separationWarning = `A aba "${name}" continha ${result.diagnostics!.tableRegions.length} tabelas independentes e foi separada automaticamente. Esta opção corresponde à região ${index + 1}.`;
         return [

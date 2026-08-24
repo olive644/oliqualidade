@@ -84,9 +84,66 @@ describe("resolveFormulaCell", () => {
     expect(resolveFormulaCell(ws, "A1")).toBeNull();
   });
 
-  it("não tenta avaliar fórmula de outra aba (referência com '!')", () => {
+  it("não tenta avaliar fórmula de outra aba quando nenhum workbook é informado", () => {
     const ws = sheetWithFormulas([[null]], { A1: "Vendas!P5" });
     expect(resolveFormulaCell(ws, "A1")).toBeNull();
+  });
+
+  describe("fórmulas que referenciam outra aba (workbook informado)", () => {
+    function workbookWith(sheets: Record<string, XLSX.WorkSheet>): XLSX.WorkBook {
+      const wb = XLSX.utils.book_new();
+      for (const [name, ws] of Object.entries(sheets)) XLSX.utils.book_append_sheet(wb, ws, name);
+      return wb;
+    }
+
+    it("resolve referência simples a uma célula de outra aba", () => {
+      const vendas = XLSX.utils.aoa_to_sheet([[100]]);
+      const dashboard = sheetWithFormulas([[null]], { A1: "Vendas!A1*2" });
+      const wb = workbookWith({ Vendas: vendas, Dashboard: dashboard });
+      expect(resolveFormulaCell(dashboard, "A1", new Map(), new Set(), false, wb)).toBe(200);
+    });
+
+    it("resolve SUMIF/COUNTIF com intervalos de outra aba (o caso real: resumo por categoria)", () => {
+      const vendas = XLSX.utils.aoa_to_sheet([
+        ["PE", 10],
+        ["SP", 20],
+        ["PE", 30],
+      ]);
+      const dashboard = sheetWithFormulas([["PE", null, null]], {
+        B1: "SUMIF(Vendas!A1:A3,A1,Vendas!B1:B3)",
+        C1: 'COUNTIF(Vendas!A1:A3,"PE")',
+      });
+      const wb = workbookWith({ Vendas: vendas, Dashboard: dashboard });
+      expect(resolveFormulaCell(dashboard, "B1", new Map(), new Set(), false, wb)).toBe(40);
+      expect(resolveFormulaCell(dashboard, "C1", new Map(), new Set(), false, wb)).toBe(2);
+    });
+
+    it("resolve nome de aba entre aspas simples (com espaço)", () => {
+      const vendas = XLSX.utils.aoa_to_sheet([[7]]);
+      const dashboard = sheetWithFormulas([[null]], { A1: "'Aba de Vendas'!A1+1" });
+      const wb = workbookWith({ "Aba de Vendas": vendas, Dashboard: dashboard });
+      expect(resolveFormulaCell(dashboard, "A1", new Map(), new Set(), false, wb)).toBe(8);
+    });
+
+    it("resolve fórmula encadeada em outra aba (a célula referenciada também é fórmula sem valor salvo)", () => {
+      const vendas = sheetWithFormulas([[3, 4, null]], { C1: "A1*B1" });
+      const dashboard = sheetWithFormulas([[null]], { A1: "Vendas!C1+1" });
+      const wb = workbookWith({ Vendas: vendas, Dashboard: dashboard });
+      expect(resolveFormulaCell(dashboard, "A1", new Map(), new Set(), false, wb)).toBe(13);
+    });
+
+    it("retorna null quando a aba referenciada não existe no workbook", () => {
+      const dashboard = sheetWithFormulas([[null]], { A1: "AbaInexistente!A1" });
+      const wb = workbookWith({ Dashboard: dashboard });
+      expect(resolveFormulaCell(dashboard, "A1", new Map(), new Set(), false, wb)).toBeNull();
+    });
+
+    it("detecta referência circular entre abas (Dashboard!A1 depende de Vendas!A1, que depende de Dashboard!A1)", () => {
+      const vendas = sheetWithFormulas([[null]], { A1: "Dashboard!A1" });
+      const dashboard = sheetWithFormulas([[null]], { A1: "Vendas!A1" });
+      const wb = workbookWith({ Vendas: vendas, Dashboard: dashboard });
+      expect(resolveFormulaCell(dashboard, "A1", new Map(), new Set(), false, wb)).toBeNull();
+    });
   });
 
   it("avalia intervalos locais em funções agregadoras comuns", () => {
@@ -112,6 +169,22 @@ describe("resolveFormulaCell", () => {
     expect(resolveFormulaCell(ws, "B1")).toBeNull();
     ws["C1"] = { t: "z", f: "SUM(A1:A10001)", v: 0 };
     expect(resolveFormulaCell(ws, "C1")).toBeNull();
+  });
+
+  it("avalia COUNTA contando células não vazias, inclusive texto", () => {
+    // Diferente de COUNT (só numéricas): COUNTA conta qualquer célula não
+    // vazia — caso real: "=COUNTA(Vendas!A5:A304)" contando quantos IDs de
+    // venda (texto) existem, como "quantidade de pedidos" num resumo.
+    const ws = sheetWithFormulas(
+      [
+        ["V001", 10, null],
+        ["V002", null, null],
+        [null, 30, null],
+      ],
+      { C1: "COUNTA(A1:A3)", C2: "COUNTA(B1:B3)" },
+    );
+    expect(resolveFormulaCell(ws, "C1")).toBe(2);
+    expect(resolveFormulaCell(ws, "C2")).toBe(2);
   });
 
   it("avalia SUMIF e COUNTIF em intervalos locais", () => {
