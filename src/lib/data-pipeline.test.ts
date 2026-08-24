@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregate,
   applyMissingRules,
+  axisLabelPresentation,
   barChartPresentation,
   barValueLabelsFit,
   buildAreaComparisonSeries,
@@ -282,6 +283,38 @@ describe("barValueLabelsFit", () => {
     expect(barValueLabelsFit({ count: 0, scrollable: false, longestLabelChars: 3, span: 3 })).toBe(
       false,
     );
+  });
+});
+
+describe("axisLabelPresentation", () => {
+  it("pula rótulos quando nem o corte mínimo cabe entre as barras", () => {
+    // Caso real: seis categorias de um orçamento pessoal em um cartão de um
+    // terço deixam cerca de 24px por barra, e mesmo "Hip…" ocupa 28px. Ler
+    // três nomes inteiros é melhor que ler seis pedaços sobrepostos.
+    expect(axisLabelPresentation({ count: 6, scrollable: false, span: 1, slotPx: 88 })).toEqual({
+      maxChars: 7,
+      interval: 1,
+    });
+  });
+
+  it("mostra todos os rótulos inteiros quando há espaço de sobra", () => {
+    expect(axisLabelPresentation({ count: 4, scrollable: false, span: 3, slotPx: 88 })).toEqual({
+      maxChars: 10,
+      interval: 0,
+    });
+  });
+
+  it("usa a fatia fixa quando o gráfico rola, não a largura do cartão", () => {
+    expect(axisLabelPresentation({ count: 300, scrollable: true, span: 1, slotPx: 88 })).toEqual({
+      maxChars: 10,
+      interval: 0,
+    });
+  });
+
+  it("nunca corta abaixo de quatro caracteres, que já não identificam nada", () => {
+    const denso = axisLabelPresentation({ count: 40, scrollable: false, span: 1, slotPx: 88 });
+    expect(denso.maxChars).toBeGreaterThanOrEqual(4);
+    expect(denso.interval).toBeGreaterThan(0);
   });
 });
 

@@ -637,10 +637,13 @@ export function AxisTick({
   x,
   y,
   payload,
+  max,
 }: {
   x?: number;
   y?: number;
   payload?: { value?: string | number };
+  /** Quantos caracteres cabem sem colidir com o rótulo vizinho. */
+  max?: number;
 }) {
   const value = String(payload?.value ?? "");
   const missing = value === NOT_INFORMED;
@@ -654,7 +657,7 @@ export function AxisTick({
       fill={missing ? "var(--muted-foreground)" : "var(--foreground)"}
     >
       <title>{value}</title>
-      {truncateLabel(value)}
+      {truncateLabel(value, max)}
     </text>
   );
 }
