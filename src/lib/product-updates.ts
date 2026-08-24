@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.5.0-beta.1";
+export const APP_VERSION = "0.5.0-beta.2";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-barra-mobile",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Barra de navegação no rodapé do celular",
+    summary:
+      "As ações principais do painel passam a ficar fixas na parte de baixo da tela, ao alcance do polegar.",
+    highlights: [
+      "Painéis, buscar, filtrar, acrescentar widget e visão geral em uma barra fixa no rodapé.",
+      "Antes, filtrar e acrescentar widget ficavam fora da tela até alguém arrastar a barra de ferramentas para o lado.",
+      "A barra respeita a área segura do aparelho e só aparece na largura de celular.",
+      "No modo leitura, o botão de acrescentar widget some da barra, como o resto das ferramentas de montagem.",
+    ],
+  },
   {
     id: "2026-08-24-modo-leitura",
     version: APP_VERSION,

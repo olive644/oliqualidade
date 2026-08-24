@@ -5282,7 +5282,46 @@ body {
   }
 }
 
+/* Barra inferior de navegação: só existe na largura de celular, onde as ações
+ * principais do painel ficavam espalhadas entre a barra superior e uma barra
+ * de ferramentas que rola na horizontal, longe do polegar. */
+.oliam-mobile-nav {
+  display: none;
+}
+
 @media (max-width: 700px) {
+  .oliam-mobile-nav {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 40;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    align-items: stretch;
+    border-top: 1px solid var(--border);
+    background: color-mix(in oklab, var(--background) 92%, transparent);
+    backdrop-filter: blur(8px);
+    padding-bottom: var(--oli-safe-bottom);
+  }
+
+  .oliam-mobile-nav-item {
+    display: flex;
+    min-height: 56px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 4px;
+    font-size: 10px;
+    color: var(--muted-foreground);
+    transition: color 150ms;
+  }
+
+  .oliam-mobile-nav-item:active {
+    color: var(--foreground);
+  }
+
   .oliam-app-shell,
   .oliam-dashboard-shell {
     width: 100%;
@@ -5370,7 +5409,9 @@ body {
 
   .oliam-dashboard-content {
     padding: 12px !important;
-    padding-bottom: max(18px, var(--oli-safe-bottom)) !important;
+    /* Reserva a altura da barra inferior de navegação: sem isso o último
+     * widget termina escondido atrás dela. */
+    padding-bottom: calc(56px + var(--oli-safe-bottom) + 12px) !important;
     overscroll-behavior: contain;
     scroll-padding-top: 12px;
   }
@@ -5559,7 +5600,9 @@ body {
 
   .oli-assistant-shell {
     right: max(8px, var(--oli-safe-right));
-    bottom: max(8px, var(--oli-safe-bottom));
+    /* Acima da barra inferior de navegação: o balão flutua exatamente sobre o
+     * canto onde fica o último item dela. */
+    bottom: calc(56px + var(--oli-safe-bottom) + 8px);
   }
 
   .oli-chat-panel {

@@ -200,6 +200,7 @@ audit inteiro.
 | Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
 | Aba formada por vários blocos com a mesma estrutura virar uma tabela com o bloco como coluna | `detectTableBlockGroup`/`buildTableBlocksGrid` (`excel-table-blocks.ts`), oferecidos como opção "Blocos unificados" por `unifiedBlocksOption` (`import.ts`); a leitura da aba inteira continua como segunda opção | `excel-table-blocks.test.ts` — ver [[CURRENT_STATE_AUDIT#121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão]] |
 | Linhas de total das Tabelas do Excel ficarem fora dos registros | `tableTotalsRegions` (`excel-table-totals.ts`) a partir de `totalsRowCount` lido em `parseTable` (`workbook-metadata.ts`); limpeza por célula na cópia de análise em `sheetToRows`, ao lado do tratamento de linhas ocultas | `excel-table-totals.test.ts` — ver [[CURRENT_STATE_AUDIT#120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma]] |
+| Ações principais do painel no celular | `MobileNavBar` (`components/oliam/mobile-nav-bar.tsx`) + regras `.oliam-mobile-nav` em `styles.css`, só abaixo de 700px; a reserva de espaço do conteúdo e a posição do balão do assistente ficam nas regras de celular já existentes, que vencem na cascata | verificação manual em viewport de 390px — ver [[CURRENT_STATE_AUDIT#126. Barra de navegação inferior no celular]] |
 | Esconder as ferramentas de montagem sem removê-las (modo leitura) | atributo `data-edit-only` nos controles de edição + regra `.oliam-reading-mode [data-edit-only]` (`styles.css`); a marca vai na raiz do documento para alcançar a barra superior e os menus em portal; estado em `lib/view-mode.ts` | `view-mode.test.ts` — ver [[CURRENT_STATE_AUDIT#125. Modo leitura separado do modo edição]] |
 | Quantos widgets um filtro alcança | `widgetsAffectedByFilters` (`lib/widgets.ts`), exibido em `AnalysisContextBanner` só quando há filtro ativo; `image` e `folder-files` ficam de fora porque não leem as linhas | `widgets-filters.test.ts` — ver [[CURRENT_STATE_AUDIT#124. Alcance do filtro dito por extenso: "12 de 12 widgets atualizados"]] |
 | Ordem de leitura de qualquer widget (resultado, visualização, explicação, evidências, configuração técnica) | `WidgetEvidencePanel` (`widget-support.tsx`) no pé de cada corpo de widget; a faixa técnica nasce recolhida e `.oliam-export-mode .oliam-widget-technical` a força visível na exportação | verificação manual no navegador — ver [[CURRENT_STATE_AUDIT#123. Hierarquia padronizada: o resultado antes da procedência, em todos os widgets]] |
@@ -805,6 +806,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 - `v0.5.0-beta.1` (modo leitura separado do modo edição) avança o minor: é um
   modo novo no produto. Ver [[CURRENT_STATE_AUDIT#125. Modo leitura separado do modo edição]].
+
+- `v0.5.0-beta.2` (barra de navegação inferior no celular). Ver
+  [[CURRENT_STATE_AUDIT#126. Barra de navegação inferior no celular]].
 
 ## Checklist antes de publicar
 
