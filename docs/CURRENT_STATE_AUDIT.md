@@ -6390,3 +6390,97 @@ O que ficou para trás e foi corrigido nesta consolidação:
 Backlog: se `routes/index.tsx` ganhar infraestrutura de teste de componente
 no futuro, o caso de pendências filtradas por filtro ativo é o primeiro
 candidato a cobrir.
+
+## 117. Leitura de gráficos: eixos nomeados, média entre categorias e comparação honesta no tooltip
+
+A pergunta que originou esta seção foi direta: como analista de dados, o que
+ainda falta para os gráficos serem bem lidos? A revisão do código de
+`chart-widget-body.tsx` e `widget-support.tsx` respondeu com um defeito real e
+três ausências.
+
+### O defeito: variação percentual comparando a categoria errada
+
+`BarTooltip` calculava a variação contra `series[idx - 1]`, o elemento anterior
+do array, e mostrava uma cápsula de alta/baixa com seta. Isso só significa
+"período anterior" quando o eixo é cronológico. As barras chegam ordenadas da
+maior para a menor (`sortAllBarCategories`), então em um ranking o elemento
+anterior é apenas a categoria de valor mais alto: passar o mouse no segundo
+colocado exibia "↓ 18%", lido por qualquer pessoa como uma queda de 18% que
+nunca aconteceu.
+
+A correção separa os dois casos por tipo de eixo, com o tipo `ChartAxisKind`
+(`"time" | "category"`) em `types.ts`:
+
+- Eixo cronológico: a cápsula permanece, agora escrita como `↑/↓ N% vs.
+  anterior`, sem depender do leitor deduzir contra o quê.
+- Eixo de categorias: a cápsula some e entra a única comparação que o gráfico
+  autoriza, por extenso — "N% da maior categoria".
+
+O gráfico de barras declara `axis="category"` mesmo quando agrupa por uma
+coluna de data: no modo agrupado as barras são reordenadas por valor e no modo
+linha a linha elas seguem a ordem da planilha, que não é necessariamente
+cronológica.
+
+A lógica saiu do componente para `src/lib/chart-reading.ts`
+(`barTooltipReading`), função pura testada em `chart-reading.test.ts` — mesma
+estratégia usada em `investigationMetricFor` na seção 116, já que não existe
+infraestrutura de teste de componente React no projeto.
+
+### Quantos registros sustentam a barra
+
+`groupAndAggregate` passou a devolver `count` junto de `name`/`total`, e o
+tooltip mostra esse número no modo agrupado. É a contagem de **valores que
+entraram na conta**, não de linhas do balde: uma linha com a métrica vazia não
+entra na soma nem na média, e contá-la faria a barra parecer mais apoiada do
+que é. Sem esse número, uma barra formada por dois registros e outra formada
+por novecentos têm exatamente o mesmo peso visual.
+
+No modo linha a linha a contagem é omitida, porque cada marca já é uma única
+linha da planilha e o número seria sempre 1.
+
+### Média entre categorias
+
+`seriesAverage` (em `data-pipeline.ts`) alimenta uma `ReferenceLine` tracejada
+no gráfico de barras, em `var(--muted-foreground)` — cor que já existia na
+paleta, sem introduzir nenhuma nova. "Quem está acima da média" é a primeira
+leitura de um ranking e antes ficava por conta do leitor.
+
+A função devolve `null` com menos de três categorias: com uma barra a média é a
+própria barra e com duas ela cai exatamente entre as duas, sem separar ninguém
+em "acima" e "abaixo". É a média entre categorias (soma das barras dividida
+pelo número de barras), não a média entre linhas da planilha — as duas só
+coincidem quando todas as categorias têm a mesma quantidade de registros.
+
+### Rótulos de eixo
+
+Nenhum gráfico dizia o que estava em cada eixo: o único `<Label>` do arquivo
+era o centro do donut. O eixo vertical mostrava "1,2 mil" e cabia ao leitor
+deduzir do título do widget se aquilo era reais, peças ou horas — informação
+que se perde quando o gráfico é exportado e circula sozinho.
+
+`ChartAxisLegend` resolve isso em barras, linha e área, informando o
+agrupamento no horizontal e a operação com a métrica no vertical ("Soma de
+Faturamento", "Contagem de registros", "Faturamento (linha a linha)"), mais o
+valor da linha de média quando ela existe.
+
+A legenda é HTML abaixo do gráfico, e não um `<Label>` dentro do SVG, por dois
+motivos concretos: gráficos com muitas categorias rolam na horizontal, e um
+título de eixo desenhado no SVG ficaria centralizado no conteúdo rolável, fora
+da vista até que se role até ele; e a altura útil desses widgets (224px a
+256px) não sobra para mais uma faixa de texto dentro da área de plotagem sem
+achatar as barras.
+
+### Versão
+
+Entrega de capacidade, não correção isolada: `0.1.0-beta.2` → `0.2.0-beta.1`,
+primeiro avanço de minor sob a regra da seção 115.
+
+### Backlog desta revisão
+
+Itens levantados na mesma análise e deliberadamente fora desta entrega, em
+ordem de valor: ordenação alternativa das barras (ordem natural para categorias
+ordinais como faixas, meses e escalas de satisfação, hoje sempre reordenadas
+por valor); rótulos de dados desligando sozinhos acima de um número de barras;
+aviso quando o eixo vertical de linha e área não começa no zero; rótulo direto
+no fim da série no lugar da legenda do gráfico de área; e redundância além da
+cor (traço ou marcador) para leitura com daltonismo.

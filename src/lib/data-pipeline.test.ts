@@ -26,6 +26,7 @@ import {
   relevantAggregationOps,
   resolveSemanticAggregationOp,
   semanticAggregationOps,
+  seriesAverage,
   sortAllBarCategories,
   timeSeriesChartPresentation,
   toggleClickFilter,
@@ -65,8 +66,8 @@ describe("chartSeries", () => {
 
   it("combina categorias somente quando o modo agrupado é escolhido", () => {
     expect(chartSeries(rows, "categoria", "valor", "sum", "aggregate")).toEqual([
-      { name: "A", total: 30 },
-      { name: "B", total: 5 },
+      { name: "A", total: 30, count: 2 },
+      { name: "B", total: 5, count: 1 },
     ]);
   });
 
@@ -172,6 +173,25 @@ describe("sortAllBarCategories", () => {
     expect(sorted).toHaveLength(24);
     expect(sorted[0]?.total).toBe(24);
     expect(sorted.at(-1)?.total).toBe(1);
+  });
+});
+
+describe("seriesAverage", () => {
+  it("devolve a média entre as categorias", () => {
+    expect(seriesAverage([{ total: 10 }, { total: 20 }, { total: 60 }])).toBe(30);
+  });
+
+  it("considera valores negativos, sem tratá-los como distância", () => {
+    expect(seriesAverage([{ total: -30 }, { total: 30 }, { total: 30 }])).toBe(10);
+  });
+
+  it("não desenha média com menos de três categorias", () => {
+    // Com uma barra a média é a própria barra; com duas ela cai exatamente
+    // entre as duas. Nos dois casos a linha não separa ninguém em "acima" e
+    // "abaixo", só polui o gráfico.
+    expect(seriesAverage([{ total: 10 }])).toBeNull();
+    expect(seriesAverage([{ total: 10 }, { total: 20 }])).toBeNull();
+    expect(seriesAverage([])).toBeNull();
   });
 });
 
@@ -352,10 +372,25 @@ describe("groupAndAggregate", () => {
     const result = groupAndAggregate(rows, "categoria", "valor", "sum");
     expect(result).toEqual(
       expect.arrayContaining([
-        { name: "Bolo", total: 80 },
-        { name: "Doce", total: 10 },
+        { name: "Bolo", total: 80, count: 2 },
+        { name: "Doce", total: 10, count: 1 },
       ]),
     );
+  });
+
+  it("conta os valores que entraram na conta, não as linhas do grupo", () => {
+    // A barra de "Empresa B" é sustentada por um único valor, mesmo tendo
+    // duas linhas: a linha sem métrica não entra na soma nem na média, e
+    // contá-la faria a barra parecer mais apoiada do que é.
+    const rows: Row[] = [
+      { categoria: "Empresa A", valor: 10 },
+      { categoria: "Empresa A", valor: 20 },
+      { categoria: "Empresa B", valor: 30 },
+      { categoria: "Empresa B", valor: null },
+    ];
+    const result = groupAndAggregate(rows, "categoria", "valor", "sum");
+    expect(result.find((g) => g.name === "Empresa A")?.count).toBe(2);
+    expect(result.find((g) => g.name === "Empresa B")?.count).toBe(1);
   });
 
   it("ignora valores de agrupamento ausentes em vez de criar 'Não informado'", () => {
@@ -376,7 +411,7 @@ describe("groupAndAggregate", () => {
       { categoria: null, valor: null },
     ];
     const result = groupAndAggregate(rows, "categoria", "valor", "sum");
-    expect(result).toEqual([{ name: "Empresa A", total: 10 }]);
+    expect(result).toEqual([{ name: "Empresa A", total: 10, count: 1 }]);
   });
 
   it("soma valores em notação brasileira (vírgula decimal) armazenados como texto", () => {
@@ -397,8 +432,8 @@ describe("groupAndAggregate", () => {
     const result = groupAndAggregate(rows, "categoria", "valor", "count");
     expect(result).toEqual(
       expect.arrayContaining([
-        { name: "Empresa A", total: 1 },
-        { name: "Empresa B", total: 2 },
+        { name: "Empresa A", total: 1, count: 1 },
+        { name: "Empresa B", total: 2, count: 2 },
       ]),
     );
   });
@@ -420,7 +455,7 @@ describe("groupAndAggregate", () => {
   it("não inclui sourceRowIndexes quando as linhas não vêm do pipeline real (markSourceRows)", () => {
     const rows: Row[] = [{ categoria: "Bolo", valor: 50 }];
     const result = groupAndAggregate(rows, "categoria", "valor", "sum");
-    expect(result[0]).toEqual({ name: "Bolo", total: 50 });
+    expect(result[0]).toEqual({ name: "Bolo", total: 50, count: 1 });
     expect(result[0]).not.toHaveProperty("sourceRowIndexes");
   });
 });

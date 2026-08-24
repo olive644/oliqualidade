@@ -43,6 +43,13 @@ export type FilterRule = {
 
 export type ChartAggregationOp = "sum" | "avg" | "count" | "min" | "max" | "multiply" | "divide";
 export type ChartDataMode = "raw" | "aggregate";
+/**
+ * Natureza do eixo horizontal de um gráfico. Decide quais comparações fazem
+ * sentido na leitura: só em "time" o item anterior da série é de fato o
+ * período anterior e uma variação percentual entre vizinhos significa
+ * alta ou queda.
+ */
+export type ChartAxisKind = "time" | "category";
 export type AreaReferenceMode = "previous" | "moving-average" | "goal";
 
 export type ChartConfig = {

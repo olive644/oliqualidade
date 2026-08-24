@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import {
   kinds,
   numericKinds,
+  type ChartAxisKind,
   type ChartDataMode,
   type AreaReferenceMode,
   type Column,
@@ -46,6 +47,7 @@ import {
   pieRoundnessFor,
   relevantAggregationOps,
   semanticAggregationOps,
+  seriesAverage,
   sortAllBarCategories,
   timeSeriesChartPresentation,
   toggleClickFilter,
@@ -58,6 +60,7 @@ import {
   AxisTick,
   BarTooltip,
   CalculationButton,
+  ChartAxisLegend,
   ChartDot,
   compactAxisValue,
   FieldDropSlot,
@@ -175,6 +178,16 @@ export function ChartWidgetBody({
             : w.type === "pie"
               ? "Distribuição"
               : `${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? ""}`;
+  // Rótulos de eixo: o título do widget diz o que o gráfico mede, mas some
+  // quando o gráfico é exportado ou lido isolado, e o eixo vertical sozinho
+  // mostra só "1,2 mil", sem unidade nem operação.
+  const horizontalAxisLabel = groupCol?.label ?? "Categoria";
+  const verticalAxisLabel =
+    op === "count"
+      ? "Contagem de registros"
+      : dataMode === "raw"
+        ? `${valueCol?.label ?? "Valores"} (linha a linha)`
+        : `${aggregationLabels[op]} de ${valueCol?.label ?? ""}`;
   const icon =
     w.type === "line" ? (
       <TrendingUp className="size-3.5 shrink-0 text-muted-foreground" />
@@ -191,6 +204,7 @@ export function ChartWidgetBody({
       ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode).map((g) => ({
           name: g.name,
           total: g.total,
+          ...(g.count !== undefined ? { count: g.count } : {}),
           ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
           ...(g.sourceRowIndex !== undefined ? { sourceRowIndex: g.sourceRowIndex } : {}),
           ...(g.sourceRowIndexes ? { sourceRowIndexes: g.sourceRowIndexes } : {}),
@@ -250,6 +264,15 @@ export function ChartWidgetBody({
     selectedPointIndex >= 0 ? pieComparisonFor(series, selectedPointIndex) : null;
   const barSeries = series;
   const barPresentation = barChartPresentation(barSeries.length);
+  // "Quem está acima da média" é a primeira pergunta de quem lê um ranking,
+  // e sem a linha de referência essa conta ficava por conta do leitor.
+  const barAverage = w.type === "bar" ? seriesAverage(barSeries) : null;
+  // O eixo do gráfico de barras é categórico mesmo quando a coluna de
+  // agrupamento é uma data: no modo agrupado as barras são reordenadas da
+  // maior para a menor, e no modo linha a linha elas seguem a ordem da
+  // planilha, que não é necessariamente cronológica. Em nenhum dos dois a
+  // barra vizinha é "o período anterior".
+  const barAxisKind: ChartAxisKind = "category";
   const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
   const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
   const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
@@ -522,6 +545,7 @@ export function ChartWidgetBody({
                             series={barSeries}
                             kind={valueCol.kind}
                             mode={dataMode}
+                            axis={barAxisKind}
                           />
                         )
                       }
@@ -605,6 +629,14 @@ export function ChartWidgetBody({
                       strokeOpacity={0.28}
                       strokeWidth={1}
                     />
+                    {barAverage !== null && (
+                      <ReferenceLine
+                        y={barAverage}
+                        stroke="var(--muted-foreground)"
+                        strokeDasharray="4 4"
+                        strokeWidth={1}
+                      />
+                    )}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -617,6 +649,12 @@ export function ChartWidgetBody({
               para os lados para ver todas
             </p>
           )}
+          <ChartAxisLegend
+            x={horizontalAxisLabel}
+            y={verticalAxisLabel}
+            average={barAverage}
+            kind={valueCol.kind}
+          />
           <p className="sr-only">
             Tabela alternativa ao gráfico de barras:{" "}
             {barSeries.map((g) => `${g.name}, ${g.total}`).join("; ")}.
@@ -1082,6 +1120,7 @@ export function ChartWidgetBody({
                 para os lados
               </p>
             )}
+            <ChartAxisLegend x={horizontalAxisLabel} y={verticalAxisLabel} kind={valueCol.kind} />
             <p className="sr-only">
               Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
             </p>
@@ -1207,6 +1246,7 @@ export function ChartWidgetBody({
               os lados
             </p>
           )}
+          <ChartAxisLegend x={horizontalAxisLabel} y={verticalAxisLabel} kind={valueCol.kind} />
           <p className="sr-only">
             Tabela alternativa à evolução: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
           </p>
