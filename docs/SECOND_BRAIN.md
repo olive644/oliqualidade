@@ -734,6 +734,20 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 - Implementação visual: `src/components/oliam/update-center.tsx`. Decisão e
   cobertura completas em [[CURRENT_STATE_AUDIT#114. Centro de atualizações torna as entregas visíveis no produto]].
 
+## Versionamento público do produto
+
+- A primeira versão pública formal é `v0.1.0-beta.1`. O sufixo `beta` deixa
+  explícito que o produto ainda está em validação e o último número identifica
+  a iteração dessa fase.
+- `package.json`, `package-lock.json` e `APP_VERSION` em
+  `src/lib/product-updates.ts` devem avançar juntos.
+- O centro de atualizações mostra a versão atual no cabeçalho e a versão de
+  cada registro. Uma versão nova também muda `CURRENT_UPDATE_ID`, reativando o
+  sino para quem já havia lido a anterior.
+- Regra de evolução: correção compatível avança a iteração beta; conjunto
+  relevante de recursos avança o minor; versão estável remove o sufixo beta.
+- Decisão completa em [[CURRENT_STATE_AUDIT#115. Versionamento público começa em v0.1.0-beta.1]].
+
 ## Checklist antes de publicar
 
 1. Adicionar ou atualizar um teste que reproduza a mudança.

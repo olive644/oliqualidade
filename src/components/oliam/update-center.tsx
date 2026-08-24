@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  APP_VERSION_LABEL,
   CURRENT_UPDATE_ID,
   PRODUCT_UPDATES,
   UPDATE_READ_STORAGE_KEY,
@@ -62,9 +63,12 @@ export function UpdateCenter({ disabled = false }: { disabled?: boolean }) {
       </Button>
       <DialogContent className="max-h-[85vh] overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="border-b border-border px-6 pb-4 pt-6 pr-12">
-          <div className="mb-1 flex items-center gap-2 text-primary">
+          <div className="mb-1 flex flex-wrap items-center gap-2 text-primary">
             <Sparkles className="size-4" />
             <span className="font-mono text-[11px] uppercase tracking-wide">Novidades</span>
+            <span className="rounded-full border border-primary/25 bg-primary/5 px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide">
+              {APP_VERSION_LABEL}
+            </span>
           </div>
           <DialogTitle>Atualizações do OliQualidade</DialogTitle>
           <DialogDescription>
@@ -83,6 +87,9 @@ export function UpdateCenter({ disabled = false }: { disabled?: boolean }) {
                     Mais recente
                   </span>
                 )}
+                <span className="font-mono text-[11px] font-semibold text-primary">
+                  v{update.version}
+                </span>
                 <time
                   className="font-mono text-[11px] text-muted-foreground"
                   dateTime={update.date}
