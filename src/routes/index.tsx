@@ -28,6 +28,8 @@ import {
   Undo2,
   Upload,
   X,
+  BookOpen,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table-widget";
@@ -48,6 +50,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import {
+  parseViewMode,
+  VIEW_MODE_STORAGE_KEY,
+  viewModeLabels,
+  type ViewMode,
+} from "@/lib/view-mode";
 import { createLatestTaskQueue, type LatestTaskQueue } from "@/lib/latest-task-queue";
 import type {
   Column,
@@ -1274,6 +1282,30 @@ function Dashboard(p: {
     [draftName, setDraftName] = useState(d.name);
   const [missingPanel, setMissingPanel] = useState(false);
   const [filterMenu, setFilterMenu] = useState(false);
+  // Modo de uso do painel. Nasce em "editing" no servidor e na primeira
+  // renderização, e só então lê o que estava salvo — ler localStorage durante
+  // a renderização quebraria a hidratação, o mesmo erro já corrigido na tela
+  // inicial (ver seção 97 do audit).
+  const [viewMode, setViewMode] = useState<ViewMode>("editing");
+  useEffect(() => {
+    setViewMode(parseViewMode(localStorage.getItem(VIEW_MODE_STORAGE_KEY)));
+  }, []);
+  // A marca vai na raiz do documento, e não no contêiner do painel, porque
+  // as ferramentas de montagem não estão todas dentro dele: a barra superior
+  // fica acima, e os menus suspensos são renderizados em portal, fora da
+  // árvore do painel. Marcar a raiz alcança os três casos.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle("oliam-reading-mode", viewMode === "reading");
+    return () => root.classList.remove("oliam-reading-mode");
+  }, [viewMode]);
+  const toggleViewMode = () => {
+    setViewMode((current) => {
+      const next: ViewMode = current === "reading" ? "editing" : "reading";
+      localStorage.setItem(VIEW_MODE_STORAGE_KEY, next);
+      return next;
+    });
+  };
   const [dismissedSignals, setDismissedSignals] = useState<Set<string>>(new Set());
   const [qualityPanel, setQualityPanel] = useState(false);
   const [focusedCell, setFocusedCell] = useState<{
@@ -2146,6 +2178,19 @@ function Dashboard(p: {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          <Button
+            variant={viewMode === "reading" ? "default" : "outline"}
+            onClick={toggleViewMode}
+            aria-pressed={viewMode === "reading"}
+            title={
+              viewMode === "reading"
+                ? "Voltar às ferramentas de montagem do painel"
+                : "Esconder as ferramentas de montagem e deixar só a leitura"
+            }
+          >
+            {viewMode === "reading" ? <BookOpen /> : <Pencil />}
+            <span className="hidden sm:inline">{viewModeLabels[viewMode]}</span>
+          </Button>
           <div className="relative">
             <Button variant="outline" onClick={() => setFilterMenu((v) => !v)}>
               <Filter />
@@ -2177,7 +2222,7 @@ function Dashboard(p: {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" data-edit-only>
                 <Plus />
                 Widget
               </Button>
@@ -2222,6 +2267,7 @@ function Dashboard(p: {
           </DropdownMenu>
           <Button
             variant="outline"
+            data-edit-only
             disabled={!widgetClipboard}
             onClick={() => pasteCopiedWidget()}
             title={
@@ -2231,7 +2277,7 @@ function Dashboard(p: {
             <ClipboardPaste />
             <span className="hidden sm:inline">Colar widget</span>
           </Button>
-          <Button variant="outline" onClick={() => setPanel(!panel)}>
+          <Button variant="outline" data-edit-only onClick={() => setPanel(!panel)}>
             <Columns3 />
             Colunas
           </Button>
@@ -2252,11 +2298,11 @@ function Dashboard(p: {
             <Settings2 />
             <span className="hidden sm:inline">Dados ausentes</span>
           </Button>
-          <Button variant="outline" onClick={() => setFormatPanel(!formatPanel)}>
+          <Button variant="outline" data-edit-only onClick={() => setFormatPanel(!formatPanel)}>
             <Palette />
             <span className="hidden sm:inline">Formatação</span>
           </Button>
-          <Button variant="outline" onClick={openJoin}>
+          <Button variant="outline" data-edit-only onClick={openJoin}>
             <GitMerge />
             <span className="hidden sm:inline">Combinar planilha</span>
           </Button>

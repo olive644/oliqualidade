@@ -1387,6 +1387,14 @@
 .oliam-export-mode [data-export-controls] {
   display: none !important;
 }
+/* Modo leitura: as ferramentas de montagem do painel (alça de arrastar, ações
+ * do widget, barra de configuração, botões de acrescentar e formatar) sao um
+ * andaime de quem monta, não de quem lê. Elas continuam existindo no DOM e a
+ * um clique de distância pelo botão de modo, porque esconder e destruir são
+ * coisas diferentes. */
+.oliam-reading-mode [data-edit-only] {
+  display: none !important;
+}
 .oliam-export-mode .oliam-widget {
   content-visibility: visible;
   contain-intrinsic-size: none;

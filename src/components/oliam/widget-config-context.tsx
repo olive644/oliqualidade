@@ -59,6 +59,7 @@ export function WidgetConfigBar({
         className,
       )}
       data-export-controls
+      data-edit-only
     >
       {children}
     </div>
