@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.9.0-beta.2";
+export const APP_VERSION = "0.10.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-arquivo-pelo-conteudo",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "O arquivo passa a ser reconhecido pelo conteúdo, não pela extensão",
+    summary:
+      "A importação agora olha os primeiros bytes do arquivo. Isso recusa o que não é planilha com uma explicação, e aceita o que é planilha mesmo com o nome trocado.",
+    highlights: [
+      'Enviar um PDF com nome de planilha agora responde "este arquivo é um PDF, não uma planilha", em vez de falhar com erro genérico.',
+      "Uma planilha antiga renomeada para .xlsx passa a ser lida normalmente, em vez de quebrar na leitura.",
+      "Tabelas HTML exportadas com nome .xls, comuns em sistemas corporativos, continuam funcionando.",
+      "A verificação de integridade do pacote passou a valer também para ODS, Numbers e XLSB, que antes ficavam de fora.",
+    ],
+  },
   {
     id: "2026-08-24-leitura-de-texto-do-xml",
     version: APP_VERSION,

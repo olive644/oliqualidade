@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { checkWorkbookContent } from "@/lib/file-signature";
 
 import { sheetsWithData, type SheetOption } from "@/lib/import";
 import { unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
@@ -64,6 +65,21 @@ export type WorkbookReadEngineOptions = {
  * expandem para gigabytes. A checagem ocorre antes do SheetJS e do extrator
  * de metadados para evitar consumo abusivo de memória no navegador.
  */
+/**
+ * Decide como ler o arquivo a partir do conteúdo, e não da extensão.
+ *
+ * A verificação estrutural do ZIP era feita só para quatro extensões, o que
+ * deixava `.ods`, `.numbers` e `.xlsb` sem nenhuma conferência, e um arquivo
+ * renomeado tomava o caminho errado antes de qualquer validação. Ligando as
+ * duas coisas à assinatura real, cada caminho passa a valer para o que o
+ * arquivo é, e não para o nome que ele recebeu.
+ */
+function resolveWorkbookContent(bytes: Uint8Array, fileName: string) {
+  const check = checkWorkbookContent(bytes, fileName);
+  if (!check.ok) throw new Error(check.message);
+  return check;
+}
+
 export function validateZipWorkbook(bytes: Uint8Array): { totalUncompressedBytes: number } {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const searchStart = Math.max(0, bytes.length - 65_557);
@@ -310,8 +326,9 @@ export async function readWorkbookBytesWithEngine(
   const startedAt = performance.now();
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   onProgress?.("decoding");
-  const textFile = TEXT_EXTENSIONS.test(fileName);
-  const zipInfo = ZIP_WORKBOOK_EXTENSIONS.test(fileName) ? validateZipWorkbook(bytes) : null;
+  const content = resolveWorkbookContent(bytes, fileName);
+  const textFile = content.container === "text";
+  const zipInfo = content.container === "zip" ? validateZipWorkbook(bytes) : null;
   const source = textFile ? decodeText(bytes) : bytes;
   onProgress?.("parsing");
   const parseStartedAt = performance.now();
@@ -507,8 +524,9 @@ export function readWorkbookBytes(
   // é usado exclusivamente pelo cliente assíncrono para não forçar await em
   // todo o ecossistema existente.
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  const textFile = TEXT_EXTENSIONS.test(fileName);
-  if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) validateZipWorkbook(bytes);
+  const content = resolveWorkbookContent(bytes, fileName);
+  const textFile = content.container === "text";
+  if (content.container === "zip") validateZipWorkbook(bytes);
   onProgress?.("decoding");
   const source = textFile ? decodeText(bytes) : bytes;
   onProgress?.("parsing");
