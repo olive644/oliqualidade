@@ -6291,3 +6291,23 @@ ausência de `localStorage` não impedem a abertura do histórico.
 Há teste unitário para vínculo da versão atual, unicidade, conteúdo e detecção
 de não lido. O E2E abre o histórico, verifica as novidades atuais, recarrega a
 página e confirma que a leitura foi preservada.
+
+## 115. Versionamento público começa em v0.1.0-beta.1
+
+O projeto não possuía tags, campo `version` no pacote nem número de produto na
+interface. A primeira identificação pública foi definida como
+`v0.1.0-beta.1`: `0.x` comunica produto ainda não estável, `1` inaugura a
+primeira linha funcional e `beta.1` identifica a primeira iteração formal de
+testes com usuários.
+
+A fonte exibida pela interface é `APP_VERSION` em
+`src/lib/product-updates.ts`. O mesmo valor existe em `package.json` e no pacote
+raiz de `package-lock.json`. O centro mostra a versão no cabeçalho e em cada
+registro. `CURRENT_UPDATE_ID` agora deriva da versão, portanto publicar uma
+versão nova volta a sinalizar o sino mesmo para quem já leu o histórico
+anterior.
+
+Até a estabilidade, correções compatíveis avançam `beta.N`. Uma entrega que
+altere de forma relevante a capacidade do produto avança o minor, por exemplo
+`0.2.0-beta.1`. A primeira versão considerada estável remove o sufixo e deve ser
+acompanhada por tag Git correspondente.

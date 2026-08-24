@@ -1,14 +1,19 @@
 export type ProductUpdate = {
   id: string;
+  version: string;
   date: string;
   title: string;
   summary: string;
   highlights: string[];
 };
 
+export const APP_VERSION = "0.1.0-beta.1";
+export const APP_VERSION_LABEL = `v${APP_VERSION}`;
+
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
     id: "2026-08-23-investigacao-guiada",
+    version: APP_VERSION,
     date: "2026-08-23",
     title: "Investigação guiada para entender o resultado",
     summary:
@@ -22,6 +27,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-23-area-analitica",
+    version: APP_VERSION,
     date: "2026-08-23",
     title: "Gráfico de área com leitura mais clara",
     summary:
@@ -34,6 +40,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-23-roteiro-analitico",
+    version: APP_VERSION,
     date: "2026-08-23",
     title: "Roteiro analítico reorganizado",
     summary:
@@ -46,7 +53,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
 ];
 
-export const CURRENT_UPDATE_ID = PRODUCT_UPDATES.at(0)?.id ?? "";
+export const CURRENT_UPDATE_ID = APP_VERSION;
 export const UPDATE_READ_STORAGE_KEY = "oliam-last-read-update";
 
 export function hasUnreadProductUpdate(lastReadId: string | null) {

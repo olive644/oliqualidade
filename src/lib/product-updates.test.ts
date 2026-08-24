@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { CURRENT_UPDATE_ID, PRODUCT_UPDATES, hasUnreadProductUpdate } from "./product-updates";
+import {
+  APP_VERSION,
+  APP_VERSION_LABEL,
+  CURRENT_UPDATE_ID,
+  PRODUCT_UPDATES,
+  hasUnreadProductUpdate,
+} from "./product-updates";
 
 describe("product updates", () => {
-  it("mantém o identificador atual ligado à entrada mais recente", () => {
-    expect(CURRENT_UPDATE_ID).toBe(PRODUCT_UPDATES.at(0)?.id);
+  it("mantém a leitura e os registros ligados à versão atual", () => {
+    expect(CURRENT_UPDATE_ID).toBe(APP_VERSION);
+    expect(APP_VERSION_LABEL).toBe(`v${APP_VERSION}`);
+    expect(PRODUCT_UPDATES.every((update) => update.version === APP_VERSION)).toBe(true);
     expect(new Set(PRODUCT_UPDATES.map((update) => update.id)).size).toBe(PRODUCT_UPDATES.length);
   });
 
@@ -18,6 +26,6 @@ describe("product updates", () => {
   it("considera lida somente a versão mais recente", () => {
     expect(hasUnreadProductUpdate(null)).toBe(true);
     expect(hasUnreadProductUpdate("versao-anterior")).toBe(true);
-    expect(hasUnreadProductUpdate(CURRENT_UPDATE_ID)).toBe(false);
+    expect(hasUnreadProductUpdate(APP_VERSION)).toBe(false);
   });
 });
