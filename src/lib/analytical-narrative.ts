@@ -99,9 +99,12 @@ function analyticalQuestions(
   const hasMetric = metricCount > 0;
   const hasDimension = classifications.some((c) => c.role === "dimension");
   const hasTemporal = classifications.some((c) => c.role === "temporal-dimension");
-  const metrics = classifications.filter((c) => c.role === "metric");
-  const dimensions = classifications.filter((c) => c.role === "dimension");
-  const temporal = classifications.filter((c) => c.role === "temporal-dimension");
+  // Mesma ordenação por confiança de classifiedRoles/widgetCoversQuestion —
+  // usar uma ordem diferente aqui faria o metricKey/groupKey da pergunta
+  // apontar pra uma coluna diferente da que widgetCoversQuestion usa pra
+  // decidir cobertura, e um widget recém-criado pra essa pergunta nunca
+  // bateria com o "Sem gráfico" dela.
+  const { metrics, dimensions, temporal } = classifiedRoles(classifications);
   const metricKey = metrics[0]?.key;
   const metricKey2 = metrics[1]?.key;
   const dimensionKey = dimensions[0]?.key;

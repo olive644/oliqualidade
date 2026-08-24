@@ -323,15 +323,19 @@ export function generateAutoDashboardPlan(input: AutoDashboardInput): AutoDashbo
   );
   const byRole = (role: DashboardColumnRole) =>
     classifications.filter((item) => item.role === role);
-  const metrics = byRole("metric");
-  // As dimensões entram nos gráficos automáticos (barra/ranking/pizza) na
-  // ordem de melhor confiança/qualidade primeiro, não na ordem em que a
-  // coluna aparece na planilha — com muitas dimensões candidatas, só as
-  // primeiras (`dimensions.slice(0, 2)`, mais abaixo) viram widget; sem
-  // essa ordenação, uma coluna de ótima qualidade em 3º lugar nunca
-  // aparecia, enquanto duas colunas ruins mas bem no início sempre
-  // ganhavam. Sort é estável, então colunas com confiança igual mantêm a
-  // ordem original da planilha entre si.
+  // Mesmo raciocínio pras duas linhas abaixo: metricas e dimensões entram
+  // nos gráficos automáticos (barra/ranking/pizza/KPI) na ordem de melhor
+  // confiança/qualidade primeiro, não na ordem em que a coluna aparece na
+  // planilha — com várias candidatas, só as primeiras viram widget (
+  // `metrics.slice(0, 3)`/`dimensions.slice(0, 2)`, mais abaixo); sem essa
+  // ordenação, uma coluna de ótima qualidade em 3º lugar nunca aparecia,
+  // enquanto duas colunas ruins mas bem no início sempre ganhavam. Sort é
+  // estável, então colunas com confiança igual mantêm a ordem original da
+  // planilha entre si. Também mantém `primaryMetric` (= metrics[0]) igual
+  // ao que analytical-narrative.ts usa pra decidir cobertura de pergunta —
+  // ordens diferentes faziam um widget recém-criado nunca bater com a
+  // pergunta que o gerou.
+  const metrics = [...byRole("metric")].sort((a, b) => b.confidence - a.confidence);
   const dimensions = [...byRole("dimension")].sort((a, b) => b.confidence - a.confidence);
   const temporal = byRole("temporal-dimension");
   const identifiers = byRole("identifier");

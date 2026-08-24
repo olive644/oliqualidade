@@ -77,7 +77,14 @@ import {
   type AggregationOp,
 } from "@/lib/data-pipeline";
 import { resolveColorGroupLabels, resolveSourceCellFills } from "@/lib/cell-fill-provenance";
-import { resolveSourceCellProvenance } from "@/lib/cell-provenance";
+import { resolveSourceCellProvenance, type SourceCellProvenance } from "@/lib/cell-provenance";
+
+// Referência estável pra quando a planilha não tem proveniência de célula.
+// `?? []` no local de uso criaria um array novo a cada render, invalidando
+// o useMemo de evidência do widget (buildWidgetEvidence) o tempo todo — ele
+// recomputava em toda renderização em vez de só quando os dados mudassem de
+// verdade.
+const EMPTY_SOURCE_CELL_PROVENANCE: SourceCellProvenance[] = [];
 import {
   analyzeQuestionCoverage,
   buildExecutiveSummary,
@@ -1316,15 +1323,6 @@ function Dashboard(p: {
     () => generateAutoDashboardPlan({ columns: sheet.columns, rows: sheet.rows }),
     [sheet.columns, sheet.rows],
   );
-  const analysisTrust = useMemo(
-    () =>
-      buildAnalysisTrustSummary(
-        currentAutoDashboard,
-        effectiveIntelligence,
-        sheet.exceptionDecisions,
-      ),
-    [currentAutoDashboard, effectiveIntelligence, sheet.exceptionDecisions],
-  );
   const semanticProfilesByKey = useMemo(
     () => new Map(effectiveIntelligence.columns.map((profile) => [profile.key, profile])),
     [effectiveIntelligence.columns],
@@ -1505,6 +1503,19 @@ function Dashboard(p: {
           exception.rowIndex === undefined || visibleSourceRows.has(exception.rowIndex),
       ),
     [effectiveIntelligence.exceptions, visibleSourceRows],
+  );
+  // Usa `visibleExceptions` (já restrito às linhas visíveis com o filtro
+  // atual), não `effectiveIntelligence.exceptions` inteiro — senão a
+  // contagem de pendências no banner/sidebar nunca bate com o que o painel
+  // de exceções realmente mostra enquanto algum filtro está ativo.
+  const analysisTrust = useMemo(
+    () =>
+      buildAnalysisTrustSummary(
+        currentAutoDashboard,
+        { ...effectiveIntelligence, exceptions: visibleExceptions },
+        sheet.exceptionDecisions,
+      ),
+    [currentAutoDashboard, effectiveIntelligence, visibleExceptions, sheet.exceptionDecisions],
   );
   const primary = nums[0];
   // Colunas candidatas a agrupamento: categoria, texto ou data.
@@ -1859,7 +1870,7 @@ function Dashboard(p: {
               exceptions={visibleExceptions}
               semanticProfiles={effectiveIntelligence.columns}
               sourceSheetName={sheet.name}
-              sourceCellProvenance={sheet.sourceCellProvenance ?? []}
+              sourceCellProvenance={sheet.sourceCellProvenance ?? EMPTY_SOURCE_CELL_PROVENANCE}
               activeFilterCount={sheet.filters.length + (search ? 1 : 0)}
               exceptionDecisions={sheet.exceptionDecisions ?? {}}
               auditTrail={sheet.auditTrail ?? []}
@@ -2478,7 +2489,7 @@ function Dashboard(p: {
             }
           }
           rows={sheet.rows}
-          sourceCellProvenance={sheet.sourceCellProvenance ?? []}
+          sourceCellProvenance={sheet.sourceCellProvenance ?? EMPTY_SOURCE_CELL_PROVENANCE}
           fileName={d.sourceFileName ?? d.name}
           sheetName={sheet.name}
         />
