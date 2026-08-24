@@ -1287,11 +1287,12 @@ function Dashboard(p: {
   const [widgetClipboard, setWidgetClipboard] = useState<Widget | null>(null);
   // No desktop, a visão geral funciona como coluna lateral e pode nascer
   // aberta. No celular, ela é um drawer modal e começa fechada para não
-  // encobrir o dashboard logo após a geração do relatório.
-  const [insightOpen, setInsightOpen] = useState(false);
-  useEffect(() => {
-    setInsightOpen(window.matchMedia("(min-width: 1024px)").matches);
-  }, []);
+  // encobrir o dashboard logo após a geração do relatório. Inicializador
+  // preguiçoso (em vez de false + useEffect) evita um render extra em que
+  // o painel aparece fechado e reabre em seguida no desktop.
+  const [insightOpen, setInsightOpen] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
+  );
   const [sourceRowsPanel, setSourceRowsPanel] = useState<{
     title: string;
     rowIndexes: number[];
@@ -1474,10 +1475,9 @@ function Dashboard(p: {
   }, [filteredData, metricOperations, nums, previousFilteredData, sheet.previousSnapshot]);
   const detailedVersionDiff = useMemo(() => {
     if (!sheet.previousSnapshot) return null;
-    if (sheet.filters.length > 0 || search.trim()) {
-      return compareVersions(previousFilteredData, filteredData);
-    }
-    return backgroundReview?.versionDiff ?? compareVersions(previousFilteredData, filteredData);
+    const hasActiveFilter = sheet.filters.length > 0 || Boolean(search.trim());
+    const cached = !hasActiveFilter ? backgroundReview?.versionDiff : undefined;
+    return cached ?? compareVersions(previousFilteredData, filteredData);
   }, [
     backgroundReview,
     filteredData,

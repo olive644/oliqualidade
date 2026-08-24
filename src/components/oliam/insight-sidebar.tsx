@@ -104,7 +104,8 @@ export function InsightSidebar(p: {
   };
 
   useEffect(() => {
-    if (!open || !window.matchMedia("(max-width: 1023px)").matches) return;
+    const mobileQuery = window.matchMedia("(max-width: 1023px)");
+    if (!open || !mobileQuery.matches) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -113,9 +114,19 @@ export function InsightSidebar(p: {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onOpenChange(false);
     };
+    // Girar o aparelho ou redimensionar a janela com o drawer ainda aberto
+    // passava pra layout desktop (lg:hidden esconde o próprio drawer) sem
+    // nunca desfazer o bloqueio de scroll do body, porque o efeito só
+    // reavaliava a largura na montagem — a página ficava travada até o
+    // usuário fechar e reabrir a visão geral.
+    const handleViewportChange = () => {
+      document.body.style.overflow = mobileQuery.matches ? "hidden" : previousOverflow;
+    };
     window.addEventListener("keydown", handleKeyDown);
+    mobileQuery.addEventListener("change", handleViewportChange);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
+      mobileQuery.removeEventListener("change", handleViewportChange);
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus();
     };
