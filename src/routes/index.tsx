@@ -192,6 +192,8 @@ import { DashboardNavSidebar } from "@/components/oliam/dashboard-nav-sidebar";
 import { InsightSidebar } from "@/components/oliam/insight-sidebar";
 import { MobileNavBar } from "@/components/oliam/mobile-nav-bar";
 import { CommandPalette } from "@/components/oliam/command-palette";
+import { PrivacyCenter } from "@/components/oliam/privacy-center";
+import { buildSafeDashboardContext } from "@/lib/gemini-security";
 import { buildGlobalSearchEntries, type GlobalSearchEntry } from "@/lib/global-search";
 
 // Massa inteiramente sintética e gerada em tempo de execução. Evita manter no
@@ -1230,6 +1232,8 @@ export function OliAm({ routeId }: { routeId?: string }) {
             folderMonitor={folderMonitors[current.id] ?? current.folderMonitor}
             connectFolder={() => void connectFolder(current.id)}
             disconnectFolder={() => stopFolderMonitor(current.id, true)}
+            privateMode={privateMode}
+            togglePrivateMode={() => void togglePrivateMode()}
             theme={theme}
             toggleTheme={toggle}
           />
@@ -1260,6 +1264,8 @@ function Dashboard(p: {
   disconnectFolder: () => void;
   theme: string;
   toggleTheme: () => void;
+  privateMode: boolean;
+  togglePrivateMode: () => void;
 }) {
   const { dashboard: d } = p;
   const activeSheetIndex = Math.min(Math.max(d.activeSheetIndex, 0), d.sheets.length - 1);
@@ -1287,6 +1293,7 @@ function Dashboard(p: {
   // Aberto pelo botão da barra de ferramentas e também pela barra inferior do
   // celular, por isso é estado, e não o controle interno do próprio menu.
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
+  const [privacyCenter, setPrivacyCenter] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   // Índice da busca global. Recalcula quando o painel muda de forma, não a
   // cada tecla digitada: quem filtra o texto é a própria paleta.
@@ -2523,6 +2530,24 @@ function Dashboard(p: {
             ))}
           </div>
         )}
+        <PrivacyCenter
+          open={privacyCenter}
+          onOpenChange={setPrivacyCenter}
+          privateMode={p.privateMode}
+          onTogglePrivateMode={p.togglePrivateMode}
+          // Montado só quando o usuário pede para ver, e pela mesma função
+          // que monta o envio de verdade: uma descrição escrita à mão
+          // envelheceria em silêncio na primeira mudança do payload.
+          buildAiPayload={() =>
+            buildSafeDashboardContext({
+              name: d.name,
+              sheetName: sheet.name,
+              columns: sheet.columns,
+              rows: data,
+              liveView: assistantContext,
+            })
+          }
+        />
         <MobileNavBar
           onOpenPanels={() => setSidebar(true)}
           onSearch={() => {
@@ -2581,6 +2606,7 @@ function Dashboard(p: {
         onRestoreBackup={() => backupInput.current?.click()}
         onOpenFormatPanel={() => setFormatPanel(true)}
         onOpenShortcuts={() => setShortcuts(true)}
+        onOpenPrivacyCenter={() => setPrivacyCenter(true)}
         onOpenImportDiagnostics={() => setImportDiagnostics(true)}
         onOpenColumnsPanel={() => setPanel(true)}
         startPresentation={startPresentation}

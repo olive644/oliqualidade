@@ -7,10 +7,25 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.6.0-beta.2";
+export const APP_VERSION = "0.7.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-central-de-privacidade",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Central de privacidade: veja o que fica guardado e o que sai daqui",
+    summary:
+      "Uma tela nova mostra quanto cada coisa ocupa neste navegador, permite limpar por categoria e exibe exatamente o que seria enviado ao assistente.",
+    highlights: [
+      "O tamanho real de cada categoria guardada, separando seus painéis do cache que o aplicativo refaz sozinho.",
+      "Botão de limpar por categoria, com aviso em quem apaga trabalho de verdade.",
+      "Quanto espaço o navegador reservou para o aplicativo e quanto já está em uso.",
+      "O conteúdo exato que seria enviado ao assistente, montado na hora pela mesma função que monta o envio real.",
+      'Acesso pela paleta de comandos, buscando por "privacidade".',
+    ],
+  },
   {
     id: "2026-08-24-meta-nao-e-resultado",
     version: APP_VERSION,

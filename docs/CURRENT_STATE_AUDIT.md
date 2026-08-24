@@ -7187,3 +7187,53 @@ diria que aquilo é a referência.
 ### Versão
 
 `0.6.0-beta.1` → `0.6.0-beta.2`.
+
+## 129. Central de privacidade: armazenamento medido e consentimento com o envio real
+
+Três itens do inventário em uma entrega: central de privacidade, tela para
+medir e limpar o armazenamento local, e consentimento detalhado mostrando
+exatamente o que será enviado à IA.
+
+### Por que juntos
+
+Os três respondem à mesma pergunta: *o que este aplicativo tem meu, e o que
+sai daqui?* O produto afirmava "seus dados ficam com você" e "colunas
+sensíveis não vão para a IA", e as duas afirmações eram promessas sem como
+conferir.
+
+### O consentimento mostra o envio, não uma descrição dele
+
+O ponto central desta entrega. A tela não descreve por escrito o que é
+enviado: ela chama `buildSafeDashboardContext` — a **mesma função** que monta o
+envio de verdade — e mostra o objeto resultante. Uma descrição escrita à mão
+envelhece em silêncio na primeira mudança do payload, e a partir daí o
+consentimento passa a mentir sem ninguém perceber. O objeto real não tem como
+divergir de si mesmo.
+
+O conteúdo é montado só quando o usuário clica para ver.
+
+### Medir o armazenamento certo
+
+A primeira versão media o `localStorage` e mostrava uma lista vazia. Os painéis
+moram no **IndexedDB** (`oliam`/`kv`); no `localStorage` ficam apenas tema,
+modo privado e avisos lidos. Uma tela que medisse só o `localStorage` mostraria
+alguns bytes de preferência e daria a impressão de que a planilha importada não
+está guardada em lugar nenhum — o oposto do que a tela existe para esclarecer.
+
+`listStoredEntries` (`storage.ts`) percorre os dois. `classifyStorageKey`
+agrupa por significado, e o agrupamento é o que torna a tela útil: a diferença
+que importa é entre "seus painéis" e "cache que o app refaz sozinho", não entre
+uma chave e outra. Só a primeira categoria é marcada como destrutiva.
+
+A cota do navegador (`navigator.storage.estimate`) entra como contexto: no
+teste, 10,5 KB guardados dentro de 3.072 MB reservados.
+
+### Detalhe de layout
+
+As linhas longas do JSON esticavam o diálogo inteiro e cortavam o texto das
+seções acima na borda direita. `w-full min-w-0` no bloco de código resolve:
+ele rola dentro da própria caixa em vez de empurrar o diálogo.
+
+### Versão
+
+`0.6.0-beta.2` → `0.7.0-beta.1`: capacidade nova.
