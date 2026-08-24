@@ -13,26 +13,54 @@ import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
  * (ex.: "=J5*K5").
  *
  * Suporta apenas:
- * - Referência a uma única célula da MESMA aba (ex.: "O5", "$O$5") —
- *   recursivamente, se essa célula também for uma fórmula sem valor
- *   guardado.
+ * - Referência a uma célula ou intervalo da mesma aba (ex.: "O5", "$O$5")
+ *   ou de outra aba do mesmo arquivo (ex.: "Vendas!F5", "'Aba 2'!F5:F304",
+ *   quando o workbook é passado — ver parâmetro `workbook` de
+ *   `resolveFormulaCell`) — recursivamente, se essa célula também for uma
+ *   fórmula sem valor guardado.
  * - Operadores aritméticos (+, -, *, /), parênteses, número negativo.
  * - Funções comuns: IF, AND, OR, IFERROR, ROUND, ABS, MIN, MAX, SUM,
- *   AVERAGE, COUNT, SUMIF e COUNTIF. Intervalos continuam restritos à aba
- *   atual e a no máximo 10 mil células.
+ *   AVERAGE, COUNT, SUMIF e COUNTIF. Intervalos são limitados a no máximo
+ *   10 mil células, na aba atual ou em outra aba do mesmo workbook.
  *
- * Qualquer coisa fora disso — referência a outra aba ("Vendas!P5"),
- * intervalo fora das funções permitidas, função não suportada (VLOOKUP,
- * XLOOKUP etc.) — faz a
- * avaliação falhar e retornar null, deixando a célula vazia exatamente
- * como antes. Isso é proposital: o objetivo aqui é recuperar fórmulas de
- * cálculo simples entre colunas da mesma linha, não ser um motor de
- * planilha completo.
+ * Qualquer coisa fora disso — referência a uma aba que não existe no
+ * workbook, workbook não informado, intervalo fora das funções permitidas,
+ * função não suportada (VLOOKUP, XLOOKUP etc.) — faz a avaliação falhar e
+ * retornar null, deixando a célula vazia exatamente como antes. Isso é
+ * proposital: o objetivo aqui é recuperar fórmulas de cálculo comuns entre
+ * planilhas de verdade, não ser um motor de planilha completo (sem
+ * referência circular entre abas diferentes, sem nomes definidos, sem
+ * fórmulas de matriz).
  */
 
-const CELL_REF = /^\$?[A-Za-z]+\$?[0-9]+$/;
-const RANGE_AT_START = /^\$?([A-Za-z]+)\$?([0-9]+):\$?([A-Za-z]+)\$?([0-9]+)/;
+// Nome de aba sem aspas simples no Excel não tem espaço, ':', '!', ',' nem
+// parênteses — os mesmos caracteres que delimitam o resto de uma fórmula.
+// Com espaço ou caractere especial, o Excel sempre envolve em aspas simples
+// ('Aba 2'!A1); aspas duplicadas ('') dentro do nome (aspa simples literal
+// no nome da aba) não são suportadas, caso raro o bastante para ignorar.
+const SHEET_NAME_SRC = `(?:'[^']+'|[^'!:,()\\s]+)`;
+const SHEET_PREFIX_SRC = `${SHEET_NAME_SRC}!`;
+const CELL_REF = new RegExp(`^(?:${SHEET_PREFIX_SRC})?\\$?[A-Za-z]+\\$?[0-9]+$`);
+const REF_WITH_SHEET_AT_START = new RegExp(`^${SHEET_PREFIX_SRC}\\$?[A-Za-z]+\\$?[0-9]+`);
+const RANGE_AT_START = new RegExp(
+  `^(${SHEET_PREFIX_SRC})?\\$?([A-Za-z]+)\\$?([0-9]+):\\$?([A-Za-z]+)\\$?([0-9]+)`,
+);
 const MAX_FORMULA_RANGE_CELLS = 10_000;
+
+/**
+ * Separa o prefixo de aba (se houver) de uma referência normalizada em
+ * maiúsculas — preservando a capitalização do NOME da aba como está escrito
+ * na fórmula, porque `wb.Sheets[nome]` é sensível a maiúsculas/minúsculas e
+ * acentos; só a parte da célula (depois do "!") é normalizada.
+ */
+function splitSheetPrefix(raw: string): { sheetName: string | null; localRef: string } {
+  const match = new RegExp(`^(${SHEET_PREFIX_SRC})`).exec(raw);
+  if (!match) return { sheetName: null, localRef: raw.replace(/\$/g, "").toUpperCase() };
+  const prefix = match[1]!;
+  const sheetName = prefix.slice(0, -1).replace(/^'|'$/g, "");
+  const localRef = raw.slice(prefix.length).replace(/\$/g, "").toUpperCase();
+  return { sheetName, localRef };
+}
 const num = (v: number | null | undefined): number | null => v ?? null;
 const FUNCTIONS: Record<string, (args: (number | null | undefined)[]) => number | null> = {
   IF: ([condition, whenTrue, whenFalse]) =>
@@ -182,6 +210,11 @@ class Parser {
     this.skipSpace();
     const rest = this.src.slice(this.pos);
     const numMatch = /^[0-9]+(\.[0-9]+)?/.exec(rest);
+    // Referência com prefixo de aba ("Vendas!A1", "'Aba 2'!$A$1") tem que
+    // ser testada ANTES do identificador simples: o nome da função (IF,
+    // SUM...) e a referência local (A1) usam o mesmo formato de letras
+    // seguidas de dígitos, mas só a referência com aba tem "!" no meio.
+    const refWithSheetMatch = REF_WITH_SHEET_AT_START.exec(rest);
     const identMatch = /^[A-Za-z]+[0-9]*/.exec(rest);
     if (identMatch && /^[A-Za-z]+\(/.test(rest)) {
       const name = identMatch[0].toUpperCase();
@@ -202,9 +235,13 @@ class Parser {
       if (!fn) throw new Error(`função não suportada: ${name}`);
       return fn(args);
     }
+    if (refWithSheetMatch) {
+      this.pos += refWithSheetMatch[0].length;
+      return this.resolveCell(refWithSheetMatch[0]);
+    }
     if (identMatch && CELL_REF.test(identMatch[0])) {
       this.pos += identMatch[0].length;
-      return this.resolveCell(identMatch[0].replace(/\$/g, "").toUpperCase());
+      return this.resolveCell(identMatch[0]);
     }
     if (numMatch) {
       this.pos += numMatch[0].length;
@@ -220,7 +257,11 @@ class Parser {
     if (!["SUM", "MIN", "MAX", "AVERAGE", "COUNT"].includes(functionName))
       throw new Error(`intervalo não permitido em ${functionName}`);
     this.pos += match[0].length;
-    const values = this.resolveRange(`${match[1]}${match[2]}`, `${match[3]}${match[4]}`);
+    const prefix = match[1] ?? "";
+    const values = this.resolveRange(
+      `${prefix}${match[2]}${match[3]}`,
+      `${prefix}${match[4]}${match[5]}`,
+    );
     if (!values) throw new Error("intervalo inválido ou grande demais");
     return values;
   }
@@ -311,7 +352,6 @@ function conditionalAggregate(
   const args = splitFormulaArguments(match[2]!);
   if (!args || (name === "COUNTIF" ? args.length !== 2 : args.length < 2 || args.length > 3))
     return null;
-  if (args.some((argument) => argument.includes("!"))) return null;
   const criteriaValues = readRange(args[0]!);
   if (!criteriaValues) return null;
   const criterionToken = args[1]!;
@@ -330,11 +370,83 @@ function conditionalAggregate(
 }
 
 /**
+ * COUNTA conta células não vazias (texto, número ou booleano — qualquer
+ * coisa que não seja em branco), diferente de COUNT, que só conta
+ * numéricas. Comum em resumos que contam "quantos pedidos" a partir de uma
+ * coluna de texto (ex.: "=COUNTA(Vendas!A5:A304)" contando os IDs de
+ * venda). Reaproveita `readRange`/`readValue` de `conditionalAggregate`
+ * porque eles já preservam texto/número/booleano em vez de descartar tudo
+ * que não é número (o que o Parser genérico faz, sendo voltado só a
+ * aritmética).
+ */
+function evaluateCounta(
+  formula: string,
+  readRange: (reference: string) => ConditionalValue[] | null,
+  readValue: (token: string) => ConditionalValue,
+): number | null | undefined {
+  const match = /^COUNTA\s*\(([\s\S]*)\)$/i.exec(formula.trim());
+  if (!match) return undefined;
+  const args = splitFormulaArguments(match[1]!);
+  if (!args || !args.length) return null;
+  let total = 0;
+  for (const arg of args) {
+    if (arg.includes(":")) {
+      const values = readRange(arg);
+      if (!values) return null;
+      total += values.filter((value) => value !== null && value !== "").length;
+    } else {
+      const value = readValue(arg);
+      if (value !== null && value !== "") total += 1;
+    }
+  }
+  return total;
+}
+
+/** Localiza a aba de um workbook por nome, tolerando diferença de maiúsculas/minúsculas. */
+function findSheet(workbook: XLSX.WorkBook, sheetName: string): XLSX.WorkSheet | undefined {
+  if (workbook.Sheets[sheetName]) return workbook.Sheets[sheetName];
+  const match = workbook.SheetNames.find((name) => name.toLowerCase() === sheetName.toLowerCase());
+  return match ? workbook.Sheets[match] : undefined;
+}
+
+type SheetTarget = { ws: XLSX.WorkSheet; name: string | null };
+
+/**
+ * Resolve para qual worksheet uma referência aponta: `null` de aba significa
+ * "a mesma de onde a fórmula está" (`currentWs`); um nome de aba só resolve
+ * quando `workbook` foi informado E a aba existe nele — senão a referência
+ * fica fora do escopo suportado (mesmo comportamento de antes de existir
+ * suporte a fórmulas entre abas).
+ */
+function resolveSheetTarget(
+  sheetName: string | null,
+  currentWs: XLSX.WorkSheet,
+  currentSheetName: string | null,
+  workbook: XLSX.WorkBook | undefined,
+): SheetTarget | null {
+  if (sheetName === null) return { ws: currentWs, name: currentSheetName };
+  if (!workbook) return null;
+  const target = findSheet(workbook, sheetName);
+  return target ? { ws: target, name: sheetName } : null;
+}
+
+function formulaCacheKey(sheetName: string | null, addr: string): string {
+  // `sheetName === null` (nenhum workbook informado, ou referência local
+  // dentro da própria fórmula sem prefixo) preserva a chave exatamente como
+  // antes de existir suporte a múltiplas abas — os testes que chamam
+  // `resolveFormulaCell` sem workbook continuam com o mesmo comportamento
+  // de cache/detecção de ciclo de sempre.
+  return sheetName === null ? addr : `${sheetName} ${addr}`;
+}
+
+/**
  * Resolve o valor numérico de uma célula, avaliando sua fórmula (recursivo,
  * com proteção contra referência circular) quando ela não tiver um valor
  * já guardado no arquivo. `cache`/`inProgress` são compartilhados entre
- * chamadas na mesma aba para não reavaliar a mesma célula várias vezes e
- * para detectar ciclos (ex.: A1 dependendo de B1 que depende de A1).
+ * chamadas — inclusive entre abas diferentes do mesmo workbook — para não
+ * reavaliar a mesma célula várias vezes e para detectar ciclos (ex.: A1
+ * dependendo de B1 que depende de A1; ou de uma célula de outra aba que
+ * depende de volta desta).
  */
 export function resolveFormulaCell(
   ws: XLSX.WorkSheet,
@@ -346,9 +458,26 @@ export function resolveFormulaCell(
   // a uma data que já passou; para as demais o cache do Excel é a fonte mais
   // confiável, porque foi ele quem calculou.
   ignoreCachedValue = false,
+  // Workbook completo — permite resolver fórmulas que referenciam outra aba
+  // (ex.: "=SUMIF(Vendas!F:F,A9,Vendas!Q:Q)"). Sem ele, essas referências
+  // continuam fora do escopo suportado, como sempre foram.
+  workbook?: XLSX.WorkBook,
 ): number | null {
-  if (!ignoreCachedValue && cache.has(addr)) return cache.get(addr)!;
-  if (inProgress.has(addr)) return null;
+  return resolveInSheet(ws, null, addr, cache, inProgress, ignoreCachedValue, workbook);
+}
+
+function resolveInSheet(
+  ws: XLSX.WorkSheet,
+  sheetName: string | null,
+  addr: string,
+  cache: Map<string, number | null>,
+  inProgress: Set<string>,
+  ignoreCachedValue: boolean,
+  workbook: XLSX.WorkBook | undefined,
+): number | null {
+  const key = formulaCacheKey(sheetName, addr);
+  if (!ignoreCachedValue && cache.has(key)) return cache.get(key)!;
+  if (inProgress.has(key)) return null;
   const cell = worksheetCellAtAddress(ws, addr) as
     { v?: unknown; f?: string; t?: string } | undefined;
   if (!cell) return null;
@@ -359,7 +488,7 @@ export function resolveFormulaCell(
   // fosse o resultado real da fórmula, sem nunca tentar avaliar nada.
   const hasRealValue = !ignoreCachedValue && cell.t !== "z" && cell.v !== undefined;
   if (hasRealValue && typeof cell.v === "number") {
-    cache.set(addr, cell.v);
+    cache.set(key, cell.v);
     return cell.v;
   }
   // Uma data é um número no Excel (dias desde 30/12/1899) e participa de
@@ -369,7 +498,7 @@ export function resolveFormulaCell(
   // fórmula de prazo falhar — justamente o caso mais comum.
   if (hasRealValue && cell.v instanceof Date) {
     const serial = excelSerialFromDate(cell.v);
-    cache.set(addr, serial);
+    cache.set(key, serial);
     return serial;
   }
   if (hasRealValue) {
@@ -377,82 +506,111 @@ export function resolveFormulaCell(
     // operando de fórmula aritmética.
     return null;
   }
-  if (!cell.f || cell.f.includes("!")) {
-    // sem fórmula, ou fórmula fora do escopo suportado (outra aba ou
-    // intervalo) — não tentamos.
-    return null;
-  }
-  inProgress.add(addr);
+  if (!cell.f) return null; // sem fórmula — não há nada pra avaliar.
+  inProgress.add(key);
   let value: number | null;
   try {
     const readConditionalRange = (reference: string): ConditionalValue[] | null => {
-      if (!/^\$?[A-Za-z]+\$?\d+:\$?[A-Za-z]+\$?\d+$/.test(reference.trim())) return null;
-      const range = XLSX.utils.decode_range(reference.replace(/\$/g, ""));
+      const { sheetName: refSheet, localRef } = splitSheetPrefix(reference.trim());
+      if (!/^[A-Za-z]+\d+:[A-Za-z]+\d+$/.test(localRef)) return null;
+      const target = resolveSheetTarget(refSheet, ws, sheetName, workbook);
+      if (!target) return null;
+      const range = XLSX.utils.decode_range(localRef);
       const size = (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
       if (size > MAX_FORMULA_RANGE_CELLS) return null;
-      const current = XLSX.utils.decode_cell(addr);
-      if (
-        current.r >= range.s.r &&
-        current.r <= range.e.r &&
-        current.c >= range.s.c &&
-        current.c <= range.e.c
-      )
-        return null;
+      if (target.ws === ws) {
+        const current = XLSX.utils.decode_cell(addr);
+        if (
+          current.r >= range.s.r &&
+          current.r <= range.e.r &&
+          current.c >= range.s.c &&
+          current.c <= range.e.c
+        )
+          return null;
+      }
       const values: ConditionalValue[] = [];
       for (let row = range.s.r; row <= range.e.r; row++) {
         for (let column = range.s.c; column <= range.e.c; column++) {
           const address = XLSX.utils.encode_cell({ r: row, c: column });
-          const source = worksheetCellAtAddress(ws, address) as
+          const source = worksheetCellAtAddress(target.ws, address) as
             { v?: unknown; t?: string; f?: string } | undefined;
           if (source?.t !== "z" && ["string", "number", "boolean"].includes(typeof source?.v))
             values.push(source!.v as string | number | boolean);
-          else if (source?.f) values.push(resolveFormulaCell(ws, address, cache, inProgress));
+          else if (source?.f)
+            values.push(
+              resolveInSheet(target.ws, target.name, address, cache, inProgress, false, workbook),
+            );
           else values.push(null);
         }
       }
       return values;
     };
-    const conditional = conditionalAggregate(
-      cell.f,
-      readConditionalRange,
-      (token): ConditionalValue => {
-        const trimmed = token.trim();
-        if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
-        if (!CELL_REF.test(trimmed)) return null;
-        const reference = trimmed.replace(/\$/g, "").toUpperCase();
-        const source = worksheetCellAtAddress(ws, reference) as
-          { v?: unknown; t?: string; f?: string } | undefined;
-        if (source?.t !== "z" && ["string", "number", "boolean"].includes(typeof source?.v))
-          return source!.v as string | number | boolean;
-        return source?.f ? resolveFormulaCell(ws, reference, cache, inProgress) : null;
-      },
-    );
+    const readToken = (token: string): ConditionalValue => {
+      const trimmed = token.trim();
+      if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
+      if (!CELL_REF.test(trimmed)) return null;
+      const { sheetName: refSheet, localRef } = splitSheetPrefix(trimmed);
+      const target = resolveSheetTarget(refSheet, ws, sheetName, workbook);
+      if (!target) return null;
+      const source = worksheetCellAtAddress(target.ws, localRef) as
+        { v?: unknown; t?: string; f?: string } | undefined;
+      if (source?.t !== "z" && ["string", "number", "boolean"].includes(typeof source?.v))
+        return source!.v as string | number | boolean;
+      return source?.f
+        ? resolveInSheet(target.ws, target.name, localRef, cache, inProgress, false, workbook)
+        : null;
+    };
+    const conditional = conditionalAggregate(cell.f, readConditionalRange, readToken);
+    const counta = evaluateCounta(cell.f, readConditionalRange, readToken);
     if (conditional !== undefined) value = conditional;
+    else if (counta !== undefined) value = counta;
     else {
       const parser = new Parser(
         cell.f,
-        (ref) => resolveFormulaCell(ws, ref, cache, inProgress),
+        (raw) => {
+          const { sheetName: refSheet, localRef } = splitSheetPrefix(raw);
+          const target = resolveSheetTarget(refSheet, ws, sheetName, workbook);
+          if (!target) return null;
+          return resolveInSheet(
+            target.ws,
+            target.name,
+            localRef,
+            cache,
+            inProgress,
+            false,
+            workbook,
+          );
+        },
         (start, end) => {
-          const range = XLSX.utils.decode_range(`${start}:${end}`);
+          const { sheetName: refSheet, localRef: startLocal } = splitSheetPrefix(start);
+          const { localRef: endLocal } = splitSheetPrefix(end);
+          const target = resolveSheetTarget(refSheet, ws, sheetName, workbook);
+          if (!target) return null;
+          const range = XLSX.utils.decode_range(`${startLocal}:${endLocal}`);
           const size = (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
           if (size > MAX_FORMULA_RANGE_CELLS) return null;
-          const current = XLSX.utils.decode_cell(addr);
-          if (
-            current.r >= range.s.r &&
-            current.r <= range.e.r &&
-            current.c >= range.s.c &&
-            current.c <= range.e.c
-          )
-            return null;
+          if (target.ws === ws) {
+            const current = XLSX.utils.decode_cell(addr);
+            if (
+              current.r >= range.s.r &&
+              current.r <= range.e.r &&
+              current.c >= range.s.c &&
+              current.c <= range.e.c
+            )
+              return null;
+          }
           const values: (number | null)[] = [];
           for (let row = range.s.r; row <= range.e.r; row++)
             for (let column = range.s.c; column <= range.e.c; column++)
               values.push(
-                resolveFormulaCell(
-                  ws,
+                resolveInSheet(
+                  target.ws,
+                  target.name,
                   XLSX.utils.encode_cell({ r: row, c: column }),
                   cache,
                   inProgress,
+                  false,
+                  workbook,
                 ),
               );
           return values;
@@ -464,7 +622,7 @@ export function resolveFormulaCell(
   } catch {
     value = null;
   }
-  inProgress.delete(addr);
-  cache.set(addr, value);
+  inProgress.delete(key);
+  cache.set(key, value);
   return value;
 }

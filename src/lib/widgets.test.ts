@@ -10,6 +10,7 @@ import {
   duplicateWidget,
   draggedColumnKind,
   groupableKinds,
+  isLikelyLocationColumn,
   newWidgetId,
   pickBestGroupColumn,
   schedulePeriodColumns,
@@ -300,7 +301,7 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
     expect(w.op).toBeUndefined();
   });
 
-  it.each(["bar", "pie", "ranking", "line", "area", "map", "insights"] as const)(
+  it.each(["bar", "pie", "ranking", "line", "area", "insights"] as const)(
     "createWidget (%s) evita coluna não agregável como métrica quando existe outra numérica somável",
     (type) => {
       // Mesma branch compartilhada do radar (ver teste acima): antes desta
@@ -308,6 +309,10 @@ describe("createWidget/buildDefaultWidgets com dados reais (heurística de colun
       // nums[0] como métrica padrão e op: "sum" fixo, mesmo quando a
       // primeira coluna numérica era marcada `aggregable: false` (um
       // score/taxa) e havia outra coluna somável de verdade disponível.
+      // "map" fica de fora desta lista porque nenhuma das colunas abaixo
+      // (Turno, Setor) tem nome de local — o mapa agora nasce sem groupKey
+      // nesse caso (ver describe "mapa prefere uma coluna geográfica de
+      // verdade"), então não há métrica qualificada pra escolher.
       const columns: Column[] = [
         col("Turno", "category"),
         col("Setor", "category"),
@@ -670,14 +675,21 @@ describe("createWidget, mapa prefere uma coluna geográfica de verdade", () => {
     expect(w.valueKey).toBe("quantidade");
   });
 
-  it("sem nenhuma coluna com nome de local, cai de volta na melhor categoria disponível", () => {
+  it("sem nenhuma coluna com nome de local, nasce sem seleção em vez de geocodificar a melhor categoria disponível", () => {
+    // Antes, sem coluna geográfica o mapa caía no mesmo fallback de
+    // bar/pie/ranking (a "melhor" coluna categórica qualquer — aqui
+    // "vendedor"), e tentava geocodificar nome de pessoa via Nominatim sem
+    // chance de dar certo. Agora o mapa só aceita uma coluna cujo nome
+    // pareça local de verdade (ver isLikelyLocationColumn) — sem nenhuma,
+    // nasce sem groupKey, mostrando "escolha uma coluna de local" em vez de
+    // um mapa vazio sem explicação.
     const columns: Column[] = [
       col("quantidade", "number"),
       col("vendedor", "category"),
       col("id_venda", "category"),
     ];
     const w = createWidget("map", columns, undefined, rows);
-    expect(w.groupKey).toBe("vendedor");
+    expect(w.groupKey).toBeUndefined();
   });
 
   it("reconhece variações comuns de nome de coluna geográfica (estado, UF, país, região)", () => {
@@ -689,6 +701,20 @@ describe("createWidget, mapa prefere uma coluna geográfica de verdade", () => {
       ];
       const w = createWidget("map", columns, undefined, rows);
       expect(w.groupKey).toBe(key);
+    }
+  });
+});
+
+describe("isLikelyLocationColumn", () => {
+  it("reconhece nomes de coluna geográficos, com ou sem acento", () => {
+    for (const key of ["Cidade", "Município", "Estado", "País", "Região", "Bairro", "CEP", "UF"]) {
+      expect(isLikelyLocationColumn(col(key, "category"))).toBe(true);
+    }
+  });
+
+  it("não reconhece colunas categóricas comuns que não são locais", () => {
+    for (const key of ["Vendedor", "Produto", "Status", "Coluna 1", "Categoria"]) {
+      expect(isLikelyLocationColumn(col(key, "category"))).toBe(false);
     }
   });
 });

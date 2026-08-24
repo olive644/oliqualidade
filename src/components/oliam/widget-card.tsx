@@ -68,6 +68,7 @@ import {
 } from "@/lib/types";
 import {
   groupableKinds,
+  isLikelyLocationColumn,
   schedulePeriodColumns,
   scheduleItemColumn,
   scheduleSectionColumn,
@@ -660,6 +661,15 @@ function WidgetCardBody({
 
   if (w.type === "map") {
     const groupCol = columns.find((c) => c.key === w.groupKey);
+    // Mapa só geocodifica de verdade nome de local (cidade, estado, país,
+    // bairro...) — oferecer qualquer coluna categórica no seletor convida a
+    // escolher algo como "Produto" ou uma coluna sem nome que mistura texto
+    // solto, que a Nominatim nunca vai casar. A coluna já configurada
+    // continua na lista mesmo se não bater no vocabulário, pra não sumir
+    // do seletor de um widget salvo antes desta checagem existir.
+    const locationCols = groupableCols.filter(
+      (c) => isLikelyLocationColumn(c) || c.key === groupCol?.key,
+    );
     const requestedOp = w.op ?? "sum";
     const configuredValueCol = columns.find((c) => c.key === w.valueKey);
     const valueCol =
@@ -720,7 +730,7 @@ function WidgetCardBody({
               onChange={(e) => onConfigure({ groupKey: e.target.value })}
             >
               {!groupCol && <option value="">Selecione…</option>}
-              {groupableCols.map((c) => (
+              {locationCols.map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
                 </option>
@@ -757,8 +767,9 @@ function WidgetCardBody({
         {sizeControls}
         {!groupCol || !valueCol ? (
           <p className="p-6 text-center text-xs text-muted-foreground">
-            Escolha uma coluna com nome de local (cidade, estado ou país) e uma coluna numérica para
-            este widget.
+            {locationCols.length === 0
+              ? "Nenhuma coluna com nome de local (cidade, estado, país, bairro...) foi encontrada nesta planilha. Troque este widget por um gráfico de barra ou ranking."
+              : "Escolha uma coluna com nome de local (cidade, estado ou país) e uma coluna numérica para este widget."}
           </p>
         ) : (
           <>

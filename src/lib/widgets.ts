@@ -101,11 +101,21 @@ function stripAccents(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+/**
+ * Mesmo vocabulário usado pra `createWidget` preferir uma coluna geográfica
+ * de verdade ao montar o widget de mapa pela primeira vez — exportada pra
+ * também restringir as opções do seletor "Coluna de local" depois de criado
+ * (widget-card.tsx). Sem esse filtro, qualquer coluna categórica (ex.: uma
+ * mistura de títulos de seção e siglas de estado) vira candidata a
+ * geocodificar via Nominatim, sem chance real de virar um local.
+ */
+export function isLikelyLocationColumn(column: Column): boolean {
+  return LOCATION_KEY_HINT.test(stripAccents(`${column.label} ${column.key}`));
+}
+
 function pickLocationColumn(columns: Column[], rows: Row[]): Column | undefined {
   const candidates = columns.filter(
-    (c) =>
-      groupableKinds.includes(c.kind) &&
-      LOCATION_KEY_HINT.test(stripAccents(`${c.label} ${c.key}`)),
+    (c) => groupableKinds.includes(c.kind) && isLikelyLocationColumn(c),
   );
   return pickBestGroupColumn(candidates, rows);
 }
@@ -460,16 +470,24 @@ export function createWidget(
     const groupKey =
       seed?.groupKey ??
       (type === "line" || type === "area"
-        ? (dateColFilled?.key ?? pickSequentialIndexColumn(columns, rows)?.key)
+        ? (dateColFilled?.key ??
+          pickSequentialIndexColumn(columns, rows)?.key ??
+          cat?.key ??
+          groupableBest?.key)
         : type === "map"
-          ? pickLocationColumn(columns, rows)?.key
+          ? // Sem fallback genérico de propósito: uma coluna sem nome de
+            // local (cidade/estado/país/bairro...) nunca vai geocodificar
+            // de verdade, então o mapa nasce sem seleção em vez de herdar
+            // "a melhor coluna categórica qualquer" e tentar localizar
+            // lixo via Nominatim (ver isLikelyLocationColumn/widget-card.tsx).
+            pickLocationColumn(columns, rows)?.key
           : // Barra, pizza, radar e ranking escolhem a coluna pela
             // cardinalidade que cada um consegue desenhar, em vez de todos
             // receberem a mesma "melhor coluna" e repetirem o mesmo recorte.
             (pickGroupColumnForWidget(type, catCandidates, rows)?.key ??
-            pickGroupColumnForWidget(type, groupable, rows)?.key)) ??
-      cat?.key ??
-      groupableBest?.key;
+            pickGroupColumnForWidget(type, groupable, rows)?.key ??
+            cat?.key ??
+            groupableBest?.key));
     // Um widget novo precisa de uma métrica que agregue de verdade
     // (soma/média) — sem isso a operação relevante degrada pra "contagem"
     // no render (ver semanticAggregationOps), e a coluna numérica escolhida

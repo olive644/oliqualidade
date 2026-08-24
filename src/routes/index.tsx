@@ -1839,7 +1839,7 @@ function Dashboard(p: {
         </span>
       </button>
     ) : (
-      <div className="oliam-widget-grid grid grid-cols-1 gap-px bg-border lg:grid-cols-3">
+      <div className="oliam-widget-grid grid grid-cols-1 gap-px bg-border lg:grid-cols-3 lg:grid-flow-dense">
         {widgets.map((w, i) => (
           <div
             key={w.id}

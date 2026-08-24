@@ -53,6 +53,30 @@ export function InsightSidebar(p: {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [investigating, setInvestigating] = useState<AnalyticalQuestion | null>(null);
 
+  // O botão "Investigar" abre o painel logo abaixo do roteiro de perguntas,
+  // que costuma estar bem mais embaixo do que a área visível da barra
+  // lateral (rolagem própria, `overflow-auto`) — sem este scroll, clicar no
+  // botão não muda nada na tela visível e parece que "não funciona".
+  //
+  // Não dá pra usar um único useRef aqui: o JSX de `content` (mais abaixo)
+  // é reaproveitado dentro de DUAS <aside> — a fixa do desktop e o drawer
+  // do celular, uma delas sempre escondida por CSS — então um mesmo objeto
+  // ref acaba grudado só no último elemento montado entre as duas cópias,
+  // que nem sempre é a visível. Busca por atributo e filtra pelo que
+  // realmente está na tela (offsetParent !== null).
+  //
+  // `behavior: "smooth"` falha silenciosamente aqui: dentro de um container
+  // com `overflow-auto` aninhado, o navegador pode nunca completar a
+  // animação (mesmo comportamento do CSS `prefers-reduced-motion: reduce`,
+  // que desativa o smooth scroll do zero) — o scroll simplesmente não
+  // acontecia, e o clique em "Investigar" parecia não fazer nada.
+  useEffect(() => {
+    if (!investigating) return;
+    const candidates = document.querySelectorAll<HTMLElement>("[data-investigation-panel]");
+    const visible = [...candidates].find((el) => el.offsetParent !== null);
+    visible?.scrollIntoView({ behavior: "instant", block: "start" });
+  }, [investigating]);
+
   const openInvestigationNextStep = (type: "pareto" | "bar") => {
     const id = type === "pareto" ? "root-causes" : "who-is-bigger";
     const nextQuestion = p.questionCoverage?.questions.find((question) => question.id === id);
@@ -266,16 +290,18 @@ export function InsightSidebar(p: {
           const metric = investigationMetricFor(investigating, p.nums, p.primary);
           if (!metric || !p.cat) return null;
           return (
-            <InvestigationPanel
-              rows={p.data}
-              metric={metric}
-              dimension={p.cat}
-              date={p.dateCol}
-              operation={p.metricOperations.get(metric.key) ?? "sum"}
-              question={investigating.label}
-              onClose={() => setInvestigating(null)}
-              onNextStep={openInvestigationNextStep}
-            />
+            <div data-investigation-panel>
+              <InvestigationPanel
+                rows={p.data}
+                metric={metric}
+                dimension={p.cat}
+                date={p.dateCol}
+                operation={p.metricOperations.get(metric.key) ?? "sum"}
+                question={investigating.label}
+                onClose={() => setInvestigating(null)}
+                onNextStep={openInvestigationNextStep}
+              />
+            </div>
           );
         })()}
       {p.autoDashboard && (
