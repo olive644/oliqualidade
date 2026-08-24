@@ -109,7 +109,12 @@ import type {
   WorkbookImageDiagnostic,
   WorkbookShapeDiagnostic,
 } from "@/lib/workbook-metadata";
-import { buildRecommendedWidgets, generateAutoDashboardPlan } from "@/lib/auto-dashboard";
+import {
+  buildRecommendedWidgets,
+  generateAutoDashboardPlan,
+  type AutoDashboardPlan,
+} from "@/lib/auto-dashboard";
+import { applyTemplateOrder, type DashboardTemplateId } from "@/lib/dashboard-templates";
 import { detectOperationalWidgetTypes } from "@/lib/operational-widgets";
 import {
   loadDashboards,
@@ -950,7 +955,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
     }
   };
 
-  const confirmReview = (reportMode: "automatico" | "manual") => {
+  const confirmReview = (reportMode: "automatico" | "manual", templateId?: DashboardTemplateId) => {
     const sheets = reviewSheets.map((s) => {
       const autoDashboard = generateAutoDashboardPlan({
         columns: s.columns,
@@ -974,19 +979,27 @@ export function OliAm({ routeId }: { routeId?: string }) {
         s.sourceGrid,
         s.rowOrigins,
       );
+      // O modelo por finalidade não inventa widget nem muda cálculo: ele
+      // reordena o que a análise já recomendou, pondo na frente o que aquela
+      // finalidade lê primeiro.
+      const planned: AutoDashboardPlan = templateId
+        ? {
+            ...autoDashboard,
+            recommendations: applyTemplateOrder(autoDashboard.recommendations, templateId),
+          }
+        : autoDashboard;
       return {
         name: s.name,
         rows: s.rows,
         columns: s.columns,
-        autoDashboard,
+        autoDashboard: planned,
         intelligence,
         // No modo manual, o painel começa em branco (o usuário escolhe cada
         // widget pelo botão "Widget" da barra de ferramentas) — a
         // recomendação automática continua calculada e disponível na
         // barra lateral de insights, só não é usada pra pré-popular o
         // painel.
-        widgets:
-          reportMode === "manual" ? [] : buildRecommendedWidgets(autoDashboard, s.columns, s.rows),
+        widgets: reportMode === "manual" ? [] : buildRecommendedWidgets(planned, s.columns, s.rows),
         ...(s.sourceNotes?.length ? { sourceNotes: s.sourceNotes } : {}),
         ...(s.sourceImages?.length ? { sourceImages: s.sourceImages } : {}),
         ...(s.sourceShapes?.length ? { sourceShapes: s.sourceShapes } : {}),

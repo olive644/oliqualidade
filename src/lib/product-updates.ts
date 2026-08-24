@@ -7,10 +7,25 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.7.0-beta.1";
+export const APP_VERSION = "0.8.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-modelos-por-finalidade",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Modelos por finalidade: vendas, financeiro, qualidade e estudos",
+    summary:
+      "Na revisão da importação dá para dizer para que serve a planilha, e o painel passa a mostrar primeiro o que aquele tipo de análise lê primeiro.",
+    highlights: [
+      "Quatro finalidades disponíveis: vendas, financeiro, qualidade e estudos.",
+      "O OliQualidade sugere a finalidade pelos nomes das colunas, mas quem escolhe é você.",
+      "A finalidade muda a ordem dos gráficos, e não os cálculos: os mesmos números, na ordem em que aquela análise costuma ser lida.",
+      "Os indicadores continuam no topo e a tabela detalhada no fim, independentemente da finalidade.",
+      "Sem finalidade declarada, o painel é montado como sempre foi.",
+    ],
+  },
   {
     id: "2026-08-24-central-de-privacidade",
     version: APP_VERSION,

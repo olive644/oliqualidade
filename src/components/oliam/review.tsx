@@ -23,6 +23,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  DASHBOARD_TEMPLATES,
+  detectTemplate,
+  type DashboardTemplateId,
+} from "@/lib/dashboard-templates";
 import { fmt } from "@/lib/format";
 import { kinds, type Column, type Kind, type Row } from "@/lib/types";
 import { buildSheetConfidenceMatrix, confidenceLevelFor } from "@/lib/import-intelligence";
@@ -67,19 +72,26 @@ export function Review(p: {
   setRows: (rows: Row[]) => void;
   name: string;
   back: () => void;
-  confirm: (reportMode: "automatico" | "manual") => void;
+  confirm: (reportMode: "automatico" | "manual", templateId?: DashboardTemplateId) => void;
   importWarning: string | null;
 }) {
   const [headerChecked, setHeaderChecked] = useState(false);
   const [rangeChecked, setRangeChecked] = useState(false);
   const [typesChecked, setTypesChecked] = useState(false);
   const [reportMode, setReportMode] = useState<"automatico" | "manual">("automatico");
+  // "" significa "sem modelo": o painel automático de sempre, sem finalidade
+  // declarada. A detecção só sugere; quem escolhe é o usuário.
+  const [templateId, setTemplateId] = useState<DashboardTemplateId | "">("");
   useEffect(() => {
     setHeaderChecked(false);
     setRangeChecked(false);
     setTypesChecked(false);
   }, [p.activeIndex]);
   const active = p.sheets[p.activeIndex] ?? p.sheets[0];
+  const suggestedTemplate = useMemo(
+    () => detectTemplate((active?.columns ?? []).map((column) => column.label)),
+    [active?.columns],
+  );
   const rows = useMemo(() => active?.rows ?? [], [active]);
   const columns = useMemo(() => active?.columns ?? [], [active?.columns]);
   const [selection, setSelection] = useState<ImportSelection>(() => defaultSelection(rows));
@@ -197,7 +209,7 @@ export function Review(p: {
       });
       return;
     }
-    p.confirm(reportMode);
+    p.confirm(reportMode, templateId || undefined);
   };
   const suggestionKey = (suggestion: SmartImportSuggestion) =>
     `${suggestion.type}:${suggestion.columnKey}:${suggestion.proposedLabel ?? suggestion.proposedKind ?? ""}`;
@@ -1121,6 +1133,36 @@ export function Review(p: {
               </span>
             </button>
           </div>
+          {reportMode === "automatico" && (
+            <div className="mt-3 border-t border-border pt-3">
+              <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Finalidade da planilha</span>
+                <select
+                  className="oliam-select h-8"
+                  aria-label="Finalidade da planilha"
+                  value={templateId}
+                  onChange={(event) =>
+                    setTemplateId(event.target.value as DashboardTemplateId | "")
+                  }
+                >
+                  <option value="">Sem finalidade declarada</option>
+                  {DASHBOARD_TEMPLATES.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.label}
+                      {suggestedTemplate?.template.id === template.id ? " (sugerido)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {templateId
+                  ? DASHBOARD_TEMPLATES.find((t) => t.id === templateId)?.description
+                  : suggestedTemplate
+                    ? `Pelos nomes das colunas, esta planilha parece de ${suggestedTemplate.template.label.toLowerCase()}. A finalidade muda a ordem dos widgets, não os cálculos.`
+                    : "A finalidade coloca na frente o que aquele tipo de análise lê primeiro. Não muda nenhum cálculo."}
+              </p>
+            </div>
+          )}
         </div>
         {active?.diagnostics?.columns.some((c) => c.sensitive) && (
           <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm">
