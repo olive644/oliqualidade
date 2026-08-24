@@ -121,6 +121,19 @@ const BAR_LABEL_CHAR_PX = 5.6;
 const PLOT_WIDTH_BY_SPAN: Record<number, number> = { 1: 150, 2: 390, 3: 630 };
 
 /**
+ * Largura da área de plotagem: a medida real do widget quando o navegador já
+ * a informou, e a estimativa por span enquanto não informou.
+ *
+ * A estimativa acima existia porque não havia medida; ela erra em tela
+ * pequena, onde libera rótulo que não cabe, e desperdiça espaço em tela
+ * grande, onde esconde rótulo que caberia. Com `useMeasuredWidth` no widget,
+ * ela vira só o valor de partida da primeira renderização.
+ */
+function availablePlotWidth(span: number, plotWidth?: number): number {
+  return plotWidth && plotWidth > 0 ? plotWidth : (PLOT_WIDTH_BY_SPAN[span] ?? 630);
+}
+
+/**
  * Decide se os valores cabem escritos em cima das barras.
  *
  * Eles ficavam sempre ligados: com muitas categorias em um cartão estreito os
@@ -136,14 +149,17 @@ export function barValueLabelsFit({
   scrollable,
   longestLabelChars,
   span,
+  plotWidth,
 }: {
   count: number;
   scrollable: boolean;
   longestLabelChars: number;
   span: number;
+  /** Largura real da área de plotagem, quando já medida no navegador. */
+  plotWidth?: number;
 }): boolean {
   if (count <= 0) return false;
-  const slot = scrollable ? BAR_SLOT_PX : (PLOT_WIDTH_BY_SPAN[span] ?? 916) / count;
+  const slot = scrollable ? BAR_SLOT_PX : availablePlotWidth(span, plotWidth) / count;
   return longestLabelChars * BAR_LABEL_CHAR_PX + 6 <= slot;
 }
 
@@ -189,14 +205,17 @@ export function axisLabelPresentation({
   scrollable,
   span,
   slotPx,
+  plotWidth,
 }: {
   count: number;
   scrollable: boolean;
   span: number;
   slotPx: number;
+  /** Largura real da área de plotagem, quando já medida no navegador. */
+  plotWidth?: number;
 }): AxisLabelPresentation {
   if (count <= 0) return { maxChars: AXIS_LABEL_MAX_CHARS, interval: 0 };
-  const slot = scrollable ? slotPx : (PLOT_WIDTH_BY_SPAN[span] ?? 630) / count;
+  const slot = scrollable ? slotPx : availablePlotWidth(span, plotWidth) / count;
   const minimumReadable = AXIS_LABEL_MIN_CHARS * AXIS_LABEL_CHAR_PX;
   // Quantas fatias um rótulo legível precisa ocupar. Uma fatia por rótulo
   // (step 1) é o caso normal; acima disso o eixo pula rótulos.

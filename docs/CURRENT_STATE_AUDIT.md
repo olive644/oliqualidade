@@ -6827,3 +6827,60 @@ opções existentes sem duplicar o encadeamento de retornos.
 ### Versão
 
 `0.2.0-beta.4` → `0.3.0-beta.1`: capacidade nova de leitura, não correção.
+
+## 122. Widgets adaptáveis: container queries e três modos formais de densidade
+
+Primeira das três frentes escolhidas pelo usuário a partir do inventário de
+"parcialmente implementado". O diagnóstico dele estava certo: os componentes
+reagiam ao tamanho da tela, e não ao espaço individual disponível dentro do
+painel, e não havia três modos formais.
+
+### Por que ponto de quebra de tela não resolve
+
+Um widget de um terço em um monitor grande e um widget inteiro em um tablet
+podem ter a mesma largura. É a largura do widget, e não a da janela, que decide
+se cabe rótulo em cima da barra, quantas letras do nome da categoria cabem e
+quanta altura o gráfico merece. Media query não consegue expressar isso.
+
+### Os três modos
+
+`src/lib/widget-density.ts` define `compact` (< 420px), `normal` e `expanded`
+(≥ 720px) como fonte única, consumida pelos dois lados:
+
+- **CSS**: `.oliam-widget` passou a declarar `container: oliam-widget /
+  inline-size`, então as classes `@[420px]:` e `@[720px]:` do Tailwind passam a
+  medir o widget. A altura da área de plotagem deixou de ser fixa
+  (`h-64`/`h-56`) e virou `h-56 @[420px]:h-64 @[720px]:h-80`.
+- **JavaScript**: `useMeasuredWidth` (`components/oliam/use-measured-width.ts`)
+  observa o elemento com `ResizeObserver` e devolve largura e densidade.
+
+Antes de a medida chegar (primeira renderização, servidor, navegador sem
+`ResizeObserver`), a densidade é `normal` e a largura é 0 — quem consome cai na
+estimativa anterior em vez de esconder conteúdo sem motivo.
+
+### O que isso corrigiu de concreto
+
+A seção 119 registrou que `PLOT_WIDTH_BY_SPAN` era uma estimativa conservadora,
+com a troca declarada: errar para baixo esconde rótulo que caberia. Com a
+medida real, essa dívida some. `barValueLabelsFit` e `axisLabelPresentation`
+passaram a aceitar `plotWidth`, usam a medida quando existe e só caem na
+estimativa enquanto ela não chegou.
+
+Efeito observado no navegador, com o mesmo painel em duas larguras de janela:
+
+| Janela | Widget de 1/3 | Altura do gráfico | Nomes no eixo |
+| --- | --- | --- | --- |
+| 1280px | 237px | 224px | 3 de 6, cortados em 4 letras |
+| 1920px | 450px | 256px | 6 de 6 |
+
+O widget inteiro em 1920px chega a 1352px e usa altura de 320px. Nenhuma dessas
+diferenças existia antes: os três casos usavam a mesma altura fixa e a mesma
+estimativa de largura.
+
+### Escopo desta entrega
+
+O alicerce vale para todos os widgets (o container está na casca compartilhada),
+mas só o widget de gráfico consome a medida hoje, porque é onde havia decisão de
+conteúdo dependente de largura. Por isso a versão avança a iteração
+(`0.3.0-beta.2`) e não o minor: a capacidade está disponível, a adoção é
+parcial, e ela se completa na frente de padronização de hierarquia dos widgets.
