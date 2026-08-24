@@ -58,6 +58,7 @@ export function CommandPalette(p: {
   onOpenFormatPanel: () => void;
   onOpenShortcuts: () => void;
   onOpenPrivacyCenter: () => void;
+  onOpenHistory: () => void;
   onOpenImportDiagnostics: () => void;
   onOpenColumnsPanel: () => void;
   startPresentation: () => void;
@@ -175,6 +176,10 @@ export function CommandPalette(p: {
           <CommandItem onSelect={p.onOpenFormatPanel}>
             <Palette />
             Formatação condicional
+          </CommandItem>
+          <CommandItem onSelect={p.onOpenHistory}>
+            <History />
+            Histórico do painel
           </CommandItem>
           <CommandItem onSelect={p.onOpenPrivacyCenter}>
             <ShieldCheck />

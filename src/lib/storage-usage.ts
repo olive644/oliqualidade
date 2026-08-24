@@ -8,7 +8,8 @@ import {
   THEME_KEY,
 } from "@/lib/storage";
 
-export type StoredItemKind = "dashboards" | "geocode" | "metrics" | "preferences" | "other";
+export type StoredItemKind =
+  "dashboards" | "history" | "geocode" | "metrics" | "preferences" | "other";
 
 export type StoredItem = {
   kind: StoredItemKind;
@@ -42,6 +43,7 @@ export function classifyStorageKey(key: string): StoredItemKind | null {
   if (!key.startsWith("oliam-")) return null;
   if (key === DASH_KEY || key.includes("dashboards") || key.startsWith("oliam-folder-monitor:"))
     return "dashboards";
+  if (key.startsWith("oliam-history:")) return "history";
   if (key === GEOCODE_KEY) return "geocode";
   if (key.includes("import-metrics") || key === IMPORT_METRICS_KEY) return "metrics";
   if (PREFERENCE_KEYS.includes(key)) return "preferences";
@@ -54,6 +56,13 @@ const ITEM_META: Record<StoredItemKind, Omit<StoredItem, "bytes" | "keys">> = {
     label: "Painéis e planilhas importadas",
     description: "Seus dados e a montagem dos painéis. Apagar aqui é perder o trabalho.",
     destructive: true,
+  },
+  history: {
+    kind: "history",
+    label: "Histórico de versões dos painéis",
+    description:
+      "Como cada painel estava montado ao longo do tempo. Não guarda as linhas da planilha.",
+    destructive: false,
   },
   geocode: {
     kind: "geocode",
