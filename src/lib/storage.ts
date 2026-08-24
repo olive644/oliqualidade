@@ -323,3 +323,52 @@ export async function clearImportMetrics(): Promise<void> {
   const db = await openDb();
   if (db) await idbDelete(db, IMPORT_METRICS_KEY);
 }
+
+export type StoredEntry = { key: string; bytes: number };
+
+/**
+ * Lista o que está guardado, com o tamanho de cada registro.
+ *
+ * Existe para a central de privacidade poder dizer números em vez de
+ * promessas. Percorre o IndexedDB, que é onde os painéis realmente moram, e
+ * complementa com as poucas chaves de preferência que ficam no
+ * `localStorage` — uma tela que medisse só o `localStorage` mostraria alguns
+ * bytes de tema e daria a impressão de que a planilha importada não está
+ * guardada em lugar nenhum.
+ */
+export async function listStoredEntries(): Promise<StoredEntry[]> {
+  const entries: StoredEntry[] = [];
+  const db = await openDb();
+  if (db) {
+    const chaves = await new Promise<string[]>((resolve) => {
+      try {
+        const tx = db.transaction(STORE, "readonly");
+        const req = tx.objectStore(STORE).getAllKeys();
+        req.onsuccess = () => resolve(req.result.map(String));
+        req.onerror = () => resolve([]);
+      } catch {
+        resolve([]);
+      }
+    });
+    for (const key of chaves) {
+      const value = await idbGet<unknown>(db, key);
+      entries.push({ key, bytes: estimateBytes(value ?? null) });
+    }
+  }
+  if (typeof localStorage !== "undefined") {
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key) continue;
+      entries.push({ key, bytes: (key.length + (localStorage.getItem(key)?.length ?? 0)) * 2 });
+    }
+  }
+  return entries;
+}
+
+/** Apaga um registro nos dois lugares onde ele pode estar. */
+export async function removeStoredKey(key: string): Promise<void> {
+  const db = await openDb();
+  if (db) await idbDelete(db, key);
+  if (typeof localStorage !== "undefined") localStorage.removeItem(key);
+  if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(key);
+}

@@ -16,6 +16,7 @@ import {
   Redo2,
   Sheet as SheetIcon,
   ShieldAlert,
+  ShieldCheck,
   Sigma,
   Sun,
   Undo2,
@@ -56,6 +57,7 @@ export function CommandPalette(p: {
   onRestoreBackup: () => void;
   onOpenFormatPanel: () => void;
   onOpenShortcuts: () => void;
+  onOpenPrivacyCenter: () => void;
   onOpenImportDiagnostics: () => void;
   onOpenColumnsPanel: () => void;
   startPresentation: () => void;
@@ -173,6 +175,10 @@ export function CommandPalette(p: {
           <CommandItem onSelect={p.onOpenFormatPanel}>
             <Palette />
             Formatação condicional
+          </CommandItem>
+          <CommandItem onSelect={p.onOpenPrivacyCenter}>
+            <ShieldCheck />
+            Central de privacidade
           </CommandItem>
           <CommandItem onSelect={p.onOpenShortcuts}>
             <HelpCircle />
