@@ -15,16 +15,19 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
     id: "2026-08-24-correcoes-de-estabilidade",
     version: APP_VERSION,
     date: "2026-08-24",
-    title: "Correções de estabilidade em datas, cores e leitura automática",
+    title: "Correções de estabilidade em datas, cores, fórmulas e leitura automática",
     summary:
-      "Uma revisão dedicada encontrou e corrigiu problemas reais em datas, cores importadas do Excel, investigação guiada e no roteiro de perguntas.",
+      "Uma revisão dedicada encontrou e corrigiu problemas reais em datas, cores importadas do Excel, fórmulas entre abas, investigação guiada, o widget de mapa e o painel automático.",
     highlights: [
       "Datas em formato brasileiro (dd/mm/aaaa) são interpretadas corretamente ao comparar períodos na investigação guiada.",
       "Cores de célula originais do Excel (branco e preto) deixam de aparecer trocadas ao importar.",
-      'O botão "Investigar" agora usa a métrica da pergunta que você clicou, não sempre a mesma.',
+      'O botão "Investigar" agora usa a métrica da pergunta que você clicou e leva direto ao painel de investigação.',
       "A contagem de pendências no topo do painel volta a bater com o que aparece filtrado na tela.",
       'O roteiro de perguntas reconhece melhor os gráficos já criados, evitando repetir "sem gráfico" indevidamente.',
       "Cores dos gráficos de área e cor condicional em histograma e Pareto voltaram a seguir a paleta e a régua configurada.",
+      "Fórmulas que somam ou contam valores de outra aba da planilha (SUMIF, COUNTIF, COUNTA) são calculadas corretamente ao importar.",
+      "O widget de mapa só aceita colunas com nome de local de verdade (cidade, estado, país, bairro), evitando tentar localizar dados que não são endereço.",
+      "Os widgets do painel automático preenchem a grade sem deixar espaços vazios entre eles.",
     ],
   },
   {
