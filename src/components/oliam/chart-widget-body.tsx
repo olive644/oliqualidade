@@ -81,6 +81,7 @@ import {
   WidgetHead,
   type ChartDotProps,
   type WidgetDragProps,
+  WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
@@ -1363,6 +1364,7 @@ export function ChartWidgetBody({
           )}
         </>
       )}
+      <WidgetEvidencePanel />
     </article>
   );
 }

@@ -36,6 +36,7 @@ import {
   WidgetMetricStrip,
   type WidgetMetric,
   type WidgetDragProps,
+  WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 
@@ -318,6 +319,7 @@ export function RankingWidgetBody({
             : {})}
         />
       )}
+      <WidgetEvidencePanel />
     </article>
   );
 }

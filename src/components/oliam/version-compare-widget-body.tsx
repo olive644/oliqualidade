@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
 import type { VersionDiff } from "@/lib/import-workbench";
-import { WidgetHead, type WidgetDragProps } from "./widget-support";
+import { WidgetHead, type WidgetDragProps, WidgetEvidencePanel } from "./widget-support";
 
 export function VersionCompareWidgetBody({
   widget: w,
@@ -131,6 +131,7 @@ export function VersionCompareWidgetBody({
           )}
         </div>
       )}
+      <WidgetEvidencePanel />
     </article>
   );
 }

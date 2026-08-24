@@ -3,7 +3,13 @@ import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, conditionalStyle, parseNumericValue } from "@/lib/format";
-import { EmptyWidget, FieldDropSlot, WidgetHead, type WidgetDragProps } from "./widget-support";
+import {
+  EmptyWidget,
+  FieldDropSlot,
+  WidgetHead,
+  type WidgetDragProps,
+  WidgetEvidencePanel,
+} from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 
 export function RatingWidgetBody({
@@ -140,6 +146,7 @@ export function RatingWidgetBody({
           </p>
         )}
       </div>
+      <WidgetEvidencePanel />
     </article>
   );
 }

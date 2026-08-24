@@ -1396,6 +1396,12 @@
   border-color: var(--border) !important;
   box-shadow: 0 6px 18px color-mix(in oklab, var(--foreground) 8%, transparent) !important;
 }
+/* O cálculo fica recolhido na tela, mas o painel exportado circula sozinho e
+ * precisa carregar a procedência do número junto: fonte, operação, unidade,
+ * confiança e fórmula. */
+.oliam-export-mode .oliam-widget-technical {
+  display: flex !important;
+}
 .oliam-export-mode .oliam-widget h2 {
   overflow: visible !important;
   white-space: normal !important;

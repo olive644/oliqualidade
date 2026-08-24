@@ -5,7 +5,13 @@ import { sizeClass, spanClass } from "@/lib/widgets";
 import { fmt } from "@/lib/format";
 import { aggregationLabels, semanticAggregationOps, type AggregationOp } from "@/lib/data-pipeline";
 import { buildPivotMatrix, type ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
-import { CalculationButton, EmptyWidget, WidgetHead, type WidgetDragProps } from "./widget-support";
+import {
+  CalculationButton,
+  EmptyWidget,
+  WidgetHead,
+  type WidgetDragProps,
+  WidgetEvidencePanel,
+} from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 
 export function PivotWidgetBody({
@@ -243,6 +249,7 @@ export function PivotWidgetBody({
           </p>
         )}
       </div>
+      <WidgetEvidencePanel />
     </article>
   );
 }

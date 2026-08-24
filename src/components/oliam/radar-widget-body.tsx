@@ -45,6 +45,7 @@ import {
   type WidgetMetric,
   WidgetHead,
   type WidgetDragProps,
+  WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
 
@@ -428,6 +429,7 @@ export function RadarWidgetBody({
           />
         </div>
       )}
+      <WidgetEvidencePanel />
     </article>
   );
 }

@@ -197,7 +197,6 @@ export function WidgetHead({
 }) {
   const interactive = !!(onRemove || onCopy || onPaste || onMoveBack || onMoveForward);
   const { open: configOpen, toggle: toggleConfig, expanded, toggleExpanded } = useWidgetConfig();
-  const evidence = useWidgetEvidence();
   return (
     <>
       <div
@@ -308,39 +307,71 @@ export function WidgetHead({
           </div>
         )}
       </div>
-      {evidence && (
-        <div
-          className="flex flex-wrap gap-x-3 gap-y-1 border-b border-border/70 bg-card px-4 py-2 text-[10px] leading-relaxed text-muted-foreground"
-          aria-label="Origem e cálculo desta visualização"
-        >
-          <span>
-            <strong className="text-foreground">Fonte:</strong> {evidence.source}
-          </span>
-          <span>
-            <strong className="text-foreground">Cálculo:</strong> {evidence.operation}
-          </span>
-          <span>
-            <strong className="text-foreground">Registros válidos:</strong>{" "}
-            {evidence.validRecords.toLocaleString("pt-BR")} de{" "}
-            {evidence.visibleRecords.toLocaleString("pt-BR")}
-          </span>
-          <span>
-            <strong className="text-foreground">Filtros ativos:</strong>{" "}
-            {evidence.activeFilters.toLocaleString("pt-BR")}
-          </span>
-          <span>
-            <strong className="text-foreground">Unidade:</strong> {evidence.unit}
-          </span>
-          <span>
-            <strong className="text-foreground">Confiança:</strong>{" "}
-            {evidence.confidence === null ? "não calculada" : `${evidence.confidence}%`}
-          </span>
-          <span className="min-w-0 break-words">
-            <strong className="text-foreground">Fórmula:</strong> {evidence.formula}
-          </span>
-        </div>
-      )}
     </>
+  );
+}
+
+/**
+ * Evidências e configuração técnica de um widget, no pé dele.
+ *
+ * A ordem de leitura padronizada de todo widget é resultado, visualização,
+ * explicação, evidências e configuração técnica. Esta faixa cobre os dois
+ * últimos degraus, e por isso ela desceu: antes, os sete campos técnicos
+ * (fonte, cálculo, registros, filtros, unidade, confiança, fórmula) ficavam
+ * logo abaixo do título, empurrando para baixo justamente o número que o
+ * widget existe para mostrar. Quem abre um painel quer ler o resultado
+ * primeiro e conferir a procedência depois — não o contrário.
+ *
+ * O que fica sempre visível é o mínimo para confiar no número: quantos
+ * registros sustentam a conta e quantos filtros estão ativos. O resto abre no
+ * clique, porque é configuração, não leitura.
+ */
+export function WidgetEvidencePanel() {
+  const evidence = useWidgetEvidence();
+  const [open, setOpen] = useState(false);
+  if (!evidence) return null;
+  const campo = (rotulo: string, valor: React.ReactNode) => (
+    <span className="min-w-0 break-words">
+      <strong className="text-foreground">{rotulo}:</strong> {valor}
+    </span>
+  );
+  return (
+    <div
+      className="border-t border-border/70 bg-card px-4 py-2 text-[10px] leading-relaxed text-muted-foreground"
+      aria-label="Origem e cálculo desta visualização"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {campo(
+          "Registros válidos",
+          `${evidence.validRecords.toLocaleString("pt-BR")} de ${evidence.visibleRecords.toLocaleString("pt-BR")}`,
+        )}
+        {campo("Filtros ativos", evidence.activeFilters.toLocaleString("pt-BR"))}
+        <button
+          type="button"
+          data-export-controls
+          className="ml-auto rounded px-1.5 py-0.5 underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          {open ? "Ocultar cálculo" : "Ver cálculo"}
+        </button>
+      </div>
+      <div
+        className={cn(
+          "oliam-widget-technical mt-1 flex-wrap gap-x-3 gap-y-1 border-t border-border/50 pt-1",
+          open ? "flex" : "hidden",
+        )}
+      >
+        {campo("Fonte", evidence.source)}
+        {campo("Cálculo", evidence.operation)}
+        {campo("Unidade", evidence.unit)}
+        {campo(
+          "Confiança",
+          evidence.confidence === null ? "não calculada" : `${evidence.confidence}%`,
+        )}
+        {campo("Fórmula", evidence.formula)}
+      </div>
+    </div>
   );
 }
 

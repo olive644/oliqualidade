@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.3.0-beta.2";
+export const APP_VERSION = "0.4.0-beta.1";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-hierarquia-dos-widgets",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "O resultado vem primeiro em todos os widgets",
+    summary:
+      "Os sete campos técnicos que ficavam entre o título e o número desceram para o pé do widget, e a maior parte deles agora abre só quando você pede.",
+    highlights: [
+      "Todo widget passou a seguir a mesma ordem de leitura: resultado, visualização, explicação, evidências e configuração técnica.",
+      "No pé do widget ficam visíveis apenas os dois dados necessários para confiar no número: quantos registros sustentam a conta e quantos filtros estão ativos.",
+      'Fonte, cálculo, unidade, confiança e fórmula continuam a um clique de distância, no botão "Ver cálculo".',
+      "O painel exportado continua trazendo o cálculo completo, porque ali ele circula sem ninguém por perto para clicar.",
+    ],
+  },
   {
     id: "2026-08-24-widgets-adaptaveis",
     version: APP_VERSION,
