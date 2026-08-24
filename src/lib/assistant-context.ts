@@ -5,7 +5,7 @@ import {
   groupAndAggregate,
   relevantAggregationOps,
   resolveSemanticAggregationOp,
-  sortAllBarCategories,
+  sortBarCategories,
   type AggregationOp,
 } from "@/lib/data-pipeline";
 import { sourceRowIndexOf } from "@/lib/data-review";
@@ -266,7 +266,11 @@ function groupedWidget(
   );
   if (widget.type === "line" || (widget.type === "area" && group.kind === "date"))
     grouped = sortChronologically(grouped);
-  if (widget.type === "bar" && dataMode === "aggregate") grouped = sortAllBarCategories(grouped);
+  // Mesma ordenação que o gráfico mostra na tela: se o widget exibe meses
+  // em ordem natural e o assistente lê a série ordenada por valor, os dois
+  // descrevem painéis diferentes.
+  if (widget.type === "bar" && dataMode === "aggregate")
+    grouped = sortBarCategories(grouped, widget.barSort ?? "auto").series;
   if (widget.type === "ranking")
     grouped = [...grouped].sort((a, b) => b.total - a.total).slice(0, widget.topN ?? 5);
   if (widget.type === "pie" && dataMode === "aggregate" && grouped.length > 6) {

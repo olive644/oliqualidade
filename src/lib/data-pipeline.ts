@@ -1,7 +1,8 @@
-import type { ChartAggregationOp, Column, FilterRule, Row } from "@/lib/types";
+import type { BarSortMode, ChartAggregationOp, Column, FilterRule, Row } from "@/lib/types";
 import { numericKinds } from "@/lib/types";
 import { parseDateValue, parseNumericValue } from "@/lib/format";
 import { sourceRowIndexOf } from "@/lib/data-review";
+import { ordinalRanks } from "@/lib/ordinal-categories";
 
 /** Rótulo usado quando o valor de agrupamento está ausente. Usado também
  * para detectar esse caso na renderização dos gráficos (eixo, legenda,
@@ -26,6 +27,49 @@ export function countMissingGroupRows(rows: Row[], groupKey: string): number {
 
 export function sortAllBarCategories<T extends { total: number }>(series: T[]): T[] {
   return [...series].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+}
+
+export type BarSortResult<T> = {
+  series: T[];
+  /** Ordem efetivamente aplicada, já resolvida quando o modo era "auto". */
+  applied: Exclude<BarSortMode, "auto">;
+  /** Se as categorias formam uma sequência reconhecível. */
+  ordinal: boolean;
+};
+
+/**
+ * Ordena as categorias do gráfico de barras.
+ *
+ * Ordenar da maior para a menor é a leitura certa de um ranking e a leitura
+ * errada de uma sequência: meses, turnos, faixas de valor e escalas de
+ * satisfação já têm ordem própria, e reordená-los por tamanho apaga
+ * justamente a progressão que o leitor procura. No modo "auto" a ordem
+ * natural entra só quando `ordinalRanks` reconhece a sequência inteira; sem
+ * reconhecimento, o gráfico mantém a ordem por valor de sempre.
+ *
+ * "natural" sem sequência reconhecida preserva a ordem em que as categorias
+ * apareceram na planilha, que é a única "ordem natural" disponível ali.
+ */
+export function sortBarCategories<T extends { name: string; total: number }>(
+  series: T[],
+  mode: BarSortMode = "auto",
+): BarSortResult<T> {
+  const ranks = ordinalRanks(series.map((entry) => entry.name));
+  const applied = mode === "auto" ? (ranks ? "natural" : "value") : mode;
+  const ordinal = ranks !== null;
+  if (applied === "value") return { series: sortAllBarCategories(series), applied, ordinal };
+  if (applied === "alphabetical")
+    return {
+      series: [...series].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+      applied,
+      ordinal,
+    };
+  if (!ranks) return { series, applied, ordinal };
+  return {
+    series: [...series].sort((a, b) => (ranks.get(a.name) ?? 0) - (ranks.get(b.name) ?? 0)),
+    applied,
+    ordinal,
+  };
 }
 
 /**

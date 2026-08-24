@@ -7,10 +7,26 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.2.0-beta.1";
+export const APP_VERSION = "0.2.0-beta.2";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-ordem-das-categorias",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Meses, turnos e faixas deixam de sair fora de ordem",
+    summary:
+      "O gráfico de barras reconhece categorias que têm ordem própria e passa a respeitá-la, em vez de reordenar tudo da maior para a menor.",
+    highlights: [
+      "Meses, dias da semana, turnos, trimestres e semestres aparecem na ordem em que acontecem.",
+      "Faixas de valor (0 a 10, 10 a 20, acima de 100) seguem a ordem numérica, e não a ordem do texto.",
+      "Escalas de satisfação e de concordância vão do pior degrau para o melhor, sem embaralhar.",
+      "Etapas numeradas de um processo (1. Recebimento, 2. Inspeção) mantêm a sequência.",
+      "Um seletor novo de ordem permite escolher entre automática, ordem natural, maior para menor e A a Z.",
+      "Rankings comuns continuam ordenados da maior barra para a menor, como antes.",
+    ],
+  },
   {
     id: "2026-08-24-leitura-de-graficos",
     version: APP_VERSION,

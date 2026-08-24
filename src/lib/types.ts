@@ -50,6 +50,13 @@ export type ChartDataMode = "raw" | "aggregate";
  * alta ou queda.
  */
 export type ChartAxisKind = "time" | "category";
+/**
+ * Ordem das categorias no eixo do gráfico de barras. "auto" usa a ordem
+ * natural quando as categorias formam uma sequência reconhecível (meses,
+ * turnos, faixas de valor, escalas de satisfação) e cai na ordem por valor
+ * no resto dos casos, que é o comportamento histórico.
+ */
+export type BarSortMode = "auto" | "value" | "natural" | "alphabetical";
 export type AreaReferenceMode = "previous" | "moving-average" | "goal";
 
 export type ChartConfig = {
@@ -114,6 +121,7 @@ export type Widget = {
   blockKey?: string; // schedule-heatmap automático: coluna que identifica o bloco de origem
   blockValue?: string; // schedule-heatmap automático: bloco exclusivo exibido neste widget
   columnKey?: string; // pivot/matrix: dimensão exibida nas colunas
+  barSort?: BarSortMode; // bar: ordem das categorias no eixo X (padrão: auto)
   imageIndex?: number; // image: índice em sheet.sourceImages
 };
 
