@@ -562,6 +562,50 @@ export function BarTooltip({
  * útil desses widgets (224px a 256px) não sobra para mais uma faixa de
  * texto dentro da área de plotagem sem achatar as barras.
  */
+/**
+ * Legenda das séries de um gráfico de linha/área.
+ *
+ * O gráfico de área desenha quatro coisas (resultado, referência, variação
+ * acima e variação abaixo) e não tinha nenhuma legenda: para saber o que era
+ * cada faixa era preciso passar o mouse e ler o tooltip, um por vez. Pior
+ * ainda para quem exporta o painel, onde não existe mouse nenhum.
+ *
+ * Cada item mostra o traço real da série, e não um quadrado colorido: o
+ * tracejado distingue as séries sem depender de enxergar a diferença de cor,
+ * que é a única pista que o gráfico dava antes.
+ *
+ * Fica em HTML abaixo do gráfico pelo mesmo motivo da legenda de eixos: a
+ * área de plotagem rola na horizontal, e rótulo colado no fim da série
+ * ficaria fora da vista até alguém rolar até lá.
+ */
+export function ChartSeriesLegend({
+  items,
+}: {
+  items: { name: string; color: string; dashed?: boolean }[];
+}) {
+  return (
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+      {items.map((item) => (
+        <li key={item.name} className="flex items-center gap-1.5">
+          <svg width="18" height="8" aria-hidden="true" className="shrink-0">
+            <line
+              x1="0"
+              y1="4"
+              x2="18"
+              y2="4"
+              stroke={item.color}
+              strokeWidth={2}
+              strokeLinecap="round"
+              {...(item.dashed ? { strokeDasharray: "4 3" } : {})}
+            />
+          </svg>
+          {item.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ChartAxisLegend({
   x,
   y,

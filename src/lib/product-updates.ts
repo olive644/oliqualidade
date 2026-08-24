@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.2.0-beta.2";
+export const APP_VERSION = "0.2.0-beta.3";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-acabamento-de-leitura",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Gráfico de área com legenda e valores que não se sobrepõem mais",
+    summary:
+      "O gráfico de área passou a identificar cada série sem precisar do mouse, e os valores escritos em cima das barras somem quando não cabem.",
+    highlights: [
+      "O gráfico de área ganhou legenda: resultado, referência e as variações acima e abaixo aparecem nomeados abaixo do gráfico.",
+      "A referência é chamada pelo que ela é (período anterior, média móvel ou a meta escolhida), no gráfico e no detalhe ao passar o mouse.",
+      "As séries também se distinguem pelo traço, e não só pela cor, o que ajuda quem tem dificuldade para diferenciar cores.",
+      "Os valores escritos em cima das barras somem automaticamente quando não cabem, em vez de virar uma faixa de números sobrepostos.",
+    ],
+  },
   {
     id: "2026-08-24-ordem-das-categorias",
     version: APP_VERSION,

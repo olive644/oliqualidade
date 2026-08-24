@@ -41,6 +41,7 @@ import {
   aggregationLabels,
   buildAreaComparisonSeries,
   barChartPresentation,
+  barValueLabelsFit,
   chartSeries,
   collapsePieSeries,
   limitChartSeriesForRendering,
@@ -62,6 +63,7 @@ import {
   BarTooltip,
   CalculationButton,
   ChartAxisLegend,
+  ChartSeriesLegend,
   ChartDot,
   compactAxisValue,
   FieldDropSlot,
@@ -268,6 +270,21 @@ export function ChartWidgetBody({
     selectedPointIndex >= 0 ? pieComparisonFor(series, selectedPointIndex) : null;
   const barSeries = series;
   const barPresentation = barChartPresentation(barSeries.length);
+  // O rótulo mais comprido decide por todos: basta um valor largo demais para
+  // a faixa de números virar uma linha sobreposta em cima das barras.
+  const longestBarLabelChars = valueCol
+    ? barSeries.reduce(
+        (longest, entry) =>
+          Math.max(longest, (fmt(entry.total, valueCol.kind) ?? String(entry.total)).length),
+        0,
+      )
+    : 0;
+  const barLabelsFit = barValueLabelsFit({
+    count: barSeries.length,
+    scrollable: barPresentation.scrollable,
+    longestLabelChars: longestBarLabelChars,
+    span: w.span,
+  });
   // "Quem está acima da média" é a primeira pergunta de quem lê um ranking,
   // e sem a linha de referência essa conta ficava por conta do leitor.
   const barAverage = w.type === "bar" ? seriesAverage(barSeries) : null;
@@ -277,6 +294,23 @@ export function ChartWidgetBody({
   // planilha, que não é necessariamente cronológica. Em nenhum dos dois a
   // barra vizinha é "o período anterior".
   const barAxisKind: ChartAxisKind = "category";
+  // A série de referência passa a se chamar pelo que ela é ("Período
+  // anterior", "Média móvel", "Meta: X") em vez do genérico "Referência", e a
+  // legenda usa exatamente os mesmos nomes do tooltip — legenda e tooltip
+  // chamando a mesma série de duas coisas diferentes é pior que não ter
+  // legenda.
+  const areaReferenceLabel =
+    areaReference === "goal"
+      ? `Meta: ${areaGoalCol?.label ?? ""}`
+      : areaReference === "moving-average"
+        ? "Média móvel"
+        : "Período anterior";
+  const areaLegendItems = [
+    { name: "Resultado observado", color: "var(--primary)" },
+    { name: areaReferenceLabel, color: "var(--muted-foreground)", dashed: true },
+    { name: "Variação acima da referência", color: "var(--secondary-accent)" },
+    { name: "Variação abaixo da referência", color: "var(--chart-4)", dashed: true },
+  ];
   // A ordem por valor é a esperada num gráfico de barras e não precisa ser
   // dita. As outras precisam: sem isso, um gráfico de meses fora da ordem de
   // tamanho parece desordenado em vez de sequencial.
@@ -648,13 +682,15 @@ export function ChartWidgetBody({
                           }
                         />
                       ))}
-                      <LabelList
-                        dataKey="total"
-                        position="top"
-                        fontSize={10}
-                        fill="var(--muted-foreground)"
-                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
-                      />
+                      {barLabelsFit && (
+                        <LabelList
+                          dataKey="total"
+                          position="top"
+                          fontSize={10}
+                          fill="var(--muted-foreground)"
+                          formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                        />
+                      )}
                     </Bar>
                     <ReferenceLine
                       y={0}
@@ -1080,6 +1116,7 @@ export function ChartWidgetBody({
                         name="Variação abaixo da referência"
                         stroke="var(--chart-4)"
                         strokeWidth={1.5}
+                        strokeDasharray="4 3"
                         fill={`url(#area-below-${w.id})`}
                         dot={false}
                         activeDot={{ r: 4 }}
@@ -1088,7 +1125,7 @@ export function ChartWidgetBody({
                         type="monotone"
                         yAxisId="observed"
                         dataKey="reference"
-                        name="Referência"
+                        name={areaReferenceLabel}
                         stroke="var(--muted-foreground)"
                         strokeWidth={1.5}
                         strokeDasharray="5 4"
@@ -1154,6 +1191,7 @@ export function ChartWidgetBody({
                 para os lados
               </p>
             )}
+            <ChartSeriesLegend items={areaLegendItems} />
             <ChartAxisLegend x={horizontalAxisLabel} y={verticalAxisLabel} kind={valueCol.kind} />
             <p className="sr-only">
               Tabela alternativa à área: {series.map((g) => `${g.name}, ${g.total}`).join("; ")}.
