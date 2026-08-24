@@ -7366,3 +7366,55 @@ captura automática, **recarregar a página** e restaurar:
 ### Versão
 
 `0.8.0-beta.1` → `0.9.0-beta.1`.
+
+## 132. Os dois alertas de sanitização do CodeQL: o que era real e o que não era
+
+Os dois alertas abertos desde 18/08 (`js/incomplete-multi-character-sanitization`,
+severidade alta) apontavam `decodeOoxmlText` (`ooxml-reader.ts`) e a extração de
+texto em `workbook-metadata.ts`. Os dois removem a marcação XML com
+`/<[^>]+>/g` e **depois** decodificam `&lt;` para `<`.
+
+### O que a investigação mostrou
+
+A ordem está certa e é intencional. Estas funções **decodificam**, não
+sanitizam. Uma célula cujo texto é literalmente `<b>` chega ao arquivo escapada
+como `&lt;b&gt;`; devolver `<b>` é a leitura correta. Inverter a ordem para
+agradar o scanner apagaria como marcação justamente o texto que o usuário
+escreveu.
+
+Quanto à exploração: não existe um único `dangerouslySetInnerHTML` nem
+atribuição a `innerHTML` no projeto, e o React escapa o que renderiza. A saída
+dessas funções nunca vira HTML. O alerta é falso positivo no que diz respeito a
+risco.
+
+### O que era real, e foi corrigido
+
+A remoção de marcação era uma passada única. Testado com casos construídos, ela
+se mostrou estável em todos os arquivos bem formados, mas a garantia não
+existia: com marcação quebrada, uma remoção pode juntar dois pedaços e formar
+uma tag que a primeira varredura não via.
+
+`stripXmlMarkup` (`lib/xml-text.ts`) repete até estabilizar. Em arquivo bem
+formado a segunda volta não muda nada, então o custo é uma comparação de
+string. As duas funções passaram a usá-la, e o padrão `/<[^>]+>/g` solto não
+existe mais no código de produção.
+
+### O contrato, escrito onde importa
+
+O arquivo novo documenta o que essas funções prometem: **o retorno é texto
+puro**, pode conter `<` e `>` quando a planilha os continha, e se algum dia for
+inserido como HTML a escapada tem que acontecer lá. Isso existe para que um
+refatorador futuro não "conserte" a ordem e quebre a leitura de planilha
+tentando resolver um problema que é do outro lado.
+
+### Um achado lateral, registrado sem correção
+
+`stripXmlMarkup("a < b > c")` devolve `"a  c"`: um `<` solto no meio do texto é
+consumido como se fosse marcação. Em OOXML válido isso não acontece, porque `<`
+literal é sempre escapado. Fica registrado como limite conhecido, não corrigido:
+distinguir `<` de texto e `<` de marcação sem um parser XML de verdade trocaria
+um caso raro por uma classe nova de erros.
+
+### Versão
+
+`0.9.0-beta.1` → `0.9.0-beta.2`.

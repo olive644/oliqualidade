@@ -2,6 +2,7 @@ import { strFromU8 } from "fflate";
 import * as XLSX from "xlsx";
 import { isOoxmlArchive, unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
 import { setWorksheetCellAtAddress, worksheetCellAtAddress } from "@/lib/worksheet-cell";
+import { stripXmlMarkup } from "@/lib/xml-text";
 
 export type StructuredTableDiagnostic = {
   name: string;
@@ -159,6 +160,10 @@ const attr = (xml: string, name: string) =>
 // prefixadas por convenção mesmo em arquivos gerados pelo Excel.
 const NS = "(?:[A-Za-z_][\\w.-]*:)?";
 
+/**
+ * Decodifica entidades XML. Ver o contrato em `xml-text.ts`: o retorno é
+ * texto puro, e pode conter `<` e `>` quando o arquivo os continha escapados.
+ */
 const decodeXml = (value: string) =>
   value
     .replaceAll("&quot;", '"')
@@ -207,7 +212,7 @@ function relationships(xml: string, base: string) {
 function parseComments(xml: string): WorkbookCellComment[] {
   const authors = [
     ...xml.matchAll(new RegExp(`<${NS}author(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${NS}author>`, "gi")),
-  ].map((match) => decodeXml(match[1]!.replace(/<[^>]+>/g, "")));
+  ].map((match) => decodeXml(stripXmlMarkup(match[1]!)));
   const comments: WorkbookCellComment[] = [];
   for (const match of xml.matchAll(
     new RegExp(`<${NS}comment\\b([^>]*)>([\\s\\S]*?)<\\/${NS}comment>`, "gi"),

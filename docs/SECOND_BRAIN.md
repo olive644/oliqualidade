@@ -200,6 +200,7 @@ audit inteiro.
 | Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
 | Aba formada por vários blocos com a mesma estrutura virar uma tabela com o bloco como coluna | `detectTableBlockGroup`/`buildTableBlocksGrid` (`excel-table-blocks.ts`), oferecidos como opção "Blocos unificados" por `unifiedBlocksOption` (`import.ts`); a leitura da aba inteira continua como segunda opção | `excel-table-blocks.test.ts` — ver [[CURRENT_STATE_AUDIT#121. Abas montadas em blocos: o nome da tabela do Excel vira dimensão]] |
 | Linhas de total das Tabelas do Excel ficarem fora dos registros | `tableTotalsRegions` (`excel-table-totals.ts`) a partir de `totalsRowCount` lido em `parseTable` (`workbook-metadata.ts`); limpeza por célula na cópia de análise em `sheetToRows`, ao lado do tratamento de linhas ocultas | `excel-table-totals.test.ts` — ver [[CURRENT_STATE_AUDIT#120. Linhas de total das Tabelas do Excel entravam como registro e dobravam qualquer soma]] |
+| Extrair texto de fragmento XML do arquivo do Excel | `stripXmlMarkup` (`lib/xml-text.ts`), usada por `decodeOoxmlText` e por `workbook-metadata.ts`; repete a remoção até estabilizar e devolve **texto puro**, que nunca deve ser inserido como HTML | `xml-text.test.ts` — ver [[CURRENT_STATE_AUDIT#132. Os dois alertas de sanitização do CodeQL: o que era real e o que não era]] |
 | Voltar o painel a um arranjo anterior (histórico persistente) | `lib/dashboard-history.ts` (snapshot da montagem, `describeChange`, `pruneVersions`) + `loadDashboardHistory`/`saveDashboardHistory` (`storage.ts`, uma chave por painel no IndexedDB, nada em modo privado); diálogo em `dashboard-history-dialog.tsx` | `dashboard-history.test.ts` — ver [[CURRENT_STATE_AUDIT#131. Histórico persistente de versões do painel]] |
 | Ordem dos widgets por finalidade da planilha | `DASHBOARD_TEMPLATES`/`applyTemplateOrder` (`lib/dashboard-templates.ts`), aplicados em `confirmReview` (`routes/index.tsx`); reordena só as recomendações de visualização, nunca KPIs e tabela | `dashboard-templates.test.ts` — ver [[CURRENT_STATE_AUDIT#130. Modelos por finalidade: vendas, financeiro, qualidade e estudos]] |
 | Mostrar o que está guardado e o que sai para a IA | `PrivacyCenter` (`components/oliam/privacy-center.tsx`); mede com `listStoredEntries` (`storage.ts`, percorre IndexedDB **e** localStorage) classificado por `storage-usage.ts`; o consentimento chama `buildSafeDashboardContext`, a mesma função do envio real, em vez de descrever o payload | `storage-usage.test.ts` — ver [[CURRENT_STATE_AUDIT#129. Central de privacidade: armazenamento medido e consentimento com o envio real]] |
@@ -832,6 +833,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 - `v0.9.0-beta.1` (histórico persistente de versões do painel). Ver
   [[CURRENT_STATE_AUDIT#131. Histórico persistente de versões do painel]].
+
+- `v0.9.0-beta.2` (extração de texto do XML resistente a marcação malformada;
+  os dois alertas do CodeQL eram falso positivo quanto a risco). Ver
+  [[CURRENT_STATE_AUDIT#132. Os dois alertas de sanitização do CodeQL: o que era real e o que não era]].
 
 ## Checklist antes de publicar
 

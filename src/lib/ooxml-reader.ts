@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 
 import { isOoxmlArchive, unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
 import { setWorksheetCellAtAddress, worksheetCellAtAddress } from "@/lib/worksheet-cell";
+import { stripXmlMarkup } from "@/lib/xml-text";
 
 export type ReaderCell = {
   address: string;
@@ -53,10 +54,13 @@ const BUILTIN_FORMATS: Record<number, string> = {
   47: "mmss.0",
 };
 
+/**
+ * Decodifica texto vindo do XML. Ver o contrato em `xml-text.ts`: o retorno é
+ * texto puro, e pode conter `<` e `>` quando a célula os continha de verdade.
+ */
 export function decodeOoxmlText(value: string): string {
   return (
-    value
-      .replace(/<[^>]+>/g, "")
+    stripXmlMarkup(value)
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')

@@ -7,10 +7,22 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.9.0-beta.1";
+export const APP_VERSION = "0.9.0-beta.2";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-leitura-de-texto-do-xml",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Leitura de texto da planilha ficou mais resistente a arquivo malformado",
+    summary:
+      "A extração de texto do arquivo do Excel passou a repetir a limpeza da marcação até estabilizar, em vez de uma passada só.",
+    highlights: [
+      "Em arquivos com marcação quebrada, uma limpeza única podia juntar pedaços e deixar sobra de marcação no texto lido.",
+      "Textos que a planilha guarda escapados, como uma célula que contém literalmente <b>, continuam sendo lidos exatamente como foram escritos.",
+    ],
+  },
   {
     id: "2026-08-24-historico-do-painel",
     version: APP_VERSION,
