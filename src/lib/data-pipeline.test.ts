@@ -28,6 +28,7 @@ import {
   semanticAggregationOps,
   seriesAverage,
   sortAllBarCategories,
+  sortBarCategories,
   timeSeriesChartPresentation,
   toggleClickFilter,
   trendSummaryFor,
@@ -173,6 +174,60 @@ describe("sortAllBarCategories", () => {
     expect(sorted).toHaveLength(24);
     expect(sorted[0]?.total).toBe(24);
     expect(sorted.at(-1)?.total).toBe(1);
+  });
+});
+
+describe("sortBarCategories", () => {
+  const serie = (names: string[]) => names.map((name, index) => ({ name, total: index + 1 }));
+
+  it("mantém a ordem natural de meses no modo automático, em vez de ordenar por tamanho", () => {
+    const result = sortBarCategories(serie(["Março", "Janeiro", "Fevereiro"]));
+    expect(result.series.map((entry) => entry.name)).toEqual(["Janeiro", "Fevereiro", "Março"]);
+    expect(result.applied).toBe("natural");
+    expect(result.ordinal).toBe(true);
+  });
+
+  it("ordena por valor no modo automático quando as categorias não formam sequência", () => {
+    const result = sortBarCategories([
+      { name: "Linha A", total: 10 },
+      { name: "Linha B", total: 40 },
+      { name: "Linha C", total: 25 },
+    ]);
+    expect(result.series.map((entry) => entry.name)).toEqual(["Linha B", "Linha C", "Linha A"]);
+    expect(result.applied).toBe("value");
+    expect(result.ordinal).toBe(false);
+  });
+
+  it("respeita a escolha explícita de ordenar por valor mesmo em categorias ordinais", () => {
+    const result = sortBarCategories(
+      [
+        { name: "Janeiro", total: 5 },
+        { name: "Fevereiro", total: 50 },
+        { name: "Março", total: 20 },
+      ],
+      "value",
+    );
+    expect(result.series.map((entry) => entry.name)).toEqual(["Fevereiro", "Março", "Janeiro"]);
+    expect(result.applied).toBe("value");
+    // A sequência continua existindo; só não foi usada nesta ordenação.
+    expect(result.ordinal).toBe(true);
+  });
+
+  it("ordena alfabeticamente respeitando acentos do português", () => {
+    const result = sortBarCategories(serie(["Ácido", "Base", "Álcool"]), "alphabetical");
+    expect(result.series.map((entry) => entry.name)).toEqual(["Ácido", "Álcool", "Base"]);
+  });
+
+  it("preserva a ordem da planilha quando pedem ordem natural sem sequência reconhecida", () => {
+    const result = sortBarCategories(serie(["Linha C", "Linha A", "Linha B"]), "natural");
+    expect(result.series.map((entry) => entry.name)).toEqual(["Linha C", "Linha A", "Linha B"]);
+    expect(result.ordinal).toBe(false);
+  });
+
+  it("não altera o array recebido", () => {
+    const original = serie(["Março", "Janeiro", "Fevereiro"]);
+    sortBarCategories(original);
+    expect(original.map((entry) => entry.name)).toEqual(["Março", "Janeiro", "Fevereiro"]);
   });
 });
 

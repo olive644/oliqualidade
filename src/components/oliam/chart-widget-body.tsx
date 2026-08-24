@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import {
   kinds,
   numericKinds,
+  type BarSortMode,
   type ChartAxisKind,
   type ChartDataMode,
   type AreaReferenceMode,
@@ -48,7 +49,7 @@ import {
   relevantAggregationOps,
   semanticAggregationOps,
   seriesAverage,
-  sortAllBarCategories,
+  sortBarCategories,
   timeSeriesChartPresentation,
   toggleClickFilter,
   seriesHeadline,
@@ -214,8 +215,11 @@ export function ChartWidgetBody({
     w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
       ? sortChronologically(grouped)
       : grouped;
-  const orderedSeries =
-    w.type === "bar" && dataMode !== "raw" ? sortAllBarCategories(completeSeries) : completeSeries;
+  const barOrder =
+    w.type === "bar" && dataMode !== "raw"
+      ? sortBarCategories(completeSeries, w.barSort ?? "auto")
+      : null;
+  const orderedSeries = barOrder ? barOrder.series : completeSeries;
   const renderableSeries =
     w.type === "pie"
       ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
@@ -273,6 +277,17 @@ export function ChartWidgetBody({
   // planilha, que não é necessariamente cronológica. Em nenhum dos dois a
   // barra vizinha é "o período anterior".
   const barAxisKind: ChartAxisKind = "category";
+  // A ordem por valor é a esperada num gráfico de barras e não precisa ser
+  // dita. As outras precisam: sem isso, um gráfico de meses fora da ordem de
+  // tamanho parece desordenado em vez de sequencial.
+  const barOrderLabel =
+    barOrder && barOrder.applied === "natural"
+      ? barOrder.ordinal
+        ? "natural das categorias"
+        : "a mesma da planilha"
+      : barOrder && barOrder.applied === "alphabetical"
+        ? "alfabética"
+        : null;
   const timeSeriesPresentation = timeSeriesChartPresentation(series.length);
   const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
   const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
@@ -426,6 +441,24 @@ export function ChartWidgetBody({
           onRaw={() => onConfigure({ dataMode: "raw" })}
           onOperation={(operation) => onConfigure({ dataMode: "aggregate", op: operation })}
         />
+        {barOrder && (
+          <label className="flex max-w-64 items-center gap-1 rounded-lg border border-border bg-card pl-2 text-[10px] text-muted-foreground">
+            <span>Ordem</span>
+            <select
+              aria-label="Ordem das categorias"
+              className="oliam-select h-7 min-w-0 border-0 bg-transparent px-1.5 shadow-none"
+              value={w.barSort ?? "auto"}
+              onChange={(event) => onConfigure({ barSort: event.target.value as BarSortMode })}
+            >
+              <option value="auto">
+                {barOrder.ordinal ? "Automática: ordem natural" : "Automática: maior para menor"}
+              </option>
+              <option value="natural">Ordem natural</option>
+              <option value="value">Maior para menor</option>
+              <option value="alphabetical">A a Z</option>
+            </select>
+          </label>
+        )}
         {w.type === "area" && (
           <label className="flex max-w-64 items-center gap-1 rounded-lg border border-border bg-card pl-2 text-[10px] text-muted-foreground">
             <span>Comparar com</span>
@@ -653,6 +686,7 @@ export function ChartWidgetBody({
             x={horizontalAxisLabel}
             y={verticalAxisLabel}
             average={barAverage}
+            order={barOrderLabel}
             kind={valueCol.kind}
           />
           <p className="sr-only">

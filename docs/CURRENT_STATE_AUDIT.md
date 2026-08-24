@@ -6484,3 +6484,74 @@ por valor); rótulos de dados desligando sozinhos acima de um número de barras;
 aviso quando o eixo vertical de linha e área não começa no zero; rótulo direto
 no fim da série no lugar da legenda do gráfico de área; e redundância além da
 cor (traço ou marcador) para leitura com daltonismo.
+
+## 118. Ordem das categorias no gráfico de barras: sequência reconhecida vence ordenação por tamanho
+
+Primeiro item do backlog da seção 117. As barras eram sempre reordenadas da
+maior para a menor (`sortAllBarCategories`). Isso é a leitura certa de um
+ranking e a leitura errada de uma sequência: meses, dias da semana, turnos,
+trimestres, faixas de valor e escalas de satisfação já têm ordem própria, e
+reordená-los por tamanho apaga justamente a progressão que o leitor procura —
+sazonalidade, tendência ao longo do processo, concentração numa ponta da
+escala.
+
+### Detecção (`src/lib/ordinal-categories.ts`)
+
+`ordinalRanks(names)` devolve a posição de cada categoria na sua ordem natural,
+ou `null` quando não há sequência. Cobre nove vocabulários (meses, dias da
+semana, turnos, trimestres, semestres, satisfação, concordância, intensidade,
+tamanhos), cada um com sinônimos e abreviações, e mais dois padrões
+estruturais: faixas numéricas ("0 a 10", "R$ 1.500,50 a R$ 2.000,00", "até
+10") e etapas numeradas ("1. Recebimento").
+
+A detecção é deliberadamente conservadora, porque um falso positivo reordena um
+ranking legítimo e o usuário não tem como saber por quê:
+
+- exige pelo menos três categorias — duas não formam progressão visível;
+- exige que **todas** as categorias pertençam à mesma escala; uma sobra
+  ("Janeiro, Fevereiro, Março, Total") derruba a detecção inteira;
+- exige um degrau distinto por categoria: "Baixo, Média, Moderado" tem duas
+  categorias no mesmo degrau de intensidade, ou seja, vocabulário ambíguo, sem
+  ordem única a preservar.
+
+Duas normalizações separadas, e a diferença importa: `deburr` tira acento,
+caixa, marcador ordinal e espaço repetido mas **preserva a pontuação**, porque
+é a forma usada para ler números — `normalize` (que remove pontuação para
+comparar vocabulário) transformaria "1.500,50" em "1 500,50" e o primeiro
+número do rótulo passaria a ser 1.
+
+### Aplicação (`sortBarCategories`, em `data-pipeline.ts`)
+
+Quatro modos, guardados em `Widget.barSort` (`BarSortMode`):
+
+- `auto` (padrão): ordem natural quando há sequência reconhecida, ordem por
+  valor no resto — o comportamento histórico continua valendo onde sempre
+  valeu;
+- `natural`: sequência reconhecida, ou a ordem em que as categorias apareceram
+  na planilha quando não há sequência, que é a única "ordem natural" disponível
+  ali;
+- `value`: da maior para a menor, mesmo em categorias ordinais;
+- `alphabetical`: `localeCompare` em pt-BR, para que acentos não joguem "Álcool"
+  para o fim.
+
+O seletor fica na barra de configuração do widget e mostra qual leitura o
+modo automático fez ("Automática: ordem natural" ou "Automática: maior para
+menor"), em vez de deixar o usuário adivinhar por que aquele gráfico específico
+não está ordenado por tamanho. A legenda de eixos criada na seção 117 também
+passa a escrever a ordem aplicada quando ela não é a ordenação por valor.
+
+`assistant-context.ts` usa a mesma função com o mesmo `barSort` do widget: se o
+gráfico mostra meses em ordem natural e o assistente lê a série ordenada por
+valor, os dois descrevem painéis diferentes.
+
+### Versão
+
+`0.2.0-beta.1` → `0.2.0-beta.2`. Avanço de iteração, e não de minor: refina a
+capacidade de leitura entregue em `0.2.0` em vez de abrir uma nova.
+
+### Backlog restante da seção 117
+
+Rótulos de dados desligando sozinhos acima de um número de barras; aviso quando
+o eixo vertical de linha e área não começa no zero; rótulo direto no fim da
+série no gráfico de área; e redundância além da cor para leitura com
+daltonismo.

@@ -198,6 +198,7 @@ audit inteiro.
 | Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) — ver [[CURRENT_STATE_AUDIT#73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo]] |
 | Interpretar um Value como número tolerando vírgula decimal brasileira, sem nunca virar NaN | `parseNumericValue` (`format.ts`) — usado em `fmt`, `evalFormula`, `resolveConditionalFormat`, e em todo `data-pipeline.ts`/`operational-widgets.ts`/`widget-card.tsx`/`format-rules-editor.tsx` que antes fazia `Number(valorDeCelula)` direto | `format.test.ts`, `data-pipeline.test.ts`, `operational-widgets.test.ts` |
 | Widget "Imagem embutida" (`image`), mostra uma imagem da planilha original dentro do painel | `WorkbookImageDiagnostic.dataUrl` (`workbook-metadata.ts`, extraído por `parseImages`/`bytesToDataUrl`); `SheetData.sourceImages`; renderização em `widget-card.tsx` (`w.type === "image"`) | `widgets.test.ts` (`createWidget("image", ...)`), `workbook-metadata.test.ts` (EMF sem `dataUrl`) — ver [[CURRENT_STATE_AUDIT#74. Bug real de produto reportado pelo usuário: NaN generalizado por vírgula decimal brasileira, e widget novo para mostrar imagens embutidas]] |
+| Ordem das categorias no gráfico de barras (natural x por valor x alfabética) | `sortBarCategories` (`data-pipeline.ts`) decidindo com `ordinalRanks` (`ordinal-categories.ts`); modo guardado em `Widget.barSort`, padrão `auto`; mesma função usada por `assistant-context.ts` para o assistente não descrever uma ordem diferente da exibida | `ordinal-categories.test.ts` + `data-pipeline.test.ts` (`describe("sortBarCategories")`) — ver [[CURRENT_STATE_AUDIT#118. Ordem das categorias no gráfico de barras: sequência reconhecida vence ordenação por tamanho]] |
 | Que comparação o tooltip do gráfico de barras pode afirmar (variação vs. período anterior x proporção da maior categoria) | `barTooltipReading` (`lib/chart-reading.ts`), decidida pelo `ChartAxisKind` que o gráfico declara — barra é sempre `"category"`, porque as barras são reordenadas por valor e nunca garantem ordem cronológica | `chart-reading.test.ts` — ver [[CURRENT_STATE_AUDIT#117. Leitura de gráficos: eixos nomeados, média entre categorias e comparação honesta no tooltip]] |
 | Quantos registros sustentam cada barra | `count` devolvido por `groupAndAggregate` (`data-pipeline.ts`) — conta valores que entraram na conta, não linhas do balde; linha com métrica vazia não entra na soma nem na média | `data-pipeline.test.ts` (`describe("groupAndAggregate")`) |
 | Linha tracejada de média no gráfico de barras | `seriesAverage` (`data-pipeline.ts`) + `<ReferenceLine>` em `chart-widget-body.tsx`; `null` com menos de três categorias | `data-pipeline.test.ts` (`describe("seriesAverage")`) |
@@ -760,6 +761,11 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   barra e comparação honesta no tooltip) é o primeiro avanço de minor: mudou a
   capacidade de leitura de todos os gráficos, não só corrigiu um caso. Ver
   [[CURRENT_STATE_AUDIT#117. Leitura de gráficos: eixos nomeados, média entre categorias e comparação honesta no tooltip]].
+
+- `v0.2.0-beta.2` (ordem natural de meses, turnos, faixas e escalas no
+  gráfico de barras, com seletor de ordem) refina a leitura entregue em
+  `0.2.0`, por isso avança a iteração e não o minor. Ver
+  [[CURRENT_STATE_AUDIT#118. Ordem das categorias no gráfico de barras: sequência reconhecida vence ordenação por tamanho]].
 
 ## Checklist antes de publicar
 

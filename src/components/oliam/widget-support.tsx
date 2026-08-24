@@ -566,11 +566,14 @@ export function ChartAxisLegend({
   x,
   y,
   average,
+  order,
   kind,
 }: {
   x: string;
   y: string;
   average?: number | null;
+  /** Ordem das categorias, escrita só quando não é a ordenação por valor. */
+  order?: string | null;
   kind: Kind;
 }) {
   const averageLabel = typeof average === "number" ? fmt(average, kind) : null;
@@ -579,6 +582,7 @@ export function ChartAxisLegend({
       <span className="font-medium text-foreground">Horizontal:</span> {x} ·{" "}
       <span className="font-medium text-foreground">Vertical:</span> {y}
       {averageLabel ? ` · Linha tracejada: média de ${averageLabel}` : ""}
+      {order ? ` · Ordem: ${order}` : ""}
     </p>
   );
 }
