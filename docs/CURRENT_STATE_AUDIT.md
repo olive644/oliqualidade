@@ -7539,3 +7539,69 @@ para o futuro, não um conserto do presente.
 ### Versão
 
 `0.10.0-beta.1` → `0.10.0-beta.2`.
+
+## 135. Semgrep no lugar do CodeQL: análise estática num repositório privado
+
+O CodeQL parou junto com a mudança do repositório para privado. Não foi uma
+escolha de ferramenta: a análise de código do GitHub em repositório privado
+exige Advanced Security, que é pago por assento. A alternativa era ficar sem
+análise estática ou trocar de fornecedor.
+
+O Semgrep OSS é LGPL e o binário roda sozinho, sem conta e sem serviço. Isso
+importa porque o modelo comercial do Semgrep é a plataforma, não a ferramenta:
+o job aqui nunca fala com a plataforma (`--metrics=off`) e não precisa de
+token.
+
+### Por que três pacotes de regras, e não `--config=auto`
+
+`auto` decide as regras a partir do repositório, mas para isso precisa
+identificar o repositório junto ao serviço — exatamente a dependência que a
+escolha da ferramenta estava evitando. Os três pacotes são explícitos:
+
+- `p/typescript` cobre também as regras de JavaScript, então não há um quarto.
+- `p/react` traz os padrões de componente: `dangerouslySetInnerHTML`,
+  destino de link vindo de origem não confiável, `target="_blank"` sem
+  `rel`.
+- `p/nodejs` cobre o lado servidor. Hoje isso é quase só
+  `lib/gemini-server.ts`; passa a valer de verdade quando existir API com
+  verificação de plano (ver a seção sobre preparação para o premium).
+
+Segredos ficam de fora de propósito. O job `secret-scan` já roda gitleaks
+sobre o histórico completo, que alcança commit apagado do working tree — coisa
+que uma varredura do código atual não faz. Somar `p/secrets` produziria dois
+achados para a mesma linha e nenhuma cobertura nova.
+
+### O que esta escolha não resolve
+
+As actions são fixadas por SHA justamente para que ninguém mude o
+comportamento da CI sem passar por uma PR. Os pacotes de regras não têm esse
+tratamento: o conteúdo vem da rede a cada execução e pode mudar sem aviso, o
+que significa que uma PR pode falhar por causa de uma regra nova, sem ter
+tocado no código que a acionou.
+
+Versionar centenas de regras dentro do repositório resolveria isso e custaria
+mais do que resolve. O meio-termo é fixar a versão do binário
+(`semgrep==1.174.0`): o motor não muda sozinho, só o conjunto de regras. Se um
+dia uma regra nova travar uma PR sem relação, o registro dessa decisão está
+aqui.
+
+Não existe aba de Code scanning sem Advanced Security, então não há para onde
+mandar SARIF. O achado é lido no log do próprio passo, e `--error` faz o job
+falhar quando existe achado.
+
+### Expectativa honesta de resultado
+
+O código atual quase não tem superfície para essas regras: uma única função de
+servidor, nenhum banco, nenhuma montagem de SQL, nenhuma execução de comando.
+A varredura provavelmente passa limpa por um bom tempo. Ela está aqui como
+trava para quando a superfície crescer, não como conserto de algo existente.
+
+### Verificação
+
+O Semgrep não roda no Windows e não há Python no ambiente de
+desenvolvimento local, então este job não foi executado antes da PR. A
+primeira execução real é a da própria CI.
+
+### Versão
+
+`0.10.0-beta.2` → `0.10.0-beta.3`.
