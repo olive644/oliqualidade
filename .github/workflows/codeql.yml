@@ -1,0 +1,52 @@
+name: CodeQL
+
+# Rust não tem suporte oficial de análise no CodeQL (linguagens suportadas:
+# https://codeql.github.com/docs/codeql-overview/supported-languages-and-frameworks/);
+# cobre só JavaScript/TypeScript e os workflows do GitHub Actions.
+#
+# Este arquivo já existiu e foi apagado quando o repositório virou privado,
+# porque análise de código do GitHub em repositório privado exige Advanced
+# Security, que é pago. Com o repositório público de novo, ele volta de graça
+# e mais profundo do que a alternativa livre. O job Semgrep continua ao lado,
+# de propósito: ele é o que sobrevive ao próximo fechamento do repositório,
+# e sem ele a mesma remoção teria de ser refeita.
+#
+# A restauração não é idêntica ao arquivo apagado: as actions passaram a ser
+# fixadas por SHA (v0.10.0-beta.1), então as tags móveis foram resolvidas.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["javascript-typescript", "actions"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        with:
+          category: "/language:${{ matrix.language }}"

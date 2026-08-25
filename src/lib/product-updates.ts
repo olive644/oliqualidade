@@ -7,10 +7,23 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.2";
+export const APP_VERSION = "0.10.0-beta.3";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-analise-estatica",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Todo código passa por uma varredura de segurança antes de entrar",
+    summary:
+      "Cada mudança proposta ao aplicativo agora é lida por um analisador que procura padrões de código inseguro, e a mudança não entra enquanto houver achado.",
+    highlights: [
+      "A varredura procura coisas como conteúdo de origem externa injetado direto na tela e link para destino não confiável.",
+      "Isso substitui a análise que o GitHub oferecia enquanto o projeto era público e que deixou de ser gratuita quando ele passou a ser privado.",
+      "Não muda nada no que você vê ou faz no aplicativo. É uma checagem que roda antes de qualquer coisa chegar até você.",
+    ],
+  },
   {
     id: "2026-08-24-retencao-de-caches",
     version: APP_VERSION,

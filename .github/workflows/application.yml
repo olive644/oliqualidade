@@ -110,6 +110,57 @@ jobs:
       - name: Scan for leaked secrets
         run: ./gitleaks detect --source . --redact -v
 
+  static-analysis:
+    name: Static analysis (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Semgrep
+        # Nasceu como substituto do CodeQL, desligado quando o repositório
+        # virou privado (análise de código do GitHub em repositório privado
+        # exige Advanced Security, que é pago). Com o repositório público de
+        # novo o CodeQL voltou, e os dois convivem: o Semgrep OSS (LGPL) é o
+        # que continua rodando no dia em que o repositório fechar de novo,
+        # que é um quando e não um se — o premium com lógica de servidor
+        # exige isso.
+        #
+        # Versão fixa pelo mesmo motivo das actions fixadas por SHA: uma
+        # atualização silenciosa da ferramenta não deve mudar o resultado de
+        # uma PR que não a tocou. Aqui é pip e não curl como no gitleaks
+        # porque o Semgrep não publica binário solto para Linux.
+        run: pipx install semgrep==1.174.0
+
+      - name: Scan source
+        # Três pacotes da registry pública, sem login: TypeScript cobre
+        # também as regras de JavaScript, React cobre os padrões de
+        # componente (dangerouslySetInnerHTML, href de origem não confiável)
+        # e Node cobre o lado servidor — hoje só src/lib/gemini-server.ts, e
+        # o que vier quando existir API de verdade.
+        #
+        # Segredos ficam de fora de propósito: o job secret-scan já roda
+        # gitleaks sobre o histórico completo, que é a varredura mais forte
+        # das duas. Duplicar só produziria dois achados para a mesma linha.
+        #
+        # Diferente das actions, o conteúdo dos pacotes vem da rede a cada
+        # execução e pode mudar sem aviso. É o preço de não versionar
+        # centenas de regras aqui dentro; a versão fixa do binário limita a
+        # variação ao conteúdo das regras, não ao comportamento do motor.
+        #
+        # --error faz achado virar falha do job. Sem Advanced Security não
+        # existe aba de Code scanning para onde mandar SARIF, então o log
+        # deste passo é onde o achado é lido.
+        run: |
+          semgrep scan \
+            --config=p/typescript \
+            --config=p/react \
+            --config=p/nodejs \
+            --error \
+            --metrics=off
+
   security-smoke:
     name: Security headers and CORS smoke test
     runs-on: ubuntu-latest
