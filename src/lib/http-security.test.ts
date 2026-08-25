@@ -8,6 +8,35 @@ describe("HTTP security", () => {
     expect(response.headers.get("content-security-policy")).toContain("object-src 'none'");
   });
 
+  it("exige HTTPS por dois anos, sem entrar na lista de pré-carga", () => {
+    const hsts =
+      withSecurityHeaders(new Response("ok")).headers.get("strict-transport-security") ?? "";
+    expect(hsts).toContain("max-age=63072000");
+    expect(hsts).toContain("includeSubDomains");
+    // "preload" é praticamente irreversível e alcança subdomínios que ainda
+    // não existem: é decisão a se tomar com domínio próprio definido.
+    expect(hsts).not.toContain("preload");
+  });
+
+  it("fecha leitura entre origens por cliente herdado", () => {
+    expect(
+      withSecurityHeaders(new Response("ok")).headers.get("x-permitted-cross-domain-policies"),
+    ).toBe("none");
+  });
+
+  it("permite o Turnstile sem abrir a política para qualquer origem", () => {
+    const csp =
+      withSecurityHeaders(new Response("ok")).headers.get("content-security-policy") ?? "";
+    for (const directive of ["script-src", "frame-src", "connect-src"])
+      expect(csp).toMatch(new RegExp(`${directive}[^;]*https://challenges\\.cloudflare\\.com`));
+    // Nenhuma diretiva pode ter virado curinga solto junto. O curinga que
+    // existe é de subdomínio de mapa (`https://*.basemaps.cartocdn.com`),
+    // que continua nomeando um domínio; o proibido é a origem `*` sozinha.
+    const sources = csp.split(";").flatMap((directive) => directive.trim().split(/\s+/).slice(1));
+    expect(sources).not.toContain("*");
+    expect(sources).not.toContain("'unsafe-eval'");
+  });
+
   it("sem nonce, cai de volta pra 'unsafe-inline' no script-src", () => {
     const response = withSecurityHeaders(new Response("ok"));
     const csp = response.headers.get("content-security-policy") ?? "";

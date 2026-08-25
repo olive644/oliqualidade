@@ -1,6 +1,5 @@
 import {
   buildSafeDashboardContext,
-  checkRateLimit,
   validateChatHistory,
   validateChatMessage,
   validateDashboardInput,
@@ -8,6 +7,8 @@ import {
 } from "@/lib/gemini-security";
 import { isSameOriginBrowserRequest, readLimitedJson } from "@/lib/http-security";
 import { verifyChatSession } from "@/lib/chat-session";
+import { checkHuman, HUMAN_CHECK_REQUIRED, withHumanProof } from "@/lib/human-check";
+import { consumeRateLimit, upstashConfigFrom } from "@/lib/rate-limit";
 import {
   parseSmartImportAnalysis,
   smartImportFingerprint,
@@ -22,6 +23,9 @@ type GeminiEnvironment = {
   OLI_SESSION_SECRET?: string;
   VERCEL?: string;
   OLI_AI_IMPORT_DAILY_LIMIT?: string;
+  UPSTASH_REDIS_REST_URL?: string;
+  UPSTASH_REDIS_REST_TOKEN?: string;
+  TURNSTILE_SECRET_KEY?: string;
 };
 
 const json = (body: unknown, status = 200) =>
@@ -129,8 +133,25 @@ export async function handleGeminiChat(request: Request, environment: GeminiEnvi
   const configuredToken = environment.OLI_CHAT_AUTH_TOKEN ?? process.env["OLI_CHAT_AUTH_TOKEN"];
   if (configuredToken && request.headers.get("authorization") !== `Bearer ${configuredToken}`)
     return json({ error: "Não autorizado." }, 401);
+  // A verificação humana vem antes do limitador de propósito. O limitador
+  // conta por endereço, e endereço é barato de trocar; deixar a verificação
+  // depois significaria gastar a cota do limitador antes de descobrir que do
+  // outro lado não há navegador nenhum.
+  const human = await checkHuman(request, environment, sessionSecret);
+  if (human.status === "challenge")
+    return json(
+      {
+        error: "Confirme que você não é um robô para continuar.",
+        code: HUMAN_CHECK_REQUIRED,
+      },
+      403,
+    );
   const client = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-  if (!checkRateLimit(client))
+  const chatLimit = await consumeRateLimit(
+    { key: client, limit: 12, windowMs: 60_000 },
+    upstashConfigFrom(environment),
+  );
+  if (!chatLimit.allowed)
     return json({ error: "Limite de mensagens atingido. Tente novamente em um minuto." }, 429);
 
   try {
@@ -159,7 +180,9 @@ export async function handleGeminiChat(request: Request, environment: GeminiEnvi
     if (!response.ok) return geminiFailure(response);
     const result = (await response.json()) as GeminiInteraction;
     const answer = interactionText(result);
-    return answer ? json({ answer }) : json({ error: "O Gemini não retornou uma resposta." }, 502);
+    return answer
+      ? withHumanProof(json({ answer }), human.status === "ok" ? human.cookie : null)
+      : json({ error: "O Gemini não retornou uma resposta." }, 502);
   } catch (error) {
     if (error instanceof Error && error.message === "PAYLOAD_TOO_LARGE")
       return json({ error: "A solicitação excede o limite permitido." }, 413);
@@ -196,6 +219,16 @@ export async function handleSmartImportAnalysis(
     return json({ error: "Sessão segura da análise inteligente não configurada." }, 503);
   if (sessionSecret && !(await verifyChatSession(request, sessionSecret)))
     return json({ error: "Sessão inválida ou expirada. Recarregue a página." }, 401);
+  // A análise inteligente gasta a mesma cota paga do assistente, então passa
+  // pela mesma verificação. Ela é disparada por ação da pessoa (revisar uma
+  // importação), nunca sozinha, então não há caso em que o desafio apareça
+  // sem alguém ter pedido algo.
+  const human = await checkHuman(request, environment, sessionSecret);
+  if (human.status === "challenge")
+    return json(
+      { error: "Confirme que você não é um robô para continuar.", code: HUMAN_CHECK_REQUIRED },
+      403,
+    );
 
   try {
     const payload = (await readLimitedJson(request, 256 * 1024)) as { import?: unknown };
@@ -203,12 +236,23 @@ export async function handleSmartImportAnalysis(
     const fingerprint = smartImportFingerprint(input);
     const cached = smartImportCache.get(fingerprint);
     if (cached && cached.expiresAt > Date.now())
-      return json({ analysis: cached.analysis, cached: true });
+      // Também carrega a prova recém-emitida: sem isto, quem cai no cache
+      // logo depois de resolver o desafio resolveria de novo na chamada
+      // seguinte, porque a prova nunca teria chegado ao navegador.
+      return withHumanProof(
+        json({ analysis: cached.analysis, cached: true }),
+        human.status === "ok" ? human.cookie : null,
+      );
 
     // Cache não consome cota. Os limites abaixo contam somente chamadas que
     // realmente chegarão ao provedor de IA.
     const client = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-    if (!checkRateLimit(`smart-import:${client}`, Date.now(), 3, 10 * 60_000))
+    const redis = upstashConfigFrom(environment);
+    const perClient = await consumeRateLimit(
+      { key: `smart-import:${client}`, limit: 3, windowMs: 10 * 60_000 },
+      redis,
+    );
+    if (!perClient.allowed)
       return json(
         { error: "Limite de análises inteligentes atingido. Tente novamente depois." },
         429,
@@ -219,7 +263,15 @@ export async function handleSmartImportAnalysis(
     const dailyLimit = Number.isFinite(configuredDailyLimit)
       ? Math.max(1, Math.min(10_000, Math.floor(configuredDailyLimit)))
       : 100;
-    if (!checkRateLimit("smart-import:global", Date.now(), dailyLimit, 24 * 60 * 60_000))
+    // A cota diária é global, e é o caso onde a memória do processo mais
+    // errava: com várias instâncias na Vercel, cada uma contava a própria
+    // centena de análises, e o teto real era o configurado vezes o número de
+    // instâncias vivas naquele dia.
+    const globalQuota = await consumeRateLimit(
+      { key: "smart-import:global", limit: dailyLimit, windowMs: 24 * 60 * 60_000 },
+      redis,
+    );
+    if (!globalQuota.allowed)
       return json(
         {
           error:
@@ -253,7 +305,10 @@ export async function handleSmartImportAnalysis(
       analysis,
     });
     if (smartImportCache.size > 500) smartImportCache.delete(smartImportCache.keys().next().value!);
-    return json({ analysis, cached: false });
+    return withHumanProof(
+      json({ analysis, cached: false }),
+      human.status === "ok" ? human.cookie : null,
+    );
   } catch (error) {
     if (error instanceof Error && error.message === "PAYLOAD_TOO_LARGE")
       return json({ error: "A análise estrutural excede o limite permitido." }, 413);

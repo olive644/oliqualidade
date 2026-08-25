@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.4";
+export const APP_VERSION = "0.10.0-beta.5";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-limite-e-verificacao",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "O limite de uso do assistente passou a valer de verdade",
+    summary:
+      "O controle que evita uso abusivo do assistente contava cada servidor separadamente e recomeçava do zero a cada reinício. Agora a contagem é uma só, compartilhada.",
+    highlights: [
+      "Na prática, o teto diário da análise inteligente era o número configurado multiplicado por quantos servidores estivessem no ar. Agora é o número configurado.",
+      "Se o armazenamento compartilhado ficar fora do ar, o assistente continua funcionando com o controle anterior, em vez de parar.",
+      "Entrou também uma verificação de que existe uma pessoa do outro lado, invisível na maioria das vezes: ela aparece só quando há motivo para desconfiar, e não se repete a cada pergunta.",
+      "Nada disso muda o que você vê ao usar o assistente normalmente.",
+    ],
+  },
   {
     id: "2026-08-24-teste-de-componente",
     version: APP_VERSION,
