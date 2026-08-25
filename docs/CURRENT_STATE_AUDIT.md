@@ -7855,6 +7855,36 @@ A CSP ganhou `https://challenges.cloudflare.com` em `script-src`, `frame-src`
 e `connect-src`. As três, porque o desafio é um script que abre um iframe que
 conversa de volta. Nenhum curinga entrou; a lista continua sendo uma lista.
 
+### Dois cabeçalhos que faltavam
+
+Revisando `buildSecurityHeaders` para acrescentar o Turnstile à CSP, apareceu
+uma ausência que não tinha relação com esta entrega: não havia
+`Strict-Transport-Security`.
+
+Hoje isso não abre buraco, porque `*.vercel.app` está na lista de pré-carga do
+HSTS e o navegador impõe HTTPS para o domínio inteiro. Mas essa proteção
+pertence ao domínio da Vercel, não a este app, e desaparece no dia em que
+houver domínio próprio — justamente o dia em que ninguém vai lembrar de
+conferir cabeçalho. O valor é `max-age=63072000; includeSubDomains`.
+
+Sem `preload`. Entrar na lista de pré-carga é praticamente irreversível e
+vale para todos os subdomínios, inclusive os que ainda não existem; é
+compromisso a se tomar com domínio próprio já definido, não de passagem.
+
+Entrou junto `x-permitted-cross-domain-policies: none`, que fecha a leitura
+entre origens por clientes herdados (leitores de PDF, plugins). Não custa nada
+e é uma classe que a CSP não descreve.
+
+Os dois são verificados em dois lugares de propósito: no teste de unidade, que
+confere o valor, e no `security-smoke`, que confere que o cabeçalho chega ao
+navegador depois da pipeline de SSR. Um cabeçalho correto na função e perdido
+no caminho seria invisível para o teste de unidade.
+
+O mesmo teste passou a afirmar que nenhuma diretiva da CSP tem origem `*`
+solta nem `'unsafe-eval'`. O curinga que existe nomeia subdomínio de mapa
+(`https://*.basemaps.cartocdn.com`); o proibido é a origem aberta, e agora
+acrescentar uma quebra o teste.
+
 ### O que isto não é
 
 Não é a preparação para o premium. Continua não existindo verificação de plano
@@ -7870,6 +7900,11 @@ ordem certa, recusa devolvendo a entrada, as três formas de falha do Redis
 caindo para a memória, a queda ainda limitando, o segredo do Turnstile indo no
 corpo e nunca na URL, a prova sendo reconhecida sem nova consulta à Cloudflare
 e a prova assinada com outro segredo sendo rejeitada.
+
+Os cabeçalhos novos foram verificados contra um servidor de verdade: `vite
+build` seguido de `vite preview`, com o `security-smoke` apontado para ele.
+Passou, e `curl -I` confirma `strict-transport-security` e
+`x-permitted-cross-domain-policies` na resposta.
 
 O que **não** foi verificado: nenhuma chamada real ao Upstash ou à Cloudflare
 aconteceu, porque nenhuma das duas contas existe ainda. A primeira execução

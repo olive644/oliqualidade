@@ -10,6 +10,12 @@ const required = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "strict-origin-when-cross-origin",
+  // Verificado aqui, e não só no teste de unidade, porque o que importa é o
+  // cabeçalho chegar ao navegador depois de passar pela pipeline de SSR —
+  // um cabeçalho correto na função e perdido no caminho seria invisível
+  // para o teste de unidade.
+  "strict-transport-security": "max-age=63072000",
+  "x-permitted-cross-domain-policies": "none",
 };
 for (const [header, expected] of Object.entries(required)) {
   const value = response.headers.get(header) ?? "";
