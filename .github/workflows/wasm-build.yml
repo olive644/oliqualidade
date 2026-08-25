@@ -11,6 +11,8 @@ on:
   workflow_dispatch: {}
   push:
     branches: [fix/ooxml-formato-moeda-corpus]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
