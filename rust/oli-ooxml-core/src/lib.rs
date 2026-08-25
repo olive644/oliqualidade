@@ -1339,9 +1339,26 @@ fn render_format_section(section: &str, value: f64, already_signed: bool) -> Opt
         let character = characters[index];
         match character {
             // Não modelado: cor, condição e localidade (`[Red]`, `[>100]`,
-            // `[$R$-416]`), notação científica, fração e data.
-            '[' | ']' | 'E' | 'e' | '/' => return None,
-            'y' | 'm' | 'd' | 'h' | 's' | 'Y' | 'M' | 'D' | 'H' | 'S' | '@' => return None,
+            // `[$R$-416]`), fração e texto.
+            '[' | ']' | '/' | '@' => return None,
+            // Qualquer letra fora de aspas devolve o caso para o
+            // comportamento anterior, e a regra é larga de propósito.
+            //
+            // O corpus real ensinou o porquê. Uma planilha de custo traz o
+            // código `R$ #,##0.00`, com o `R$` **sem aspas**, e o
+            // `XLSX.SSF.format` do SheetJS — que é a referência da paridade —
+            // não o formata: ele lança "unrecognized character R", e o leitor
+            // TypeScript cai no valor cru. Uma primeira versão desta função
+            // desenhava `R$ 917,456.00` ali, o que parece mais correto e
+            // divergia em mil células do corpus.
+            //
+            // O SSF aceita algumas letras soltas (`kg #,##0` funciona) e
+            // recusa outras, por uma tabela própria. Reproduzir essa tabela
+            // seria reimplementar o SSF; recusar todas custa apenas manter o
+            // comportamento anterior nesses códigos, que é o que já
+            // acontecia, e nunca inventa um resultado que a referência não
+            // produz. Data e hora também caem aqui, sem precisar de lista.
+            character if character.is_ascii_alphabetic() => return None,
             '"' => {
                 index += 1;
                 while index < characters.len() && characters[index] != '"' {
@@ -1933,6 +1950,25 @@ mod unit_tests {
         assert_eq!(
             display_cell_value(Some(&value), "dd/mm/yyyy"),
             format_general_number(1_234.5)
+        );
+    }
+
+    #[test]
+    fn display_cell_value_gives_up_on_unquoted_letters_like_the_reference_does() {
+        // Achado no corpus real, e caro: uma planilha de custo traz
+        // `R$ #,##0.00` com o `R$` sem aspas. O XLSX.SSF.format do SheetJS,
+        // que é a referência da paridade, lança "unrecognized character R" e
+        // o leitor TypeScript cai no valor cru. Formatar aqui produziria
+        // "R$ 917,456.00", que parece mais certo e diverge em mil células.
+        let value = CellValue::Number(917_456.0);
+        assert_eq!(
+            display_cell_value(Some(&value), "R$ #,##0.00"),
+            format_general_number(917_456.0)
+        );
+        // Com aspas é outro código, e esse a referência formata.
+        assert_eq!(
+            display_cell_value(Some(&value), "\"R$\" #,##0.00"),
+            "R$ 917,456.00"
         );
     }
 
