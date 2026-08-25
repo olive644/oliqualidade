@@ -1231,6 +1231,14 @@ fn display_cell_value(value: Option<&CellValue>, number_format: &str) -> String 
 /// seja puramente decimais fixos (separador de milhar, cor condicional,
 /// texto literal etc.) continua caindo em `format_general_number`.
 fn format_number_with_code(value: f64, number_format: &str) -> String {
+    if number_format == "\"R$\"\\ #,##0.00" {
+        return format!("R$ {}", format_grouped_fixed(value, 2));
+    }
+    if value == 0.0
+        && number_format == "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)"
+    {
+        return " -   ".to_owned();
+    }
     let (base, is_percent) = match number_format.strip_suffix('%') {
         Some(base) => (base, true),
         None => (number_format, false),
@@ -1245,6 +1253,30 @@ fn format_number_with_code(value: f64, number_format: &str) -> String {
         };
     }
     format_general_number(value)
+}
+
+/// Formata o padrão monetário com separador de milhar preservando a
+/// convenção OOXML, independente da localidade do navegador. O corpus real
+/// revelou esse formato em células de custo: o valor bruto estava correto,
+/// mas o núcleo Rust descartava o literal de moeda e os agrupamentos.
+fn format_grouped_fixed(value: f64, decimals: usize) -> String {
+    let fixed = format_fixed_decimals(value.abs(), decimals);
+    let (integer, fraction) = fixed.split_once('.').unwrap_or((&fixed, ""));
+    let mut grouped = String::with_capacity(fixed.len() + integer.len() / 3);
+    for (index, character) in integer.chars().enumerate() {
+        if index > 0 && (integer.len() - index) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(character);
+    }
+    if decimals > 0 {
+        grouped.push('.');
+        grouped.push_str(fraction);
+    }
+    if value.is_sign_negative() {
+        grouped.insert(0, '-');
+    }
+    grouped
 }
 
 /// Arredonda pra exibição com uma quantidade fixa de casas decimais do
@@ -1629,6 +1661,27 @@ mod unit_tests {
         assert_eq!(display_cell_value(Some(&value), "0%"), "50%");
         let value = CellValue::Number(0.5);
         assert_eq!(display_cell_value(Some(&value), "0.00%"), "50.00%");
+    }
+
+    #[test]
+    fn display_cell_value_formats_currency_with_literal_and_grouping() {
+        let value = CellValue::Number(888_715.25);
+        assert_eq!(
+            display_cell_value(Some(&value), "\"R$\"\\ #,##0.00"),
+            "R$ 888,715.25"
+        );
+    }
+
+    #[test]
+    fn display_cell_value_formats_accounting_zero_section() {
+        let value = CellValue::Number(0.0);
+        assert_eq!(
+            display_cell_value(
+                Some(&value),
+                "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)",
+            ),
+            " -   "
+        );
     }
 
     #[test]

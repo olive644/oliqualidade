@@ -331,6 +331,16 @@ nenhum corpus real nativo (só o corpus *derivado* da PR #147, que
 deliberadamente não conta pro gate). Ver
 [[CURRENT_STATE_AUDIT#100. Usuário trouxe 12 planilhas reais de calibração/qualidade: corpus XLSM sai de 0/5 pra 3/5, dois bugs reais de formatação encontrados e corrigidos, um terceiro registrado]]
 e [[CURRENT_STATE_AUDIT#101. Parser genérico de formato de data no leitor Rust (achado 3 da seção 100, backlog item 3b)]].
+
+Novo lote local de qualidade em 25/08/2026: 10 arquivos enviados, 9 fontes
+únicas depois de eliminar uma cópia XLSX idêntica, sendo 6 XLSX e 3 XLSM.
+Sanitização e validação aprovadas em 3.810 células. Os XLSM são distintos entre
+si, mas só podem ampliar oficialmente o 3/5 histórico depois de comparar a
+identidade privada com o mesmo salt do corpus anterior. O lote revelou dois
+formatos de exibição que faltavam no Rust, moeda com literal e agrupamento e
+zero contábil como traço, além de entidade XML ainda não decodificada em
+`formatCode` no TypeScript. Ver
+[[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]].
 #pendente
 
 ## Backlog priorizado
@@ -679,6 +689,7 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 | Confiança por aba já existia para todas as abas, só não era agregada | `sheetsWithData` roda diagnóstico em toda aba com dado, não só na ativa | `buildSheetConfidenceMatrix` em `import-intelligence.ts` só lê e classifica o que já é calculado |
 | Regiões detectadas mas não separadas viram auditoria, não silêncio | `regionsAreSafeToSplit` recusa por segurança (ex: matriz id+período) sem registrar em lugar nenhum | `audit.regionsKeptTogether` conta as regiões, sem mudar a decisão de separar |
 | Rust "General" agora arredonda a 11 dígitos significativos como o Excel | `display_cell_value` caía em `value.to_string()` bruto fora dos formatos explícitos | corrigido; validado rodando `cargo test` de verdade via workflow manual da CI (sandbox não linka localmente), corpus XLSM fecha em zero divergências |
+| Formato monetário escapado e zero contábil divergiam no inventário Rust | `formatCode` com `&quot;` não era decodificado pelo TypeScript; o Rust caía em `General` para `"R$"\ #,##0.00` e para a seção zero do formato contábil | corrigido no código e coberto por testes; reconstruir o WASM no workflow manual e reverificar o corpus local antes do merge, ver [[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]] |
 | Widget "linha a linha" precisa de chave composta, nunca só o nome da categoria | modo raw repete a mesma categoria várias vezes no Top N/eixo; `key={g.name}` sozinho colide | seguir o padrão já usado no gráfico de barras/pizza: `sourceRow` de `chartSeries` ou índice como desempate |
 | `requestAnimationFrame` nunca dispara neste sandbox (`document.hidden === true`) | o painel do navegador não compõe frames, mesma causa do bloqueio de screenshot | qualquer código dependente de RAF (animações, `settleExportLayout`) trava aqui; confirmado sandbox-only via polyfill temporário, não é bug de produção |
 | Alvos de toque de 28px nos botões de widget ficam abaixo do recomendado | `size-7` do Tailwind sem variante responsiva, 5 botões agrupados por widget | corrigido com `pointer-coarse:` (media feature de ponteiro, não largura): 36px em toque, 28px em mouse, cabeçalho com `h-auto` em toque para acomodar quebra de linha |

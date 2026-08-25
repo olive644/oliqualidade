@@ -97,7 +97,8 @@ export function decodeOoxmlText(value: string): string {
 
 function attributes(tag: string): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const match of tag.matchAll(/([\w:-]+)="([^"]*)"/g)) result[match[1]!] = match[2]!;
+  for (const match of tag.matchAll(/([\w:-]+)="([^"]*)"/g))
+    result[match[1]!] = decodeOoxmlText(match[2]!);
   return result;
 }
 

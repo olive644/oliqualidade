@@ -7970,3 +7970,41 @@ real é a do usuário, depois de configurar as variáveis.
 ### Versão
 
 `0.10.0-beta.4` → `0.10.0-beta.5`.
+
+## 138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine
+
+O usuário trouxe dez planilhas reais para reforçar o corpus: sete `.xlsx` e
+três `.xlsm`. Duas das `.xlsx` eram cópias byte a byte, portanto o lote contém
+nove fontes únicas, seis XLSX e três XLSM. Os originais não entram no Git.
+
+O fluxo local `corpus:sanitize` gerou nove arquivos neutros, removeu macros e
+metadados privados e preservou a estrutura. `corpus:validate` aprovou os nove,
+com 3.810 células e paridade estrutural e de privacidade. A identidade privada
+do corpus histórico não está disponível neste clone, então os três XLSM são
+comprovadamente distintos entre si, mas não serão somados ao gate histórico
+até uma comparação com o mesmo salt confirmar que também são independentes das
+três fontes anteriores.
+
+`wasm:corpus` encontrou 16 divergências num XLSX e mais uma em outro. Os valores
+brutos, fórmulas e estruturas eram iguais nos dois leitores. As diferenças
+estavam somente na representação exibida:
+
+1. o parser TypeScript não decodificava `&quot;` em atributos XML de
+   `formatCode`, embora já decodificasse entidades no texto das células;
+2. o núcleo Rust não formatava `"R$"\ #,##0.00`, perdendo literal, separador
+   de milhar e casas decimais;
+3. o núcleo Rust tratava o zero do formato contábil
+   `_(* #,##0.00_);_(* \(#,##0.00\);_(* "-"??_);_(@_)` como `General`, em
+   vez de respeitar a seção de zero exibida pelo Excel.
+
+`attributes` passou a decodificar entidades XML de todos os atributos. O teste
+de regressão grava um XLSX com formato monetário escapado e exige que a inspeção
+independente recupere o código real, nunca `&quot;`. No Rust,
+`format_number_with_code` cobre os dois formatos encontrados e tem testes
+unitários específicos para moeda agrupada e zero contábil.
+
+O arquivo WASM pré-compilado precisa ser reconstruído no workflow manual
+`wasm-build.yml`, como nas correções anteriores do núcleo Rust. Até esse
+artefato entrar na mesma PR, a medição JavaScript continuará exercitando o
+binário antigo. O fallback TypeScript permanece obrigatório e já impede que
+qualquer inventário divergente seja usado como resultado principal.
