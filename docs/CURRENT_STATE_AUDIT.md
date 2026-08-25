@@ -7855,6 +7855,63 @@ A CSP ganhou `https://challenges.cloudflare.com` em `script-src`, `frame-src`
 e `connect-src`. As três, porque o desafio é um script que abre um iframe que
 conversa de volta. Nenhum curinga entrou; a lista continua sendo uma lista.
 
+### A falha que a revisão de segurança encontrou, e que era real
+
+A extração de `lib/signed-cookie.ts` introduziu um contorno completo do
+Turnstile. A revisão automática da PR apontou, e a verificação confirmou:
+era exploável exatamente por quem o Turnstile existe para barrar.
+
+O token assinado carregava prazo, valor aleatório e marca do navegador. Não
+carregava **para qual cookie** tinha sido emitido. Como `oli_chat_session` e
+`oli_human` passaram a ser assinados pelo mesmo segredo
+(`OLI_SESSION_SECRET`) e com o mesmo prazo de duas horas, os dois viraram
+intercambiáveis.
+
+O ataque tem dois passos e não precisa de navegador:
+
+1. Carregar qualquer página. O servidor devolve `oli_chat_session` para
+   quem pedir, sem verificação nenhuma — é o comportamento correto dele.
+2. Repetir aquele valor no cabeçalho `Cookie` sob o nome `oli_human`.
+
+`verifySignedCookie` lia o cookie pelo nome pedido, conferia a assinatura com
+o mesmo segredo, o prazo e a marca do navegador, e devolvia verdadeiro. A
+verificação humana passava sem uma única chamada à Cloudflare. O cookie ser
+`HttpOnly` não protege: isso impede JavaScript de lê-lo, não impede um
+cliente de escrever o cabeçalho que quiser.
+
+### A correção
+
+O token passou a declarar um `scope`, que é o nome do cookie que vai
+carregá-lo, e a verificação exige que ele bata. Token sem escopo é recusado,
+não tolerado: token sem escopo é precisamente o que existiria antes da
+correção, e aceitá-lo por omissão manteria o buraco aberto para qualquer
+cookie emitido até agora.
+
+Efeito colateral aceito: os `oli_chat_session` já entregues não têm escopo e
+deixam de valer. Quem estiver com um recebe outro na resposta seguinte, porque
+`withChatSession` emite quando a verificação falha. Uma sessão de chat
+reiniciada uma vez é preço baixo.
+
+### Por que os primeiros testes não provaram nada
+
+O primeiro teste escrito para reproduzir a falha passava contra o código
+antigo, o que parecia confirmar que não havia falha. Ele estava errado: como
+`scope` ainda não era parâmetro, o nome do cookie caía na posição de `now`,
+o prazo virava `NaN` e a verificação recusava por motivo nenhum relacionado ao
+ataque.
+
+A prova válida está em `human-check.test.ts`: emite uma sessão de chat de
+verdade, apresenta o valor como `oli_human` e exige que a verificação peça
+desafio — e, na mesma afirmação, que o token continue valendo para o que ele é
+de fato, senão a correção teria trocado uma quebra por outra.
+
+Confirmado por mutação: substituindo `claims.scope === cookieName` por
+`true`, quatro testes falham, entre eles o do ataque.
+
+Lição que vale registrar: quando um teste de segurança passa de primeira
+contra o código que se acredita vulnerável, a hipótese mais provável é que o
+teste esteja errado, não que a falha não exista.
+
 ### Dois cabeçalhos que faltavam
 
 Revisando `buildSecurityHeaders` para acrescentar o Turnstile à CSP, apareceu

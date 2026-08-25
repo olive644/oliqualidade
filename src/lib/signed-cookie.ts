@@ -8,10 +8,23 @@
  * outro fica para trás em silêncio, e o silêncio aqui significa cookie
  * aceito indevidamente.
  *
- * O que o cookie carrega: um prazo, um valor aleatório e uma marca do
- * navegador. A marca existe para que um cookie copiado para outro cliente
+ * O que o cookie carrega: um escopo, um prazo, um valor aleatório e uma marca
+ * do navegador. A marca existe para que um cookie copiado para outro cliente
  * não valha — não é identificação de pessoa, é o resumo do `user-agent`
  * cortado, que não distingue duas pessoas com o mesmo navegador.
+ *
+ * O escopo é o nome do cookie, e ele existe por causa de uma falha real
+ * encontrada na revisão desta mudança. Sem ele, dois cookies assinados com o
+ * mesmo segredo eram intercambiáveis: bastava copiar o valor de um para o
+ * nome do outro. Como `oli_chat_session` é entregue a qualquer um que
+ * carregue a página, e `oli_human` (a prova de verificação humana) usa o
+ * mesmo segredo e o mesmo prazo, dava para contornar o Turnstile inteiro sem
+ * nunca falar com a Cloudflare.
+ *
+ * Assinatura válida não basta, portanto: o token precisa dizer para qual
+ * cookie foi emitido, e a verificação exige que seja o mesmo. Token sem
+ * escopo é recusado, porque é exatamente o token que existiria antes desta
+ * correção.
  */
 
 const encoder = new TextEncoder();
@@ -62,11 +75,14 @@ export async function createSignedToken(
   request: Request,
   secret: string,
   ttlSeconds: number,
+  /** Nome do cookie que vai carregar este token. Ver o cabeçalho do arquivo. */
+  scope: string,
   now = Date.now(),
 ) {
   const payload = base64url(
     encoder.encode(
       JSON.stringify({
+        scope,
         exp: Math.floor(now / 1000) + ttlSeconds,
         nonce: crypto.randomUUID(),
         ua: await userAgentFingerprint(request),
@@ -97,10 +113,14 @@ export async function verifySignedCookie(
     );
     if (!valid) return false;
     const claims = JSON.parse(new TextDecoder().decode(decodeBase64url(payload))) as {
+      scope?: unknown;
       exp?: unknown;
       ua?: unknown;
     };
     return (
+      // O escopo vem primeiro por ser a condição mais barata e a que mais
+      // importa: sem ela, a assinatura sozinha aceitava o cookie errado.
+      claims.scope === cookieName &&
       typeof claims.exp === "number" &&
       claims.exp >= Math.floor(now / 1000) &&
       claims.ua === (await userAgentFingerprint(request))
@@ -118,7 +138,7 @@ export async function signedCookieHeader(
   ttlSeconds: number,
 ) {
   const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
-  const token = await createSignedToken(request, secret, ttlSeconds);
+  const token = await createSignedToken(request, secret, ttlSeconds, cookieName);
   return `${cookieName}=${token}; Path=/; Max-Age=${ttlSeconds}; HttpOnly; SameSite=Strict${secure}`;
 }
 

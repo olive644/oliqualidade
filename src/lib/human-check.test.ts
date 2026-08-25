@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { checkHuman, humanProofCookieName } from "@/lib/human-check";
 import { TURNSTILE_TOKEN_HEADER } from "@/lib/turnstile";
+import { chatSessionCookieName, createChatSession, verifyChatSession } from "@/lib/chat-session";
 
 const SEGREDO_DA_PROVA = "segredo-de-teste-para-assinar-a-prova";
 
@@ -112,6 +113,35 @@ describe("checkHuman", () => {
     );
 
     expect(resultado).toEqual({ status: "ok", cookie: null });
+  });
+
+  it("não aceita a sessão do chat no lugar da prova humana", async () => {
+    // Regressão de uma falha real encontrada na revisão de segurança desta
+    // mudança. `oli_chat_session` é emitido para qualquer um que carregue a
+    // página, e antes do `scope` ele era assinado com o mesmo segredo e o
+    // mesmo prazo da prova. Bastava copiar o valor para o nome `oli_human`
+    // em uma requisição feita à mão, sem navegador nenhum, e o Turnstile
+    // inteiro era contornado sem uma única chamada à Cloudflare.
+    const base = requisicao();
+    const daSessao = await createChatSession(base, SEGREDO_DA_PROVA);
+    const fetchMock = recusa();
+
+    const resultado = await checkHuman(
+      requisicao({ cookie: `${humanProofCookieName}=${daSessao}` }),
+      { TURNSTILE_SECRET_KEY: "segredo" },
+      SEGREDO_DA_PROVA,
+      fetchMock as unknown as typeof fetch,
+    );
+
+    expect(resultado.status).toBe("challenge");
+    // E o mesmo token continua valendo para o que ele é de verdade, senão a
+    // correção teria só trocado uma quebra por outra.
+    expect(
+      await verifyChatSession(
+        requisicao({ cookie: `${chatSessionCookieName}=${daSessao}` }),
+        SEGREDO_DA_PROVA,
+      ),
+    ).toBe(true);
   });
 
   it("recusa token inválido", async () => {

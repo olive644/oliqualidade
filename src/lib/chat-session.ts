@@ -13,7 +13,7 @@ const SESSION_TTL_SECONDS = 2 * 60 * 60;
 // mesmo de antes: mesmo nome de cookie, mesmo prazo, mesmas defesas.
 
 export async function createChatSession(request: Request, secret: string, now = Date.now()) {
-  return createSignedToken(request, secret, SESSION_TTL_SECONDS, now);
+  return createSignedToken(request, secret, SESSION_TTL_SECONDS, COOKIE_NAME, now);
 }
 
 export async function verifyChatSession(request: Request, secret: string, now = Date.now()) {
