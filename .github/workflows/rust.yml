@@ -85,6 +85,18 @@ jobs:
             exit 1
           fi
 
+      - name: Publish the rebuilt package when it diverges
+        # Sem isto, quem vê a falha precisa reproduzir a build localmente, e
+        # este projeto já registrou que o wasm-pack não roda em toda máquina
+        # (falta a CRT do Windows). Publicando o resultado, corrigir vira
+        # baixar e commitar.
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: oli-ooxml-core-wasm-rebuilt
+          path: src/wasm/oli-ooxml-core
+          if-no-files-found: error
+
       - name: Smoke test the rebuilt package
         run: node scripts/test-ooxml-wasm.mjs
 

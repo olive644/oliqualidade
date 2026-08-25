@@ -1882,7 +1882,10 @@ mod unit_tests {
             display_cell_value(Some(&value), "\"R$\"#,##0.00"),
             "R$888,715.25"
         );
-        assert_eq!(display_cell_value(Some(&value), "\"R$\"\\ #,##0"), "R$ 888,715");
+        assert_eq!(
+            display_cell_value(Some(&value), "\"R$\"\\ #,##0"),
+            "R$ 888,715"
+        );
         assert_eq!(display_cell_value(Some(&value), "#,##0.00"), "888,715.25");
     }
 
@@ -1928,7 +1931,10 @@ mod unit_tests {
 
     #[test]
     fn split_format_sections_ignores_separator_inside_a_literal() {
-        assert_eq!(split_format_sections("#,##0;(#,##0)"), vec!["#,##0", "(#,##0)"]);
+        assert_eq!(
+            split_format_sections("#,##0;(#,##0)"),
+            vec!["#,##0", "(#,##0)"]
+        );
         // O `;` dentro das aspas é texto, não separador de seção.
         assert_eq!(split_format_sections("\"a;b\"0"), vec!["\"a;b\"0"]);
     }
