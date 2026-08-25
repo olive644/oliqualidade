@@ -526,23 +526,8 @@ export function buildSafeDashboardContext(input: GeminiDashboardInput): GeminiSa
   };
 }
 
-const buckets = new Map<string, number[]>();
-const MAX_RATE_LIMIT_BUCKETS = 10_000;
-export function checkRateLimit(key: string, now = Date.now(), limit = 12, windowMs = 60_000) {
-  if (!buckets.has(key) && buckets.size >= MAX_RATE_LIMIT_BUCKETS) {
-    for (const [bucketKey, timestamps] of buckets) {
-      if (!timestamps.some((timestamp) => now - timestamp < windowMs)) buckets.delete(bucketKey);
-      if (buckets.size < MAX_RATE_LIMIT_BUCKETS) break;
-    }
-    if (buckets.size >= MAX_RATE_LIMIT_BUCKETS) buckets.delete(buckets.keys().next().value!);
-  }
-  const recent = (buckets.get(key) ?? []).filter((timestamp) => now - timestamp < windowMs);
-  if (recent.length >= limit) return false;
-  recent.push(now);
-  buckets.set(key, recent);
-  return true;
-}
-
-export function resetRateLimitsForTests() {
-  buckets.clear();
-}
+// O limitador saiu daqui para lib/rate-limit.ts, onde ganhou um caminho
+// compartilhado por Redis. O reexporte mantém o ponto de importação de quem
+// já usava, sem espalhar a mudança por arquivos que não têm nada a ver com
+// armazenamento.
+export { checkRateLimit, resetRateLimitsForTests } from "@/lib/rate-limit";

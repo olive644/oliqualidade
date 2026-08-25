@@ -1,4 +1,5 @@
 import type { Dashboard, SheetData } from "@/lib/types";
+import { postWithHumanCheck } from "@/lib/human-check-client";
 import type { LiveDashboardContext } from "@/lib/assistant-context";
 
 export type GeminiChatMessage = { role: "user" | "assistant"; text: string };
@@ -11,24 +12,19 @@ export async function askGemini(
   liveView: LiveDashboardContext,
   history: GeminiChatMessage[] = [],
 ) {
-  const response = await fetch("/api/gemini/chat", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      message,
-      history,
-      dashboard: {
-        name: dashboard.name,
-        sheetName: sheet.name,
-        columns: sheet.columns,
-        // O servidor recebe a mesma base já filtrada que alimenta os widgets,
-        // não a planilha original desconectada do que está na tela.
-        rows: liveRows,
-        liveView,
-      },
-    }),
+  const { response, raw } = await postWithHumanCheck("/api/gemini/chat", {
+    message,
+    history,
+    dashboard: {
+      name: dashboard.name,
+      sheetName: sheet.name,
+      columns: sheet.columns,
+      // O servidor recebe a mesma base já filtrada que alimenta os widgets,
+      // não a planilha original desconectada do que está na tela.
+      rows: liveRows,
+      liveView,
+    },
   });
-  const raw = await response.text();
   let result: { answer?: string; error?: string } = {};
   try {
     result = JSON.parse(raw) as typeof result;

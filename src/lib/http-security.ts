@@ -15,11 +15,19 @@ export function buildSecurityHeaders(nonce?: string): Record<string, string> {
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self'",
-      nonce ? `script-src 'self' 'nonce-${nonce}'` : "script-src 'self' 'unsafe-inline'",
+      // O Turnstile é servido pela Cloudflare e desenha o desafio dentro de
+      // um iframe do domínio deles, então precisa das três permissões:
+      // carregar o script, abrir o quadro e conversar de volta. Nenhum outro
+      // domínio entra por isso — a lista continua sendo uma lista, não um
+      // curinga.
+      nonce
+        ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com`
+        : "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
+      "frame-src 'self' https://challenges.cloudflare.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org",
-      "connect-src 'self' https://docs.google.com https://nominatim.openstreetmap.org",
+      "connect-src 'self' https://docs.google.com https://nominatim.openstreetmap.org https://challenges.cloudflare.com",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
       "upgrade-insecure-requests",

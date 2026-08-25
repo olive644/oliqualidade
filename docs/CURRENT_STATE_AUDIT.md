@@ -7750,3 +7750,131 @@ de ser inverificável.
 ### Versão
 
 `0.10.0-beta.3` → `0.10.0-beta.4`.
+
+## 137. Limite de requisições compartilhado e verificação Cloudflare Turnstile
+
+### O que estava errado no limitador
+
+`checkRateLimit` era um `Map` no processo. Isso funciona enquanto existe um
+processo só, e a Vercel não garante isso: cada instância da função tem a
+própria memória, e um reinício zera a contagem. O número configurado nunca foi
+o número real.
+
+O caso mais concreto é a cota diária da análise inteligente. Ela existe para
+limitar gasto com o provedor de IA, e era contada por instância: o teto real
+era o valor configurado multiplicado por quantas instâncias estivessem vivas
+naquele dia. Ninguém percebia porque nada quebra — só se gasta mais do que se
+pediu.
+
+### Por que Upstash, e não outro Redis
+
+A função pode morrer entre duas requisições. Um Redis com conexão persistente
+exige um pool que sobreviva ao processo, e não é isso que uma função sem
+servidor oferece; o Upstash fala HTTP, então cada requisição é uma requisição.
+
+`UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` são os nomes que a
+própria integração Upstash da Vercel cria. Usar nomes próprios exigiria copiar
+valores de um painel para o outro, que é onde erro de configuração nasce.
+
+### A janela deslizante em quatro comandos
+
+Apagar o que saiu da janela, acrescentar este instante, contar o que sobrou,
+renovar a expiração. Os quatro vão em um pipeline só, e isso não é otimização
+de latência: é o que fecha a brecha entre contar e gravar, por onde um
+limitador ingênuo deixa passar uma rajada inteira.
+
+Três decisões dentro disso:
+
+- **O membro do conjunto é único** (instante mais UUID). Dois pedidos no mesmo
+  milissegundo com o mesmo membro seriam um só dentro do conjunto ordenado, e
+  o segundo passaria de graça.
+- **Requisição recusada não conta.** O limitador em memória nunca registrava a
+  tentativa recusada, e manter isso importa: contar a recusa faria a rajada
+  empurrar o próprio limite para frente, punindo por mais tempo que a janela
+  configurada. Por isso o `ZREM` depois de uma recusa.
+- **Falha do Redis cai para a memória, não recusa.** Recusar tiraria o
+  assistente do ar por instabilidade de terceiro. A queda devolve exatamente a
+  proteção que existia antes desta mudança: frouxa, mas não nenhuma. Um teste
+  específico verifica que a queda ainda limita, para que ela não vire passe
+  livre por descuido.
+
+### Turnstile: por que existe, e por que a escolha de falha é a oposta
+
+O limitador conta por endereço, e endereço é barato de trocar. Ele encarece o
+abuso sem impedir. O Turnstile ataca o outro lado da conta: encarece provar
+que existe um navegador com uma pessoa atrás dele.
+
+Aqui a falha de rede **recusa**, ao contrário do limitador. A assimetria é
+deliberada: o limitador em queda ainda oferece proteção, enquanto um Turnstile
+que aceita quando não consegue perguntar não é verificação nenhuma — é uma
+porta destrancada com aparência de fechada.
+
+A verificação vem antes do limitador nos dois endpoints. Depois dele
+significaria gastar a cota do limitador antes de descobrir que do outro lado
+não há navegador.
+
+### A prova com prazo, e por que ela precisou existir
+
+Um token do Turnstile vale uma vez só e por poucos minutos, o que é
+proposital do lado deles: impede que alguém resolva um desafio e reutilize a
+prova para sempre. Sem mais nada, cada mensagem ao assistente exigiria um
+desafio novo, e uma conversa de cinco perguntas viraria cinco verificações.
+Isso faria as pessoas evitarem o assistente muito antes de fazer um abusador
+desistir.
+
+`lib/human-check.ts` guarda a prova em um cookie assinado de duas horas, o
+mesmo prazo da sessão do chat, para que ninguém seja interrompido duas vezes
+por motivos diferentes em momentos diferentes.
+
+Isso obrigou a extrair `lib/signed-cookie.ts` de `chat-session.ts`. Copiar
+código de assinatura seria a pior duplicação possível: no dia em que a
+verificação mudar em um dos dois, o outro fica para trás em silêncio, e
+silêncio aqui significa cookie aceito indevidamente. O `chat-session.ts`
+passou a ser uma casca sobre o módulo novo, com o mesmo nome de cookie, o
+mesmo prazo e as mesmas defesas de antes.
+
+Sem `OLI_SESSION_SECRET` a prova não pode ser assinada, e então cada
+requisição exige token novo. É mais rígido, não menos, e só acontece fora de
+produção, porque em produção o servidor já recusa sem esse segredo.
+
+### O lado do navegador
+
+O script da Cloudflare só entra na página depois de um 403 com o código de
+verificação. Carregar sempre custaria uma requisição a um terceiro em toda
+visita, inclusive nas que nem abrem o assistente.
+
+O modo é `interaction-only`: a Cloudflare decide sozinha e só desenha algo
+quando desconfia. No caso comum a pessoa não vê nada além de a resposta
+demorar uma fração de segundo a mais.
+
+A repetição é uma só. Se a segunda tentativa também voltar pedindo
+verificação, há algo errado na chave ou no servidor, e insistir viraria um
+laço de desafios com a pessoa presa no meio.
+
+A CSP ganhou `https://challenges.cloudflare.com` em `script-src`, `frame-src`
+e `connect-src`. As três, porque o desafio é um script que abre um iframe que
+conversa de volta. Nenhum curinga entrou; a lista continua sendo uma lista.
+
+### O que isto não é
+
+Não é a preparação para o premium. Continua não existindo verificação de plano
+no servidor, e este trabalho não a aproxima: ele protege o custo do endpoint
+que já existe. Quando houver plano pago, a verificação de direito de acesso é
+outro assunto, e o limitador compartilhado será uma peça dele, não um
+substituto.
+
+### Verificação
+
+Todos os caminhos novos têm teste com `fetch` substituído: pipeline montado na
+ordem certa, recusa devolvendo a entrada, as três formas de falha do Redis
+caindo para a memória, a queda ainda limitando, o segredo do Turnstile indo no
+corpo e nunca na URL, a prova sendo reconhecida sem nova consulta à Cloudflare
+e a prova assinada com outro segredo sendo rejeitada.
+
+O que **não** foi verificado: nenhuma chamada real ao Upstash ou à Cloudflare
+aconteceu, porque nenhuma das duas contas existe ainda. A primeira execução
+real é a do usuário, depois de configurar as variáveis.
+
+### Versão
+
+`0.10.0-beta.4` → `0.10.0-beta.5`.

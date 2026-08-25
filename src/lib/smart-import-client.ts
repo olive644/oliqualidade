@@ -3,6 +3,7 @@ import {
   type SmartImportAnalysis,
   type SmartImportInput,
 } from "@/lib/smart-import";
+import { postWithHumanCheck } from "@/lib/human-check-client";
 
 const CACHE_PREFIX = "oliqualidade:smart-import:v1:";
 const CACHE_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -44,12 +45,9 @@ export async function analyzeImportWithAi(
     const cached = readCache(fingerprint);
     if (cached) return { analysis: cached, cached: true };
   }
-  const response = await fetch("/api/gemini/import-analysis", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ import: input }),
+  const { response, raw } = await postWithHumanCheck("/api/gemini/import-analysis", {
+    import: input,
   });
-  const raw = await response.text();
   let result: { analysis?: SmartImportAnalysis; error?: string; cached?: boolean } = {};
   try {
     result = JSON.parse(raw) as typeof result;
