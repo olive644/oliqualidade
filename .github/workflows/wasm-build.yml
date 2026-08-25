@@ -9,6 +9,8 @@ name: Build WASM package (manual)
 
 on:
   workflow_dispatch: {}
+  push:
+    branches: [fix/ooxml-formato-moeda-corpus]
 
 permissions:
   contents: read
