@@ -7,10 +7,23 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.3";
+export const APP_VERSION = "0.10.0-beta.4";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-24-teste-de-componente",
+    version: APP_VERSION,
+    date: "2026-08-24",
+    title: "Os widgets passaram a ser testados como a tela mostra, não só por dentro",
+    summary:
+      "Até agora a verificação automática cobria os cálculos, e o que aparece na tela dependia de conferência manual. Agora o widget é montado de verdade durante a verificação.",
+    highlights: [
+      "O primeiro caso coberto é o valor escrito em cima da barra: ele deve aparecer num painel largo e sumir na largura de um celular, onde os números se sobreporiam.",
+      "A contagem de pendências passou a ser verificada junto com o filtro ativo, que é quando ela costumava divergir da lista mostrada.",
+      "Nada muda no que você vê. É uma rede de proteção para que esses dois comportamentos não voltem a quebrar em silêncio.",
+    ],
+  },
   {
     id: "2026-08-24-analise-estatica",
     version: APP_VERSION,

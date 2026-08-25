@@ -10,7 +10,7 @@ test("avisa sobre uma versão nova e preserva a leitura no navegador", async ({ 
   await unreadButton.click();
   const dialog = page.getByRole("dialog", { name: "Atualizações do OliQualidade" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("v0.10.0-beta.3").first()).toBeVisible();
+  await expect(dialog.getByText("v0.10.0-beta.4").first()).toBeVisible();
   await expect(
     dialog.getByText("Correções de estabilidade em datas, cores, fórmulas e leitura automática"),
   ).toBeVisible();

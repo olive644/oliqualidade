@@ -150,7 +150,8 @@ import {
 import { WORKBOOK_ACCEPT, WORKBOOK_FORMATS_LABEL } from "@/lib/workbook-reader";
 import { buildLiveDashboardContext } from "@/lib/assistant-context";
 import { bookmarkView, createBookmark } from "@/lib/bookmarks";
-import { markSourceRows, sourceRowIndexOf } from "@/lib/data-review";
+import { markSourceRows } from "@/lib/data-review";
+import { exceptionsWithinVisibleRows } from "@/lib/exception-visibility";
 import {
   FOLDER_MONITOR_INTERVAL_MS,
   fileChanged,
@@ -1685,23 +1686,9 @@ function Dashboard(p: {
     sheet.filters.length,
     sheet.previousSnapshot,
   ]);
-  const visibleSourceRows = useMemo(
-    () =>
-      new Set(
-        filteredData
-          .map((row) => sourceRowIndexOf(row))
-          .filter((rowIndex): rowIndex is number => rowIndex !== null)
-          .map((rowIndex) => rowIndex + 1),
-      ),
-    [filteredData],
-  );
   const visibleExceptions = useMemo(
-    () =>
-      effectiveIntelligence.exceptions.filter(
-        (exception) =>
-          exception.rowIndex === undefined || visibleSourceRows.has(exception.rowIndex),
-      ),
-    [effectiveIntelligence.exceptions, visibleSourceRows],
+    () => exceptionsWithinVisibleRows(effectiveIntelligence.exceptions, filteredData),
+    [effectiveIntelligence.exceptions, filteredData],
   );
   // Usa `visibleExceptions` (já restrito às linhas visíveis com o filtro
   // atual), não `effectiveIntelligence.exceptions` inteiro — senão a

@@ -7628,3 +7628,125 @@ primeira execução real é a da própria CI.
 ### Versão
 
 `0.10.0-beta.2` → `0.10.0-beta.3`.
+
+## 136. Infraestrutura de teste de componente React, e as duas dívidas que ela fecha
+
+Desde a seção 116 a mesma frase se repete no audit: a lógica saiu do
+componente para uma função pura "já que não existe infraestrutura de teste de
+componente React no projeto". A extração é boa por si só e continua valendo,
+mas ela não alcança tudo. Duas dívidas ficaram registradas justamente por
+serem ligação entre lógica e tela, e não lógica:
+
+1. O valor escrito em cima da barra (seção 119). `barValueLabelsFit` era
+   testada como função pura desde sempre; o que ninguém verificava é se a
+   largura medida do widget chegava até ela e se a resposta dela virava — ou
+   deixava de virar — texto no gráfico.
+2. A contagem de pendências restrita às linhas visíveis (seção 116). Vivia
+   inteira dentro de `routes/index.tsx`, em dois `useMemo` encadeados.
+
+### O que a infraestrutura é
+
+Dois projetos do Vitest em `vitest.config.ts`, em vez de um só:
+
+- `unidade`: ambiente Node, `src/**/*.test.ts`, sem DOM e sem transformar
+  JSX. É a esmagadora maioria da suíte.
+- `componente`: ambiente jsdom, `src/**/*.test.tsx`, com
+  `@vitejs/plugin-react` e um arquivo de preparação.
+
+A separação não é organização estética. Carregar jsdom para os 80 arquivos de
+função pura custaria segundos em cada execução sem servir a nenhum deles, e a
+extensão do arquivo já diz qual é qual, sem configuração por caso.
+
+As dependências novas são três e todas de desenvolvimento: `jsdom`,
+`@testing-library/react` e `@testing-library/dom`. `@testing-library/jest-dom`
+ficou de fora de propósito: ele existe para adicionar matchers de
+conveniência, e o mesmo se escreve com o `expect` que o Vitest já tem, sem
+mais um pacote na árvore.
+
+### O obstáculo real: jsdom não faz layout
+
+Todo elemento mede zero no jsdom, e ele nem implementa `ResizeObserver`. Isso
+é fatal para este projeto especificamente, porque a decisão de mostrar ou
+esconder conteúdo vem de `useMeasuredWidth`, que existe exatamente para ler a
+largura real. Sem substituto, o componente ficaria eternamente na largura 0 e
+o teste só conseguiria observar o estado anterior à medida — o oposto do que
+se quer verificar.
+
+`src/test/component-setup.ts` instala um `ResizeObserver` que entrega a mesma
+medida para todo elemento observado, definida por `setMeasuredSize`. Duas
+decisões dentro dele:
+
+- **A medida é entregue de forma síncrona**, no `observe`. O observador real
+  dispara em um quadro futuro; um teste que precisasse esperar esse quadro
+  estaria medindo a paciência do `waitFor` em vez do componente.
+- **A mesma medida alimenta o `ResponsiveContainer` do recharts**, que também
+  observa tamanho. Isso não é efeito colateral, é a relação que se quer
+  exercitar: a largura do widget decide o conteúdo, e a mesma largura desenha
+  o gráfico.
+
+`src/test/render-widget.tsx` embrulha a renderização no `TooltipProvider`. Os
+botões de ação do widget usam o tooltip do Radix, que lança erro sem provedor
+em algum ancestral; na aplicação ele fica na raiz, longe do widget.
+
+### Um detalhe do recharts que custa tempo se não estiver escrito
+
+Os rótulos de valor (`LabelList`) só aparecem no DOM depois que a animação da
+barra termina. A primeira sondagem renderizou o gráfico, encontrou os nomes do
+eixo e não encontrou rótulo nenhum — o que parecia "não funciona no jsdom" e
+era só "ainda não". Com `waitFor` os rótulos aparecem normalmente. Vale
+lembrar disso antes de concluir que recharts e jsdom não se entendem.
+
+### O teste da dívida 1
+
+`chart-widget-body.test.tsx` renderiza o `ChartWidgetBody` real, com oito
+categorias e valores na casa dos milhões. Os milhões são deliberados: escritos
+com separador de milhar eles ocupam nove caracteres, e é isso que torna a
+diferença entre caber e não caber observável dentro de larguras reais de tela.
+Com números curtos o rótulo caberia em qualquer largura e o teste não
+distinguiria nada. Oito categorias também é escolha: nove ligariam a rolagem
+horizontal, que troca a conta de largura por uma fatia fixa por categoria e
+tiraria a largura medida da decisão.
+
+A 900px os rótulos aparecem; a 360px não. O caso negativo espera as oito
+barras existirem antes de afirmar a ausência — sem isso ele passaria também
+num gráfico que simplesmente não renderizou, que é a forma mais comum de um
+teste de ausência mentir.
+
+A ligação foi confirmada por mutação antes de fechar: forçando
+`barLabelsFit` a `true` no componente, o caso de 360px falha. Um teste de
+ausência que não falha quando o comportamento some não está verificando nada.
+
+### O teste da dívida 2
+
+Aqui a infraestrutura nova **não** foi usada, e a razão importa.
+`routes/index.tsx` é a página inteira: roteador, armazenamento, worker de
+importação. Renderizá-la em jsdom para conferir uma contagem seria construir e
+manter um simulador da aplicação toda para observar uma linha de lógica.
+
+A lógica saiu para `lib/exception-visibility.ts`
+(`exceptionsWithinVisibleRows`, `visibleSourceRowNumbers`) e o componente
+passou a chamá-la — dois `useMemo` viraram um. O que estava implícito no
+código antigo virou regra escrita e testada:
+
+- `rowIndex` da pendência é base 1, como a linha do Excel; o índice guardado
+  na linha é base 0. A soma de 1 é a tradução, e um teste específico falha se
+  ela sumir, porque sem ele o deslocamento de uma linha passaria despercebido.
+- Pendência sem `rowIndex` é da planilha como um todo (divergência entre
+  leitores, unidade incompatível na coluna). Ela sobrevive a qualquer filtro
+  de linha, inclusive ao filtro que não deixou linha nenhuma passar.
+- Linha sem rastro de origem, criada por transformação como um bloco
+  unificado, não entra no conjunto: não há número de linha para comparar.
+
+### O que isso não resolve
+
+Continua sem cobertura tudo que depende de layout de verdade: sobreposição,
+transbordo, o que o olho vê. jsdom não calcula geometria, e nenhum substituto
+de `ResizeObserver` muda isso. Essa parte segue com o E2E do Playwright, que
+roda em navegador real, e com verificação manual.
+
+O que mudou é que a ligação entre uma medida e uma decisão de conteúdo deixou
+de ser inverificável.
+
+### Versão
+
+`0.10.0-beta.3` → `0.10.0-beta.4`.
