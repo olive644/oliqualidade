@@ -120,10 +120,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Semgrep
-        # O CodeQL foi desligado junto com a mudança do repositório para
-        # privado: análise de código do GitHub em repositório privado exige
-        # Advanced Security, que é pago. O Semgrep OSS (LGPL) roda em CI
-        # privado sem custo e sem conta.
+        # Nasceu como substituto do CodeQL, desligado quando o repositório
+        # virou privado (análise de código do GitHub em repositório privado
+        # exige Advanced Security, que é pago). Com o repositório público de
+        # novo o CodeQL voltou, e os dois convivem: o Semgrep OSS (LGPL) é o
+        # que continua rodando no dia em que o repositório fechar de novo,
+        # que é um quando e não um se — o premium com lógica de servidor
+        # exige isso.
         #
         # Versão fixa pelo mesmo motivo das actions fixadas por SHA: uma
         # atualização silenciosa da ferramenta não deve mudar o resultado de

@@ -7540,12 +7540,35 @@ para o futuro, não um conserto do presente.
 
 `0.10.0-beta.1` → `0.10.0-beta.2`.
 
-## 135. Semgrep no lugar do CodeQL: análise estática num repositório privado
+## 135. Análise estática: Semgrep entra, CodeQL volta, e os dois ficam
 
 O CodeQL parou junto com a mudança do repositório para privado. Não foi uma
 escolha de ferramenta: a análise de código do GitHub em repositório privado
 exige Advanced Security, que é pago por assento. A alternativa era ficar sem
 análise estática ou trocar de fornecedor.
+
+Horas depois o repositório voltou a ser público, e o CodeQL voltou junto, de
+graça. Isso não anula o trabalho do Semgrep, e a decisão foi manter os dois.
+
+### Por que os dois, e não só o CodeQL
+
+Porque o repositório vai fechar de novo. Não é hipótese: o premium exige
+verificação de plano no servidor, e esse é exatamente o código que só faz
+sentido manter fechado. O dia em que isso acontecer, o CodeQL some outra vez.
+
+Se o Semgrep fosse removido agora, a remoção do CodeQL teria de ser refeita
+do zero naquele momento, incluindo a escolha de pacotes de regras e a decisão
+sobre segredos. Mantê-lo custa dois minutos por push e transforma o próximo
+fechamento em um evento sem consequência para a análise estática.
+
+A sobreposição entre os dois existe e é aceitável. O CodeQL vai mais fundo
+(análise de fluxo entre arquivos); o Semgrep é sintático e mais raso, mas não
+depende de quem hospeda o código. São profundidades diferentes, não a mesma
+ferramenta duas vezes.
+
+O arquivo restaurado não é idêntico ao apagado: as actions passaram a ser
+fixadas por SHA na v0.10.0-beta.1, então as tags móveis foram resolvidas para
+os commits correspondentes.
 
 O Semgrep OSS é LGPL e o binário roda sozinho, sem conta e sem serviço. Isso
 importa porque o modelo comercial do Semgrep é a plataforma, não a ferramenta:
