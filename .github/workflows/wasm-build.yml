@@ -18,10 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Install Wasm target
-        run: rustup target add wasm32-unknown-unknown
       - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
+        # Mesma versão fixa do job wasm-provenance: se o artefato baixado
+        # daqui for construído por outra versão, ele não bate com o fonte na
+        # comparação byte a byte e a PR trava. O alvo wasm32 vem do
+        # rust-toolchain.toml.
+        run: cargo install wasm-pack --locked --version 0.15.0
       - name: Build Wasm package
         run: node scripts/build-ooxml-wasm.mjs
       - name: Test Rust core

@@ -31,6 +31,9 @@ describe("inspectOoxml", () => {
     const cell = inspectOoxml(bytes).sheets.get("Custos")?.get("A1");
 
     expect(cell?.numberFormat).toBe('"R$"\\ #,##0.00');
-    expect(cell?.displayValue).not.toBe("&quot");
+    // Afirmar o valor esperado, e não apenas que ele difere de um pedaço de
+    // entidade: `not.toBe("&quot")` passaria para `undefined`, string vazia e
+    // qualquer valor errado, o que dá aparência de cobertura sem cobrir.
+    expect(cell?.displayValue).toBe("R$ 888,715.25");
   });
 });

@@ -1,0 +1,14 @@
+# Toolchain fixado, pelo mesmo motivo das actions fixadas por SHA: o binário
+# `src/wasm/oli-ooxml-core/` é versionado, e o job `wasm-provenance` compara
+# byte a byte o que está commitado com o que o fonte produz. Sem versão fixa,
+# uma atualização do canal estável mudaria os bytes e derrubaria PRs que não
+# encostaram no Rust.
+#
+# Trocar de versão aqui exige reconstruir e commitar o pacote Wasm no mesmo
+# commit, senão a comparação falha — e é essa a intenção: a troca de toolchain
+# passa a ser uma mudança visível na revisão, não um efeito colateral.
+[toolchain]
+channel = "1.97.1"
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"
+components = ["rustfmt", "clippy"]
