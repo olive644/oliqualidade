@@ -8003,8 +8003,12 @@ independente recupere o código real, nunca `&quot;`. No Rust,
 `format_number_with_code` cobre os dois formatos encontrados e tem testes
 unitários específicos para moeda agrupada e zero contábil.
 
-O arquivo WASM pré-compilado precisa ser reconstruído no workflow manual
-`wasm-build.yml`, como nas correções anteriores do núcleo Rust. Até esse
-artefato entrar na mesma PR, a medição JavaScript continuará exercitando o
-binário antigo. O fallback TypeScript permanece obrigatório e já impede que
-qualquer inventário divergente seja usado como resultado principal.
+O arquivo WASM pré-compilado foi reconstruído no workflow `wasm-build.yml`,
+que executou `cargo test` e o smoke test no Ubuntu antes de publicar o
+artefato. Com o novo binário, `wasm:corpus` mediu 59 planilhas, 46.960 células
+e 1.205 estruturas: 59 correspondências, zero falhas e zero divergências. O
+XLSX ficou tecnicamente elegível neste lote, com seis fontes reais; o XLSM
+ficou em 3/5 porque esta execução só pode contar as três fontes presentes no
+manifesto local. O fallback TypeScript permanece obrigatório e continua
+impedindo que qualquer inventário divergente seja usado como resultado
+principal.

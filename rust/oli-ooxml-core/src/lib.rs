@@ -1234,9 +1234,7 @@ fn format_number_with_code(value: f64, number_format: &str) -> String {
     if number_format == "\"R$\"\\ #,##0.00" {
         return format!("R$ {}", format_grouped_fixed(value, 2));
     }
-    if value == 0.0
-        && number_format == "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)"
-    {
+    if value == 0.0 && number_format == "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)" {
         return " -   ".to_owned();
     }
     let (base, is_percent) = match number_format.strip_suffix('%') {
