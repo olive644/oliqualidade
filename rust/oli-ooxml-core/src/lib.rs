@@ -1278,15 +1278,22 @@ fn format_from_section_code(value: f64, number_format: &str) -> Option<String> {
     let sections = split_format_sections(number_format);
     // Regra de seleção do SSF: uma seção vale para tudo; duas separam
     // não-negativo de negativo; três ou mais isolam o zero.
-    let (section, use_absolute) = match (sections.len(), value) {
-        (1, _) => (sections[0], false),
-        (_, v) if v < 0.0 => (sections.get(1).copied().unwrap_or(sections[0]), true),
-        (2, _) => (sections[0], false),
-        (_, v) if v == 0.0 => (sections.get(2).copied().unwrap_or(sections[0]), false),
-        _ => (sections[0], false),
+    let negative_section = (sections.len() > 1 && value < 0.0).then(|| sections[1]);
+    let section = if let Some(section) = negative_section {
+        section
+    } else if sections.len() > 2 && value == 0.0 {
+        sections[2]
+    } else {
+        sections[0]
     };
-    let target = if use_absolute { value.abs() } else { value };
-    render_format_section(section, target, sections.len() > 1 && value < 0.0)
+    // Com seção dedicada a negativo, o valor entra em módulo: a marca é da
+    // seção, não do número.
+    let target = if negative_section.is_some() {
+        value.abs()
+    } else {
+        value
+    };
+    render_format_section(section, target, negative_section.is_some())
 }
 
 /// Separa as seções de um código de formato pelo `;`, respeitando literal
