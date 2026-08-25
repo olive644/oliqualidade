@@ -153,6 +153,10 @@ audit inteiro.
 
 ## Onde mexer
 
+| Formatar número pelo código de formato no núcleo Rust | `format_from_section_code` (`rust/oli-ooxml-core/src/lib.rs`): seções por `;`, literal entre aspas, escape, milhar, percentual; o caminho de decimais fixos vem antes e só o que virava `General` chega aqui | a referência é `XLSX.SSF.format`, **não** o Excel: `R$ #,##0.00` sem aspas o SSF recusa (`unrecognized character R`) e cai no valor cru, então **toda letra fora de aspas devolve `None`**; ver [[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]] |
+| Garantir que o WASM versionado veio do Rust versionado | job `wasm-provenance` (`.github/workflows/rust.yml`) reconstrói e compara com `git diff --exit-code`; `rust-toolchain.toml` fixa o canal porque a comparação é byte a byte | publica o pacote reconstruído quando diverge, porque `wasm-pack` não roda em toda máquina (falta a CRT no Windows); ver [[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]] |
+| Conferir o corpus real sanitizado sem ter os originais | `sanitized-corpus-privacy.test.ts` (sha256 do manifesto, nenhum arquivo solto, varredura de e-mail/CPF/CNPJ/telefone/URL/caminho) | **a CI nunca vê o corpus real** (`sanitized-real/` está no `.gitignore`), então o gate de paridade lá mede só as 50 geradas — divergência em planilha real só aparece rodando `npm run wasm:corpus` localmente; ver [[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]] |
+
 | Necessidade                                 | Fonte principal                                                       | Prova mínima                                 |
 | ------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------- |
 | Novo formato ou fidelidade de Excel         | `workbook-reader.ts`, `ooxml-reader.ts`, `ooxml-archive.ts`, `import.ts` | fixture + teste de corpus                    |
