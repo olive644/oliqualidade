@@ -1244,7 +1244,248 @@ fn format_number_with_code(value: f64, number_format: &str) -> String {
             formatted
         };
     }
+    // Só depois do caminho de decimais fixos, e nunca no lugar dele: aquele
+    // caminho já está calibrado contra o corpus, e o de baixo existe para
+    // recuperar códigos que antes caíam inteiros em "General".
+    if let Some(rendered) = format_from_section_code(value, number_format) {
+        return rendered;
+    }
     format_general_number(value)
+}
+
+/// Interpreta um código de formato numérico com seções, literais e separador
+/// de milhar.
+///
+/// A referência não é o Excel, é o `XLSX.SSF.format` do SheetJS: é contra ele
+/// que a paridade do corpus compara, célula a célula. Isto **não** é uma
+/// reimplementação do SSF, que é bem maior; é a fatia dele que aparece em
+/// planilha real de custo e de contabilidade.
+///
+/// A versão anterior desta função eram duas comparações de igualdade com dois
+/// códigos literais achados no corpus. Fechavam o portão sem tornar o leitor
+/// correto: bastava trocar a moeda, tirar o espaço escapado ou mudar a
+/// quantidade de casas para voltar a cair em "General". Aqui a resposta é
+/// derivada do código, então a família inteira funciona.
+///
+/// Devolve `None` para tudo que não está modelado — cor e condição entre
+/// colchetes, notação científica, fração, data, texto. `None` cai no
+/// comportamento anterior, que é o único jeito seguro de crescer isto: o que
+/// não se sabe formatar continua exatamente como estava.
+fn format_from_section_code(value: f64, number_format: &str) -> Option<String> {
+    if number_format.is_empty() || number_format == "General" {
+        return None;
+    }
+    let sections = split_format_sections(number_format);
+    // Regra de seleção do SSF: uma seção vale para tudo; duas separam
+    // não-negativo de negativo; três ou mais isolam o zero.
+    let negative_section = (sections.len() > 1 && value < 0.0).then(|| sections[1]);
+    let section = if let Some(section) = negative_section {
+        section
+    } else if sections.len() > 2 && value == 0.0 {
+        sections[2]
+    } else {
+        sections[0]
+    };
+    // Com seção dedicada a negativo, o valor entra em módulo: a marca é da
+    // seção, não do número.
+    let target = if negative_section.is_some() {
+        value.abs()
+    } else {
+        value
+    };
+    render_format_section(section, target, negative_section.is_some())
+}
+
+/// Separa as seções de um código de formato pelo `;`, respeitando literal
+/// entre aspas e caractere escapado por barra invertida — sem isso, um `;`
+/// dentro de `"a;b"` partiria o código no lugar errado.
+fn split_format_sections(code: &str) -> Vec<&str> {
+    let mut sections = Vec::new();
+    let mut start = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, character) in code.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' => escaped = true,
+            '"' => quoted = !quoted,
+            ';' if !quoted => {
+                sections.push(&code[start..index]);
+                start = index + character.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    sections.push(&code[start..]);
+    sections
+}
+
+/// Desenha uma seção já escolhida.
+///
+/// `already_signed` diz que a seção veio de um bloco dedicado a negativo, e
+/// portanto ela mesma carrega a marca (o sinal escrito, ou os parênteses). Só
+/// quando não há bloco dedicado é que o sinal é acrescentado aqui, que é como
+/// o SSF se comporta.
+fn render_format_section(section: &str, value: f64, already_signed: bool) -> Option<String> {
+    let characters: Vec<char> = section.chars().collect();
+    let mut rendered = String::new();
+    let mut digits: Option<DigitPattern> = None;
+    let mut index = 0usize;
+    let mut digit_slot = None;
+    while index < characters.len() {
+        let character = characters[index];
+        match character {
+            // Não modelado: cor, condição e localidade (`[Red]`, `[>100]`,
+            // `[$R$-416]`), fração e texto.
+            '[' | ']' | '/' | '@' => return None,
+            // Qualquer letra fora de aspas devolve o caso para o
+            // comportamento anterior, e a regra é larga de propósito.
+            //
+            // O corpus real ensinou o porquê. Uma planilha de custo traz o
+            // código `R$ #,##0.00`, com o `R$` **sem aspas**, e o
+            // `XLSX.SSF.format` do SheetJS — que é a referência da paridade —
+            // não o formata: ele lança "unrecognized character R", e o leitor
+            // TypeScript cai no valor cru. Uma primeira versão desta função
+            // desenhava `R$ 917,456.00` ali, o que parece mais correto e
+            // divergia em mil células do corpus.
+            //
+            // O SSF aceita algumas letras soltas (`kg #,##0` funciona) e
+            // recusa outras, por uma tabela própria. Reproduzir essa tabela
+            // seria reimplementar o SSF; recusar todas custa apenas manter o
+            // comportamento anterior nesses códigos, que é o que já
+            // acontecia, e nunca inventa um resultado que a referência não
+            // produz. Data e hora também caem aqui, sem precisar de lista.
+            character if character.is_ascii_alphabetic() => return None,
+            '"' => {
+                index += 1;
+                while index < characters.len() && characters[index] != '"' {
+                    rendered.push(characters[index]);
+                    index += 1;
+                }
+                index += 1;
+            }
+            '\\' => {
+                index += 1;
+                if let Some(escaped) = characters.get(index) {
+                    rendered.push(*escaped);
+                }
+                index += 1;
+            }
+            // `_x` reserva a largura do próximo caractere: o SSF desenha um
+            // espaço. `*x` repete o caractere para preencher a coluna, e o
+            // SSF não desenha nada.
+            '_' => {
+                index += 2;
+                rendered.push(' ');
+            }
+            '*' => index += 2,
+            '?' => {
+                rendered.push(' ');
+                index += 1;
+            }
+            '#' | '0' | ',' | '.' => {
+                let start = index;
+                while index < characters.len() && matches!(characters[index], '#' | '0' | ',' | '.')
+                {
+                    index += 1;
+                }
+                if digits.is_some() {
+                    // Dois blocos de dígitos na mesma seção é fração ou algo
+                    // fora do que está modelado.
+                    return None;
+                }
+                digits = Some(parse_digit_pattern(&characters[start..index]));
+                digit_slot = Some(rendered.len());
+            }
+            '%' => {
+                rendered.push('%');
+                index += 1;
+            }
+            other => {
+                rendered.push(other);
+                index += 1;
+            }
+        }
+    }
+
+    match (digits, digit_slot) {
+        (Some(pattern), Some(slot)) => {
+            let scaled = if section.contains('%') {
+                value * 100.0
+            } else {
+                value
+            };
+            let mut number = format_grouped_fixed(scaled.abs(), pattern.decimals, pattern.grouped);
+            if scaled < 0.0 && !already_signed {
+                number.insert(0, '-');
+            }
+            rendered.insert_str(slot, &number);
+            Some(rendered)
+        }
+        // Seção sem nenhum dígito é literal puro, que é justamente o caso da
+        // terceira seção do formato contábil ("mostre um traço no zero").
+        // Derivar isso do código é o ponto: a versão anterior devolvia a
+        // string pronta " -   " sem olhar para o formato.
+        (None, _) => Some(rendered),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy)]
+struct DigitPattern {
+    decimals: usize,
+    grouped: bool,
+}
+
+fn parse_digit_pattern(pattern: &[char]) -> DigitPattern {
+    let point = pattern.iter().position(|character| *character == '.');
+    let decimals = match point {
+        Some(position) => pattern[position + 1..]
+            .iter()
+            .filter(|character| matches!(character, '0' | '#'))
+            .count(),
+        None => 0,
+    };
+    let integer_part = match point {
+        Some(position) => &pattern[..position],
+        None => pattern,
+    };
+    DigitPattern {
+        decimals,
+        grouped: integer_part.contains(&','),
+    }
+}
+
+/// Formata com casas fixas e, opcionalmente, separador de milhar, na
+/// convenção neutra do OOXML (`,` para milhar e `.` para decimal),
+/// independente da localidade do navegador — quem traduz para a localidade é
+/// a camada de exibição, não o leitor.
+///
+/// Recebe o valor já em módulo: o sinal é decidido por quem chama, porque
+/// depende de a seção de negativo existir ou não. Isso também evita o `-0.00`
+/// que a primeira versão produzia, já que ela consultava
+/// `is_sign_negative()` — verdadeiro para `-0.0` — depois de tirar o módulo.
+fn format_grouped_fixed(value: f64, decimals: usize, grouped: bool) -> String {
+    let fixed = format_fixed_decimals(value.abs(), decimals);
+    let (integer, fraction) = fixed.split_once('.').unwrap_or((&fixed, ""));
+    if !grouped {
+        return fixed;
+    }
+    let mut result = String::with_capacity(fixed.len() + integer.len() / 3);
+    for (index, character) in integer.chars().enumerate() {
+        if index > 0 && (integer.len() - index) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(character);
+    }
+    if decimals > 0 {
+        result.push('.');
+        result.push_str(fraction);
+    }
+    result
 }
 
 /// Arredonda pra exibição com uma quantidade fixa de casas decimais do
@@ -1629,6 +1870,116 @@ mod unit_tests {
         assert_eq!(display_cell_value(Some(&value), "0%"), "50%");
         let value = CellValue::Number(0.5);
         assert_eq!(display_cell_value(Some(&value), "0.00%"), "50.00%");
+    }
+
+    #[test]
+    fn display_cell_value_formats_currency_with_literal_and_grouping() {
+        let value = CellValue::Number(888_715.25);
+        assert_eq!(
+            display_cell_value(Some(&value), "\"R$\"\\ #,##0.00"),
+            "R$ 888,715.25"
+        );
+    }
+
+    #[test]
+    fn display_cell_value_formats_accounting_zero_section() {
+        let value = CellValue::Number(0.0);
+        assert_eq!(
+            display_cell_value(
+                Some(&value),
+                "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)",
+            ),
+            " -   "
+        );
+    }
+
+    #[test]
+    fn display_cell_value_formats_currency_family_not_one_literal_code() {
+        // O ponto da generalização: os dois casos do corpus passaram a ser
+        // instâncias de uma família, não duas comparações de igualdade.
+        let value = CellValue::Number(888_715.25);
+        assert_eq!(
+            display_cell_value(Some(&value), "\"US$\"\\ #,##0.00"),
+            "US$ 888,715.25"
+        );
+        assert_eq!(
+            display_cell_value(Some(&value), "\"R$\"#,##0.00"),
+            "R$888,715.25"
+        );
+        assert_eq!(
+            display_cell_value(Some(&value), "\"R$\"\\ #,##0"),
+            "R$ 888,715"
+        );
+        assert_eq!(display_cell_value(Some(&value), "#,##0.00"), "888,715.25");
+    }
+
+    #[test]
+    fn display_cell_value_uses_the_negative_section_when_there_is_one() {
+        let value = CellValue::Number(-1_234.5);
+        // Com seção dedicada, quem escreve a marca é a própria seção — daí os
+        // parênteses e a ausência de sinal.
+        assert_eq!(
+            display_cell_value(Some(&value), "#,##0.00;(#,##0.00)"),
+            "(1,234.50)"
+        );
+        // Sem seção dedicada, o sinal entra aqui.
+        assert_eq!(display_cell_value(Some(&value), "#,##0.00"), "-1,234.50");
+    }
+
+    #[test]
+    fn display_cell_value_does_not_produce_negative_zero() {
+        // A primeira versão consultava `is_sign_negative()` depois de tirar o
+        // módulo, e `-0.0` é negativo para o f64: saía "-0.00".
+        let value = CellValue::Number(-0.0);
+        assert_eq!(display_cell_value(Some(&value), "#,##0.00"), "0.00");
+    }
+
+    #[test]
+    fn display_cell_value_falls_back_on_codes_that_are_not_modelled() {
+        // Cor, condição, científica e data não estão modeladas, e o correto é
+        // devolver o comportamento anterior em vez de arriscar um palpite.
+        let value = CellValue::Number(1_234.5);
+        assert_eq!(
+            display_cell_value(Some(&value), "[Red]#,##0.00"),
+            format_general_number(1_234.5)
+        );
+        assert_eq!(
+            display_cell_value(Some(&value), "0.00E+00"),
+            format_general_number(1_234.5)
+        );
+        assert_eq!(
+            display_cell_value(Some(&value), "dd/mm/yyyy"),
+            format_general_number(1_234.5)
+        );
+    }
+
+    #[test]
+    fn display_cell_value_gives_up_on_unquoted_letters_like_the_reference_does() {
+        // Achado no corpus real, e caro: uma planilha de custo traz
+        // `R$ #,##0.00` com o `R$` sem aspas. O XLSX.SSF.format do SheetJS,
+        // que é a referência da paridade, lança "unrecognized character R" e
+        // o leitor TypeScript cai no valor cru. Formatar aqui produziria
+        // "R$ 917,456.00", que parece mais certo e diverge em mil células.
+        let value = CellValue::Number(917_456.0);
+        assert_eq!(
+            display_cell_value(Some(&value), "R$ #,##0.00"),
+            format_general_number(917_456.0)
+        );
+        // Com aspas é outro código, e esse a referência formata.
+        assert_eq!(
+            display_cell_value(Some(&value), "\"R$\" #,##0.00"),
+            "R$ 917,456.00"
+        );
+    }
+
+    #[test]
+    fn split_format_sections_ignores_separator_inside_a_literal() {
+        assert_eq!(
+            split_format_sections("#,##0;(#,##0)"),
+            vec!["#,##0", "(#,##0)"]
+        );
+        // O `;` dentro das aspas é texto, não separador de seção.
+        assert_eq!(split_format_sections("\"a;b\"0"), vec!["\"a;b\"0"]);
     }
 
     #[test]

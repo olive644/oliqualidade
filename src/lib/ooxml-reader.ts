@@ -55,12 +55,24 @@ const BUILTIN_FORMATS: Record<number, string> = {
 };
 
 /**
- * Decodifica texto vindo do XML. Ver o contrato em `xml-text.ts`: o retorno é
- * texto puro, e pode conter `<` e `>` quando a célula os continha de verdade.
+ * Decodifica **só** as entidades e referências de caractere do XML.
+ *
+ * Existe separada de `decodeOoxmlText` porque valor de atributo e nó de texto
+ * têm contratos diferentes. Todo atributo XML é escapado por entidade, e
+ * decodificá-las é obrigatório para ler o valor real. Já as outras conversões
+ * de `decodeOoxmlText` — remoção de marcação, normalização de fim de linha e o
+ * escape `_xNNNN_` — são convenções de conteúdo textual do OOXML, e aplicá-las
+ * a todo atributo alcança muito mais do que se pretende.
+ *
+ * O caso concreto que motivou a separação está no próprio código de formato
+ * numérico, onde `_` é o operador "pule a largura do próximo caractere". Uma
+ * sequência de `_` com quatro hexadecimais e outro `_` viraria caractere de
+ * controle em silêncio. Nos formatos comuns o caractere seguinte ao `_` é `-`,
+ * `(` ou `)`, então não casa, mas nada no código impedia.
  */
-export function decodeOoxmlText(value: string): string {
+export function decodeXmlEntities(value: string): string {
   return (
-    stripXmlMarkup(value)
+    value
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')
@@ -72,6 +84,16 @@ export function decodeOoxmlText(value: string): string {
       .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
       .replace(/&#(\d+);/g, (_, decimal: string) => String.fromCodePoint(parseInt(decimal, 10)))
       .replace(/&amp;/g, "&")
+  );
+}
+
+/**
+ * Decodifica texto vindo do XML. Ver o contrato em `xml-text.ts`: o retorno é
+ * texto puro, e pode conter `<` e `>` quando a célula os continha de verdade.
+ */
+export function decodeOoxmlText(value: string): string {
+  return (
+    decodeXmlEntities(stripXmlMarkup(value))
       // Texto de célula com quebra de linha (`xml:space="preserve"`) às vezes
       // guarda `\r\n` literal no XML; o SheetJS normaliza para `\n` na
       // leitura. Sem isso, o mesmo texto diverge entre os dois leitores só
@@ -97,7 +119,9 @@ export function decodeOoxmlText(value: string): string {
 
 function attributes(tag: string): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const match of tag.matchAll(/([\w:-]+)="([^"]*)"/g)) result[match[1]!] = match[2]!;
+  // Entidades, e só elas: ver o contrato em `decodeXmlEntities`.
+  for (const match of tag.matchAll(/([\w:-]+)="([^"]*)"/g))
+    result[match[1]!] = decodeXmlEntities(match[2]!);
   return result;
 }
 

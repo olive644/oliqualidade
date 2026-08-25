@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "rust/**"
+      - "rust-toolchain.toml"
       - "src/wasm/**"
       - "src/lib/wasm-shadow-*.ts"
       - "src/lib/workbook-reading-engine.ts"
@@ -17,6 +18,7 @@ on:
     branches: [main]
     paths:
       - "rust/**"
+      - "rust-toolchain.toml"
       - "src/wasm/**"
       - "src/lib/wasm-shadow-*.ts"
       - "src/lib/workbook-reading-engine.ts"
@@ -46,6 +48,56 @@ jobs:
       - name: Check Wasm target
         run: cargo check --locked --target wasm32-unknown-unknown --manifest-path rust/oli-ooxml-core/Cargo.toml
       - name: Smoke test committed Wasm package
+        run: node scripts/test-ooxml-wasm.mjs
+
+  wasm-provenance:
+    name: Committed Wasm matches the Rust source
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Existia um vão aqui. O fonte Rust era verificado como fonte (fmt,
+      # clippy, test, check) e o binário versionado era verificado como
+      # binário (smoke test), mas nada amarrava os dois: um .wasm que não
+      # correspondesse ao Rust revisado passava em tudo, desde que se
+      # comportasse de forma plausível. Com o repositório público e o binário
+      # rodando no navegador de todo usuário, isso é superfície de cadeia de
+      # suprimentos.
+      - name: Install pinned wasm-pack
+        # Versão fixa, como o toolchain em rust-toolchain.toml: a comparação
+        # abaixo é byte a byte, então qualquer coisa que mude a saída do
+        # compilador precisa ser uma mudança declarada.
+        run: cargo install wasm-pack --locked --version 0.15.0
+
+      - name: Rebuild the Wasm package from source
+        run: node scripts/build-ooxml-wasm.mjs
+
+      - name: Compare with the committed package
+        # `git diff --exit-code` falha quando o que foi reconstruído difere do
+        # que está versionado. É a única forma de a revisão humana do Rust
+        # valer também para o binário.
+        run: |
+          if ! git diff --exit-code --stat -- src/wasm/oli-ooxml-core; then
+            echo "::error::O pacote Wasm versionado não corresponde ao fonte Rust deste commit. Rode 'npm run wasm:build' e inclua o resultado."
+            git diff --stat -- src/wasm/oli-ooxml-core
+            exit 1
+          fi
+
+      - name: Publish the rebuilt package when it diverges
+        # Sem isto, quem vê a falha precisa reproduzir a build localmente, e
+        # este projeto já registrou que o wasm-pack não roda em toda máquina
+        # (falta a CRT do Windows). Publicando o resultado, corrigir vira
+        # baixar e commitar.
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: oli-ooxml-core-wasm-rebuilt
+          path: src/wasm/oli-ooxml-core
+          if-no-files-found: error
+
+      - name: Smoke test the rebuilt package
         run: node scripts/test-ooxml-wasm.mjs
 
   corpus-parity:
