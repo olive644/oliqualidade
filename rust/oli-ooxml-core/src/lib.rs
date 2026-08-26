@@ -840,7 +840,7 @@ fn parse_worksheet(
                 append_cell_text(
                     current_cell.as_mut().expect("guarded"),
                     text_target,
-                    &decoded,
+                    decoded,
                 );
             }
             Event::GeneralRef(ref reference) if current_cell.is_some() && text_target.is_some() => {
@@ -962,7 +962,7 @@ fn parse_shared_strings(
             Event::CData(ref text) if current.is_some() && in_text => {
                 let decoded = text.as_ref();
                 add_text_bytes(&mut text_bytes, decoded.len(), limits, part)?;
-                current.as_mut().expect("guarded").push_str(&decoded);
+                current.as_mut().expect("guarded").push_str(decoded);
             }
             Event::GeneralRef(ref reference) if current.is_some() && in_text => {
                 let resolved = resolve_general_reference(reference, part)?;

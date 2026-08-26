@@ -271,7 +271,7 @@ fn parse_spreadsheet(
                     .as_mut()
                     .expect("guarded")
                     .text
-                    .push_str(&decoded);
+                    .push_str(decoded);
             }
             Event::End(ref element)
                 if element.local_name().as_ref() == "p" && current_cell.is_some() =>
