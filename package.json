@@ -37,7 +37,7 @@
     "verify": "npm test && npm run build && npm run performance:check"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.9.0",
+    "@hookform/resolvers": "^5.9.1",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
@@ -65,10 +65,10 @@
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.2.1",
-    "@tanstack/react-query": "^5.101.1",
-    "@tanstack/react-router": "^1.170.29",
-    "@tanstack/react-start": "^1.168.46",
-    "@tanstack/react-virtual": "^3.14.9",
+    "@tanstack/react-query": "^5.102.0",
+    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-start": "^1.168.49",
+    "@tanstack/react-virtual": "^3.14.10",
     "@tanstack/router-plugin": "^1.168.23",
     "canvg": "^4.0.3",
     "class-variance-authority": "^0.7.1",
@@ -77,15 +77,15 @@
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
     "fflate": "^0.8.2",
-    "html2canvas-pro": "^2.3.8",
-    "input-otp": "^1.4.2",
+    "html2canvas-pro": "^2.3.9",
+    "input-otp": "^1.5.0",
     "jspdf": "^4.2.1",
-    "lucide-react": "^1.31.0",
+    "lucide-react": "^1.33.0",
     "react": "^19.2.0",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.0",
-    "react-hook-form": "^7.71.2",
-    "react-resizable-panels": "^4.6.5",
+    "react-hook-form": "^7.86.0",
+    "react-resizable-panels": "^4.12.3",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
@@ -120,7 +120,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "uuid": "^11.1.1"
