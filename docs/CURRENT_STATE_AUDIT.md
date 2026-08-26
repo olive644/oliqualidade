@@ -16382,3 +16382,79 @@ anterior de segurança do Gemini continua passando junto.
 ### Versão
 
 `0.10.0-beta.8` → `0.10.0-beta.9`.
+
+## 141. O grafo de código versionado foi removido
+
+`graphify-out/` guardava 3,6 MB de artefato derivado do código: 2 MB de JSON,
+1,6 MB de HTML e um relatório. A remoção veio de uma constatação simples, feita
+enquanto se revisava a PR do streaming: **nada consumia aquilo**. Nenhum
+import, nenhum script de build, nenhum job de CI.
+
+### O que a revisão do streaming revelou
+
+A PR #283 trazia o grafo regenerado junto com a mudança do assistente, e o
+diff ficou em 16.684 linhas acrescentadas contra 61.935 removidas — para uma
+mudança de código que, sozinha, tem cerca de 500 linhas. Isso torna a revisão
+pior: o que importa fica escondido no meio do artefato.
+
+Olhando o conteúdo, o grafo regenerado tinha 997 nós contra 1.839 do
+versionado, e declarava a própria origem:
+
+```text
+"generator": "local TypeScript structural fallback"
+```
+
+Não foi descuido de quem regerou. `scripts/build-code-graph.mjs`, que era o
+`npm run graph:build` do próprio projeto, **é** o gerador de emergência, e o
+relatório que ele escrevia dizia isso: "The installed graphify executable could
+not start under the current process sandbox, so no inferred semantic edges were
+added."
+
+Ou seja, a versão rica que estava no repositório veio da ferramenta `graphify`
+de verdade, meses atrás, e não era reproduzível por ninguém usando o comando
+que o repositório oferecia. Quem rodasse o comando documentado degradava o
+artefato, e o repositório não tinha como distinguir uma coisa da outra.
+
+### Por que remover, e não regerar direito
+
+Um artefato derivado versionado só se paga quando alguém o consome. Este não
+era consumido por nada, custava 3,6 MB, produzia diffs de dezenas de milhares
+de linhas e tinha um gerador que documentava a própria incompletude.
+
+Saem os três arquivos, sai o `npm run graph:build`, sai
+`scripts/build-code-graph.mjs`, e `graphify-out/` entra no `.gitignore` para
+o caso de alguém gerar localmente. A capacidade de gerar o grafo não se perde:
+ela nunca esteve no repositório, estava na ferramenta externa.
+
+### O que fica no lugar
+
+Nada, e é essa a resposta. O que este projeto usa para orientar quem chega é o
+`SECOND_BRAIN.md`, que explica intenção, e este audit, que explica decisão.
+Um grafo extraído do código mostra dependências que o leitor já enxerga
+abrindo os arquivos; ele não substitui nenhum dos dois documentos, e não estava
+sendo usado como complemento.
+
+O grafo do Obsidian, que é derivado dos links entre as notas Markdown,
+continua existindo e não tem relação com este: ele descreve a documentação, não
+o código.
+
+### Duas observações herdadas da PR #283
+
+Ficam registradas aqui porque não bloqueavam aquela entrega e continuam
+valendo:
+
+- **Os buffers de SSE não têm teto.** Nos dois lados, cliente e servidor, o
+  buffer acumula até aparecer um separador de evento. Um provedor que nunca
+  emitisse separador faria a memória crescer sem limite. A chance é baixa
+  porque o outro lado é o Gemini, mas destoa do resto do projeto, que limita
+  tudo (`readLimitedJson` com `MAX_CHAT_BODY_BYTES`, `max_text_bytes` no
+  leitor Rust).
+- **O tempo limite não cobre o corpo da resposta.** O `setTimeout` de 20s é
+  cancelado quando os cabeçalhos chegam. Isso já era assim, mas antes o corpo
+  era consumido em seguida; com streaming, a janela sem prazo passa a ser a
+  resposta inteira, e um stream travado no meio depende só do limite da
+  plataforma.
+
+### Versão
+
+`0.10.0-beta.9` → `0.10.0-beta.10`.
