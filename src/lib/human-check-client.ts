@@ -14,7 +14,7 @@ import { requestTurnstileToken, turnstileSiteKey } from "@/lib/turnstile-client"
  * há algo errado do lado do servidor ou da chave, e insistir viraria um laço
  * de desafios com a pessoa presa no meio.
  */
-export async function postWithHumanCheck(url: string, body: unknown) {
+export async function postResponseWithHumanCheck(url: string, body: unknown, signal?: AbortSignal) {
   const send = (token?: string) =>
     fetch(url, {
       method: "POST",
@@ -23,16 +23,21 @@ export async function postWithHumanCheck(url: string, body: unknown) {
         ...(token ? { [TURNSTILE_TOKEN_HEADER]: token } : {}),
       },
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     });
 
   let response = await send();
-  let raw = await response.text();
+  const raw = response.status === 403 ? await response.clone().text() : "";
   if (response.status === 403 && needsHumanCheck(raw) && turnstileSiteKey()) {
     const token = await requestTurnstileToken();
     response = await send(token);
-    raw = await response.text();
   }
-  return { response, raw };
+  return response;
+}
+
+export async function postWithHumanCheck(url: string, body: unknown, signal?: AbortSignal) {
+  const response = await postResponseWithHumanCheck(url, body, signal);
+  return { response, raw: await response.text() };
 }
 
 function needsHumanCheck(raw: string) {

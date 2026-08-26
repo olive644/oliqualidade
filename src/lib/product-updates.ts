@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.8";
+export const APP_VERSION = "0.10.0-beta.9";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-26-assistente-responde-enquanto-escreve",
+    version: APP_VERSION,
+    date: "2026-08-26",
+    title: "O assistente passou a responder enquanto escreve",
+    summary:
+      "A resposta do Oli agora aparece trecho por trecho, assim que o Gemini produz cada parte, sem esperar o texto inteiro ficar pronto.",
+    highlights: [
+      "A geração, o servidor e a conversa usam o mesmo fluxo contínuo; nenhum dos três segura a resposta completa antes de mostrar.",
+      "O indicador de análise permanece até chegar o primeiro trecho e então dá lugar ao texto que está sendo produzido.",
+      "Se a conexão terminar no meio, o Oli avisa que a resposta foi interrompida em vez de apresentar um texto incompleto como concluído.",
+      "Trocar de painel ou de aba cancela a resposta anterior, evitando que ela apareça no contexto errado.",
+    ],
+  },
   {
     id: "2026-08-26-leitor-xml-atualizado",
     version: APP_VERSION,

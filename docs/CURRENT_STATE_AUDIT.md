@@ -16318,3 +16318,67 @@ mas significa que atualização do lado Rust nunca é "mesclar e pronto".
 ### Versão
 
 `0.10.0-beta.7` → `0.10.0-beta.8`.
+
+## 142. Streaming do assistente de ponta a ponta
+
+O chat parecia ter streaming, mas o caminho real tinha dois pontos de
+acumulação. `gemini-server.ts` esperava o JSON completo da Interactions API e
+só então devolvia `{ answer }`; `gemini-client.ts`, por sua vez, chamava
+`response.text()` e só atualizava o React depois de ler a resposta inteira.
+Qualquer streaming existente antes ou depois desses pontos ficava invisível
+para a pessoa.
+
+### O contrato agora é contínuo nos dois saltos
+
+A chamada à Interactions API passou a enviar `stream: true`, pedir SSE e usar
+`alt=sse`. O servidor não repassa o evento bruto do provedor: ele reconhece
+`step.start` e `step.delta`, aceita somente texto de `model_output` e transforma
+cada fragmento num contrato SSE mínimo do produto:
+
+```text
+event: delta
+data: {"text":"trecho"}
+
+event: done
+data: {}
+```
+
+Resumos de pensamento, assinaturas e eventos de ciclo de vida ficam no
+servidor. Isso preserva a abstração do cliente e evita expor conteúdo que não é
+a resposta final. Os headers desativam cache e buffering conhecido de proxy;
+o `TransformStream` encaminha cada evento assim que ele chega, sem montar o
+texto completo em memória.
+
+No navegador, `fetch` continua sendo usado porque a requisição é `POST` e leva
+o contexto agregado do painel. `gemini-client.ts` lê o `ReadableStream`,
+acumula os deltas e chama `onUpdate` a cada trecho. O painel troca o loader pelo
+texto assim que chega o primeiro fragmento e só grava a mensagem definitiva no
+histórico quando recebe `done`.
+
+### Falha, compatibilidade e cancelamento
+
+- Resposta HTTP de erro continua sendo JSON e mantém as mensagens seguras já
+  existentes para chave, modelo, cota, sessão, origem, Turnstile e rate limit.
+- Um stream que fecha depois de algum texto, mas sem `done`, é tratado como
+  interrompido. Texto parcial nunca finge ser resposta concluída.
+- Servidor novo ainda transforma uma resposta JSON inesperada do provedor em
+  SSE; cliente novo ainda entende o JSON do servidor antigo. Isso evita quebra
+  durante uma implantação em que assets e funções não viram ao mesmo tempo.
+- O `AbortSignal` sai do componente, atravessa a repetição opcional do
+  Turnstile e chega ao fetch do Gemini. Trocar de painel, trocar de aba ou
+  desmontar a conversa cancela a geração anterior e impede que um trecho
+  atrasado apareça no contexto novo.
+- A prova humana continua podendo chegar por `Set-Cookie` na própria resposta
+  SSE; `withHumanProof` e `withSecurityHeaders` preservam o corpo como stream.
+
+### Verificação
+
+Os testes cobrem separadores CRLF e caracteres UTF-8 cortados entre chunks,
+primeiro delta observável antes de o provedor fechar, conteúdo inicial em
+`step.start`, continuação em `step.delta`, acumulação incremental no cliente,
+propagação do sinal de cancelamento e recusa de fechamento prematuro. A suíte
+anterior de segurança do Gemini continua passando junto.
+
+### Versão
+
+`0.10.0-beta.8` → `0.10.0-beta.9`.
