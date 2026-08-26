@@ -16185,3 +16185,66 @@ ambiente local e a CI conferem.
 ### Versão
 
 `0.10.0-beta.5` → `0.10.0-beta.6`.
+
+## 140. O Vite 8.2 funde chunks e triplica o pacote de entrada
+
+O grupo `minor-and-patch` do Dependabot trouxe 13 pacotes e o orçamento de
+desempenho recusou:
+
+```text
+Orçamento excedido:
+- index-*.js: 1053.7 KiB > 450.0 KiB (chunk JavaScript)
+```
+
+Reproduzido localmente e isolado fixando uma dependência por vez. Não é o
+conjunto, é um pacote só:
+
+| vite | pacote de entrada | orçamento |
+| --- | --- | --- |
+| 8.1.5 | 296,6 KiB | aprovado |
+| 8.2.2 | 1.053,7 KiB | excedido |
+
+Os outros doze não têm participação nenhuma.
+
+### Não é código novo, é fatiamento
+
+A armadilha aqui seria concluir que o bundle cresceu. Medindo os dois builds
+inteiros:
+
+```text
+vite 8.1.5:  3.863.336 bytes em 28 chunks
+vite 8.2.2:  3.855.019 bytes em 19 chunks
+```
+
+O total é praticamente idêntico — 8 KB *a menos*, aliás. O que mudou é a
+divisão: nove chunks desapareceram, fundidos no pacote de entrada. A busca
+global, que era um chunk de 436 KiB carregado sob demanda, some da lista.
+
+Isso é regressão real de primeira abertura mesmo com o total igual: o que era
+buscado quando a pessoa precisava passa a ser baixado antes de a tela
+aparecer. É exatamente a diferença que o orçamento por chunk existe para
+enxergar, e que um orçamento por tamanho total não veria.
+
+Vale registrar ao lado do conceito de "fachada de chunk" já anotado no segundo
+cérebro: lá o alerta é não confundir renomeação com crescimento; aqui é o
+contrário, não confundir total estável com ausência de regressão.
+
+### O que foi feito, e o que não foi
+
+O Vite saiu do grupo `minor-and-patch` no `dependabot.yml`
+(`exclude-patterns`). Agrupado, ele travava doze atualizações inofensivas
+junto com uma que exige investigação; sozinho, vira uma PR que se pode medir
+com calma enquanto o resto do lote anda.
+
+O que **não** foi feito, de propósito: mexer no orçamento. Ele fez o trabalho
+dele. Subir o teto para acomodar a regressão seria desligar o alarme por causa
+do incêndio.
+
+A investigação do fatiamento em si fica em aberto. Quando o Vite subir, o
+caminho é olhar a configuração de `manualChunks` (ou o que o Rolldown usa no
+lugar) e conferir no navegador o que chega no primeiro carregamento, não só o
+relatório do build.
+
+### Versão
+
+`0.10.0-beta.6` → `0.10.0-beta.7`.
