@@ -7,6 +7,19 @@ updates:
     open-pull-requests-limit: 10
     groups:
       minor-and-patch:
+        # O Vite fica de fora do grupo, e por evidência, não por precaução.
+        # A atualização 8.1.5 -> 8.2.2 veio dentro de um lote de 13 pacotes e
+        # fundiu nove chunks do build: o pacote de entrada saltou de 296 KiB
+        # para 1.053 KiB, estourando o orçamento de desempenho. O total de
+        # bytes ficou igual (3,86 MB nos dois), então não é código novo — é o
+        # que era carregado sob demanda passando a vir no primeiro
+        # carregamento.
+        #
+        # Agrupado, isso trava doze atualizações inofensivas junto com uma que
+        # exige investigação de fatiamento. Sozinho, o Vite vira uma PR que se
+        # pode medir com calma, e o resto do lote anda.
+        exclude-patterns:
+          - "vite"
         update-types:
           - "minor"
           - "patch"

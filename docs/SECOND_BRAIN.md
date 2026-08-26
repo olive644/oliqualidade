@@ -153,6 +153,8 @@ audit inteiro.
 
 ## Onde mexer
 
+| Atualização do Vite entra sozinha, fora do grupo do Dependabot | `exclude-patterns: ["vite"]` no grupo `minor-and-patch` de `.github/dependabot.yml` | 8.1.5 → 8.2.2 fundiu 9 chunks e levou o pacote de entrada de 296 KiB para 1.053 KiB **com o total de bytes igual** (3,86 MB): o que era sob demanda virou primeiro carregamento; ver [[CURRENT_STATE_AUDIT#140. O Vite 8.2 funde chunks e triplica o pacote de entrada]] |
+
 | Versão de Node da CI e do ambiente local | `node-version: 24` nos dois workflows e `engines.node: ">=24"` no `package.json`; a produção é o runtime `nodejs24.x` da Vercel | ficar numa major atrás da produção deixa uma faixa sem verificação, e faz o npm da CI escrever o `package-lock` diferente do de todo mundo — foi o que quebrou **todas** as PRs do Dependabot com `Missing: lru-cache@11.5.2`; ver [[CURRENT_STATE_AUDIT#139. A CI testava numa major de Node mais antiga que a produção]] |
 
 | Formatar número pelo código de formato no núcleo Rust | `format_from_section_code` (`rust/oli-ooxml-core/src/lib.rs`): seções por `;`, literal entre aspas, escape, milhar, percentual; o caminho de decimais fixos vem antes e só o que virava `General` chega aqui | a referência é `XLSX.SSF.format`, **não** o Excel: `R$ #,##0.00` sem aspas o SSF recusa (`unrecognized character R`) e cai no valor cru, então **toda letra fora de aspas devolve `None`**; ver [[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]] |
@@ -887,6 +889,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 - `v0.10.0-beta.6` (CI passa a rodar na mesma major de Node da produção;
   destrava as PRs do Dependabot). Ver
   [[CURRENT_STATE_AUDIT#139. A CI testava numa major de Node mais antiga que a produção]].
+
+- `v0.10.0-beta.7` (Vite fora do grupo do Dependabot: 8.2 funde chunks e
+  triplica o pacote de entrada). Ver
+  [[CURRENT_STATE_AUDIT#140. O Vite 8.2 funde chunks e triplica o pacote de entrada]].
 
 ## Checklist antes de publicar
 

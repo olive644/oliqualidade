@@ -7,10 +7,23 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.6";
+export const APP_VERSION = "0.10.0-beta.7";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-26-orcamento-pegou-carregamento",
+    version: APP_VERSION,
+    date: "2026-08-26",
+    title: "Uma atualização deixaria o aplicativo mais lento para abrir, e foi barrada",
+    summary:
+      "Uma atualização de ferramenta de construção juntaria num pacote só o que hoje é carregado conforme a necessidade. O tamanho total seria o mesmo, mas a primeira abertura ficaria bem mais pesada.",
+    highlights: [
+      "O pacote inicial iria de 296 KB para mais de 1 MB, e a verificação automática de desempenho recusou a mudança.",
+      "Ela foi separada das outras doze atualizações do mesmo lote, que não têm nada a ver com isso e seguem normalmente.",
+      "Nada muda para você agora. É a proteção funcionando antes de a lentidão chegar até a sua tela.",
+    ],
+  },
   {
     id: "2026-08-26-ci-na-versao-de-producao",
     version: APP_VERSION,
