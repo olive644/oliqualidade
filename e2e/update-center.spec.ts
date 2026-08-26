@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { APP_VERSION_LABEL } from "../src/lib/product-updates";
 
 test("avisa sobre uma versão nova e preserva a leitura no navegador", async ({ page }) => {
   await page.goto("/");
@@ -10,7 +11,7 @@ test("avisa sobre uma versão nova e preserva a leitura no navegador", async ({ 
   await unreadButton.click();
   const dialog = page.getByRole("dialog", { name: "Atualizações do OliQualidade" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("v0.10.0-beta.8").first()).toBeVisible();
+  await expect(dialog.getByText(APP_VERSION_LABEL).first()).toBeVisible();
   await expect(
     dialog.getByText("Correções de estabilidade em datas, cores, fórmulas e leitura automática"),
   ).toBeVisible();
