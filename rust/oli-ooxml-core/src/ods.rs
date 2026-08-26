@@ -121,7 +121,7 @@ fn parse_spreadsheet(
         count_event(&mut events, limits, part)?;
         match event {
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"table" =>
+                if element.local_name().as_ref() == "table" =>
             {
                 if let Some(builder) = sheet.take() {
                     finish_sheet(builder, &mut sheets);
@@ -132,7 +132,7 @@ fn parse_spreadsheet(
                         limits.max_sheets
                     )));
                 }
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 let name = attrs
                     .get("name")
                     .cloned()
@@ -150,9 +150,9 @@ fn parse_spreadsheet(
                 }
             }
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"table-column" =>
+                if element.local_name().as_ref() == "table-column" =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 let repeated = attrs
                     .get("number-columns-repeated")
                     .and_then(|value| value.parse::<u32>().ok())
@@ -171,9 +171,9 @@ fn parse_spreadsheet(
                 column_cursor = column_cursor.saturating_add(repeated).min(MAX_COLUMN + 1);
             }
             Event::Start(ref element)
-                if element.local_name().as_ref() == b"table-row" && sheet.is_some() =>
+                if element.local_name().as_ref() == "table-row" && sheet.is_some() =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 row_repeated = attrs
                     .get("number-rows-repeated")
                     .and_then(|value| value.parse::<u32>().ok())
@@ -185,9 +185,9 @@ fn parse_spreadsheet(
                 row_cell_templates.clear();
             }
             Event::Empty(ref element)
-                if element.local_name().as_ref() == b"table-row" && sheet.is_some() =>
+                if element.local_name().as_ref() == "table-row" && sheet.is_some() =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 let repeated = attrs
                     .get("number-rows-repeated")
                     .and_then(|value| value.parse::<u32>().ok())
@@ -208,11 +208,11 @@ fn parse_spreadsheet(
             Event::Start(ref element) | Event::Empty(ref element)
                 if matches!(
                     element.local_name().as_ref(),
-                    b"table-cell" | b"covered-table-cell"
+                    "table-cell" | "covered-table-cell"
                 ) && sheet.is_some() =>
             {
-                let covered = element.local_name().as_ref() == b"covered-table-cell";
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let covered = element.local_name().as_ref() == "covered-table-cell";
+                let attrs = attributes(element, part)?;
                 let template = CellTemplate {
                     value_type: attrs.get("value-type").cloned(),
                     value: attrs.get("value").cloned(),
@@ -245,7 +245,7 @@ fn parse_spreadsheet(
                 }
             }
             Event::Start(ref element)
-                if current_cell.is_some() && element.local_name().as_ref() == b"p" =>
+                if current_cell.is_some() && element.local_name().as_ref() == "p" =>
             {
                 in_paragraph = true;
                 if let Some(cell) = current_cell.as_mut()
@@ -255,10 +255,7 @@ fn parse_spreadsheet(
                 }
             }
             Event::Text(ref text) if current_cell.is_some() && in_paragraph => {
-                let decoded = text.decode().map_err(|source| InventoryError::Xml {
-                    part: part.into(),
-                    source: source.into(),
-                })?;
+                let decoded = text.as_ref();
                 text_bytes = text_bytes
                     .checked_add(decoded.len() as u64)
                     .ok_or_else(|| {
@@ -274,17 +271,17 @@ fn parse_spreadsheet(
                     .as_mut()
                     .expect("guarded")
                     .text
-                    .push_str(&decoded);
+                    .push_str(decoded);
             }
             Event::End(ref element)
-                if element.local_name().as_ref() == b"p" && current_cell.is_some() =>
+                if element.local_name().as_ref() == "p" && current_cell.is_some() =>
             {
                 in_paragraph = false;
             }
             Event::End(ref element)
                 if matches!(
                     element.local_name().as_ref(),
-                    b"table-cell" | b"covered-table-cell"
+                    "table-cell" | "covered-table-cell"
                 ) =>
             {
                 if let Some(template) = current_cell.take() {
@@ -292,7 +289,7 @@ fn parse_spreadsheet(
                 }
             }
             Event::End(ref element)
-                if element.local_name().as_ref() == b"table-row" && sheet.is_some() =>
+                if element.local_name().as_ref() == "table-row" && sheet.is_some() =>
             {
                 let templates = std::mem::take(&mut row_cell_templates);
                 close_row(
@@ -305,7 +302,7 @@ fn parse_spreadsheet(
                 )?;
             }
             Event::End(ref element)
-                if element.local_name().as_ref() == b"table" && sheet.is_some() =>
+                if element.local_name().as_ref() == "table" && sheet.is_some() =>
             {
                 if let Some(builder) = sheet.take() {
                     workbook_cell_count = workbook_cell_count

@@ -4,9 +4,7 @@ use std::{
     path::Component,
 };
 
-use quick_xml::{
-    Reader, XmlVersion, encoding::Decoder, escape::unescape, events::BytesStart, events::Event,
-};
+use quick_xml::{Reader, XmlVersion, escape::unescape, events::BytesStart, events::Event};
 use serde::Serialize;
 use thiserror::Error;
 use zip::ZipArchive;
@@ -577,17 +575,17 @@ fn parse_workbook(
         count_event(&mut events, limits, part)?;
         match event {
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"workbookPr" =>
+                if element.local_name().as_ref() == "workbookPr" =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 if attrs.get("date1904").is_some_and(|value| is_true(value)) {
                     date_system = DateSystem::Excel1904;
                 }
             }
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"sheet" =>
+                if element.local_name().as_ref() == "sheet" =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 if let (Some(name), Some(relationship_id)) = (attrs.get("name"), attrs.get("id")) {
                     sheets.push(WorkbookSheet {
                         name: name.clone(),
@@ -637,9 +635,9 @@ fn parse_relationships(
         count_event(&mut events, limits, part)?;
         match event {
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"Relationship" =>
+                if element.local_name().as_ref() == "Relationship" =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 if let (Some(id), Some(target)) = (attrs.get("Id"), attrs.get("Target")) {
                     relationships.insert(
                         id.clone(),
@@ -695,16 +693,14 @@ fn parse_worksheet(
         count_event(&mut events, limits, part)?;
         match event {
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"dimension" =>
+                if element.local_name().as_ref() == "dimension" =>
             {
-                declared_dimension = attributes(element, reader.decoder(), part)?
-                    .get("ref")
-                    .cloned();
+                declared_dimension = attributes(element, part)?.get("ref").cloned();
             }
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"row" =>
+                if element.local_name().as_ref() == "row" =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 if attrs.get("hidden").is_some_and(|value| is_true(value)) {
                     push_structural_record(
                         &mut structural_records,
@@ -729,9 +725,9 @@ fn parse_worksheet(
                 }
             }
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"col" =>
+                if element.local_name().as_ref() == "col" =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 if attrs.get("hidden").is_some_and(|value| is_true(value)) {
                     push_structural_record(
                         &mut structural_records,
@@ -757,7 +753,7 @@ fn parse_worksheet(
                 }
             }
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"mergeCell" =>
+                if element.local_name().as_ref() == "mergeCell" =>
             {
                 push_structural_record(
                     &mut structural_records,
@@ -765,9 +761,7 @@ fn parse_worksheet(
                     sheet_name,
                     "linhas/colunas ocultas e mesclagens",
                 )?;
-                let reference = attributes(element, reader.decoder(), part)?
-                    .get("ref")
-                    .cloned();
+                let reference = attributes(element, part)?.get("ref").cloned();
                 if let Some(reference) = reference.filter(|value| is_valid_cell_range(value)) {
                     merged_ranges.push(reference);
                 } else {
@@ -779,15 +773,15 @@ fn parse_worksheet(
                     );
                 }
             }
-            Event::Start(ref element) if element.local_name().as_ref() == b"c" => {
+            Event::Start(ref element) if element.local_name().as_ref() == "c" => {
                 cell_count += 1;
                 enforce_cell_limit(cell_count, limits, sheet_name)?;
-                current_cell = start_cell(element, reader.decoder(), part, &mut bounds)?;
+                current_cell = start_cell(element, part, &mut bounds)?;
             }
-            Event::Empty(ref element) if element.local_name().as_ref() == b"c" => {
+            Event::Empty(ref element) if element.local_name().as_ref() == "c" => {
                 cell_count += 1;
                 enforce_cell_limit(cell_count, limits, sheet_name)?;
-                if let Some(builder) = start_cell(element, reader.decoder(), part, &mut bounds)? {
+                if let Some(builder) = start_cell(element, part, &mut bounds)? {
                     cells.push(finish_cell(
                         builder,
                         resources.shared_strings,
@@ -800,18 +794,16 @@ fn parse_worksheet(
             }
             Event::Start(ref element) if current_cell.is_some() => {
                 text_target = match element.local_name().as_ref() {
-                    b"v" => Some(CellTextTarget::Value),
-                    b"f" => Some(CellTextTarget::Formula),
-                    b"t" => Some(CellTextTarget::Inline),
+                    "v" => Some(CellTextTarget::Value),
+                    "f" => Some(CellTextTarget::Formula),
+                    "t" => Some(CellTextTarget::Inline),
                     _ => text_target,
                 };
             }
             Event::Text(ref text) if current_cell.is_some() && text_target.is_some() => {
-                let decoded = text.decode().map_err(|source| InventoryError::Xml {
-                    part: part.into(),
-                    source: source.into(),
-                })?;
-                let decoded = unescape(&decoded).map_err(|source| InventoryError::Xml {
+                // O conteúdo já chega como &str: a 0.42 removeu `decode()`
+                // dos eventos e passou a garantir UTF-8 na leitura.
+                let decoded = unescape(text.as_ref()).map_err(|source| InventoryError::Xml {
                     part: part.into(),
                     source: source.into(),
                 })?;
@@ -833,10 +825,7 @@ fn parse_worksheet(
                 );
             }
             Event::CData(ref text) if current_cell.is_some() && text_target.is_some() => {
-                let decoded = text.decode().map_err(|source| InventoryError::Xml {
-                    part: part.into(),
-                    source: source.into(),
-                })?;
+                let decoded = text.as_ref();
                 text_bytes = text_bytes
                     .checked_add(decoded.len() as u64)
                     .ok_or_else(|| {
@@ -851,7 +840,7 @@ fn parse_worksheet(
                 append_cell_text(
                     current_cell.as_mut().expect("guarded"),
                     text_target,
-                    &decoded,
+                    decoded,
                 );
             }
             Event::GeneralRef(ref reference) if current_cell.is_some() && text_target.is_some() => {
@@ -875,8 +864,8 @@ fn parse_worksheet(
             }
             Event::End(ref element) if current_cell.is_some() => {
                 match element.local_name().as_ref() {
-                    b"v" | b"f" | b"t" => text_target = None,
-                    b"c" => {
+                    "v" | "f" | "t" => text_target = None,
+                    "c" => {
                         if let Some(builder) = current_cell.take() {
                             cells.push(finish_cell(
                                 builder,
@@ -956,16 +945,14 @@ fn parse_shared_strings(
         })?;
         count_event(&mut events, limits, part)?;
         match event {
-            Event::Start(ref element) if element.local_name().as_ref() == b"si" => {
+            Event::Start(ref element) if element.local_name().as_ref() == "si" => {
                 current = Some(String::new());
             }
-            Event::Start(ref element) if element.local_name().as_ref() == b"t" => in_text = true,
+            Event::Start(ref element) if element.local_name().as_ref() == "t" => in_text = true,
             Event::Text(ref text) if current.is_some() && in_text => {
-                let decoded = text.decode().map_err(|source| InventoryError::Xml {
-                    part: part.into(),
-                    source: source.into(),
-                })?;
-                let decoded = unescape(&decoded).map_err(|source| InventoryError::Xml {
+                // O conteúdo já chega como &str: a 0.42 removeu `decode()`
+                // dos eventos e passou a garantir UTF-8 na leitura.
+                let decoded = unescape(text.as_ref()).map_err(|source| InventoryError::Xml {
                     part: part.into(),
                     source: source.into(),
                 })?;
@@ -973,20 +960,17 @@ fn parse_shared_strings(
                 current.as_mut().expect("guarded").push_str(&decoded);
             }
             Event::CData(ref text) if current.is_some() && in_text => {
-                let decoded = text.decode().map_err(|source| InventoryError::Xml {
-                    part: part.into(),
-                    source: source.into(),
-                })?;
+                let decoded = text.as_ref();
                 add_text_bytes(&mut text_bytes, decoded.len(), limits, part)?;
-                current.as_mut().expect("guarded").push_str(&decoded);
+                current.as_mut().expect("guarded").push_str(decoded);
             }
             Event::GeneralRef(ref reference) if current.is_some() && in_text => {
                 let resolved = resolve_general_reference(reference, part)?;
                 add_text_bytes(&mut text_bytes, resolved.len(), limits, part)?;
                 current.as_mut().expect("guarded").push_str(&resolved);
             }
-            Event::End(ref element) if element.local_name().as_ref() == b"t" => in_text = false,
-            Event::End(ref element) if element.local_name().as_ref() == b"si" => {
+            Event::End(ref element) if element.local_name().as_ref() == "t" => in_text = false,
+            Event::End(ref element) if element.local_name().as_ref() == "si" => {
                 strings.push(current.take().unwrap_or_default());
                 if strings.len() > limits.max_shared_strings {
                     return Err(InventoryError::ResourceLimit(format!(
@@ -1023,16 +1007,16 @@ fn parse_style_formats(xml: &[u8], limits: InventoryLimits) -> Result<Vec<String
         })?;
         count_event(&mut events, limits, part)?;
         match event {
-            Event::Start(ref element) if element.local_name().as_ref() == b"cellXfs" => {
+            Event::Start(ref element) if element.local_name().as_ref() == "cellXfs" => {
                 in_cell_xfs = true;
             }
-            Event::End(ref element) if element.local_name().as_ref() == b"cellXfs" => {
+            Event::End(ref element) if element.local_name().as_ref() == "cellXfs" => {
                 in_cell_xfs = false;
             }
             Event::Start(ref element) | Event::Empty(ref element)
-                if element.local_name().as_ref() == b"numFmt" =>
+                if element.local_name().as_ref() == "numFmt" =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 if let (Some(id), Some(code)) = (attrs.get("numFmtId"), attrs.get("formatCode"))
                     && let Ok(id) = id.parse::<u32>()
                 {
@@ -1040,9 +1024,9 @@ fn parse_style_formats(xml: &[u8], limits: InventoryLimits) -> Result<Vec<String
                 }
             }
             Event::Start(ref element) | Event::Empty(ref element)
-                if in_cell_xfs && element.local_name().as_ref() == b"xf" =>
+                if in_cell_xfs && element.local_name().as_ref() == "xf" =>
             {
-                let attrs = attributes(element, reader.decoder(), part)?;
+                let attrs = attributes(element, part)?;
                 let id = attrs
                     .get("numFmtId")
                     .and_then(|value| value.parse::<u32>().ok())
@@ -1071,11 +1055,10 @@ fn parse_style_formats(xml: &[u8], limits: InventoryLimits) -> Result<Vec<String
 
 fn start_cell(
     element: &BytesStart<'_>,
-    decoder: Decoder,
     part: &str,
     bounds: &mut Option<(u32, u32, u32, u32)>,
 ) -> Result<Option<CellBuilder>, InventoryError> {
-    let attrs = attributes(element, decoder, part)?;
+    let attrs = attributes(element, part)?;
     let Some(address) = attrs.get("r").cloned() else {
         return Ok(None);
     };
@@ -1656,11 +1639,8 @@ fn resolve_general_reference(
     {
         return Ok(character.to_string());
     }
-    let name = reference.decode().map_err(|source| InventoryError::Xml {
-        part: part.into(),
-        source: source.into(),
-    })?;
-    match name.as_ref() {
+    let name: &str = reference.as_ref();
+    match name {
         "amp" => Ok("&".into()),
         "lt" => Ok("<".into()),
         "gt" => Ok(">".into()),
@@ -1674,7 +1654,6 @@ fn resolve_general_reference(
 
 fn attributes(
     element: &BytesStart<'_>,
-    decoder: Decoder,
     part: &str,
 ) -> Result<HashMap<String, String>, InventoryError> {
     let mut result = HashMap::new();
@@ -1683,9 +1662,9 @@ fn attributes(
             part: part.into(),
             source: source.into(),
         })?;
-        let key = String::from_utf8_lossy(attribute.key.local_name().as_ref()).into_owned();
+        let key = attribute.key.local_name().as_ref().to_owned();
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::default(), decoder)
+            .normalized_value(XmlVersion::default())
             .map_err(|source| InventoryError::Xml {
                 part: part.into(),
                 source,
