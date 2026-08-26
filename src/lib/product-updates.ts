@@ -7,10 +7,23 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.5";
+export const APP_VERSION = "0.10.0-beta.6";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-26-ci-na-versao-de-producao",
+    version: APP_VERSION,
+    date: "2026-08-26",
+    title: "As verificações automáticas passaram a rodar na mesma versão do servidor real",
+    summary:
+      "A bateria de testes que roda antes de qualquer mudança chegar até você usava uma versão do ambiente mais antiga que a do servidor de produção. Agora é a mesma.",
+    highlights: [
+      "Testar numa versão e publicar em outra deixa uma faixa de comportamento que ninguém verifica.",
+      "Isso também destrava as atualizações automáticas de dependência, que vinham falhando por causa dessa diferença.",
+      "Nada muda no aplicativo. É a rede de proteção ficando igual ao ambiente que ela protege.",
+    ],
+  },
   {
     id: "2026-08-24-limite-e-verificacao",
     version: APP_VERSION,

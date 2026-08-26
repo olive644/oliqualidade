@@ -16130,3 +16130,58 @@ As duas primeiras verificações viraram teste
 Ele não substitui o `corpus:validate`, que compara o sanitizado contra o
 original e por isso só roda em quem tem os originais e o salt; é a única
 conferência do corpus real que se repete sem eles.
+
+## 139. A CI testava numa major de Node mais antiga que a produção
+
+Descoberto investigando por que todas as seis PRs do Dependabot falhavam. O
+sintoma parecia de dependência:
+
+```text
+npm error `npm ci` can only install packages when your package.json
+and package-lock.json are in sync.
+npm error Missing: lru-cache@11.5.2 from lock file
+```
+
+A causa não era. A CI rodava `node-version: 22`, que traz npm 10. O ambiente
+de desenvolvimento e o próprio Dependabot usam npm 11. As duas versões
+resolvem de forma diferente uma dependência opcional de par —
+`unstorage` (via `nitro`) pede `lru-cache ^11.2.6` e a raiz tem 5.1.1 — e por
+isso escrevem `package-lock.json` diferentes. O lock que o npm 11 escreve, o
+npm 10 recusa.
+
+Isso já tinha aparecido uma vez, quando o `jsdom` entrou junto com a
+infraestrutura de teste de componente: a entrada aninhada foi acrescentada à
+mão para o npm 10 aceitar. Foi remendo no sintoma. Toda PR que o Dependabot
+abrisse voltaria a quebrar, porque ele reescreve o lock com a versão dele.
+
+### O problema de verdade, que é maior
+
+A produção roda no runtime `nodejs24.x` da Vercel. A CI verificava em Node 22.
+Testar numa major e publicar em outra deixa uma faixa de comportamento que
+ninguém exercita — e o lock foi só o primeiro sinal a aparecer, porque falha
+alto. Diferenças mais silenciosas (API de `node:`, comportamento de
+`AsyncLocalStorage`, formatação de número) não avisariam nada.
+
+Os seis `node-version: 22` dos dois workflows passaram para 24, e
+`package.json` ganhou `engines.node: ">=24"` para a exigência ficar escrita
+onde as ferramentas leem, em vez de existir só dentro do YAML.
+
+### O que isto não conserta
+
+O descompasso de resolução entre npm 10 e npm 11 continua existindo; o que
+muda é que ninguém no fluxo usa mais o npm 10. Se um dia a CI, o ambiente
+local e o Dependabot voltarem a divergir de major, o mesmo sintoma volta. A
+defesa contra isso é o `engines`, que ao menos torna a exigência explícita.
+
+A entrada aninhada acrescentada à mão no lock continua lá e não faz mal: ela
+descreve uma resolução válida, e o npm 11 a aceita.
+
+### Verificação
+
+Suíte completa, typecheck, build e orçamento de desempenho verdes localmente
+em Node 24.18, que é a mesma major que a CI passa a usar — pela primeira vez o
+ambiente local e a CI conferem.
+
+### Versão
+
+`0.10.0-beta.5` → `0.10.0-beta.6`.
