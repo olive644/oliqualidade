@@ -153,6 +153,8 @@ audit inteiro.
 
 ## Onde mexer
 
+| Versão de Node da CI e do ambiente local | `node-version: 24` nos dois workflows e `engines.node: ">=24"` no `package.json`; a produção é o runtime `nodejs24.x` da Vercel | ficar numa major atrás da produção deixa uma faixa sem verificação, e faz o npm da CI escrever o `package-lock` diferente do de todo mundo — foi o que quebrou **todas** as PRs do Dependabot com `Missing: lru-cache@11.5.2`; ver [[CURRENT_STATE_AUDIT#139. A CI testava numa major de Node mais antiga que a produção]] |
+
 | Formatar número pelo código de formato no núcleo Rust | `format_from_section_code` (`rust/oli-ooxml-core/src/lib.rs`): seções por `;`, literal entre aspas, escape, milhar, percentual; o caminho de decimais fixos vem antes e só o que virava `General` chega aqui | a referência é `XLSX.SSF.format`, **não** o Excel: `R$ #,##0.00` sem aspas o SSF recusa (`unrecognized character R`) e cai no valor cru, então **toda letra fora de aspas devolve `None`**; ver [[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]] |
 | Garantir que o WASM versionado veio do Rust versionado | job `wasm-provenance` (`.github/workflows/rust.yml`) reconstrói e compara com `git diff --exit-code`; `rust-toolchain.toml` fixa o canal porque a comparação é byte a byte | publica o pacote reconstruído quando diverge, porque `wasm-pack` não roda em toda máquina (falta a CRT no Windows); ver [[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]] |
 | Conferir o corpus real sanitizado sem ter os originais | `sanitized-corpus-privacy.test.ts` (sha256 do manifesto, nenhum arquivo solto, varredura de e-mail/CPF/CNPJ/telefone/URL/caminho) | **a CI nunca vê o corpus real** (`sanitized-real/` está no `.gitignore`), então o gate de paridade lá mede só as 50 geradas — divergência em planilha real só aparece rodando `npm run wasm:corpus` localmente; ver [[CURRENT_STATE_AUDIT#138. Novo lote real de qualidade expõe formatos monetário e contábil no Reading Engine]] |
@@ -881,6 +883,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   verificação Cloudflare Turnstile, ambas inativas até as variáveis
   existirem). Ver
   [[CURRENT_STATE_AUDIT#137. Limite de requisições compartilhado e verificação Cloudflare Turnstile]].
+
+- `v0.10.0-beta.6` (CI passa a rodar na mesma major de Node da produção;
+  destrava as PRs do Dependabot). Ver
+  [[CURRENT_STATE_AUDIT#139. A CI testava numa major de Node mais antiga que a produção]].
 
 ## Checklist antes de publicar
 
