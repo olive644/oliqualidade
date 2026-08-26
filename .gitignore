@@ -8,6 +8,7 @@ dist/
 .DS_Store
 .vercel/
 rust/oli-ooxml-core/target/
+graphify-out/
 test-fixtures/generated/
 test-fixtures/private/
 test-fixtures/sanitized-real/

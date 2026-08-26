@@ -1,6 +1,6 @@
 {
   "name": "oliqualidade",
-  "version": "0.10.0-beta.9",
+  "version": "0.10.0-beta.10",
   "engines": {
     "node": ">=24"
   },
@@ -27,7 +27,6 @@
     "corpus:validate": "node scripts/validate-sanitized-workbook-corpus.mjs",
     "test:security-smoke": "node scripts/security-smoke.mjs",
     "test:e2e": "playwright test",
-    "graph:build": "node scripts/build-code-graph.mjs",
     "performance:check": "node scripts/check-performance-budget.mjs",
     "benchmark:data": "node scripts/benchmark-large-import.mjs",
     "rust:test": "cargo test --locked --manifest-path rust/oli-ooxml-core/Cargo.toml",

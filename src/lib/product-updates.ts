@@ -7,10 +7,23 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.9";
+export const APP_VERSION = "0.10.0-beta.10";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-26-limpeza-de-artefato",
+    version: APP_VERSION,
+    date: "2026-08-26",
+    title: "Limpeza interna: saiu um mapa de código que ninguém usava",
+    summary:
+      "O projeto guardava um mapa da própria estrutura, com 3,6 MB, que nenhuma parte do aplicativo consultava e que só podia ser refeito pela metade.",
+    highlights: [
+      "Ele aparecia em toda revisão como dezenas de milhares de linhas alteradas, escondendo as mudanças de verdade.",
+      "Nada no aplicativo dependia dele, então nenhuma função muda com a remoção.",
+      "Sem efeito no que você vê. É arrumação de casa.",
+    ],
+  },
   {
     id: "2026-08-26-assistente-responde-enquanto-escreve",
     version: APP_VERSION,

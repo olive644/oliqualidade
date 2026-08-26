@@ -39,11 +39,11 @@ editar, para manter os links e o Canvas funcionando.
 - **Tags** (`#pendente`, `#armadilha`, `#decisão`) aparecem no painel de tags
   do Obsidian e servem para filtrar rapidamente por tipo de conteúdo sem
   precisar abrir cada tabela.
-- **Grafo de notas** (`graphify-out/graph.json`, gerado por
-  `npm run graph:build`) é um artefato *derivado do código*, diferente do
-  grafo do Obsidian (que é *derivado dos links entre notas Markdown*). Não
-  confundir os dois: o grafo do Obsidian nunca vai mostrar dependências de
-  módulo TypeScript, só a estrutura da documentação.
+- **Grafo de notas**: o grafo do Obsidian é *derivado dos links entre notas
+  Markdown* e mostra a estrutura da documentação, não dependências de módulo
+  TypeScript. Já existiu aqui um segundo grafo, derivado do código
+  (`graphify-out/`), removido na v0.10.0-beta.10 — ver
+  [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
 
 ## Mapa mental
 
@@ -607,7 +607,6 @@ npm run lint                # qualidade estática
 npm run build               # typecheck + produção
 npm run performance:check   # orçamento dos artefatos gerados
 npm run verify              # testes + build + orçamento de desempenho
-npm run graph:build         # graphify-out/graph.json + relatório + HTML
 npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servidor rodando (roda na CI, job security-smoke)
 npm run test:e2e            # E2E real via Playwright (roda na CI, job e2e); localmente sobe o dev server sozinho, ou use OLI_E2E_BASE_URL para apontar a um servidor já pronto
 ANALYZE=1 npm run build     # gera client-chunk-report.json (gitignored) com módulo->chunk->tamanho real do bundle do cliente, sem SSR misturado; ver seção 58 do CURRENT_STATE_AUDIT.md
@@ -905,6 +904,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   acumulação intermediária). Ver
   [[CURRENT_STATE_AUDIT#142. Streaming do assistente de ponta a ponta]].
 
+- `v0.10.0-beta.10` (remove o grafo de código versionado: 3,6 MB de artefato
+  derivado que nada consumia e que só o gerador de emergência sabia refazer).
+  Ver [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
+
 ## Checklist antes de publicar
 
 1. Adicionar ou atualizar um teste que reproduza a mudança.
@@ -912,12 +915,11 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 3. Verificar modos original/agregado, filtros, valores nulos, zeros e negativos.
 4. Testar um conjunto pequeno e outro acima do limite visual.
 5. Executar `npm run verify` e o lint nos arquivos alterados.
-6. Regenerar `npm run graph:build` quando a arquitetura mudar.
-7. Registrar neste documento uma nova regra ou decisão que um futuro
+6. Registrar neste documento uma nova regra ou decisão que um futuro
    mantenedor precisará conhecer — incluir wikilink para a seção nova do
    `CURRENT_STATE_AUDIT.md`, e atualizar o [[#Backlog priorizado]] se o item
    resolvido estava lá.
-8. Se a mudança é visível ao usuário (bug corrigido, comportamento novo,
+7. Se a mudança é visível ao usuário (bug corrigido, comportamento novo,
    não um refactor interno puro): avançar `APP_VERSION`/`package.json`/
    `package-lock.json` (ver [[#Versionamento público do produto]]) e
    publicar uma entrada em `PRODUCT_UPDATES` (ver [[#Centro de
@@ -955,8 +957,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   (ex.: reducer central), decisão já registrada como fora do escopo desta
   série. Ver seções 36, 51, 52, 55, 56, 58, 63, 64, 65, 66 e 67 do
   `CURRENT_STATE_AUDIT.md` para o histórico completo.
-- O mapa estrutural gerado em `graphify-out/` é um artefato derivado. Este
-  documento explica intenção; o grafo mostra dependências extraídas do código.
+- Este documento explica intenção. O mapa estrutural que ficava em
+  `graphify-out/` foi removido: ver
+  [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por
   importação. Ele usa SheetJS verificado por OOXML hoje e aceita um adaptador
   Rust/WASM opcional no cliente quando este estiver disponível e aprovado pelo
