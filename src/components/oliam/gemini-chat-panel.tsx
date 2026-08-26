@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,23 +23,42 @@ export function GeminiChatPanel({
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<GeminiChatMessage[]>([]);
+  const [streamedAnswer, setStreamedAnswer] = useState("");
+  const requestController = useRef<AbortController | null>(null);
   const suggestedPrompts = useMemo(() => buildLiveSuggestedPrompts(liveView), [liveView]);
   const focusLabel = liveView.focus?.cell
     ? `${liveView.focus.cell.columnLabel}, linha ${liveView.focus.cell.rowIndex}`
     : liveView.focus?.widget?.title;
 
-  useEffect(() => setMessages([]), [dashboard.id, sheet.name]);
+  useEffect(() => {
+    requestController.current?.abort();
+    requestController.current = null;
+    setMessages([]);
+    setStreamedAnswer("");
+    setLoading(false);
+    return () => requestController.current?.abort();
+  }, [dashboard.id, sheet.name]);
 
   const submit = async (suggestedMessage?: string) => {
     const message = (suggestedMessage ?? draft).trim();
     if (!message || loading) return;
     setDraft("");
     setMessages((current) => [...current, { role: "user", text: message }]);
+    setStreamedAnswer("");
     setLoading(true);
+    const controller = new AbortController();
+    requestController.current = controller;
     try {
-      const answer = await askGemini(message, dashboard, sheet, liveRows, liveView, messages);
+      const answer = await askGemini(message, dashboard, sheet, liveRows, liveView, messages, {
+        signal: controller.signal,
+        onUpdate: (partialAnswer) => {
+          if (requestController.current === controller) setStreamedAnswer(partialAnswer);
+        },
+      });
+      if (requestController.current !== controller) return;
       setMessages((current) => [...current, { role: "assistant", text: answer }]);
     } catch (error) {
+      if (controller.signal.aborted || requestController.current !== controller) return;
       setMessages((current) => [
         ...current,
         {
@@ -48,7 +67,11 @@ export function GeminiChatPanel({
         },
       ]);
     } finally {
-      setLoading(false);
+      if (requestController.current === controller) {
+        requestController.current = null;
+        setStreamedAnswer("");
+        setLoading(false);
+      }
     }
   };
 
@@ -79,7 +102,7 @@ export function GeminiChatPanel({
               <X className="size-4" />
             </Button>
           </header>
-          <div className="oli-chat-content" aria-live="polite">
+          <div className="oli-chat-content" aria-live="polite" aria-busy={loading}>
             {!messages.length && (
               <div className="oli-chat-welcome">
                 <strong>O que você quer entender neste painel?</strong>
@@ -98,7 +121,10 @@ export function GeminiChatPanel({
                 {message.text}
               </div>
             ))}
-            {loading && (
+            {streamedAnswer && (
+              <div className="oli-chat-message oli-chat-message-assistant">{streamedAnswer}</div>
+            )}
+            {loading && !streamedAnswer && (
               <div className="oli-chat-loading" role="status">
                 <OliLoader compact />
                 <span>Analisando o painel…</span>

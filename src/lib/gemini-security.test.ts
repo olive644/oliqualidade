@@ -297,7 +297,74 @@ describe("segurança do Gemini", () => {
     expect(String(url)).not.toContain("test-secret");
     expect(JSON.stringify(init?.body)).not.toContain("test-secret");
     expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe("test-secret");
-    expect(String(url)).toBe("https://generativelanguage.googleapis.com/v1/interactions");
+    expect(String(url)).toBe("https://generativelanguage.googleapis.com/v1/interactions?alt=sse");
+    expect(JSON.parse(String(init?.body))).toMatchObject({ stream: true, store: false });
+    expect((init?.headers as Record<string, string>)["accept"]).toBe("text/event-stream");
+  });
+
+  it("repassa os deltas do Gemini antes de o provedor terminar", async () => {
+    const encoder = new TextEncoder();
+    let providerController!: ReadableStreamDefaultController<Uint8Array>;
+    const providerBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        providerController = controller;
+        controller.enqueue(
+          encoder.encode(
+            `event: step.start\ndata: ${JSON.stringify({
+              event_type: "step.start",
+              step: {
+                type: "model_output",
+                content: [{ type: "text", text: "Primeiro " }],
+              },
+            })}\n\n`,
+          ),
+        );
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(providerBody, {
+            headers: { "content-type": "text/event-stream; charset=utf-8" },
+          }),
+      ),
+    );
+
+    const response = await handleGeminiChat(
+      new Request("http://localhost/api/gemini/chat", {
+        method: "POST",
+        headers: { origin: "http://localhost", "x-forwarded-for": "streaming" },
+        body: JSON.stringify({ message: "Resuma", dashboard }),
+      }),
+      { GEMINI_API_KEY: "test-secret" },
+    );
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(response.headers.get("x-accel-buffering")).toBe("no");
+
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+    expect(new TextDecoder().decode(first.value)).toContain('"text":"Primeiro "');
+
+    providerController.enqueue(
+      encoder.encode(
+        `event: step.delta\ndata: ${JSON.stringify({
+          event_type: "step.delta",
+          delta: { type: "text", text: "resultado" },
+        })}\n\nevent: done\ndata: [DONE]\n\n`,
+      ),
+    );
+    providerController.close();
+
+    let remainder = "";
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      remainder += new TextDecoder().decode(chunk.value);
+    }
+    expect(remainder).toContain('"text":"resultado"');
+    expect(remainder).toContain("event: done");
   });
 
   it("envia ao modelo o histórico e a visão viva capturada na pergunta", async () => {

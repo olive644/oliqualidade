@@ -200,7 +200,7 @@ audit inteiro.
 | Cronograma                                  | `schedule-normalizer.ts`, `operational-widgets.ts`                    | testes dos dois módulos                      |
 | Revisão, auditoria e versões                | `data-review.ts`, `import-workbench.ts`, `review-export.ts`           | testes de revisão/exportação                 |
 | Armazenamento e privacidade                 | `storage.ts`, `encrypted-backup.ts`                                   | storage/privacy + backup                     |
-| IA                                          | `gemini-security.ts`, `gemini-server.ts`, `assistant-context.ts`      | segurança + contexto                          |
+| IA                                          | `gemini-security.ts`, `gemini-server.ts`, `gemini-client.ts`, `server-sent-events.ts`, `assistant-context.ts` | segurança + contexto + streaming ponta a ponta |
 | Erro do servidor (500, recuperação de stack) | `error-capture.ts` (`AsyncLocalStorage` por requisição), `server.ts`  | `error-capture.test.ts`                      |
 | Exportação PNG/PDF e tabelas                | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação                 |
 | Desempenho                                  | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets         | `npm run verify`                             |
@@ -685,6 +685,7 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Resposta do assistente usa SSE nos dois saltos (Gemini→servidor e servidor→navegador) | esperar JSON em qualquer um dos saltos voltava a acumular o texto e anulava o streaming percebido | `gemini-server.ts` filtra somente `model_output`/`text`, `gemini-client.ts` acumula os deltas e fechamento sem `done` nunca é aceito como resposta completa; ver [[CURRENT_STATE_AUDIT#142. Streaming do assistente de ponta a ponta]] |
 | Processar workbook fora da thread principal                  | planilhas grandes congelavam a UI                               | worker é parte obrigatória do caminho de importação                                           |
 | Preservar original e agregado                                | soma automática distorcia planilhas já consolidadas             | widgets guardam `dataMode` e operação                                                           |
 | Exceções/validação apenas manuais                            | criavam ruído e pouca explicação no painel inicial              | continuam disponíveis no catálogo                                                               |
@@ -899,6 +900,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 - `v0.10.0-beta.8` (quick-xml 0.42 no núcleo Rust: a API trocou bytes por
   texto). Ver
   [[CURRENT_STATE_AUDIT#141. quick-xml 0.42: a API inteira trocou bytes por texto]].
+
+- `v0.10.0-beta.9` (streaming do assistente do Gemini até a conversa, sem
+  acumulação intermediária). Ver
+  [[CURRENT_STATE_AUDIT#142. Streaming do assistente de ponta a ponta]].
 
 ## Checklist antes de publicar
 
