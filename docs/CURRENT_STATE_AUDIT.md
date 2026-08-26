@@ -16248,3 +16248,73 @@ relatório do build.
 ### Versão
 
 `0.10.0-beta.6` → `0.10.0-beta.7`.
+
+## 141. quick-xml 0.42: a API inteira trocou bytes por texto
+
+O Dependabot abriu o bump cru (#280) e ele não compila. A 0.42 é a release em
+que o `quick_xml` passou a usar `&str` e `String` no lugar de `&[u8]` e
+`Vec<u8>` em toda a API pública, o que exige migração de verdade no núcleo.
+
+### O que mudou, e onde doeu
+
+Quatro frentes, nos dois leitores (`lib.rs` para OOXML e `ods.rs` para ODS):
+
+- **Nomes de elemento viraram texto.** `QName`, `LocalName`, `Prefix` e
+  `Namespace` embrulham `&str`, e o `AsRef<[u8]>` foi removido. As vinte e
+  poucas comparações `local_name().as_ref() == b"row"` viraram `== "row"`.
+- **`Reader::decoder()` deixou de existir.** Ele era passado adiante para
+  `attributes()` e `start_cell()`, em onze pontos de chamada. Como a leitura
+  agora garante UTF-8, o parâmetro simplesmente sumiu das duas assinaturas.
+- **`decode()` saiu dos eventos de texto.** `BytesText`, `BytesCData` e
+  `BytesRef` expõem o conteúdo direto como `&str`. Onde havia decodificar e
+  depois desescapar, ficou só o desescape; onde havia só decodificar, ficou a
+  própria referência.
+- **`decoded_and_normalized_value(version, decoder)` virou
+  `normalized_value(version)`**, e a chave do atributo, que já é texto,
+  dispensou o `String::from_utf8_lossy`.
+
+O saldo é o que a própria release prometia: 50 linhas acrescentadas contra 71
+removidas. A migração deixou o código menor do que encontrou.
+
+Sobraram três `needless_borrow` que o clippy pegou, e eles são consequência
+direta da mudança: onde `decoded` era `Cow<str>`, `&decoded` fazia sentido;
+virando `&str`, o `&` passou a ser referência de referência.
+
+### A conferência que importa
+
+Compilar e passar nos testes unitários não diz nada sobre um leitor de
+planilha. O que diz é o corpus:
+
+```text
+65 planilhas (50 geradas + 15 reais sanitizadas)
+223.444 células comparadas, 0 divergentes
+3.329 estruturas comparadas, 0 divergentes
+```
+
+Rodado localmente com o binário reconstruído, porque as 15 planilhas reais não
+estão no Git e a CI nunca as vê. Resultado idêntico ao de antes da migração,
+célula por célula.
+
+### Um ganho de robustez que veio junto
+
+A 0.42 valida UTF-8 ao construir os eventos: entrada inválida agora produz
+`Error::Encoding` em vez de repassar bytes estranhos em silêncio. Para um
+leitor que recebe arquivo de origem desconhecida, isso é do lado certo do
+tradeoff — falha alto em vez de propagar lixo.
+
+### Nota de processo
+
+Este foi o primeiro caso em que o job `wasm-provenance` atuou como parte do
+fluxo normal, e não como alarme. Toda mudança no Rust exige o binário
+reconstruído no mesmo commit; o job recusa enquanto não estiver, e publica o
+pacote pronto para baixar. Sem isso, a migração teria sido revisada no fonte e
+publicada com o binário antigo.
+
+Vale registrar a consequência para o Dependabot: **toda PR dele que mexa numa
+dependência Rust vai falhar nesse job por construção**, porque ele altera o
+`Cargo.lock` sem reconstruir o pacote. Não é defeito, é a trava funcionando —
+mas significa que atualização do lado Rust nunca é "mesclar e pronto".
+
+### Versão
+
+`0.10.0-beta.7` → `0.10.0-beta.8`.

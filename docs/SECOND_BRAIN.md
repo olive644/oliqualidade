@@ -153,6 +153,8 @@ audit inteiro.
 
 ## Onde mexer
 
+| Ler XML no núcleo Rust (OOXML e ODS) | `quick_xml` 0.42 em `lib.rs` e `ods.rs`: nomes de elemento são `&str` (`local_name().as_ref() == "row"`), não há `Reader::decoder()` e os eventos de texto expõem `&str` direto | migração da 0.41, que usava `&[u8]` em tudo; conferida contra o corpus real (65 planilhas, 223.444 células, zero divergências) porque teste unitário não prova leitura de planilha; ver [[CURRENT_STATE_AUDIT#141. quick-xml 0.42: a API inteira trocou bytes por texto]] |
+
 | Atualização do Vite entra sozinha, fora do grupo do Dependabot | `exclude-patterns: ["vite"]` no grupo `minor-and-patch` de `.github/dependabot.yml` | 8.1.5 → 8.2.2 fundiu 9 chunks e levou o pacote de entrada de 296 KiB para 1.053 KiB **com o total de bytes igual** (3,86 MB): o que era sob demanda virou primeiro carregamento; ver [[CURRENT_STATE_AUDIT#140. O Vite 8.2 funde chunks e triplica o pacote de entrada]] |
 
 | Versão de Node da CI e do ambiente local | `node-version: 24` nos dois workflows e `engines.node: ">=24"` no `package.json`; a produção é o runtime `nodejs24.x` da Vercel | ficar numa major atrás da produção deixa uma faixa sem verificação, e faz o npm da CI escrever o `package-lock` diferente do de todo mundo — foi o que quebrou **todas** as PRs do Dependabot com `Missing: lru-cache@11.5.2`; ver [[CURRENT_STATE_AUDIT#139. A CI testava numa major de Node mais antiga que a produção]] |
@@ -893,6 +895,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 - `v0.10.0-beta.7` (Vite fora do grupo do Dependabot: 8.2 funde chunks e
   triplica o pacote de entrada). Ver
   [[CURRENT_STATE_AUDIT#140. O Vite 8.2 funde chunks e triplica o pacote de entrada]].
+
+- `v0.10.0-beta.8` (quick-xml 0.42 no núcleo Rust: a API trocou bytes por
+  texto). Ver
+  [[CURRENT_STATE_AUDIT#141. quick-xml 0.42: a API inteira trocou bytes por texto]].
 
 ## Checklist antes de publicar
 

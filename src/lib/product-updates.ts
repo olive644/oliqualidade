@@ -7,10 +7,23 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.7";
+export const APP_VERSION = "0.10.0-beta.8";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-26-leitor-xml-atualizado",
+    version: APP_VERSION,
+    date: "2026-08-26",
+    title: "O leitor de planilha ganhou uma base mais nova por dentro",
+    summary:
+      "A biblioteca que lê o XML de dentro do arquivo do Excel foi atualizada. Ela passou a trabalhar direto com texto em vez de bytes crus, o que simplifica o caminho da leitura.",
+    highlights: [
+      "A conferência foi feita contra as planilhas reais de teste: 65 arquivos e mais de 223 mil células, com resultado idêntico ao de antes.",
+      "A nova versão também recusa arquivo com codificação inválida em vez de deixar passar bytes estranhos em silêncio.",
+      "Nada muda no que você vê. É manutenção da fundação, com a garantia de que a leitura continua a mesma.",
+    ],
+  },
   {
     id: "2026-08-26-orcamento-pegou-carregamento",
     version: APP_VERSION,
