@@ -7,10 +7,25 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.10";
+export const APP_VERSION = "0.10.0-beta.11";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-27-parar-resposta-do-assistente",
+    version: APP_VERSION,
+    date: "2026-08-27",
+    title: "Agora dá para parar a resposta do Oli no meio",
+    summary:
+      "Enquanto o Oli escreve, aparece um botão para interromper. A resposta para na hora, o que já apareceu continua na tela marcado como interrompido, e a próxima pergunta pode ser feita em seguida.",
+    highlights: [
+      "Fechar o painel ou trocar de painel ou de aba também encerra a resposta em andamento, em vez de deixá-la sendo gerada sem ninguém lendo.",
+      "Quando a resposta demora a começar, para de chegar no meio ou passa do tempo máximo, o Oli explica qual dos três aconteceu, em português e sem código.",
+      "Uma resposta interrompida ou com falha fica visível para leitura, mas nunca é reaproveitada como se fosse resposta concluída na pergunta seguinte.",
+      "Um botão de tentar novamente aparece ao lado da falha. A repetição é sempre sua: nada é reenviado sozinho.",
+      "O texto agora chega agrupado por quadro de tela. Continua parecendo instantâneo e deixa a conversa bem mais leve em respostas longas.",
+    ],
+  },
   {
     id: "2026-08-26-limpeza-de-artefato",
     version: APP_VERSION,
