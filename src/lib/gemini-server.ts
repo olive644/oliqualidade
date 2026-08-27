@@ -542,8 +542,12 @@ export async function handleGeminiChat(request: Request, environment: GeminiEnvi
         controller: upstream,
       });
     if (!response.ok) {
+      // Lê o corpo antes de abortar: `geminiFailure` extrai o código e a
+      // mensagem do provedor para o log de diagnóstico, e um abort no meio
+      // derrubaria essa leitura, apagando justamente o que explica a falha.
+      const failure = await geminiFailure(response);
       upstream.abort();
-      return geminiFailure(response);
+      return failure;
     }
     const humanCookie = human.status === "ok" ? human.cookie : null;
     if (response.headers.get("content-type")?.includes("text/event-stream")) {
