@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askGemini } from "@/lib/gemini-client";
+import { askGemini, AssistantStreamError } from "@/lib/gemini-client";
 import type { Dashboard, SheetData } from "@/lib/types";
 import type { LiveDashboardContext } from "@/lib/assistant-context";
 import { encodeServerSentEvent } from "@/lib/server-sent-events";
@@ -118,8 +118,8 @@ describe("cliente Gemini", () => {
     const requestController = new AbortController();
     const pendingAnswer = askGemini("Qual é o total?", dashboard, sheet, sheet.rows, liveView, [], {
       signal: requestController.signal,
-      onUpdate: (answer) => {
-        updates.push(answer);
+      onDelta: (delta) => {
+        updates.push(delta);
         notifyFirstUpdate();
       },
     });
@@ -137,7 +137,8 @@ describe("cliente Gemini", () => {
     streamController.close();
 
     await expect(pendingAnswer).resolves.toBe("Total R$ 10,00");
-    expect(updates).toEqual(["Total ", "Total R$ 10,00"]);
+    // Cada entrada é o trecho novo, nunca a resposta acumulada de novo.
+    expect(updates).toEqual(["Total ", "R$ 10,00"]);
   });
 
   it("não aceita uma resposta parcial quando a conexão fecha sem concluir", async () => {
@@ -163,5 +164,135 @@ describe("cliente Gemini", () => {
     await expect(askGemini("Resumo", dashboard, sheet, sheet.rows, liveView)).rejects.toThrow(
       "interrompida",
     );
+  });
+});
+
+describe("motivos de falha do assistente", () => {
+  const streamOf = (payload: string) =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(payload));
+          controller.close();
+        },
+      }),
+      { headers: { "content-type": "text/event-stream" } },
+    );
+
+  it("traduz o motivo enviado pelo servidor no evento de erro", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        streamOf(
+          encodeServerSentEvent("error", {
+            error: "A resposta parou de chegar no meio do caminho. Tente novamente.",
+            reason: "inatividade",
+          }),
+        ),
+      ),
+    );
+
+    const erro = await askGemini("Resumo", dashboard, sheet, sheet.rows, liveView).catch(
+      (error: unknown) => error,
+    );
+
+    expect(erro).toBeInstanceOf(AssistantStreamError);
+    expect((erro as AssistantStreamError).reason).toBe("inatividade");
+    expect((erro as Error).message).toContain("parou de chegar");
+  });
+
+  it("traduz o motivo de uma falha que nem chegou a abrir o stream", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: "O Gemini demorou demais para começar a responder. Tente novamente.",
+              reason: "inicio-lento",
+            }),
+            { status: 504 },
+          ),
+      ),
+    );
+
+    const erro = await askGemini("Resumo", dashboard, sheet, sheet.rows, liveView).catch(
+      (error: unknown) => error,
+    );
+
+    expect((erro as AssistantStreamError).reason).toBe("inicio-lento");
+  });
+
+  it("cai em indisponível quando o motivo não é reconhecido", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "algo", reason: "motivo-do-futuro" }), {
+            status: 502,
+          }),
+      ),
+    );
+
+    const erro = await askGemini("Resumo", dashboard, sheet, sheet.rows, liveView).catch(
+      (error: unknown) => error,
+    );
+
+    expect((erro as AssistantStreamError).reason).toBe("indisponivel");
+  });
+
+  it("recusa uma resposta acima do teto de texto", async () => {
+    const bloco = "a".repeat(64 * 1024);
+    const eventos = Array.from({ length: 6 }, () =>
+      encodeServerSentEvent("delta", { text: bloco }),
+    ).join("");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => streamOf(`${eventos}${encodeServerSentEvent("done", {})}`)),
+    );
+
+    const erro = await askGemini("Resumo", dashboard, sheet, sheet.rows, liveView).catch(
+      (error: unknown) => error,
+    );
+
+    expect((erro as AssistantStreamError).reason).toBe("limite-excedido");
+  });
+
+  it("recusa um evento com JSON inválido sem mostrar o conteúdo", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => streamOf("event: delta\ndata: {quebrado\n\n")),
+    );
+
+    const erro = await askGemini("Resumo", dashboard, sheet, sheet.rows, liveView).catch(
+      (error: unknown) => error,
+    );
+
+    expect((erro as AssistantStreamError).reason).toBe("provedor");
+    expect((erro as Error).message).not.toContain("quebrado");
+  });
+
+  it("propaga o cancelamento em vez de inventar uma resposta", async () => {
+    const controller = new AbortController();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => {
+              const error = new Error("aborted");
+              error.name = "AbortError";
+              reject(error);
+            });
+          }),
+      ),
+    );
+
+    const pendente = askGemini("Resumo", dashboard, sheet, sheet.rows, liveView, [], {
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    await expect(pendente).rejects.toMatchObject({ name: "AbortError" });
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "oliqualidade",
-  "version": "0.10.0-beta.10",
+  "version": "0.10.0-beta.11",
   "engines": {
     "node": ">=24"
   },
@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:componente": "vitest run --project componente",
+    "test:gemini-smoke": "vitest run src/lib/gemini-real-contract.test.ts --project unidade",
     "test:fixture": "node scripts/generate-problematic-fixture.mjs",
     "test:corpus:generate": "node scripts/generate-workbook-corpus.mjs",
     "compatibility:report": "node scripts/check-workbook-compatibility.mjs",

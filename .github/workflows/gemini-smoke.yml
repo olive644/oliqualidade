@@ -1,0 +1,49 @@
+name: Gemini contract smoke
+
+# Confirmação do contrato real da Interactions API, contra a rede.
+#
+# Fica fora da Application CI de propósito. Aquela bateria roda em toda PR,
+# precisa ser determinística e não pode depender de um provedor externo, de
+# cota paga nem de rede: uma indisponibilidade do Google reprovaria mudanças
+# que não têm nada a ver com o assistente. Aqui é o contrário: a execução é
+# manual, custa uma pergunta de uma linha e existe para pegar mudança de
+# contrato antes que ela apareça como bug em produção.
+#
+# `if` do job cobre bifurcação do repositório: um fork não tem o segredo, e
+# sem esta condição o job apareceria como falha para quem só abriu uma cópia.
+# Sem o segredo, o próprio teste se pula e a execução termina verde.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Real Interactions API stream
+    if: github.repository == 'olive644/oliqualidade'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the Gemini stream smoke test
+        env:
+          # As duas variáveis são exigidas juntas pelo teste. Sem a chave, ele
+          # é pulado e o passo continua verde, que é o comportamento correto
+          # quando o segredo não foi configurado no repositório.
+          OLI_GEMINI_SMOKE: "1"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: npm run test:gemini-smoke

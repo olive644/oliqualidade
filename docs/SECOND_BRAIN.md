@@ -43,7 +43,7 @@ editar, para manter os links e o Canvas funcionando.
   Markdown* e mostra a estrutura da documentação, não dependências de módulo
   TypeScript. Já existiu aqui um segundo grafo, derivado do código
   (`graphify-out/`), removido na v0.10.0-beta.10 — ver
-  [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
+  [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
 
 ## Mapa mental
 
@@ -200,7 +200,8 @@ audit inteiro.
 | Cronograma                                  | `schedule-normalizer.ts`, `operational-widgets.ts`                    | testes dos dois módulos                      |
 | Revisão, auditoria e versões                | `data-review.ts`, `import-workbench.ts`, `review-export.ts`           | testes de revisão/exportação                 |
 | Armazenamento e privacidade                 | `storage.ts`, `encrypted-backup.ts`                                   | storage/privacy + backup                     |
-| IA                                          | `gemini-security.ts`, `gemini-server.ts`, `gemini-client.ts`, `server-sent-events.ts`, `assistant-context.ts` | segurança + contexto + streaming ponta a ponta |
+| IA                                          | `gemini-security.ts`, `gemini-server.ts`, `gemini-client.ts`, `server-sent-events.ts`, `assistant-stream.ts`, `assistant-context.ts` | segurança + contexto + streaming ponta a ponta |
+| Prazos e tetos do assistente                | `assistant-stream.ts` é o único lugar onde os números moram: teto por evento (512 KiB), por stream (8 MiB) e por texto de resposta (256 KiB); prazo até os cabeçalhos (20s), de inatividade (25s) e de duração total (55s) | `gemini-stream.test.ts` (temporizador falso nos três prazos), `server-sent-events.test.ts` (tetos) — ver [[CURRENT_STATE_AUDIT#144. Endurecimento do streaming do assistente: prazos, tetos, cancelamento e agrupamento de quadros]] |
 | Erro do servidor (500, recuperação de stack) | `error-capture.ts` (`AsyncLocalStorage` por requisição), `server.ts`  | `error-capture.test.ts`                      |
 | Exportação PNG/PDF e tabelas                | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação                 |
 | Desempenho                                  | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets         | `npm run verify`                             |
@@ -610,7 +611,27 @@ npm run verify              # testes + build + orçamento de desempenho
 npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servidor rodando (roda na CI, job security-smoke)
 npm run test:e2e            # E2E real via Playwright (roda na CI, job e2e); localmente sobe o dev server sozinho, ou use OLI_E2E_BASE_URL para apontar a um servidor já pronto
 ANALYZE=1 npm run build     # gera client-chunk-report.json (gitignored) com módulo->chunk->tamanho real do bundle do cliente, sem SSR misturado; ver seção 58 do CURRENT_STATE_AUDIT.md
+npm run test:gemini-smoke   # contrato real da Interactions API; pulado sem OLI_GEMINI_SMOKE=1 + GEMINI_API_KEY
 ```
+
+**Smoke do contrato real do Gemini**: mock nenhum confirma sozinho o contrato
+do provedor, ele confirma o que foi escrito no mock. `src/lib/gemini-real-contract.test.ts`
+atravessa o caminho de verdade (o mesmo `handleGeminiChat` da produção, até a
+rede) e verifica as duas coisas de que o produto depende: chegou pelo menos um
+trecho de texto e a geração terminou de forma reconhecida. Ele é desligado por
+padrão e exige **duas** variáveis ao mesmo tempo, para que ninguém gaste cota
+paga sem ter pedido:
+
+```bash
+OLI_GEMINI_SMOKE=1 GEMINI_API_KEY=<chave> npm run test:gemini-smoke
+```
+
+Sem as duas, ele é pulado e nunca falha, que é o comportamento correto numa
+bifurcação do repositório sem segredo. Fora da máquina, o workflow
+`gemini-smoke.yml` roda o mesmo teste, só por `workflow_dispatch` e só no
+repositório de origem. Ele fica fora da Application CI de propósito: aquela
+bateria roda em toda PR e não pode depender de provedor externo, de cota paga
+nem de rede.
 
 **Verificação ao vivo de PR**: a preview de deployment de cada PR no
 Vercel (proteção de SSO desativada nas configurações do projeto — ver
@@ -685,6 +706,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Resposta do assistente usa SSE nos dois saltos (Gemini→servidor e servidor→navegador) | esperar JSON em qualquer um dos saltos voltava a acumular o texto e anulava o streaming percebido | `gemini-server.ts` filtra somente `model_output`/`text`, `gemini-client.ts` acumula os deltas e fechamento sem `done` nunca é aceito como resposta completa; ver [[CURRENT_STATE_AUDIT#142. Streaming do assistente de ponta a ponta]] |
+| Prazo da geração termina em 55s, não no limite da plataforma | a função da Vercel roda sem `maxDuration` declarado, então vale o padrão de 60s do runtime Node; deixar a plataforma cortar produz um fim de resposta sem explicação | quem fecha a conexão é o servidor, com evento de erro e motivo legível; se um dia o projeto declarar `maxDuration`, este número precisa acompanhar |
+| Nenhuma repetição automática depois do primeiro trecho de texto | repetir uma geração já iniciada duplicaria conteúdo na tela e cobraria a API duas vezes | só a troca de modelo em 404 é automática (acontece nos cabeçalhos, antes de qualquer texto); o resto é o botão `Tentar novamente`, sempre um clique da pessoa |
+| Resposta interrompida ou falhada não volta como histórico ao modelo | reapresentar uma mensagem de erro como se o assistente a tivesse dito envenena a pergunta seguinte | o painel guarda o `status` de cada fala e monta o histórico só com pergunta da pessoa e resposta `concluida` |
 | Processar workbook fora da thread principal                  | planilhas grandes congelavam a UI                               | worker é parte obrigatória do caminho de importação                                           |
 | Preservar original e agregado                                | soma automática distorcia planilhas já consolidadas             | widgets guardam `dataMode` e operação                                                           |
 | Exceções/validação apenas manuais                            | criavam ruído e pouca explicação no painel inicial              | continuam disponíveis no catálogo                                                               |
@@ -906,7 +930,13 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 - `v0.10.0-beta.10` (remove o grafo de código versionado: 3,6 MB de artefato
   derivado que nada consumia e que só o gerador de emergência sabia refazer).
-  Ver [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
+  Ver [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
+
+- `v0.10.0-beta.11` (botão para parar a resposta, mensagens distintas para os
+  três prazos, estado de resposta interrompida e agrupamento das atualizações
+  por quadro de tela) avança a iteração: refina o streaming entregue em
+  `0.10.0-beta.9` em vez de abrir capacidade nova. Ver
+  [[CURRENT_STATE_AUDIT#144. Endurecimento do streaming do assistente: prazos, tetos, cancelamento e agrupamento de quadros]].
 
 ## Checklist antes de publicar
 
@@ -959,7 +989,17 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   `CURRENT_STATE_AUDIT.md` para o histórico completo.
 - Este documento explica intenção. O mapa estrutural que ficava em
   `graphify-out/` foi removido: ver
-  [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
+  [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
+- **Limitações conhecidas do streaming do assistente.** O backpressure vale até
+  a borda da plataforma: a leitura do Gemini é dirigida por `pull`, então o
+  servidor só puxa quando o navegador consome, mas o que acontece entre a saída
+  da função e a aba é da Vercel e não deste código. O prazo total de 55s é
+  calibrado pelo padrão de 60s do runtime Node da Vercel, e não por medida do
+  produto; declarar `maxDuration` no futuro obriga a revisar esse número. E o
+  contrato real da Interactions API só é conferido contra a rede pelo smoke
+  manual, porque prendê-lo à verificação de toda PR deixaria a CI dependente de
+  provedor externo e de cota paga. Ver
+  [[CURRENT_STATE_AUDIT#144. Endurecimento do streaming do assistente: prazos, tetos, cancelamento e agrupamento de quadros]].
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por
   importação. Ele usa SheetJS verificado por OOXML hoje e aceita um adaptador
   Rust/WASM opcional no cliente quando este estiver disponível e aprovado pelo
