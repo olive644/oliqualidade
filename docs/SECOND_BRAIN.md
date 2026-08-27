@@ -43,7 +43,7 @@ editar, para manter os links e o Canvas funcionando.
   Markdown* e mostra a estrutura da documentação, não dependências de módulo
   TypeScript. Já existiu aqui um segundo grafo, derivado do código
   (`graphify-out/`), removido na v0.10.0-beta.10 — ver
-  [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
+  [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
 
 ## Mapa mental
 
@@ -906,7 +906,7 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 - `v0.10.0-beta.10` (remove o grafo de código versionado: 3,6 MB de artefato
   derivado que nada consumia e que só o gerador de emergência sabia refazer).
-  Ver [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
+  Ver [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
 
 ## Checklist antes de publicar
 
@@ -959,7 +959,7 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   `CURRENT_STATE_AUDIT.md` para o histórico completo.
 - Este documento explica intenção. O mapa estrutural que ficava em
   `graphify-out/` foi removido: ver
-  [[CURRENT_STATE_AUDIT#141. O grafo de código versionado foi removido]].
+  [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
 - O Reading Engine v2 registra leitor, tempos, divergências e recuperações por
   importação. Ele usa SheetJS verificado por OOXML hoje e aceita um adaptador
   Rust/WASM opcional no cliente quando este estiver disponível e aprovado pelo
