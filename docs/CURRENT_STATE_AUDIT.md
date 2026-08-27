@@ -8448,3 +8448,200 @@ valendo:
 ### Versão
 
 `0.10.0-beta.9` → `0.10.0-beta.10`.
+## 144. Endurecimento do streaming do assistente: prazos, tetos, cancelamento e agrupamento de quadros
+
+A seção 142 entregou o streaming ponta a ponta e ele funciona. O que faltava
+não era comportamento: era o que sobra ligado quando algo dá errado. Antes de
+mudar qualquer linha, o caminho inteiro foi percorrido do botão de enviar até o
+fechamento da conexão com o Gemini, anotando por cenário quais temporizadores,
+buffers, leitores e conexões continuavam vivos.
+
+### O inventário que motivou a mudança
+
+| Cenário | Antes | Depois |
+| --- | --- | --- |
+| Conclusão normal | Buffer do `TransformStream` sem liberação explícita; leitor do provedor solto | Buffer liberado, leitor cancelado, conexão abortada num ponto único |
+| Erro no meio do stream | Evento de erro emitido, mas a leitura do provedor continuava | Falha encerra, aborta e libera |
+| Gemini para de responder | Nada acontecia: sem prazo depois dos cabeçalhos | Prazo de inatividade encerra com motivo próprio |
+| Geração longa demais | Nada acontecia até a plataforma cortar | Prazo total encerra aos 55s, antes do corte |
+| Painel fechado | Nada cancelava | `useEffect` no `open` aborta |
+| Navegador desconecta | Só o cancelamento implícito do `pipeThrough` | `cancel()` do stream e `request.signal` abortam o Gemini |
+| Evento SSE gigante | Buffer crescia sem teto | Erro específico e encerramento imediato |
+
+O `GEMINI_TIMEOUT_MS` de 20s existia, mas o `clearTimeout` ficava no `.finally`
+do `fetch`, ou seja, a proteção acabava assim que os **cabeçalhos** chegavam. A
+geração inteira acontecia depois disso, sem prazo nenhum. E o desenho
+`body.pipeThrough(transform)` não tinha onde pendurar nada: sem leitor próprio
+não há como abortar o provedor, sem temporizador próprio não há como medir
+inatividade, e sem contador o buffer podia crescer enquanto o separador de
+evento não aparecesse.
+
+### O contrato real, conferido na documentação e não nos mocks
+
+Os mocks anteriores confirmavam o que os mocks diziam. A documentação atual da
+Interactions API descreve a sequência `interaction.created`,
+`interaction.status_update`, `step.start`, `step.delta`, `step.stop`,
+`interaction.completed` e, no fio HTTP cru com `alt=sse`, um `event: done` com
+`data: [DONE]`. Três lacunas apareceram na comparação:
+
+1. **`interaction.completed` não era reconhecido.** O fim da resposta dependia
+   de o socket fechar, o que atrasa a conclusão e não distingue término normal
+   de conexão caída. Agora ele é terminal, e um `status` diferente de
+   `completed` vira falha em vez de conclusão.
+2. **O evento `error` do meio do stream era ignorado em silêncio.** Ele não
+   casava com nenhum ramo, o texto já enviado permanecia e o stream terminava
+   com `done`: uma resposta cortada por política do provedor era apresentada
+   como concluída. Agora `error`, `interaction.failed` e `interaction.cancelled`
+   compartilham o mesmo caminho de falha.
+3. **Os passos `thought` precisavam continuar fora.** `thought_summary` e
+   `thought_signature` já caíam fora por não serem `delta.type === "text"`, e
+   agora existe teste explícito para isso, porque é uma garantia de privacidade
+   e não um detalhe de implementação.
+
+### Os tetos, e por que 256 KiB não servia
+
+Os limites moram num arquivo só, `src/lib/assistant-stream.ts`, para que os
+dois lados do fio combinem sem ninguém precisar procurar.
+
+O teto por evento começou em 256 KiB e foi medido antes de ser aceito. Um
+`step.delta` de texto tem poucas centenas de bytes, mas `interaction.completed`
+devolve o objeto da interação, que pode ecoar a entrada. A entrada é o contexto
+sanitizado do painel: com o pior caso que o produto aceita (250 colunas, o teto
+de `MAX_AI_COLUMNS`, com 5.000 linhas), `buildSafeDashboardContext` produz
+**151,4 KiB**. Somando o histórico (12 mensagens de até 4.000 caracteres) e a
+pergunta, a entrada beira 200 KiB, e 256 KiB cortaria conversa legítima em
+painel grande. O teto ficou em **512 KiB**, mais que o dobro da maior entrada
+possível.
+
+Os outros três: **8 MiB** de bytes lidos do provedor numa geração (protege
+contra o stream que nunca termina), **256 KiB** de texto de resposta repassado
+ao navegador (cerca de quarenta mil palavras: quem chega lá está com defeito,
+não com uma pergunta difícil) e **64 KiB** por evento no lado do navegador, que
+lê apenas os eventos que este projeto mesmo gera.
+
+A contagem é em bytes, não em caracteres, e é incremental: enquanto nenhum
+separador aparece basta somar o tamanho dos chunks; quando um evento fecha, o
+resto é medido de novo. `utf8Length` calcula o comprimento sem alocar a cópia
+que `TextEncoder.encode` criaria — a duplicação de memória que estes tetos
+existem para evitar. O erro carrega só um código fixo (`SSE_EVENT_TOO_LARGE`),
+nunca o conteúdo.
+
+### Os três prazos
+
+- **20s até os cabeçalhos.** É o prazo antigo, agora com nome e escopo
+  declarados.
+- **25s de inatividade**, contado só enquanto uma leitura está pendente.
+  Contar de outra forma puniria o navegador lento: com backpressure, ficar sem
+  ler é decisão de quem consome, não silêncio de quem produz.
+- **55s de duração total.** Este número vem da plataforma, não do produto: a
+  função de servidor da Vercel roda sem `maxDuration` declarado, então vale o
+  padrão de 60s do runtime Node. Terminar aos 55s é o que garante que quem
+  fecha a conexão somos nós, com um evento de erro explicável, e não a
+  plataforma com um corte cru no meio do texto.
+
+Cada um tem mensagem própria em português, e o evento de erro passou a levar um
+campo `reason` ao lado da mensagem. A interface escolhe o estado visual pelo
+motivo e nunca por interpretar texto; um cliente antigo ignora o campo e
+continua mostrando a mensagem, então a mudança é compatível nos dois sentidos.
+
+### Cancelamento, do botão até o provedor
+
+A leitura passou a ser dirigida por `pull`, o que resolve três coisas de uma
+vez: backpressure real (só lê do Gemini quando o navegador consome), um lugar
+para medir inatividade e um ponto único de liberação. O `cancel()` do
+`ReadableStream` é chamado quando o navegador fecha a aba ou o `fetch` é
+abortado, e é ali que o Gemini para de gerar token. O `request.signal` entra
+pelo mesmo caminho.
+
+Do lado da conversa: botão `Parar resposta` enquanto a IA escreve, com 44px de
+alvo de toque, foco visível e nome acessível; fechar o painel cancela; trocar
+de painel ou de aba cancela; desmontar cancela. Nenhuma repetição é automática
+depois que a resposta começou a produzir texto — isso duplicaria conteúdo e
+cobraria a geração duas vezes. O `Tentar novamente` existe, mas é sempre um
+clique da pessoa. A única repetição automática que sobrou é a troca de modelo
+em 404, que acontece nos cabeçalhos, antes de qualquer texto.
+
+Uma resposta interrompida ou falhada continua na tela para leitura, com
+contorno tracejado e um rótulo dizendo o que houve, mas **não volta como
+histórico** para a próxima pergunta. Antes, a mensagem de erro entrava na lista
+e era reapresentada ao modelo como se o assistente tivesse dito aquilo.
+
+### Agrupamento de quadros
+
+`onUpdate(respostaAcumulada)` virou `onDelta(trecho)`. A diferença não é
+estética: entregar o acumulado obrigava a materializar a resposta inteira a
+cada delta, e a conversa guardava uma segunda cópia do mesmo texto. Agora o
+cliente acumula numa lista de trechos, junta uma vez só no fim, e o painel
+escreve num buffer fora do estado do React, levando o acumulado para a tela no
+quadro seguinte via `requestAnimationFrame`.
+
+Medido em teste: **400 trechos produzem no máximo 2 quadros** enquanto nenhum
+quadro roda, e o texto final é idêntico ao concatenado. O último trecho nunca
+fica preso: o quadro pendente é cancelado e o conteúdo aplicado quando o stream
+termina, e nada é desenhado depois do desmonte.
+
+A rolagem automática só acompanha quem está no fim da conversa (margem de
+48px); quem subiu para reler fica onde estava. O salto é direto, sem animação,
+porque rolagem suave a cada quadro de texto novo vira tremor e ignoraria quem
+pediu menos movimento no sistema. O cursor piscante do texto em produção
+respeita `prefers-reduced-motion`.
+
+### Privacidade, telemetria e cabeçalhos
+
+A telemetria é uma linha por geração com números e um motivo: quantidade de
+deltas, bytes de resposta, bytes lidos do provedor, tempo até o primeiro trecho
+e duração total. Nada de pergunta, valor de célula, nome de arquivo ou trecho
+da resposta, e nenhum serviço externo. As mensagens cruas do provedor ficam no
+servidor, porque elas podem citar política, modelo ou trecho da entrada.
+
+`cache-control` passou de `no-cache, no-store, no-transform` para
+`no-store, no-cache, no-transform` com `no-store` na frente, e o
+`x-accel-buffering: no` continua desligando o buffer de proxy que anularia o
+streaming. Turnstile, cookie humano assinado, limite de requisições, sessão,
+origem, HSTS e sanitização do contexto seguem intactos e antes de qualquer
+consumo do Gemini.
+
+### Limitações conhecidas
+
+- O backpressure vale até a borda da plataforma. A função declara
+  `supportsResponseStreaming: true` e o corpo é entregue como stream, mas o que
+  acontece entre a saída da função e o navegador é da Vercel, não deste
+  código.
+- Os 55s são um palpite calibrado pelo padrão do runtime. Se algum dia o
+  projeto declarar `maxDuration`, este número precisa acompanhar.
+- O smoke test contra a API real é manual. Ele existe porque mock nenhum
+  confirma sozinho o contrato do provedor, mas colocá-lo na verificação de toda
+  PR tornaria a CI dependente de rede e de cota paga.
+
+### Verificação
+
+`npm test` com 991 testes verdes. Os novos cobrem: evento exatamente no limite
+e um byte acima, evento grande picado em chunks, stream sem separador nenhum,
+soma de eventos válidos acima do teto da resposta, buffer solto depois da
+interrupção, contagem em bytes e não em caracteres, CRLF/LF/CR, múltiplas
+linhas `data:`, comentários e batimentos, campo desconhecido, evento final sem
+linha em branco, corpo vazio, término abrupto, JSON inválido, evento de erro do
+provedor, status não final, sentinela `[DONE]`, filtragem de raciocínio
+interno, os três prazos com temporizador falso, desconexão do navegador, aborto
+da requisição, os dois tetos de memória, forma da telemetria, e no componente:
+400 trechos agrupados, texto progressivo, botão de parar, interrupção com nova
+pergunta em seguida, fechamento do painel, desmonte no meio e estouro de prazo
+sem termo técnico na tela.
+
+### O documento estava duplicado
+
+`docs/CURRENT_STATE_AUDIT.md` tinha 16.460 linhas, das quais 8.011 eram cópia.
+A duplicação entrou na PR #276: o arquivo foi anexado a si mesmo e, no ponto da
+emenda, um trecho de frase se perdeu (`com o \`R$\` **sem aspas**` ficou
+truncado em `com o \`R`). A correção removeu os 458.741 bytes repetidos e
+restaurou a ponte da frase; o resultado começa byte a byte igual à versão
+anterior à duplicação e preserva todo o conteúdo único posterior.
+
+Na mesma limpeza: as seções 21 e 22 estavam fisicamente entre a 14 e a 15 e
+voltaram para depois da 20, e a remoção do grafo foi renumerada de 141 (número
+já usado pelo quick-xml) para 143. A sequência agora vai de 1 a 143 sem buraco,
+sem repetição e sem inversão.
+
+### Versão
+
+`0.10.0-beta.10` → `0.10.0-beta.11`.
