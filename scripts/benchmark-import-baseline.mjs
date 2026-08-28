@@ -78,7 +78,8 @@ function construirXlsx(linhas, abas, colunas = COLUNAS.length) {
   const wb = XLSX.utils.book_new();
   for (let aba = 0; aba < abas; aba += 1) {
     const dados = [COLUNAS.slice(0, colunas)];
-    for (let linha = 1; linha <= linhas; linha += 1) dados.push(linhaDeterministica(linha, colunas));
+    for (let linha = 1; linha <= linhas; linha += 1)
+      dados.push(linhaDeterministica(linha, colunas));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dados), `Aba ${aba + 1}`);
   }
   return new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
@@ -171,7 +172,9 @@ for (const cenario of cenarios) {
     // pilha de chamadas antes de medir qualquer coisa.
     const todas = [];
     for (const nome of leitura.resultado.SheetNames)
-      for (const linha of XLSX.utils.sheet_to_json(leitura.resultado.Sheets[nome], { defval: null }))
+      for (const linha of XLSX.utils.sheet_to_json(leitura.resultado.Sheets[nome], {
+        defval: null,
+      }))
         todas.push(linha);
     return todas;
   });
@@ -216,9 +219,6 @@ const saida = {
   node: process.version,
   cenarios: relatorio,
 };
-fs.writeFileSync(
-  path.join(destino, "import-baseline.json"),
-  JSON.stringify(saida, null, 2) + "\n",
-);
+fs.writeFileSync(path.join(destino, "import-baseline.json"), JSON.stringify(saida, null, 2) + "\n");
 
 process.stdout.write(`\nRelatório em test-results/import-baseline.json\n`);
