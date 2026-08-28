@@ -525,8 +525,86 @@ para obtê-los nada precisa ser expandido, que é a própria capacidade em teste
 
 ### O que falta para o caminho progressivo de OOXML
 
-Nada chama o leitor novo ainda. O que falta é o XML da aba virar grade e
-alimentar `sheetsWithData(wb, { gridFor })`, como o CSV já faz. `inspectOoxml`
-já lê o pacote entrada por entrada e é o candidato natural a receber este
-leitor, mas ele é síncrono e o acesso por `Blob` é assíncrono: essa é a próxima
-decisão de desenho, e não uma questão de esforço.
+Nada chama o leitor novo ainda. `inspectOoxml` já lê o pacote entrada por
+entrada e é o candidato natural a receber este leitor, mas ele é síncrono e o
+acesso por `Blob` é assíncrono: essa é uma decisão de desenho, e não uma
+questão de esforço.
+
+## A grade da aba, e por que ela ainda não serve
+
+`readOoxmlSheetGrid` lê o XML de uma aba direto para uma grade densa, sem
+worksheet nenhuma. Ao contrário do CSV, aqui `aoa` e `textAoa` **não**
+coincidem: um número com formato de data é `Date` numa e texto formatado na
+outra.
+
+Confrontada com a worksheet do mesmo leitor, sobre o corpus real:
+
+```text
+25 planilhas reais com data
+25 ainda divergem, em: celula, colunas, nome-de-aba, quantidade-de-abas, quantidade-de-linhas
+0 já coincidem
+```
+
+A causa é única. `formatTemporalCell` decide granularidade, fuso e formato a
+partir de `cell.z` e `cell.w` **da célula de origem**. Numa worksheet mínima não
+existe célula, a data é descartada, a coluna de data perde valor ou some
+inteira, e a coluna que some desloca a detecção de cabeçalho.
+
+**A grade de OOXML, como está, não substitui a worksheet em nenhuma planilha
+real do corpus.** A substituibilidade está provada só nos casos sintéticos sem
+data.
+
+O teste natural do outro lado, "em planilha real sem data a grade é
+substituível", não pôde ser escrito: não existe planilha assim no corpus. Num
+domínio de qualidade, data é coluna obrigatória.
+
+O que falta, então, é preciso: **a grade precisa carregar o formato numérico e o
+texto exibido das células de data**, e `sheetToRows` precisa aceitá-los sem
+worksheet. Isso é mudança em `import.ts`, e trazia uma pergunta de custo:
+guardar formato e texto por célula de data reintroduz parte exata do que a grade
+existe para remover.
+
+### O custo disso, medido
+
+| Representação | Memória viva |
+| --- | ---: |
+| Worksheet, como o leitor monta hoje | 235,5 MiB |
+| Grade de valores e de texto | 61,3 MiB |
+| Grade mais o formato e o texto das datas | **72,2 MiB** |
+
+O formato custa **10,8 MiB**, e a grade completa fica em **69% menos** que a
+worksheet. A pergunta estava certa e a resposta é favorável: o par por célula de
+data é barato perto do que ele destrava. Medido em 120 mil linhas por 8 colunas,
+com uma coluna de data de verdade, e reproduzido até a décima de MiB entre
+execuções (`OLI_GRID_BENCHMARK=1`).
+
+Ou seja, a lacuna vale a pena fechar, e o próximo incremento tem número para
+justificar-se antes de começar.
+
+### Onde os pares moram, também medido antes de escolher
+
+O mapa por endereço com o par completo é o mais simples de escrever, e não é o
+mais barato. Duas observações o encolhem, e as duas foram medidas antes de virar
+código.
+
+A primeira é que o texto exibido **já** está na grade: `textAoa` guarda
+exatamente o `w` que `formatTemporalCell` consulta, então guardá-lo de novo é
+pagar duas vezes pela mesma string. A segunda é que o formato numérico repete:
+uma coluna de data costuma ter um formato só, e o próprio pacote OOXML guarda
+formatos por índice de estilo, e não por célula.
+
+| Desenho | Custo sobre a grade |
+| --- | ---: |
+| Mapa por célula, com formato e texto | 10,8 MiB |
+| Mapa por célula, só o formato | 6,3 MiB |
+| Um formato por coluna | ~0 MiB |
+
+O formato por coluna é praticamente de graça, mas só vale se a coluna for
+homogênea, e isso é afirmação sobre planilha real, não sobre o formato OOXML.
+Quem respondeu foi o corpus: **214 colunas de data, 13 com mais de um formato**,
+ou seja 6%.
+
+O desenho, então, está decidido e tem número: **formato por coluna quando ela é
+homogênea, e por célula só nas que não são.** Os 94% saem de graça, e os 6%
+pagam 6,3 MiB no pior caso. O texto exibido nunca é duplicado, porque a grade já
+o tem.

@@ -181,52 +181,43 @@ function serialDate(value: number, date1904: boolean): Date | null {
   );
 }
 
-function readSheet(xml: string, strings: string[], formats: string[], date1904: boolean) {
-  const cells = new Map<string, ReaderCell>();
-  const worksheet: XLSX.WorkSheet = {};
-  let range: XLSX.Range | null = null;
-  const rows: XLSX.RowInfo[] = [];
-  const hiddenRows: number[] = [];
-  const hiddenColumns: Array<{ start: number; end: number }> = [];
-  const mergedRanges: string[] = [];
-  for (const match of xml.matchAll(/<row\b[^>]*(?:\/>|>)/g)) {
-    const attrs = attributes(match[0]);
-    const rowNumber = Number(attrs["r"]);
-    if (!Number.isInteger(rowNumber) || rowNumber < 1) continue;
-    const hidden = attrs["hidden"] === "1" || attrs["hidden"] === "true";
-    if (hidden) {
-      rows[rowNumber - 1] = { hidden: true };
-      hiddenRows.push(rowNumber);
-    }
-  }
-  if (rows.length) worksheet["!rows"] = rows;
-  for (const match of xml.matchAll(/<col\b[^>]*(?:\/>|>)/g)) {
-    const attrs = attributes(match[0]);
-    if (attrs["hidden"] !== "1" && attrs["hidden"] !== "true") continue;
-    const start = Number(attrs["min"]);
-    const end = Number(attrs["max"]);
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) continue;
-    hiddenColumns.push({ start, end });
-  }
-  if (hiddenColumns.length) {
-    const columns: XLSX.ColInfo[] = [];
-    for (const { start, end } of hiddenColumns)
-      for (let column = start; column <= end; column++) columns[column - 1] = { hidden: true };
-    worksheet["!cols"] = columns;
-  }
-  for (const match of xml.matchAll(/<mergeCell\b[^>]*\bref="([^"]+)"[^>]*\/>/g)) {
-    const reference = match[1]!;
-    try {
-      worksheet["!merges"] ??= [];
-      worksheet["!merges"].push(XLSX.utils.decode_range(reference));
-      mergedRanges.push(reference);
-    } catch {
-      // Estruturas inválidas são ignoradas pelo verificador independente.
-    }
-  }
-  // A alternativa autocontida precisa vir primeiro. Caso contrário, `<c .../>`
-  // também casa como uma tag de abertura e captura o conteúdo da próxima
-  // célula até `</c>`, transformando formatação vazia em dado inexistente.
+/** Compartilhadas entre a leitura para worksheet e a leitura para grade. */
+const ROW_TAG = /<row\b[^>]*(?:\/>|>)/g;
+const MERGE_TAG = /<mergeCell\b[^>]*\bref="([^"]+)"[^>]*\/>/g;
+
+/**
+ * Uma célula do XML da aba, já interpretada.
+ *
+ * Existe para o mesmo XML ser lido uma vez só e servir a dois consumidores: a
+ * worksheet que o verificador independente monta e a grade que a normalização
+ * consome. Duas leituras seriam dois lugares onde a interpretação de tipo,
+ * formato e data pode divergir sem ninguém notar, e é justamente essa
+ * interpretação que o corpus real conferiu célula a célula.
+ */
+type ParsedSheetCell = {
+  address: string;
+  rawValue: string | number | boolean | null;
+  displayValue: string;
+  numberFormat: string;
+  /** Já decodificada, e sem o `=` que o inventário acrescenta. */
+  formula?: string;
+  /** Preenchida quando o número tem formato de data e a conversão deu certo. */
+  dateValue?: Date;
+};
+
+/**
+ * Percorre as células do XML da aba, na ordem em que o arquivo as declara.
+ *
+ * A alternativa autocontida precisa vir primeiro. Caso contrário, `<c .../>`
+ * também casa como uma tag de abertura e captura o conteúdo da próxima
+ * célula até `</c>`, transformando formatação vazia em dado inexistente.
+ */
+function* parseSheetCells(
+  xml: string,
+  strings: string[],
+  formats: string[],
+  date1904: boolean,
+): Generator<ParsedSheetCell> {
   for (const match of xml.matchAll(/<c\b([^>]*)\/>|<c\b([^>]*?)>([\s\S]*?)<\/c>/g)) {
     const attrs = attributes(match[1] ?? match[2] ?? "");
     const address = attrs["r"];
@@ -257,27 +248,95 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
         displayValue = String(rawValue);
       }
     }
+    const dateValue =
+      typeof rawValue === "number" && XLSX.SSF.is_date(numberFormat)
+        ? (serialDate(rawValue, date1904) ?? undefined)
+        : undefined;
+
+    yield {
+      address,
+      rawValue,
+      displayValue,
+      numberFormat,
+      ...(decodedFormula ? { formula: decodedFormula } : {}),
+      ...(dateValue ? { dateValue } : {}),
+    };
+  }
+}
+
+/**
+ * Uma célula sem valor e sem fórmula não vira célula na worksheet.
+ *
+ * Ela existe no XML só para carregar formatação, e o inventário a registra,
+ * mas o modelo do SheetJS não. A grade segue a worksheet, e não o inventário,
+ * porque é com a worksheet que ela precisa ser intercambiável.
+ */
+const cellReachesWorksheet = (cell: ParsedSheetCell) =>
+  cell.rawValue != null || cell.formula !== undefined;
+
+function readSheet(xml: string, strings: string[], formats: string[], date1904: boolean) {
+  const cells = new Map<string, ReaderCell>();
+  const worksheet: XLSX.WorkSheet = {};
+  let range: XLSX.Range | null = null;
+  const rows: XLSX.RowInfo[] = [];
+  const hiddenRows: number[] = [];
+  const hiddenColumns: Array<{ start: number; end: number }> = [];
+  const mergedRanges: string[] = [];
+  for (const match of xml.matchAll(ROW_TAG)) {
+    const attrs = attributes(match[0]);
+    const rowNumber = Number(attrs["r"]);
+    if (!Number.isInteger(rowNumber) || rowNumber < 1) continue;
+    const hidden = attrs["hidden"] === "1" || attrs["hidden"] === "true";
+    if (hidden) {
+      rows[rowNumber - 1] = { hidden: true };
+      hiddenRows.push(rowNumber);
+    }
+  }
+  if (rows.length) worksheet["!rows"] = rows;
+  for (const match of xml.matchAll(/<col\b[^>]*(?:\/>|>)/g)) {
+    const attrs = attributes(match[0]);
+    if (attrs["hidden"] !== "1" && attrs["hidden"] !== "true") continue;
+    const start = Number(attrs["min"]);
+    const end = Number(attrs["max"]);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) continue;
+    hiddenColumns.push({ start, end });
+  }
+  if (hiddenColumns.length) {
+    const columns: XLSX.ColInfo[] = [];
+    for (const { start, end } of hiddenColumns)
+      for (let column = start; column <= end; column++) columns[column - 1] = { hidden: true };
+    worksheet["!cols"] = columns;
+  }
+  for (const match of xml.matchAll(MERGE_TAG)) {
+    const reference = match[1]!;
+    try {
+      worksheet["!merges"] ??= [];
+      worksheet["!merges"].push(XLSX.utils.decode_range(reference));
+      mergedRanges.push(reference);
+    } catch {
+      // Estruturas inválidas são ignoradas pelo verificador independente.
+    }
+  }
+  for (const parsed of parseSheetCells(xml, strings, formats, date1904)) {
+    const { address, rawValue, displayValue, numberFormat, formula, dateValue } = parsed;
     cells.set(address, {
       address,
       rawValue,
       displayValue,
       ...(numberFormat !== "General" ? { numberFormat } : {}),
-      ...(formula ? { formula: `=${decodedFormula!}` } : {}),
+      ...(formula ? { formula: `=${formula}` } : {}),
     });
-    if (rawValue == null && !formula) continue;
+    if (!cellReachesWorksheet(parsed)) continue;
     const cell: XLSX.CellObject = {
       t: typeof rawValue === "boolean" ? "b" : typeof rawValue === "number" ? "n" : "s",
       v: rawValue ?? "",
       w: displayValue,
       ...(numberFormat !== "General" ? { z: numberFormat } : {}),
-      ...(formula ? { f: decodedFormula! } : {}),
+      ...(formula ? { f: formula } : {}),
     };
-    if (typeof rawValue === "number" && XLSX.SSF.is_date(numberFormat)) {
-      const converted = serialDate(rawValue, date1904);
-      if (converted) {
-        cell.t = "d";
-        cell.v = converted;
-      }
+    if (dateValue) {
+      cell.t = "d";
+      cell.v = dateValue;
     }
     worksheet[address] = cell;
     const decoded = XLSX.utils.decode_cell(address);
@@ -302,11 +361,17 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
  */
 export type OoxmlSheetProgress = (completed: number, total: number) => void;
 
-export function inspectOoxml(
-  input: ArrayBuffer | Uint8Array | OoxmlArchive,
-  onSheetDone?: OoxmlSheetProgress,
-): OoxmlInspection {
-  const archive = isOoxmlArchive(input) ? input : unzipOoxmlArchive(input);
+/**
+ * O que é preciso ler do pacote antes de olhar qualquer aba.
+ *
+ * Os textos compartilhados, os formatos numéricos e a base de datas valem para
+ * o pacote inteiro, e a lista de abas declaradas define a ordem e o
+ * denominador do progresso. Existe extraído porque `inspectOoxml` e
+ * `readOoxmlSheetGrids` precisam exatamente disto, e ler o mesmo pacote de dois
+ * jeitos seria a forma mais fácil de as duas leituras divergirem na base de
+ * datas ou na tabela de formatos.
+ */
+function readWorkbookParts(archive: OoxmlArchive) {
   const workbookXml = archiveText(archive, "xl/workbook.xml");
   if (!workbookXml) throw new Error("O pacote OOXML não contém xl/workbook.xml.");
   const rels = relationshipMap(archiveText(archive, "xl/_rels/workbook.xml.rels"), "xl");
@@ -314,13 +379,153 @@ export function inspectOoxml(
   const formats = styleFormats(archiveText(archive, "xl/styles.xml"));
   const workbookPrAttrs = attributes(/<workbookPr\b[^>]*\/?>/.exec(workbookXml)?.[0] ?? "");
   const date1904 = workbookPrAttrs["date1904"] === "1" || workbookPrAttrs["date1904"] === "true";
-  const workbook = XLSX.utils.book_new();
-  const sheets = new Map<string, Map<string, ReaderCell>>();
-  const structures = new Map<string, OoxmlSheetStructure>();
   // O total sai da própria lista de <sheet> do workbook.xml, e não da
   // contagem de abas já lidas: uma aba sem relacionamento é pulada, e usar o
   // que foi lido como denominador faria a fração andar para trás.
   const declaredSheets = [...workbookXml.matchAll(/<sheet\b[^>]*\/>/g)];
+  return { rels, strings, formats, date1904, declaredSheets };
+}
+
+/**
+ * A aba do pacote como grade, sem worksheet nenhuma.
+ *
+ * É o equivalente OOXML do que `csv-stream.ts` produz para CSV, e existe pela
+ * mesma medida: a worksheet do SheetJS é a cópia que domina o pico da
+ * importação, e a normalização já sabe trabalhar sobre uma grade
+ * (`sheetsWithData(wb, { gridFor })`).
+ *
+ * `aoa` são os valores como `sheetToRows` os consome, com data já convertida.
+ * `textAoa` é o texto formatado, que a detecção de regiões usa. Ao contrário do
+ * CSV, aqui as duas **não** coincidem: um número com formato de data aparece
+ * como `Date` numa e como texto formatado na outra, e é justamente por isso que
+ * `SheetGridSource` tem os dois campos separados.
+ *
+ * `hiddenRows` e `mergedRanges` viajam junto porque a normalização os lê da
+ * worksheet, e quem montar a worksheet mínima a partir desta grade precisa
+ * saber deles. Sem isso, uma linha oculta entraria como dado.
+ */
+export type OoxmlSheetGrid = {
+  ref: string;
+  /**
+   * O booleano faz parte do conjunto: uma célula `t="b"` chega como `true` ou
+   * `false`, e é assim que a worksheet equivalente já a entrega hoje.
+   *
+   * `SheetSourceGrid`, em `import.ts`, ainda **não** declara booleano, embora o
+   * caminho atual o produza: `sheet_to_json` devolve `true`/`false` para uma
+   * célula `t="b"`, e a anotação ali é uma asserção, não uma conversão. Alargar
+   * aquele tipo cascateia por oito assinaturas internas do arquivo do qual todo
+   * o corpus depende, e não pertence a esta etapa. Fica registrado aqui porque é
+   * a primeira coisa que quem ligar esta grade à normalização vai encontrar.
+   */
+  aoa: (string | number | boolean | Date | null)[][];
+  textAoa: (string | number | boolean | null)[][];
+  hiddenRows: number[];
+  mergedRanges: string[];
+};
+
+/**
+ * Lê o XML de uma aba direto para uma grade densa.
+ *
+ * A grade é do tamanho do intervalo declarado, e cada linha vem completa. É a
+ * forma que `sheet_to_json` produz a partir da worksheet equivalente, e a
+ * intercambialidade entre as duas é o que os testes cobram.
+ */
+export function readOoxmlSheetGrid(
+  xml: string,
+  strings: string[],
+  formats: string[],
+  date1904: boolean,
+): OoxmlSheetGrid {
+  const hiddenRows: number[] = [];
+  for (const match of xml.matchAll(ROW_TAG)) {
+    const attrs = attributes(match[0]);
+    const rowNumber = Number(attrs["r"]);
+    if (!Number.isInteger(rowNumber) || rowNumber < 1) continue;
+    if (attrs["hidden"] === "1" || attrs["hidden"] === "true") hiddenRows.push(rowNumber);
+  }
+
+  const mergedRanges: string[] = [];
+  for (const match of xml.matchAll(MERGE_TAG)) mergedRanges.push(match[1]!);
+
+  // O intervalo declarado manda, como na worksheet. Quando ele falta, o que
+  // sobra é o retângulo que as células ocupam.
+  const dimension = /<dimension\b[^>]*ref="([^"]+)"/.exec(xml)?.[1];
+  const parsed = [...parseSheetCells(xml, strings, formats, date1904)].filter(cellReachesWorksheet);
+  let range: XLSX.Range | null = null;
+  if (dimension) {
+    try {
+      range = XLSX.utils.decode_range(dimension);
+    } catch {
+      range = null;
+    }
+  }
+  if (!range)
+    for (const cell of parsed) {
+      const decoded = XLSX.utils.decode_cell(cell.address);
+      range = range
+        ? {
+            s: { r: Math.min(range.s.r, decoded.r), c: Math.min(range.s.c, decoded.c) },
+            e: { r: Math.max(range.e.r, decoded.r), c: Math.max(range.e.c, decoded.c) },
+          }
+        : { s: decoded, e: decoded };
+    }
+  const usado = range ?? { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
+  const linhas = usado.e.r - usado.s.r + 1;
+  const colunas = usado.e.c - usado.s.c + 1;
+
+  const aoa: OoxmlSheetGrid["aoa"] = Array.from({ length: linhas }, () =>
+    new Array<string | number | boolean | Date | null>(colunas).fill(null),
+  );
+  const textAoa: (string | number | boolean | null)[][] = Array.from({ length: linhas }, () =>
+    new Array<string | number | boolean | null>(colunas).fill(null),
+  );
+
+  for (const cell of parsed) {
+    const decoded = XLSX.utils.decode_cell(cell.address);
+    const linha = decoded.r - usado.s.r;
+    const coluna = decoded.c - usado.s.c;
+    if (linha < 0 || coluna < 0 || linha >= linhas || coluna >= colunas) continue;
+    aoa[linha]![coluna] = cell.dateValue ?? cell.rawValue ?? "";
+    textAoa[linha]![coluna] = cell.displayValue;
+  }
+
+  return {
+    ref: dimension || (range ? XLSX.utils.encode_range(range) : "A1"),
+    aoa,
+    textAoa,
+    hiddenRows,
+    mergedRanges,
+  };
+}
+
+/** As grades de todas as abas do pacote, na ordem em que ele as declara. */
+export function readOoxmlSheetGrids(
+  input: ArrayBuffer | Uint8Array | OoxmlArchive,
+  onSheetDone?: OoxmlSheetProgress,
+): Map<string, OoxmlSheetGrid> {
+  const archive = isOoxmlArchive(input) ? input : unzipOoxmlArchive(input);
+  const { rels, strings, formats, date1904, declaredSheets } = readWorkbookParts(archive);
+  const grids = new Map<string, OoxmlSheetGrid>();
+  for (const [index, match] of declaredSheets.entries()) {
+    const attrs = attributes(match[0]);
+    const name = decodeOoxmlText(attrs["name"] ?? "Planilha");
+    const path = rels.get(attrs["r:id"] ?? "");
+    if (path)
+      grids.set(name, readOoxmlSheetGrid(archiveText(archive, path), strings, formats, date1904));
+    onSheetDone?.(index + 1, declaredSheets.length);
+  }
+  return grids;
+}
+
+export function inspectOoxml(
+  input: ArrayBuffer | Uint8Array | OoxmlArchive,
+  onSheetDone?: OoxmlSheetProgress,
+): OoxmlInspection {
+  const archive = isOoxmlArchive(input) ? input : unzipOoxmlArchive(input);
+  const { rels, strings, formats, date1904, declaredSheets } = readWorkbookParts(archive);
+  const workbook = XLSX.utils.book_new();
+  const sheets = new Map<string, Map<string, ReaderCell>>();
+  const structures = new Map<string, OoxmlSheetStructure>();
   for (const [index, match] of declaredSheets.entries()) {
     const attrs = attributes(match[0]);
     const name = decodeOoxmlText(attrs["name"] ?? "Planilha");
