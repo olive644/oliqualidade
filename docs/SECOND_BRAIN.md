@@ -205,6 +205,7 @@ audit inteiro.
 | Erro do servidor (500, recuperação de stack) | `error-capture.ts` (`AsyncLocalStorage` por requisição), `server.ts`  | `error-capture.test.ts`                      |
 | Exportação PNG/PDF e tabelas                | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação                 |
 | Desempenho                                  | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets         | `npm run verify`                             |
+| Progresso da importação na tela             | `workbook-reader.ts` emite `{ stage, completed?, total? }`; `import-progress.ts` traduz para rótulo, percentual e fração; `empty.tsx` desenha a barra só quando há medida | `import-progress.test.ts`, `empty.test.tsx`, `workbook-reader.test.ts` — ver [[CURRENT_STATE_AUDIT#145. Progresso medido na leitura de planilha, e as abas saindo do worker uma a uma]] |
 | Métricas de importação (leitor, tempo, bytes, fallback) | `import-metrics.ts`, `storage.ts` (`loadImportMetrics`/`saveImportMetrics`), painel em `components/oliam/import-diagnostics-dialog.tsx` | `import-metrics.test.ts`, `workbook-reader.test.ts` |
 | Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) — ver [[CURRENT_STATE_AUDIT#73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo]] |
 | Interpretar um Value como número tolerando vírgula decimal brasileira, sem nunca virar NaN | `parseNumericValue` (`format.ts`) — usado em `fmt`, `evalFormula`, `resolveConditionalFormat`, e em todo `data-pipeline.ts`/`operational-widgets.ts`/`widget-card.tsx`/`format-rules-editor.tsx` que antes fazia `Number(valorDeCelula)` direto | `format.test.ts`, `data-pipeline.test.ts`, `operational-widgets.test.ts` |
@@ -709,6 +710,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 | Prazo da geração termina em 55s, não no limite da plataforma | a função da Vercel roda sem `maxDuration` declarado, então vale o padrão de 60s do runtime Node; deixar a plataforma cortar produz um fim de resposta sem explicação | quem fecha a conexão é o servidor, com evento de erro e motivo legível; se um dia o projeto declarar `maxDuration`, este número precisa acompanhar |
 | Nenhuma repetição automática depois do primeiro trecho de texto | repetir uma geração já iniciada duplicaria conteúdo na tela e cobraria a API duas vezes | só a troca de modelo em 404 é automática (acontece nos cabeçalhos, antes de qualquer texto); o resto é o botão `Tentar novamente`, sempre um clique da pessoa |
 | Resposta interrompida ou falhada não volta como histórico ao modelo | reapresentar uma mensagem de erro como se o assistente a tivesse dito envenena a pergunta seguinte | o painel guarda o `status` de cada fala e monta o histórico só com pergunta da pessoa e resposta `concluida` |
+| Barra de leitura só nas etapas que medem de verdade          | `XLSX.read` é uma chamada única e opaca, medida em 32% do tempo de um arquivo de 61 MiB; uma barra andando ali prometeria uma previsão que o programa não tem | `parsing` reporta etapa sem fração e a tela esconde a barra, deixando a animação do Oli dizer que algo acontece |
+| Progresso da importação em percentual, não em contagem de abas | a verificação percorre cada aba duas vezes, então o denominador dela vem dobrado e um contador em abas mentiria | o percentual continua verdadeiro nas duas etapas mensuráveis; a contagem de abas aparece só durante a análise, que é quem as produz |
+| Abas escoadas do worker uma a uma                            | mandar o conjunto num `postMessage` só fazia o modelo existir em dobro no instante do clone estrutural | `streamSheetsWithData` entrega cada aba pronta; o relatório conta por contador próprio, porque o array fica vazio de propósito |
 | Processar workbook fora da thread principal                  | planilhas grandes congelavam a UI                               | worker é parte obrigatória do caminho de importação                                           |
 | Preservar original e agregado                                | soma automática distorcia planilhas já consolidadas             | widgets guardam `dataMode` e operação                                                           |
 | Exceções/validação apenas manuais                            | criavam ruído e pouca explicação no painel inicial              | continuam disponíveis no catálogo                                                               |
@@ -932,6 +936,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   derivado que nada consumia e que só o gerador de emergência sabia refazer).
   Ver [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
 
+- `v0.10.0-beta.12` (barra de progresso com medida real na importação e abas
+  escoadas do worker uma a uma) avança a iteração. Ver [[CURRENT_STATE_AUDIT#145. Progresso medido na leitura de planilha, e as abas saindo do worker uma a uma]].
+
 - `v0.10.0-beta.11` (botão para parar a resposta, mensagens distintas para os
   três prazos, estado de resposta interrompida e agrupamento das atualizações
   por quadro de tela) avança a iteração: refina o streaming entregue em
@@ -990,6 +997,17 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 - Este documento explica intenção. O mapa estrutural que ficava em
   `graphify-out/` foi removido: ver
   [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
+- **A primeira aba ainda chega a 75% da leitura.** A verificação precisa
+  terminar antes de a análise começar, e é a análise que produz as abas.
+  Canalizar as duas fases por aba (verificar a aba 1, analisar a aba 1, emitir,
+  e só então a aba 2) levaria a primeira aba para cerca de 38% do tempo, mas
+  mexe em `inspectOoxml` e `compareAndRepairWithOoxml`, que hoje trabalham sobre
+  o pacote inteiro. Registrado como trabalho seguinte, não feito. Ver [[CURRENT_STATE_AUDIT#145. Progresso medido na leitura de planilha, e as abas saindo do worker uma a uma]].
+- **O orçamento de 60s da leitura está mais apertado do que parece.** Um XLSX
+  sintético de 61 MiB, 12 abas e 1,44 milhão de células, dentro de todos os
+  limites do produto, consome 30s numa máquina de desenvolvimento. Numa máquina
+  mais lenta ele é recusado por tempo, não por tamanho. O número não foi mexido
+  nesta rodada; fica registrado porque é o próximo a doer.
 - **Limitações conhecidas do streaming do assistente.** O backpressure vale até
   a borda da plataforma: a leitura do Gemini é dirigida por `pull`, então o
   servidor só puxa quando o navegador consome, mas o que acontece entre a saída
