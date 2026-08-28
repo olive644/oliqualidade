@@ -20,10 +20,15 @@ import { afterEach } from "vitest";
  */
 let measuredWidth = 900;
 let measuredHeight = 320;
+let prefersReducedMotion = false;
 
 export function setMeasuredSize(width: number, height = 320) {
   measuredWidth = width;
   measuredHeight = height;
+}
+
+export function setPrefersReducedMotion(value: boolean) {
+  prefersReducedMotion = value;
 }
 
 type ObserverCallback = (entries: { contentRect: DOMRectReadOnly; target: Element }[]) => void;
@@ -65,7 +70,7 @@ globalThis.ResizeObserver = ImmediateResizeObserver as unknown as typeof globalT
 // pergunte pela preferência quebra na renderização.
 if (!window.matchMedia) {
   window.matchMedia = ((query: string) => ({
-    matches: false,
+    matches: query === "(prefers-reduced-motion: reduce)" && prefersReducedMotion,
     media: query,
     onchange: null,
     addEventListener: () => {},
@@ -79,4 +84,5 @@ if (!window.matchMedia) {
 afterEach(() => {
   cleanup();
   setMeasuredSize(900, 320);
+  setPrefersReducedMotion(false);
 });
