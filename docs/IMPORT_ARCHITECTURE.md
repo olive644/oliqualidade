@@ -219,3 +219,28 @@ outro, com conteúdo idêntico e verificado célula a célula.
 O ganho de 231,5 para 76,5 MiB continua existindo, e continua exigindo o mesmo:
 a normalização precisa aceitar uma grade sem construir worksheet nenhuma. Não
 há atalho.
+
+## Desperdício encontrado no caminho atual
+
+Procurando onde a normalização materializava texto formatado, apareceu algo que
+não tem a ver com leitura progressiva e vale para toda importação, de todo
+formato: `sheetOptionsForName` convertia a **aba inteira** para texto formatado
+(`sheet_to_json` com `raw: false`) e usava apenas as doze primeiras linhas, para
+checar se o arquivo era um relatório de compatibilidade do Excel. O resto era
+alocado e descartado.
+
+Medido isoladamente, numa aba de 200 mil linhas por 8 colunas:
+
+| Chamada | Memória | Tempo | Linhas produzidas |
+| --- | ---: | ---: | ---: |
+| Aba inteira (antes) | 107,4 MiB | 1.415 ms | 200.001 |
+| Só o topo (depois) | 0 MiB | 0 ms | 12 |
+
+O custo era **por aba**: num workbook de doze abas, doze vezes. A correção
+limita o intervalo às linhas que a checagem já lia, e a janela ficou fixada por
+teste, para que um texto igual ao do relatório fora dela não faça uma aba de
+dados legítima desaparecer.
+
+Isso não altera o pico retido, porque a grade era transitória e o coletor a
+levava embora. Altera o pico instantâneo e o tempo, que é o que trava a aba do
+navegador e o que faz um arquivo grande encostar no prazo de 60s da leitura.
