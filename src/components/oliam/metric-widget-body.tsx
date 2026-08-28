@@ -1,4 +1,5 @@
 import { AreaChart, Area, ResponsiveContainer, Tooltip as ChartTooltip } from "recharts";
+import { formatChartTooltipValue } from "@/lib/recharts-compat";
 import { ArrowDown, ArrowUp, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type Row, type Widget } from "@/lib/types";
@@ -244,8 +245,8 @@ export function MetricWidgetBody({
                               borderRadius: 10,
                               fontSize: 11,
                             }}
-                            formatter={(value: number) => [
-                              fmt(value, col.kind) ?? String(value),
+                            formatter={(value) => [
+                              formatChartTooltipValue(value, col.kind),
                               col.label,
                             ]}
                           />

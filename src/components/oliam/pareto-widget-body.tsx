@@ -3,21 +3,27 @@ import { ChartBarDecreasing as ParetoIcon } from "lucide-react";
 import {
   Bar,
   CartesianGrid,
-  Cell,
   ComposedChart,
   LabelList,
   Line,
   ReferenceLine,
   ResponsiveContainer,
+  Rectangle,
   Tooltip as ChartTooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import type { BarShapeProps } from "recharts";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type FilterRule, type Row, type Widget } from "@/lib/types";
 import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, fmt } from "@/lib/format";
+import {
+  formatChartTooltipValue,
+  numericChartTooltipValue,
+  numericLabelValue,
+} from "@/lib/recharts-compat";
 import {
   aggregationLabels,
   barChartPresentation,
@@ -277,11 +283,21 @@ export function ParetoWidgetBody({
                         borderRadius: 12,
                         fontSize: 12,
                       }}
-                      formatter={(value: number, name: string) =>
-                        name === "cumulativePercent"
-                          ? [`${value.toFixed(1)}%`, "Acumulado"]
-                          : [fmt(value, valueCol.kind), aggregationLabels[op]]
-                      }
+                      formatter={(value, name) => {
+                        if (name === "cumulativePercent") {
+                          const percentage = numericChartTooltipValue(value);
+                          return [
+                            percentage === null
+                              ? "Percentual indisponível"
+                              : `${percentage.toFixed(1)}%`,
+                            "Acumulado",
+                          ];
+                        }
+                        return [
+                          formatChartTooltipValue(value, valueCol.kind),
+                          aggregationLabels[op],
+                        ];
+                      }}
                     />
                     <ReferenceLine
                       yAxisId="right"
@@ -305,42 +321,48 @@ export function ParetoWidgetBody({
                       onMouseLeave={() => setActiveIndex(null)}
                       cursor="pointer"
                       isAnimationActive={false}
+                      shape={(shapeProps: BarShapeProps) => {
+                        const entry = series[shapeProps.index];
+                        if (!entry) return <g />;
+                        const highlighted = displayedIndex === shapeProps.index;
+                        return (
+                          <Rectangle
+                            {...shapeProps}
+                            className="oliam-chart-bar-cell"
+                            fill={
+                              (op !== "count"
+                                ? conditionalColor(
+                                    entry.total,
+                                    valueCol.kind,
+                                    valueCol.conditionalFormat,
+                                  )
+                                : null) ?? `url(#bar-grad-${w.id})`
+                            }
+                            opacity={displayedIndex === null || highlighted ? 1 : 0.45}
+                            stroke={highlighted ? "var(--primary)" : "none"}
+                            strokeWidth={highlighted ? 1 : 0}
+                            style={
+                              {
+                                ...shapeProps.style,
+                                "--oliam-bar-delay": `${Math.min(shapeProps.index, 14) * 42}ms`,
+                                filter: highlighted ? "brightness(1.08)" : "none",
+                              } as CSSProperties
+                            }
+                          />
+                        );
+                      }}
                     >
-                      {series.map((entry, i) => (
-                        <Cell
-                          key={i}
-                          className="oliam-chart-bar-cell"
-                          // Só compara com a regra de formatação condicional
-                          // quando `entry.total` de fato está na unidade de
-                          // valueCol (soma/média/mín/máx). Em op "count",
-                          // `entry.total` é uma contagem de linhas — outra
-                          // grandeza — e não deve ser testada contra a regra.
-                          fill={
-                            (op !== "count"
-                              ? conditionalColor(
-                                  entry.total,
-                                  valueCol.kind,
-                                  valueCol.conditionalFormat,
-                                )
-                              : null) ?? `url(#bar-grad-${w.id})`
-                          }
-                          opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
-                          stroke={displayedIndex === i ? "var(--primary)" : "none"}
-                          strokeWidth={displayedIndex === i ? 1 : 0}
-                          style={
-                            {
-                              "--oliam-bar-delay": `${Math.min(i, 14) * 42}ms`,
-                              filter: displayedIndex === i ? "brightness(1.08)" : "none",
-                            } as CSSProperties
-                          }
-                        />
-                      ))}
                       <LabelList
                         dataKey="total"
                         position="top"
                         fontSize={10}
                         fill="var(--muted-foreground)"
-                        formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                        formatter={(value) => {
+                          const numericValue = numericLabelValue(value);
+                          return numericValue === null
+                            ? ""
+                            : (fmt(numericValue, valueCol.kind) ?? String(numericValue));
+                        }}
                       />
                     </Bar>
                     <Line

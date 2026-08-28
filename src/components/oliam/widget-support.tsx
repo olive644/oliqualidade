@@ -70,6 +70,8 @@ import {
 import type { ScheduleCellState } from "@/lib/schedule-normalizer";
 import { conditionalColor, fmt } from "@/lib/format";
 import { barTooltipReading } from "@/lib/chart-reading";
+import { finiteChartCoordinate, sourceRowFromChartPayload } from "@/lib/recharts-compat";
+import type { TooltipPayloadEntry } from "recharts";
 import {
   aggregationLabels,
   NOT_INFORMED,
@@ -496,7 +498,7 @@ export function BarTooltip({
   axis,
 }: {
   active: boolean | undefined;
-  payload: { value?: number; payload?: { sourceRow?: number } }[] | undefined;
+  payload: readonly TooltipPayloadEntry[] | undefined;
   label: string | undefined;
   series: { name: string; total: number; count?: number; sourceRow?: number }[];
   kind: Kind;
@@ -507,7 +509,7 @@ export function BarTooltip({
   if (!active || !payload?.length) return null;
   const value = payload[0]?.value;
   if (typeof value !== "number") return null;
-  const sourceRow = payload[0]?.payload?.sourceRow;
+  const sourceRow = sourceRowFromChartPayload(payload[0]?.payload);
   const idx = sourceRow
     ? series.findIndex((item) => item.sourceRow === sourceRow)
     : series.findIndex((item) => item.name === label);
@@ -534,9 +536,9 @@ export function BarTooltip({
         <span style={{ color: "var(--muted-foreground)", fontWeight: 400 }}>
           {fmt(value, kind) ?? value}
         </span>
-        {mode === "raw" && payload[0]?.payload?.sourceRow && (
+        {mode === "raw" && sourceRow && (
           <span style={{ color: "var(--muted-foreground)", fontSize: 10 }}>
-            linha {payload[0].payload.sourceRow} do Excel
+            linha {sourceRow} do Excel
           </span>
         )}
         {pct !== null && (
@@ -671,20 +673,30 @@ export function AxisTick({
   y,
   payload,
   max,
+  index,
+  visibleTicksCount,
 }: {
-  x?: number;
-  y?: number;
+  x?: string | number | undefined;
+  y?: string | number | undefined;
   payload?: { value?: string | number };
   /** Quantos caracteres cabem sem colidir com o rótulo vizinho. */
   max?: number;
+  index?: number | undefined;
+  visibleTicksCount?: number | undefined;
 }) {
+  const normalizedX = finiteChartCoordinate(x);
+  const normalizedY = finiteChartCoordinate(y);
+  if (normalizedX === null || normalizedY === null) return null;
   const value = String(payload?.value ?? "");
   const missing = value === NOT_INFORMED;
+  const isFirst = index === 0;
+  const isLast =
+    visibleTicksCount !== undefined && visibleTicksCount > 1 && index === visibleTicksCount - 1;
   return (
     <text
-      x={x}
-      y={(y ?? 0) + 12}
-      textAnchor="middle"
+      x={normalizedX}
+      y={normalizedY + 12}
+      textAnchor={isFirst ? "start" : isLast ? "end" : "middle"}
       fontSize={11}
       fontStyle={missing ? "italic" : "normal"}
       fill={missing ? "var(--muted-foreground)" : "var(--foreground)"}
@@ -1342,9 +1354,9 @@ export function TrendSummaryPanel({ summary, kind }: { summary: TrendSummary; ki
  * filtros de outras colunas (ver toggleClickFilter).
  */
 export type ChartDotProps = {
-  cx?: number;
-  cy?: number;
-  payload?: { name?: string; total?: number };
+  cx?: number | undefined;
+  cy?: number | undefined;
+  payload?: { name?: string; total?: number } | undefined;
 };
 export function ChartDot({
   cx,
@@ -1361,7 +1373,8 @@ export function ChartDot({
   onSelect: (groupKey: string, value: string) => void;
 }) {
   if (cx === undefined || cy === undefined) return null;
-  const clickable = !!(groupCol && payload?.name);
+  const pointName = payload?.name;
+  const clickable = groupCol !== undefined && pointName !== undefined && pointName !== "";
   return (
     <circle
       cx={cx}
@@ -1375,7 +1388,10 @@ export function ChartDot({
         ) ?? "var(--primary)"
       }
       style={clickable ? { cursor: "pointer" } : undefined}
-      onClick={() => clickable && onSelect(groupCol!.key, String(payload!.name))}
+      onClick={() => {
+        if (!clickable) return;
+        onSelect(groupCol.key, String(pointName));
+      }}
     />
   );
 }

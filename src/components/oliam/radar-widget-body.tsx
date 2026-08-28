@@ -23,6 +23,7 @@ import {
 } from "@/lib/types";
 import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
 import { fmt } from "@/lib/format";
+import { chartAnimationEnabled, seriesPointFromChartPayload } from "@/lib/recharts-compat";
 import {
   aggregationLabels,
   chartSeries,
@@ -254,7 +255,7 @@ export function RadarWidgetBody({
                 cursor={false}
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
-                  const entry = payload[0]?.payload as { name: string; total: number } | undefined;
+                  const entry = seriesPointFromChartPayload(payload[0]?.payload);
                   if (!entry) return null;
                   const entryIndex = axes.findIndex((axis) => axis.name === entry.name);
                   const comparison = entryIndex >= 0 ? pieComparisonFor(axes, entryIndex) : null;
@@ -329,16 +330,20 @@ export function RadarWidgetBody({
                 fill="var(--primary)"
                 fillOpacity={0.35}
                 strokeWidth={2}
-                isAnimationActive
+                isAnimationActive={chartAnimationEnabled()}
                 animationDuration={680}
                 animationEasing="ease-out"
                 cursor="pointer"
                 // Cada ponta é seu próprio alvo de hover/clique (igual ao
-                // <Cell> da barra/pizza) — dá um leve zoom na ponta sob o
+                // shape da barra/pizza) — dá um leve zoom na ponta sob o
                 // mouse e clique filtra direto, sem depender do
                 // rastreamento por eixo do RadarChart (que não distingue
                 // "sobre a ponta" de "sobre a área preenchida").
-                dot={(dotProps: { cx?: number; cy?: number; index?: number }) => {
+                dot={(dotProps: {
+                  cx?: number | undefined;
+                  cy?: number | undefined;
+                  index?: number | undefined;
+                }) => {
                   const { cx, cy, index } = dotProps;
                   if (typeof cx !== "number" || typeof cy !== "number" || index === undefined) {
                     return <g />;

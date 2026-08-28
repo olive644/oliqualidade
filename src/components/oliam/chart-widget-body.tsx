@@ -5,7 +5,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   ComposedChart,
   Label,
   LabelList,
@@ -15,11 +14,13 @@ import {
   Pie,
   PieChart as RPieChart,
   ResponsiveContainer,
+  Rectangle,
   Sector,
   Tooltip as ChartTooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import type { BarShapeProps, PieSectorShapeProps } from "recharts";
 import { Activity, BarChart3, PieChart as PieIcon, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -38,6 +39,13 @@ import {
 import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
 import { isReferenceMetric } from "@/lib/reference-metrics";
 import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/format";
+import {
+  chartAnimationEnabled,
+  chartTooltipName,
+  formatChartTooltipValue,
+  numericChartTooltipValue,
+  numericLabelValue,
+} from "@/lib/recharts-compat";
 import {
   aggregationLabels,
   buildAreaComparisonSeries,
@@ -622,7 +630,7 @@ export function ChartWidgetBody({
                       // tooltip pra toda a faixa X da categoria (inclusive
                       // o espaço vazio acima de uma barra curta), não só
                       // sobre a barra desenhada. O destaque de "isto está
-                      // sob o mouse" já existe via opacidade do <Cell>
+                      // sob o mouse" já existe via opacidade da shape
                       // abaixo (mais preciso, por forma real).
                       cursor={false}
                       content={(props) =>
@@ -638,13 +646,8 @@ export function ChartWidgetBody({
                         activeBarIndex === null ? null : (
                           <BarTooltip
                             active={props.active}
-                            payload={
-                              props.payload as {
-                                value?: number;
-                                payload?: { sourceRow?: number };
-                              }[]
-                            }
-                            label={props.label as string}
+                            payload={props.payload}
+                            label={typeof props.label === "string" ? props.label : undefined}
                             series={barSeries}
                             kind={valueCol.kind}
                             mode={dataMode}
@@ -660,11 +663,11 @@ export function ChartWidgetBody({
                       maxBarSize={72}
                       onClick={(_, i) => {
                         // O payload que o Recharts entrega ao onClick de uma
-                        // <Bar> com <Cell> filhas não confiavelmente carrega
+                        // <Bar> com shape personalizada não confiavelmente carrega
                         // `.name` (varia por versão/estrutura interna) — o
                         // índice, sim, sempre corresponde à posição em
                         // barSeries (mesmo array usado para renderizar as
-                        // Cell logo abaixo). Buscar o nome ali, em vez de
+                        // shape logo abaixo). Buscar o nome ali, em vez de
                         // confiar no payload, é o mesmo padrão já usado com
                         // sucesso no <Pie> (onClick={(_, index) => ...}).
                         const entry = barSeries[i];
@@ -693,38 +696,47 @@ export function ChartWidgetBody({
                       // hover. Mesmo ajuste já usado no sparkline (metric-widget-body.tsx)
                       // para o mesmo tipo de problema.
                       isAnimationActive={false}
+                      shape={(shapeProps: BarShapeProps) => {
+                        const entry = barSeries[shapeProps.index];
+                        if (!entry) return <g />;
+                        const highlighted = activeBarIndex === shapeProps.index;
+                        return (
+                          <Rectangle
+                            {...shapeProps}
+                            className="oliam-chart-bar-cell"
+                            fill={
+                              conditionalColor(
+                                entry.total,
+                                valueCol.kind,
+                                valueCol.conditionalFormat,
+                              ) ?? `url(#bar-grad-${w.id})`
+                            }
+                            opacity={activeBarIndex === null || highlighted ? 1 : 0.45}
+                            stroke={highlighted ? "var(--primary)" : "none"}
+                            strokeWidth={highlighted ? 1 : 0}
+                            style={
+                              {
+                                ...shapeProps.style,
+                                "--oliam-bar-delay": `${Math.min(shapeProps.index, 14) * 42}ms`,
+                                filter: highlighted ? "brightness(1.08)" : "none",
+                              } as CSSProperties
+                            }
+                          />
+                        );
+                      }}
                     >
-                      {barSeries.map((entry, entryIndex) => (
-                        <Cell
-                          key={`${entry.name}-${entry.sourceRow ?? entryIndex}`}
-                          className="oliam-chart-bar-cell"
-                          fill={
-                            conditionalColor(
-                              entry.total,
-                              valueCol.kind,
-                              valueCol.conditionalFormat,
-                            ) ?? `url(#bar-grad-${w.id})`
-                          }
-                          opacity={
-                            activeBarIndex === null || activeBarIndex === entryIndex ? 1 : 0.45
-                          }
-                          stroke={activeBarIndex === entryIndex ? "var(--primary)" : "none"}
-                          strokeWidth={activeBarIndex === entryIndex ? 1 : 0}
-                          style={
-                            {
-                              "--oliam-bar-delay": `${Math.min(entryIndex, 14) * 42}ms`,
-                              filter: activeBarIndex === entryIndex ? "brightness(1.08)" : "none",
-                            } as CSSProperties
-                          }
-                        />
-                      ))}
                       {barLabelsFit && (
                         <LabelList
                           dataKey="total"
                           position="top"
                           fontSize={10}
                           fill="var(--muted-foreground)"
-                          formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                          formatter={(value) => {
+                            const numericValue = numericLabelValue(value);
+                            return numericValue === null
+                              ? ""
+                              : (fmt(numericValue, valueCol.kind) ?? String(numericValue));
+                          }}
                         />
                       )}
                     </Bar>
@@ -814,19 +826,25 @@ export function ChartWidgetBody({
                       marginBottom: 2,
                     }}
                     itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                    formatter={(
-                      v: number,
-                      _name: string,
-                      entry: { payload?: { count?: number } },
-                    ) => {
-                      const formatted = fmt(v, valueCol.kind) ?? String(v);
+                    formatter={(value, _name, entry) => {
+                      const numericValue = numericChartTooltipValue(value);
+                      const formatted = formatChartTooltipValue(value, valueCol.kind);
                       const share = pieTotal
-                        ? (v / pieTotal).toLocaleString("pt-BR", {
-                            style: "percent",
-                            maximumFractionDigits: 1,
-                          })
+                        ? numericValue === null
+                          ? "participação indisponível"
+                          : (numericValue / pieTotal).toLocaleString("pt-BR", {
+                              style: "percent",
+                              maximumFractionDigits: 1,
+                            })
                         : "participação indisponível";
-                      const count = entry?.payload?.count;
+                      const payload = entry.payload;
+                      const count =
+                        typeof payload === "object" &&
+                        payload !== null &&
+                        "count" in payload &&
+                        typeof payload.count === "number"
+                          ? payload.count
+                          : undefined;
                       return [
                         formatted,
                         count
@@ -846,43 +864,34 @@ export function ChartWidgetBody({
                     minAngle={4}
                     stroke="var(--card)"
                     strokeWidth={3}
-                    // Pop sutil pra fora na fatia em destaque (hover ou
-                    // clique), reaproveitando o mecanismo nativo do
-                    // Recharts em vez de um <Cell> extra ou estado novo —
-                    // displayedPieIndex já sabe qual fatia está ativa.
-                    {...(displayedPieIndex !== null ? { activeIndex: displayedPieIndex } : {})}
-                    activeShape={(rawProps: unknown) => {
-                      const p = rawProps as {
-                        cx?: number;
-                        cy?: number;
-                        innerRadius?: number;
-                        outerRadius?: number;
-                        startAngle?: number;
-                        endAngle?: number;
-                        midAngle?: number;
-                        fill?: string;
-                        stroke?: string;
-                        strokeWidth?: number;
-                        cornerRadius?: number;
-                      };
-                      const radians = -((p.midAngle ?? 0) * Math.PI) / 180;
-                      const offset = 5;
+                    // Recharts 3 removeu activeIndex. A forma controlada
+                    // mantém seleção fixa, hover e toque independentes do
+                    // estado transitório do Tooltip, inclusive em exportação.
+                    shape={(shapeProps: PieSectorShapeProps) => {
+                      const highlighted = displayedPieIndex === shapeProps.index;
+                      const radians = -((shapeProps.midAngle ?? 0) * Math.PI) / 180;
+                      const offset = highlighted ? 5 : 0;
                       const translateX = Math.cos(radians) * offset;
                       const translateY = Math.sin(radians) * offset;
+                      const fill =
+                        pieLegendItems[shapeProps.index]?.color ??
+                        (typeof shapeProps.fill === "string" ? shapeProps.fill : "var(--primary)");
                       return (
                         <g transform={`translate(${translateX} ${translateY})`}>
                           <Sector
-                            className="oliam-chart-pie-active-slice"
-                            cx={p.cx ?? 0}
-                            cy={p.cy ?? 0}
-                            innerRadius={p.innerRadius ?? 0}
-                            outerRadius={(p.outerRadius ?? 0) + 6}
-                            startAngle={p.startAngle ?? 0}
-                            endAngle={p.endAngle ?? 0}
-                            fill={p.fill ?? "var(--primary)"}
-                            stroke={p.stroke ?? "var(--card)"}
-                            strokeWidth={p.strokeWidth ?? 3}
-                            cornerRadius={p.cornerRadius ?? 0}
+                            {...(highlighted ? { className: "oliam-chart-pie-active-slice" } : {})}
+                            cx={shapeProps.cx}
+                            cy={shapeProps.cy}
+                            innerRadius={shapeProps.innerRadius}
+                            outerRadius={shapeProps.outerRadius + (highlighted ? 6 : 0)}
+                            startAngle={shapeProps.startAngle}
+                            endAngle={shapeProps.endAngle}
+                            fill={fill}
+                            opacity={displayedPieIndex === null || highlighted ? 1 : 0.45}
+                            stroke={highlighted ? "var(--foreground)" : "var(--card)"}
+                            strokeWidth={highlighted ? 2 : 3}
+                            cornerRadius={shapeProps.cornerRadius ?? 0}
+                            style={{ transition: "opacity 220ms ease, stroke 220ms ease" }}
                           />
                         </g>
                       );
@@ -907,21 +916,10 @@ export function ChartWidgetBody({
                     onMouseEnter={(_, i) => setActivePieIndex(i)}
                     onMouseLeave={() => setActivePieIndex(null)}
                     cursor="pointer"
+                    isAnimationActive={chartAnimationEnabled()}
                     animationDuration={680}
                     animationEasing="ease-out"
                   >
-                    {pieSeries.map((entry, i) => (
-                      <Cell
-                        key={`${entry.name}-${"sourceRow" in entry ? (entry.sourceRow ?? i) : i}`}
-                        fill={pieLegendItems[i]?.color}
-                        opacity={displayedPieIndex === null || displayedPieIndex === i ? 1 : 0.45}
-                        stroke={displayedPieIndex === i ? "var(--foreground)" : "var(--card)"}
-                        strokeWidth={displayedPieIndex === i ? 2 : 3}
-                        style={{
-                          transition: "opacity 220ms ease, stroke 220ms ease",
-                        }}
-                      />
-                    ))}
                     <Label
                       position="center"
                       content={({ viewBox }) => {
@@ -1114,9 +1112,9 @@ export function ChartWidgetBody({
                           marginBottom: 2,
                         }}
                         itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                        formatter={(v: number, name: string) => [
-                          fmt(v, valueCol.kind) ?? String(v),
-                          name,
+                        formatter={(value, name) => [
+                          formatChartTooltipValue(value, valueCol.kind),
+                          chartTooltipName(name, "Série"),
                         ]}
                       />
                       <Area
@@ -1292,7 +1290,7 @@ export function ChartWidgetBody({
                         marginBottom: 2,
                       }}
                       itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                      formatter={(v: number) => fmt(v, valueCol.kind) ?? String(v)}
+                      formatter={(value) => formatChartTooltipValue(value, valueCol.kind)}
                     />
                     <Line
                       type="monotone"
