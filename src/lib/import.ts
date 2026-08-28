@@ -1531,14 +1531,44 @@ function blocksToRows(blocks: Block[]): { rows: Row[]; blockColumnName: string }
  *   agrupamento e dominam o painel de "Não informado").
  * Um arquivo vazio (sem linhas de dados) retorna rows: [].
  */
-export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): SheetImportResult {
+/**
+ * Grade de valores crus de uma aba, na forma que a normalização consome.
+ *
+ * É o mesmo formato que `sheet_to_json` com `header: 1` produz. Existe como
+ * tipo próprio porque quem já tem a grade não deveria pagar para reconstruí-la.
+ */
+export type SheetSourceGrid = (string | number | Date | null)[][];
+
+export type SheetToRowsOptions = {
+  /**
+   * Grade já pronta, para a normalização não reconstruí-la.
+   *
+   * O caminho de leitura por streaming produz essa grade lendo o arquivo, e sem
+   * isto ela seria descartada e refeita a partir da worksheet: medidos 37 MiB e
+   * mais de um segundo por aba num arquivo de 200 mil linhas.
+   *
+   * Quem passa a grade assume a responsabilidade de que ela corresponde à
+   * worksheet informada. Todo o resto da normalização (mesclagens, fórmulas,
+   * linhas ocultas, diagnóstico) continua lendo a worksheet, porque essas
+   * informações não existem numa grade de valores.
+   */
+  aoa?: SheetSourceGrid;
+};
+
+export function sheetToRows(
+  ws: XLSX.WorkSheet,
+  workbook?: XLSX.WorkBook,
+  options?: SheetToRowsOptions,
+): SheetImportResult {
   const range = ws["!ref"]
     ? XLSX.utils.decode_range(ws["!ref"])
     : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
-  const rawAoa = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
-    header: 1,
-    defval: null,
-  });
+  const rawAoa =
+    options?.aoa ??
+    XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
+      header: 1,
+      defval: null,
+    });
   const sourceAoa = rawAoa.map((row, rowIndex) => normalizeRawRow(row, ws, rowIndex, range.s));
   const sourceNonEmptyCells = sourceAoa.reduce(
     (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
