@@ -2467,6 +2467,47 @@ export type SheetOption = {
   longScheduleRows?: LongScheduleRow[];
 };
 
+/** Grade de texto de uma aba, com as linhas ocultas apagadas. */
+export type SheetTextGrid = (string | number | boolean | null)[][];
+
+export type RegionScanOptions = {
+  /**
+   * Grade de texto já pronta, para não reconstruí-la a partir da worksheet.
+   *
+   * Mesma ideia da opção de `sheetToRows`, e pelo mesmo motivo: quem lê por
+   * streaming já tem a grade, e refazê-la aqui custaria a planilha inteira
+   * formatada como texto, duas vezes, uma por função.
+   *
+   * A grade informada já deve estar na forma que estas funções esperam, ou
+   * seja, com o texto formatado de cada célula. Linhas ocultas continuam sendo
+   * apagadas a partir da worksheet, porque essa informação não existe na grade;
+   * numa fonte sem worksheet não há linha oculta, e a máscara é inofensiva.
+   */
+  textAoa?: SheetTextGrid;
+};
+
+/**
+ * Grade de texto usada pela detecção de regiões e de seções independentes.
+ *
+ * As duas liam a planilha do mesmo jeito, com o mesmo mascaramento de linhas
+ * ocultas, em código duplicado. Passaram a compartilhar esta função para que
+ * uma não possa mudar de critério sem a outra.
+ */
+export function visibleTextGrid(
+  ws: XLSX.WorkSheet,
+  used: XLSX.Range,
+  options?: RegionScanOptions,
+): SheetTextGrid {
+  const rawAoa =
+    options?.textAoa ??
+    XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+      header: 1,
+      defval: null,
+      raw: false,
+    });
+  return rawAoa.map((row, index) => (ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row));
+}
+
 function independentRegionWorksheet(
   ws: XLSX.WorkSheet,
   region: { startRow: number; endRow: number; startColumn: number; endColumn: number },
@@ -2705,17 +2746,13 @@ function independentSectionWorksheet(
  * separador imediatamente acima. Isso evita tratar uma linha comum de dados
  * como uma nova tabela.
  */
-function detectIndependentSections(ws: XLSX.WorkSheet): IndependentSection[] {
+function detectIndependentSections(
+  ws: XLSX.WorkSheet,
+  options?: RegionScanOptions,
+): IndependentSection[] {
   if (!ws["!ref"]) return [];
   const used = XLSX.utils.decode_range(ws["!ref"]);
-  const rawAoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
-  const aoa = rawAoa.map((row, index) =>
-    ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row,
-  );
+  const aoa = visibleTextGrid(ws, used, options);
   if (aoa.length < 4) return [];
 
   const filled = (row: (string | number | boolean | null)[] | undefined) =>
@@ -2856,20 +2893,14 @@ function detectIndependentSections(ws: XLSX.WorkSheet): IndependentSection[] {
 function regionsAreSafeToSplit(
   ws: XLSX.WorkSheet,
   regions: ImportDiagnostics["tableRegions"],
+  options?: RegionScanOptions,
 ): boolean {
   if (!ws["!ref"] || regions.length < 2 || regions.length > 8) return false;
   if (regions.some((region) => region.rows < 3 || region.columns < 2 || region.confidence < 0.75))
     return false;
 
   const used = XLSX.utils.decode_range(ws["!ref"]);
-  const rawAoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
-  const aoa = rawAoa.map((row, index) =>
-    ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row,
-  );
+  const aoa = visibleTextGrid(ws, used, options);
   const occupied = aoa.reduce(
     (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
     0,
