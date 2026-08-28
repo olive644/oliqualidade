@@ -25,6 +25,10 @@
 import { detectDelimiter } from "@/lib/workbook-reader";
 
 const CR = "\r";
+/** Teto da tabela de reaproveitamento, e do tamanho que vale reaproveitar. */
+const CSV_INTERN_MAX_ENTRIES = 50_000;
+const CSV_INTERN_MAX_LENGTH = 256;
+
 const LF = "\n";
 const QUOTE = '"';
 
@@ -38,6 +42,20 @@ const QUOTE = '"';
  */
 export class CsvRecordParser {
   private readonly delimiter: string;
+  /**
+   * Reaproveita a mesma instancia de string para celulas repetidas.
+   *
+   * Sem isto, o analisador cria uma string nova por celula: num arquivo de 200
+   * mil linhas por 8 colunas sao 1,6 milhao de instancias distintas, e a grade
+   * resultante custou 267 MiB contra 37 MiB da grade equivalente do SheetJS,
+   * que reaproveita as strings ja alocadas no workbook. Planilha real repete
+   * muito (categoria, status, unidade), entao a tabela colapsa a maior parte.
+   *
+   * O teto existe porque coluna de alta cardinalidade (identificador, texto
+   * livre) nunca repete: passar dele, a tabela vira so custo, e o analisador
+   * volta a devolver a string crua.
+   */
+  private readonly interned = new Map<string, string>();
   private field = "";
   private record: string[] = [];
   private inQuotes = false;
@@ -72,8 +90,17 @@ export class CsvRecordParser {
     return this.closeRecord();
   }
 
+  /** Devolve a instancia ja conhecida deste texto, quando houver. */
+  private intern(value: string): string {
+    if (value.length > CSV_INTERN_MAX_LENGTH) return value;
+    const conhecida = this.interned.get(value);
+    if (conhecida !== undefined) return conhecida;
+    if (this.interned.size < CSV_INTERN_MAX_ENTRIES) this.interned.set(value, value);
+    return value;
+  }
+
   private closeRecord(): string[][] {
-    this.record.push(this.field);
+    this.record.push(this.intern(this.field));
     const finished = this.record;
     this.field = "";
     this.record = [];
@@ -120,7 +147,7 @@ export class CsvRecordParser {
       return;
     }
     if (char === this.delimiter) {
-      this.record.push(this.field);
+      this.record.push(this.intern(this.field));
       this.field = "";
       this.started = true;
       return;
