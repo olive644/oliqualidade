@@ -244,3 +244,36 @@ dados legítima desaparecer.
 Isso não altera o pico retido, porque a grade era transitória e o coletor a
 levava embora. Altera o pico instantâneo e o tempo, que é o que trava a aba do
 navegador e o que faz um arquivo grande encostar no prazo de 60s da leitura.
+
+## A rede que faltava para a normalização
+
+Antes de mexer na normalização, a pergunta certa é o que a protege. A resposta
+encontrada foi desconfortável: **nada, sobre arquivo real**.
+
+O corpus real cobre o **leitor**. `wasm-shadow-corpus` compara célula a célula
+contra o núcleo Rust, e a inspeção OOXML confere o leitor principal. Nenhum
+deles exercita `sheetsWithData`, que é onde moram a detecção de cabeçalho, a
+divisão em regiões e a forma das linhas.
+
+O teste que deveria cobrir isso, `real-workbook-corpus-validation`, procura
+cinco arquivos por nome fixo em `upload/`. Nenhum dos cinco está presente neste
+checkout, então ele é pulado inteiro, em silêncio, e a suíte segue verde.
+
+`import-parity.test.ts` fecha a lacuna. Ele roda `sheetsWithData` sobre tudo o
+que existir em `test-fixtures/sanitized-real` e em `upload/`, e compara com uma
+referência gravada:
+
+```bash
+OLI_IMPORT_PARITY=write npx vitest run src/lib/import-parity.test.ts
+npx vitest run src/lib/import-parity.test.ts
+```
+
+Nesta máquina são **25 arquivos e 110 abas normalizadas**, nenhuma recusada. A
+referência guarda nome de aba, quantidade de linhas, chaves de coluna e um hash
+dos valores; **nenhum valor de célula é gravado**, e a saída fica em
+`test-results/`, que o Git ignora. Sem corpus ou sem referência, o teste é
+pulado, e é por isso que ele não quebra a CI.
+
+O modelo é de mestre dourado, e não de expectativa fixa, porque o corpus é
+local e não versionado: nenhuma expectativa escrita no repositório poderia
+valer para outra máquina.
