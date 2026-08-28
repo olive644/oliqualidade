@@ -7,10 +7,24 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.11";
+export const APP_VERSION = "0.10.0-beta.12";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const PRODUCT_UPDATES: ProductUpdate[] = [
+  {
+    id: "2026-08-27-leitura-com-progresso-real",
+    version: APP_VERSION,
+    date: "2026-08-27",
+    title: "A importação passou a mostrar o quanto já andou",
+    summary:
+      "Antes, uma planilha grande deixava a tela num aviso fixo por dezenas de segundos, sem dizer se faltava muito. Agora existe uma barra com o percentual da etapa em andamento e a contagem de abas já encontradas.",
+    highlights: [
+      "A barra só aparece nas etapas em que dá para medir de verdade, e some naquelas em que ninguém consegue calcular. Uma barra que anda sozinha promete uma previsão que o programa não tem.",
+      "Nas duas etapas mais demoradas, que juntas passam de dois terços da espera, o número vem da contagem real de abas percorridas.",
+      "Durante a análise, o aviso diz quantas abas já foram reconhecidas, então dá para perceber o tamanho do arquivo antes de ele terminar.",
+      "Por dentro, as abas passaram a sair uma a uma em vez de todas num bloco só no fim, o que tira uma cópia inteira da planilha da memória do navegador.",
+    ],
+  },
   {
     id: "2026-08-27-parar-resposta-do-assistente",
     version: APP_VERSION,
