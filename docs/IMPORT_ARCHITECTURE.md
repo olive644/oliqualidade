@@ -132,11 +132,11 @@ telemetria.
 
 ## O que já existe e ajuda
 
-`validateZipWorkbook` já localiza o EOCD e percorre o diretório central do ZIP
+`validateZipWorkbook` localiza o EOCD e percorre o diretório central do ZIP
 **sem descompactar nada**, aplicando os limites de entradas, tamanho expandido e
-razão de compressão. Os dois primeiros passos de um acesso progressivo ao ZIP
-estão prontos; o que falta é operá-los sobre `Blob.slice()` em vez de sobre um
-`Uint8Array` já completo.
+razão de compressão. Operar isso sobre `Blob.slice()` em vez de sobre um
+`Uint8Array` completo deixou de ser pendência: é `zip-blob-reader.ts`, na
+última seção deste documento, junto da medida que diz quando ele paga.
 
 ## Benchmarks
 
@@ -476,3 +476,57 @@ leitor validado assumir, sem que a pessoa veja nada. Qualquer outro erro é
 recusa e chega à tela. O worker devolve as duas em mensagens diferentes, porque
 tipo de erro não sobrevive ao `postMessage`. O cliente só aceita o fallback
 enquanto nenhuma aba tiver sido escoada.
+
+## O ZIP lido por posição
+
+`zip-directory.ts` traz o formato e os limites do pacote, sem saber de onde os
+bytes vieram. `validateZipWorkbook` e `zip-blob-reader.ts` são os dois
+consumidores: um valida o pacote já em memória, o outro lê pelo disco. As regras
+de segurança moram num lugar só, porque duas cópias delas seriam dois lugares
+onde o critério pode divergir sem ninguém notar.
+
+`openZipFromBlob` abre o pacote com duas leituras pequenas, a cauda onde o
+registro de fim pode estar e o índice que ele aponta, e a partir daí entrega uma
+entrada por vez, descompactando só ela.
+
+Uma armadilha do formato, evitada explicitamente: o índice aponta para o
+cabeçalho local, e não para o conteúdo. O cabeçalho local tem nome e campo extra
+com tamanhos **próprios**, que não precisam coincidir com os do índice. Confiar
+nos tamanhos do índice ali produz bytes deslocados em alguns pacotes.
+
+### Quando isso paga, e quando não paga
+
+Medido com `OLI_ZIP_BENCHMARK=1`, sobre tamanhos que o próprio pacote declara:
+
+| Pacote | Entradas | Expandido total | Maior entrada |
+| --- | ---: | ---: | ---: |
+| 1 aba x 120 mil linhas | 10 | 37,2 MiB | 37,2 MiB (**100%**) |
+| 12 abas x 10 mil linhas | 21 | 35,9 MiB | 3,0 MiB (**8%**) |
+
+Os dois pacotes têm 13,9 MiB e o mesmo total de linhas. **Expandir uma entrada
+por vez só ajuda quando existem várias entradas grandes.** Numa planilha de aba
+única, a maior entrada é o pacote inteiro, e não há o que economizar.
+
+Isso limita o alcance da peça de um jeito específico, e vale registrar: o caso
+que motivou esta frente, o arquivo grande de uma tabela só, é exatamente o caso
+em que ela não paga.
+
+### Como medir memória aqui, e como não medir
+
+Duas medições foram descartadas antes desta. Comparar memória viva usando o
+`Blob` falso dos testes mede a cópia do teste, porque ele copia a cada fatia; a
+fixture precisa ser um arquivo real aberto com `fs.openAsBlob`. E comparar
+memória viva com `--expose-gc` entre dois cenários seguidos chegou a reportar um
+caminho consumindo **menos vinte e dois MiB**, porque o lixo do primeiro era
+coletado durante a medição do segundo.
+
+A medida que ficou usa os tamanhos declarados pelo pacote, que são exatos, e
+para obtê-los nada precisa ser expandido, que é a própria capacidade em teste.
+
+### O que falta para o caminho progressivo de OOXML
+
+Nada chama o leitor novo ainda. O que falta é o XML da aba virar grade e
+alimentar `sheetsWithData(wb, { gridFor })`, como o CSV já faz. `inspectOoxml`
+já lê o pacote entrada por entrada e é o candidato natural a receber este
+leitor, mas ele é síncrono e o acesso por `Blob` é assíncrono: essa é a próxima
+decisão de desenho, e não uma questão de esforço.
