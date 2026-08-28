@@ -8645,3 +8645,119 @@ sem repetição e sem inversão.
 ### Versão
 
 `0.10.0-beta.10` → `0.10.0-beta.11`.
+## 145. Progresso medido na leitura de planilha, e as abas saindo do worker uma a uma
+
+A leitura já rodava fora do thread principal desde cedo, então a interface
+nunca congelou. O que faltava era mais simples e mais irritante: um arquivo
+grande deixava a tela num rótulo fixo por dezenas de segundos, sem barra, sem
+percentual e sem qualquer sinal de que faltava pouco ou muito.
+
+### A medição que decidiu o desenho
+
+Antes de mexer em qualquer linha, o caminho foi medido com um XLSX sintético de
+61 MiB, 12 abas e 1,44 milhão de células:
+
+| Etapa | Tempo | Consegue medir? |
+| --- | --- | --- |
+| `decoding` | 1 ms | irrelevante |
+| `parsing` (`XLSX.read`) | 9.445 ms (32%) | **não**, chamada única e opaca |
+| `verifying` | 12.386 ms (41%) | **sim**, percorre abas |
+| `analyzing` | 8.031 ms (27%) | **sim**, percorre abas |
+| total | 29.866 ms | |
+
+Dois números mudaram o rumo. O primeiro: **68% da espera está em duas fases que
+iteram por aba**, ou seja, dá para reportar fração de verdade na maior parte do
+tempo, sem inventar nada. O segundo, achado de passagem: este arquivo, que está
+dentro de todos os limites do produto (100 MB, 100 abas, 2 milhões de células),
+já come **30s do orçamento de 60s** do leitor. Numa máquina mais lenta ele
+estoura o prazo e a importação é recusada por tempo, não por tamanho.
+
+### O progresso deixou de ser um enum
+
+`WorkbookReadProgress` era uma string entre seis valores. Virou
+`{ stage, completed?, total? }`. As duas etapas mensuráveis reportam por aba
+percorrida; `parsing` continua sem fração **de propósito**, porque é uma chamada
+única ao leitor principal, que não expõe progresso nenhum. Desenhar uma barra
+que anda sozinha ali seria inventar uma previsão que o programa não tem, e é
+pior que não desenhar barra alguma.
+
+A verificação percorre cada aba duas vezes, uma lendo o XML original e outra
+comparando com o leitor principal, então o denominador dela vem dobrado. É por
+isso que a tela mostra **percentual e não contagem de abas**: um contador em
+abas mentiria naquela etapa, e o percentual continua verdadeiro nas duas.
+
+Na tela, a barra só aparece quando existe fração. Nas etapas opacas ela some e
+sobra a animação do Oli, que diz que algo acontece sem prometer quanto falta.
+
+### As abas saem uma a uma
+
+`sheetsWithData` virou uma casca sobre `streamSheetsWithData`, que entrega cada
+opção assim que ela fica pronta. O worker usa isso para mandar cada aba num
+`postMessage` próprio em vez de acumular o conjunto inteiro e despachar tudo no
+fim. Naquele instante final o modelo existia em dobro: a cópia do worker e o
+clone estrutural da aba. Agora existe uma só.
+
+Um detalhe que quase virou defeito: o relatório contava as abas por
+`sheets.length`, e com o escoamento ligado esse array fica vazio de propósito.
+A métrica de importação passaria a registrar zero abas em toda leitura feita em
+worker. A contagem virou um contador próprio.
+
+Outro que a medição pegou: o modo `candidate` do leitor Rust é o **padrão** para
+XLSX, e nele o conjunto de abas ainda pode ser substituído pelo resultado do
+Rust depois da análise. A primeira versão desligava o escoamento nesse caso, o
+que na prática o desligaria no formato mais comum. A leitura de
+`sameImportedSheets` resolveu: a substituição só acontece quando os dois
+conjuntos são provadamente idênticos, então escoar cedo nunca entrega uma aba
+que será desmentida. O escoamento passou a valer sempre; o que depende do modo é
+apenas poder descartar a cópia local, porque a comparação precisa dela.
+
+### O que isso entrega, e o que não entrega
+
+| Métrica | Antes | Depois |
+| --- | --- | --- |
+| Tempo total | 29.866 ms | 29.617 ms |
+| Eventos de progresso | 5 | 42, sendo 39 com fração real |
+| Cópias do conjunto de abas | 2 | 1 |
+| Primeira aba disponível | só no fim | 22.286 ms, 75% do total |
+
+Os 75% são honestos e limitados pela arquitetura, não pela implementação: a
+verificação precisa terminar antes de a análise começar, e a análise é a etapa
+que produz as abas. Colocar a primeira aba na tela mais cedo exigiria
+canalizar as duas fases por aba (verificar a aba 1, analisar a aba 1, emitir, e
+só então passar à aba 2), o que levaria a primeira aba para cerca de 38% do
+tempo. Isso mexe em `inspectOoxml` e `compareAndRepairWithOoxml`, que hoje
+trabalham sobre o pacote inteiro, e ficou registrado como trabalho seguinte em
+vez de ser espremido aqui.
+
+### Um defeito de acessibilidade no caminho
+
+O `Progress` copiado do shadcn desestrutura `value` para calcular a
+transformação do indicador e **nunca o repassa à raiz do Radix**. A barra
+desenhava certo e não anunciava nada: sem `value` na raiz, o Radix trata o
+progresso como indeterminado e não emite `aria-valuenow`. Como este é o único
+uso do componente no projeto, a correção entrou junto.
+
+### O orçamento de desempenho ficou sem margem
+
+O `Progress` do Radix, trazido para desenhar a barra, estourou o chunk de
+entrada por 0,2 KiB. Uma dependência nova para uma barra de 6px não se paga,
+então a barra virou um `span` com `role="progressbar"` e os mesmos atributos
+ARIA que o componente emitiria. Com isso o chunk fechou em **450,0 KiB de um
+teto de 450,0**: passou, e sem folga nenhuma. A próxima mudança pequena neste
+caminho reprova a build. O teto não foi mexido aqui de propósito, porque a
+subida anterior (420 para 450) foi decisão explícita do usuário e esta merece
+o mesmo tratamento.
+
+### Verificação
+
+`npm run verify` com 1.004 testes. Os novos cobrem: fração monotônica que nunca
+recua e sempre fecha em 100% nas duas etapas mensuráveis, ausência deliberada de
+fração no parse, escoamento por aba na ordem do arquivo, resultado sem a segunda
+cópia, contagem do relatório preservada com o escoamento ligado, montagem dos
+pedaços no cliente, preferência pelo conjunto do motor quando ele vem
+preenchido, e na tela: barra presente com medida, barra ausente sem medida e
+nenhuma barra fora de importação.
+
+### Versão
+
+`0.10.0-beta.11` → `0.10.0-beta.12`.

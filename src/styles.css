@@ -3668,6 +3668,29 @@
   color: var(--muted-foreground);
   font-size: 12px;
 }
+/* Barra da leitura de planilha. Aparece só nas etapas que medem de verdade,
+   e some nas opacas em vez de fingir uma fração. */
+.oli-dropzone-progress {
+  display: block;
+  overflow: hidden;
+  width: min(280px, 70%);
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--primary) 18%, var(--muted));
+}
+.oli-dropzone-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 180ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .oli-dropzone-progress i {
+    transition: none;
+  }
+}
 .oli-dropzone-action {
   border-radius: 12px;
   background: var(--primary);

@@ -3087,12 +3087,39 @@ function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
   ];
 }
 
-export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
-  return wb.SheetNames.flatMap((name) => {
+/**
+ * Percorre as abas entregando cada opção assim que ela fica pronta.
+ *
+ * Existe separada de `sheetsWithData` porque esta é a fase mais cara depois do
+ * parse (medida em 27% do tempo total num arquivo de 61 MiB, 12 abas) e a única
+ * em que o trabalho já concluído é utilizável antes do fim: quem lê pode mostrar
+ * a primeira aba enquanto as outras ainda estão sendo montadas, e quem roda em
+ * worker pode soltar cada aba em vez de acumular o conjunto inteiro para mandar
+ * de uma vez.
+ *
+ * `onSheetDone` é chamado por aba do workbook, não por opção emitida: uma aba
+ * pode virar nenhuma opção (vazia) ou várias (blocos independentes), e o
+ * denominador que interessa a quem mostra progresso é o de abas.
+ */
+export function streamSheetsWithData(
+  wb: XLSX.WorkBook,
+  onOption: (option: SheetOption) => void,
+  onSheetDone?: (completed: number, total: number) => void,
+): void {
+  const total = wb.SheetNames.length;
+  for (const [index, name] of wb.SheetNames.entries()) {
     const unified = unifiedBlocksOption(name, wb);
     const options = sheetOptionsForName(name, wb);
-    return unified ? [unified, ...options] : options;
-  }).filter((s) => s.rows.length > 0 || hasVisualOnlyContent(s));
+    for (const option of unified ? [unified, ...options] : options)
+      if (option.rows.length > 0 || hasVisualOnlyContent(option)) onOption(option);
+    onSheetDone?.(index + 1, total);
+  }
+}
+
+export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
+  const collected: SheetOption[] = [];
+  streamSheetsWithData(wb, (option) => collected.push(option));
+  return collected;
 }
 
 /** Uma aba sem linha de dado ainda vale como opção se tiver gráfico, forma com texto ou imagem nativos do Excel — ver `sheetsWithData`. */

@@ -11,9 +11,9 @@ import {
 import {
   APP_VERSION_LABEL,
   CURRENT_UPDATE_ID,
-  PRODUCT_UPDATES,
   UPDATE_READ_STORAGE_KEY,
   hasUnreadProductUpdate,
+  type ProductUpdate,
 } from "@/lib/product-updates";
 import { cn } from "@/lib/utils";
 
@@ -27,11 +27,27 @@ const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
 export function UpdateCenter({ disabled = false }: { disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(false);
+  const [updates, setUpdates] = useState<ProductUpdate[]>([]);
 
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
     setUnread(hasUnreadProductUpdate(localStorage.getItem(UPDATE_READ_STORAGE_KEY)));
   }, []);
+
+  // O texto das entregas passa de 25 KiB e cresce a cada versão, mas só é lido
+  // por quem abre este diálogo. Buscar sob demanda tira esse peso do primeiro
+  // carregamento de todo mundo, e o sino continua sabendo a versão e o estado
+  // de leitura sem precisar da lista.
+  useEffect(() => {
+    if (!open || updates.length) return;
+    let ativo = true;
+    void import("@/lib/product-updates-entries").then((modulo) => {
+      if (ativo) setUpdates(modulo.PRODUCT_UPDATES);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [open, updates.length]);
 
   const setOpenAndPersistRead = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -76,10 +92,10 @@ export function UpdateCenter({ disabled = false }: { disabled?: boolean }) {
           </DialogDescription>
         </DialogHeader>
         <div className="overflow-y-auto px-6 pb-6">
-          {PRODUCT_UPDATES.map((update, index) => (
+          {updates.map((update, index) => (
             <article
               key={update.id}
-              className={cn("py-5", index < PRODUCT_UPDATES.length - 1 && "border-b border-border")}
+              className={cn("py-5", index < updates.length - 1 && "border-b border-border")}
             >
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 {index === 0 && (

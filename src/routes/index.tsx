@@ -141,6 +141,7 @@ import { mergeReimportedSheets } from "@/lib/dashboard";
 import { compareVersions, type VersionDiff } from "@/lib/import-workbench";
 import { analyzeSpreadsheet } from "@/lib/spreadsheet-intelligence";
 import { readWorkbookFileWithReport } from "@/lib/workbook-reader-client";
+import { describeImportProgress, type ImportProgressView } from "@/lib/import-progress";
 import { describeReaderOutcome, workbookFormat } from "@/lib/workbook-reading-engine";
 import {
   buildFailedImportMetricEntry,
@@ -307,7 +308,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
   const [onboardingStep, setOnboardingStep] = useState<number | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importWarning, setImportWarning] = useState<string | null>(null);
-  const [importProgressLabel, setImportProgressLabel] = useState<string | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgressView | null>(null);
   const dashboardsRef = useRef<Dashboard[]>([]);
   const pendingFolderSelection = useRef<FolderWorkbookSelection | null>(null);
   const restoredFolderMonitors = useRef(false);
@@ -442,20 +443,19 @@ export function OliAm({ routeId }: { routeId?: string }) {
     dashboardSaveQueue.current?.push(list);
   };
   const readWorkbook = async (file: File, signal?: AbortSignal) => {
-    const labels = {
-      decoding: "Identificando formato e codificação…",
-      parsing: "Lendo células, fórmulas e formatação…",
-      verifying: "Conferindo valores com o XML original…",
-      analyzing: "Analisando cabeçalhos e regiões de dados…",
-      comparing: "Comparando os leitores disponíveis…",
-      complete: "Finalizando a importação…",
-    };
+    // Contado fora do estado do React: cada aba que chega não precisa de uma
+    // renderização própria, só de aparecer no próximo evento de progresso.
+    let sheetsFound = 0;
+    setImportProgress(describeImportProgress({ stage: "decoding" }, sheetsFound));
     let result: Awaited<ReturnType<typeof readWorkbookFileWithReport>>;
     try {
       result = await readWorkbookFileWithReport(
         file,
-        (progress) => setImportProgressLabel(labels[progress]),
+        (progress) => setImportProgress(describeImportProgress(progress, sheetsFound)),
         signal,
+        () => {
+          sheetsFound += 1;
+        },
       );
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -522,9 +522,14 @@ export function OliAm({ routeId }: { routeId?: string }) {
     setLoading(true);
     setImportError(null);
     setImportWarning(null);
-    setImportProgressLabel(
-      file.size > LARGE_FILE_BYTES ? "Arquivo grande, isso pode levar alguns segundos…" : "Lendo…",
-    );
+    setImportProgress({
+      label:
+        file.size > LARGE_FILE_BYTES
+          ? "Arquivo grande, isso pode levar alguns segundos…"
+          : "Lendo…",
+      detail: null,
+      ratio: null,
+    });
     // Dá um instante para o navegador pintar o indicador de carregamento
     // antes do processamento (síncrono e potencialmente pesado) começar.
     await new Promise((r) => setTimeout(r, 30));
@@ -555,7 +560,7 @@ export function OliAm({ routeId }: { routeId?: string }) {
     } finally {
       if (importAbort.current === controller) importAbort.current = null;
       setLoading(false);
-      setImportProgressLabel(null);
+      setImportProgress(null);
     }
   };
 
@@ -1205,7 +1210,9 @@ export function OliAm({ routeId }: { routeId?: string }) {
             setUrl={setUrl}
             sheet={() => void sheet()}
             loading={loading}
-            loadingLabel={importProgressLabel}
+            loadingLabel={importProgress?.label ?? null}
+            loadingDetail={importProgress?.detail ?? null}
+            loadingRatio={importProgress?.ratio ?? null}
             cancelImport={() => importAbort.current?.abort()}
             editor={editor}
             setEditor={setEditor}

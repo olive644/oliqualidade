@@ -293,7 +293,19 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
   return { cells, worksheet, structure: { mergedRanges, hiddenRows, hiddenColumns } };
 }
 
-export function inspectOoxml(input: ArrayBuffer | Uint8Array | OoxmlArchive): OoxmlInspection {
+/**
+ * Progresso por aba de uma varredura OOXML.
+ *
+ * As duas fases mais caras da leitura depois do parse percorrem abas uma a
+ * uma, então são as únicas que conseguem dizer o quanto falta. Sem isto, a
+ * interface fica parada num rótulo fixo durante a maior parte da espera.
+ */
+export type OoxmlSheetProgress = (completed: number, total: number) => void;
+
+export function inspectOoxml(
+  input: ArrayBuffer | Uint8Array | OoxmlArchive,
+  onSheetDone?: OoxmlSheetProgress,
+): OoxmlInspection {
   const archive = isOoxmlArchive(input) ? input : unzipOoxmlArchive(input);
   const workbookXml = archiveText(archive, "xl/workbook.xml");
   if (!workbookXml) throw new Error("O pacote OOXML não contém xl/workbook.xml.");
@@ -305,15 +317,23 @@ export function inspectOoxml(input: ArrayBuffer | Uint8Array | OoxmlArchive): Oo
   const workbook = XLSX.utils.book_new();
   const sheets = new Map<string, Map<string, ReaderCell>>();
   const structures = new Map<string, OoxmlSheetStructure>();
-  for (const match of workbookXml.matchAll(/<sheet\b[^>]*\/>/g)) {
+  // O total sai da própria lista de <sheet> do workbook.xml, e não da
+  // contagem de abas já lidas: uma aba sem relacionamento é pulada, e usar o
+  // que foi lido como denominador faria a fração andar para trás.
+  const declaredSheets = [...workbookXml.matchAll(/<sheet\b[^>]*\/>/g)];
+  for (const [index, match] of declaredSheets.entries()) {
     const attrs = attributes(match[0]);
     const name = decodeOoxmlText(attrs["name"] ?? "Planilha");
     const path = rels.get(attrs["r:id"] ?? "");
-    if (!path) continue;
+    if (!path) {
+      onSheetDone?.(index + 1, declaredSheets.length);
+      continue;
+    }
     const parsed = readSheet(archiveText(archive, path), strings, formats, date1904);
     XLSX.utils.book_append_sheet(workbook, parsed.worksheet, name.slice(0, 31));
     sheets.set(name, parsed.cells);
     structures.set(name, parsed.structure);
+    onSheetDone?.(index + 1, declaredSheets.length);
   }
   if (!workbook.SheetNames.length) throw new Error("Nenhuma aba OOXML legível foi encontrada.");
   return { sheets, structures, workbook };
@@ -327,9 +347,17 @@ function comparable(value: unknown): string {
 export function compareAndRepairWithOoxml(
   primary: XLSX.WorkBook,
   inspection: OoxmlInspection,
+  onSheetDone?: OoxmlSheetProgress,
 ): ReaderDivergence[] {
   const divergences: ReaderDivergence[] = [];
+  const total = inspection.sheets.size;
+  let completed = 0;
   for (const [sheetName, independentCells] of inspection.sheets) {
+    // A contagem é reportada no começo de cada aba, não no fim: o corpo do
+    // laço tem várias saídas antecipadas, e contar no fim deixaria de fora
+    // justamente as abas que saem cedo. O fechamento vem depois do laço.
+    onSheetDone?.(completed, total);
+    completed += 1;
     let sheet = primary.Sheets[sheetName];
     if (!sheet) {
       const recoveredSheet = inspection.workbook.Sheets[sheetName];
@@ -379,5 +407,6 @@ export function compareAndRepairWithOoxml(
       });
     }
   }
+  onSheetDone?.(total, total);
   return divergences.slice(0, 2_000);
 }

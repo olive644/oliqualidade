@@ -30,6 +30,10 @@ export function Empty(p: {
   sheet: () => void;
   loading: boolean;
   loadingLabel: string | null;
+  /** Percentual já concluído da etapa atual, quando ela sabe medir. */
+  loadingDetail: string | null;
+  /** Mesma medida entre 0 e 1, para a barra. Ausente nas etapas opacas. */
+  loadingRatio: number | null;
   cancelImport: () => void;
   editor: boolean;
   setEditor: (v: boolean) => void;
@@ -143,8 +147,29 @@ export function Empty(p: {
                 <OliLoader />
                 <span className="oli-dropzone-copy">
                   <strong>{p.loadingLabel ?? "Lendo sua planilha…"}</strong>
-                  <small>Preparando seus dados.</small>
+                  <small>{p.loadingDetail ?? "Preparando seus dados."}</small>
                 </span>
+                {p.loadingRatio !== null && (
+                  // A barra só aparece nas etapas que medem de verdade. Nas
+                  // outras, a animação do Oli já diz que algo acontece, sem
+                  // prometer uma fração que ninguém consegue calcular.
+                  //
+                  // Escrita à mão, e não com o `Progress` do Radix, por causa
+                  // do orçamento de desempenho: aquele componente traz uma
+                  // dependência nova para o chunk de entrada e o estourou por
+                  // 0,2 KiB. Uma barra de 6px não justifica o peso, e os
+                  // atributos ARIA aqui são os mesmos que ele emitiria.
+                  <span
+                    className="oli-dropzone-progress"
+                    role="progressbar"
+                    aria-label="Progresso da leitura da planilha"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(p.loadingRatio * 100)}
+                  >
+                    <i style={{ width: `${Math.round(p.loadingRatio * 100)}%` }} />
+                  </span>
+                )}
               </>
             ) : (
               <>
