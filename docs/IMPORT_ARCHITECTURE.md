@@ -277,3 +277,31 @@ pulado, e é por isso que ele não quebra a CI.
 O modelo é de mestre dourado, e não de expectativa fixa, porque o corpus é
 local e não versionado: nenhuma expectativa escrita no repositório poderia
 valer para outra máquina.
+
+## Refactor da normalização: primeiro incremento
+
+O alvo é a normalização produzir linhas sem que uma worksheet do SheetJS seja
+construída, que é o único caminho medido com ganho real (231,5 para 76,5 MiB).
+`sheetToRows` tem 886 linhas e lê a worksheet em quinze pontos: `!ref`,
+`!rows`, `!merges`, `!oliAdvanced`, fórmulas por endereço e seis chamadas de
+diagnóstico. Trocar tudo de uma vez, num arquivo do qual o corpus inteiro
+depende, é exatamente o que não se deve fazer.
+
+O primeiro incremento é o mais estreito que rende: `sheetToRows` passou a
+aceitar a grade já pronta, em vez de sempre reconstruí-la com `sheet_to_json`.
+Quem lê por streaming já tem essa grade; sem isto ela seria descartada e
+refeita, ao custo medido de 37 MiB e mais de um segundo por aba num arquivo de
+200 mil linhas.
+
+Quem passa a grade assume que ela corresponde à worksheet informada. Todo o
+resto continua lendo a worksheet, porque mesclagem, fórmula, linha oculta e
+diagnóstico não existem numa grade de valores. Nenhum chamador atual passa a
+grade, então o comportamento de hoje é bit a bit o mesmo.
+
+Verificado pela rede de paridade: **110 abas de 25 arquivos reais, resultado
+idêntico**, mais um teste que confronta os dois modos diretamente.
+
+Os próximos incrementos, na ordem de risco crescente: as leituras de metadado
+(`!rows`, `!merges`, `!oliAdvanced`) aceitarem ausência declarada; o acesso por
+endereço aceitar uma fonte sem worksheet; e por fim `detectIndependentSections`
+e as duas construtoras de worksheet de região, que são as mais entrelaçadas.

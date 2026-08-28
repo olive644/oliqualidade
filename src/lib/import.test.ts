@@ -2015,3 +2015,38 @@ describe("auditFidelityPercent", () => {
     ).toBe(100);
   });
 });
+
+describe("grade pronta na normalização", () => {
+  it("chega ao mesmo resultado recebendo a grade ou reconstruindo-a", () => {
+    // Primeiro passo para a leitura por streaming não pagar duas vezes pela
+    // mesma grade. A garantia que importa é esta: passar a grade não pode
+    // mudar nada do que sai.
+    const linhas = [
+      ["Produto", "Valor", "Data"],
+      ["Bolo", 42, "2026-08-27"],
+      ["Torta", 7, "2026-08-28"],
+      ["Pão", null, "2026-08-29"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(linhas);
+    const grade = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
+      header: 1,
+      defval: null,
+    });
+
+    const reconstruindo = sheetToRows(ws);
+    const recebendo = sheetToRows(ws, undefined, { aoa: grade });
+
+    expect(recebendo.rows).toEqual(reconstruindo.rows);
+    expect(recebendo.warning).toEqual(reconstruindo.warning);
+    expect(recebendo.tableMode).toEqual(reconstruindo.tableMode);
+  });
+
+  it("ignora a grade ausente e continua reconstruindo", () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Nome", "Valor"],
+      ["A", 1],
+    ]);
+
+    expect(sheetToRows(ws, undefined, {}).rows).toEqual(sheetToRows(ws).rows);
+  });
+});
