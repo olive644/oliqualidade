@@ -9312,11 +9312,28 @@ OOXML progressivo: **a grade precisa carregar o formato numérico e o texto
 exibido das células de data**, e `sheetToRows` precisa aceitá-los sem
 worksheet.
 
-Isso é uma mudança em `import.ts`, e vem com uma pergunta de custo que ainda
-não foi medida: guardar formato e texto por célula de data reintroduz parte
-exata do que a grade existe para remover. Numa coluna de data de 120 mil
-linhas, são 120 mil pares. A próxima etapa precisa medir isso antes de
-prometer ganho, e não depois.
+Isso é uma mudança em `import.ts`, e trazia uma pergunta de custo: guardar
+formato e texto por célula de data reintroduz parte exata do que a grade existe
+para remover. Numa coluna de data de 120 mil linhas, são 120 mil pares.
+
+### O custo, medido antes de escrever o código
+
+| Representação | Memória viva |
+| --- | ---: |
+| Worksheet, como o leitor monta hoje | 235,5 MiB |
+| Grade de valores e de texto | 61,3 MiB |
+| Grade mais o formato e o texto das datas | **72,2 MiB** |
+
+O formato custa **10,8 MiB**, e a grade completa fica em **69% menos** que a
+worksheet. A pergunta estava certa e a resposta é favorável: o par por célula de
+data é barato perto do que ele destrava. Medido em 120 mil linhas por 8 colunas,
+com uma coluna de data de verdade, e reproduzido até a décima de MiB entre
+execuções (`OLI_GRID_BENCHMARK=1`).
+
+Ou seja, a lacuna que esta seção encontrou vale a pena fechar, e o próximo
+incremento tem número para justificar-se antes de começar. O que ele não tem
+ainda é a decisão de onde os pares moram: um mapa por endereço, como o medido
+aqui, é o desenho mais simples, e não necessariamente o mais barato.
 
 ### Uma inconsistência de tipo encontrada de passagem
 

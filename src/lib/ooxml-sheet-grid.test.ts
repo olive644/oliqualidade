@@ -308,3 +308,132 @@ describe.skipIf(!locais.length)("a grade contra a worksheet, em planilhas reais"
     );
   });
 });
+
+/**
+ * A medição que decide se vale fechar a lacuna da data.
+ *
+ * A grade existe para tirar a worksheet do caminho, e a lacuna encontrada pede
+ * que ela carregue o formato numérico e o texto exibido das células de data.
+ * Isso reintroduz parte do que ela existe para remover, e o tamanho dessa parte
+ * é a pergunta. Medir vem antes de escrever o código, e não depois.
+ *
+ * Desligada por padrão, porque gera um pacote de dezenas de MiB:
+ *
+ *     OLI_GRID_BENCHMARK=1 NODE_OPTIONS=--expose-gc npx vitest run src/lib/ooxml-sheet-grid.test.ts
+ *
+ * Cada variante é medida no seu próprio teste, e nada é retido entre eles. Foi
+ * assim por causa da lição da seção 150: medir duas variantes dentro do mesmo
+ * teste faz o lixo da primeira ser coletado durante a segunda, e a subtração
+ * chega a sair negativa.
+ */
+const medicaoLigada = process.env["OLI_GRID_BENCHMARK"] === "1";
+const podeColetar = typeof (globalThis as { gc?: () => void }).gc === "function";
+
+function vivoAgora(): number {
+  const coletar = (globalThis as { gc?: () => void }).gc;
+  coletar?.();
+  coletar?.();
+  coletar?.();
+  const uso = process.memoryUsage();
+  return uso.heapUsed + uso.external;
+}
+
+const emMiB = (bytes: number) => Math.round((bytes / (1024 * 1024)) * 10) / 10;
+
+/** 120 mil linhas por 8 colunas, com uma coluna de data de verdade. */
+function pacoteComData(): { bytes: Uint8Array; aba: string } {
+  const cabecalho = ["Id", "Quando", "Setor", "Produto", "Quantidade", "Valor", "Status", "Nota"];
+  const dados: unknown[][] = [cabecalho];
+  for (let linha = 0; linha < 120_000; linha += 1)
+    dados.push([
+      linha,
+      new Date(Date.UTC(2026, linha % 12, (linha % 28) + 1)),
+      `Setor ${linha % 5}`,
+      `Produto ${linha % 400}`,
+      linha % 97,
+      (linha % 1000) + (linha % 100) / 100,
+      `Status ${linha % 3}`,
+      `Observação ${linha % 50}`,
+    ]);
+  const worksheet = XLSX.utils.aoa_to_sheet(dados);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Dados");
+  return {
+    bytes: new Uint8Array(
+      XLSX.write(workbook, { type: "array", bookType: "xlsx", cellDates: true }),
+    ),
+    aba: "Dados",
+  };
+}
+
+const medidas: Record<string, number> = {};
+
+describe.skipIf(!medicaoLigada)("o que cada representação custa", () => {
+  // O pacote é construído uma vez e fica vivo em todas as medições, então ele
+  // entra igualmente na linha de base de todas elas.
+  const fixture = medicaoLigada ? pacoteComData() : null;
+
+  it("a worksheet que o leitor monta hoje", { timeout: 900_000 }, () => {
+    const base = vivoAgora();
+    // Só a worksheet fica viva: o inventário de células e as estruturas que
+    // `inspectOoxml` também produz viram lixo antes da medida.
+    let retida: XLSX.WorkSheet | null = inspectOoxml(fixture!.bytes).workbook.Sheets[fixture!.aba]!;
+    medidas["worksheet"] = vivoAgora() - base;
+    expect(retida["!ref"]).toBeDefined();
+    retida = null;
+  });
+
+  it("a grade de valores e de texto", { timeout: 900_000 }, () => {
+    const base = vivoAgora();
+    let retida: { aoa: unknown[][]; textAoa: unknown[][] } | null = (() => {
+      const grade = readOoxmlSheetGrids(fixture!.bytes).get(fixture!.aba)!;
+      return { aoa: grade.aoa, textAoa: grade.textAoa };
+    })();
+    medidas["grade"] = vivoAgora() - base;
+    expect(retida.aoa.length).toBeGreaterThan(100_000);
+    retida = null;
+  });
+
+  it("a grade mais o formato e o texto das células de data", { timeout: 900_000 }, () => {
+    const base = vivoAgora();
+    let retida: {
+      aoa: unknown[][];
+      textAoa: unknown[][];
+      formatos: Map<string, { z: string; w: string }>;
+    } | null = (() => {
+      const grade = readOoxmlSheetGrids(fixture!.bytes).get(fixture!.aba)!;
+      // O que a lacuna pede: por célula de data, o formato numérico e o texto
+      // exibido, que é o que `formatTemporalCell` consulta na célula de origem.
+      const formatos = new Map<string, { z: string; w: string }>();
+      for (let linha = 0; linha < grade.aoa.length; linha += 1)
+        for (let coluna = 0; coluna < grade.aoa[linha]!.length; coluna += 1)
+          if (grade.aoa[linha]![coluna] instanceof Date)
+            formatos.set(`${linha},${coluna}`, {
+              z: "m/d/yy",
+              w: String(grade.textAoa[linha]![coluna] ?? ""),
+            });
+      return { aoa: grade.aoa, textAoa: grade.textAoa, formatos };
+    })();
+    medidas["gradeComFormato"] = vivoAgora() - base;
+    expect(retida.formatos.size).toBeGreaterThan(100_000);
+    retida = null;
+  });
+
+  it("diz se vale fechar a lacuna", () => {
+    const linhas = [
+      "",
+      `  worksheet de hoje:              ${String(emMiB(medidas["worksheet"]!)).padStart(6)} MiB`,
+      `  grade:                          ${String(emMiB(medidas["grade"]!)).padStart(6)} MiB`,
+      `  grade mais formato das datas:   ${String(emMiB(medidas["gradeComFormato"]!)).padStart(6)} MiB`,
+      `  custo do formato:               ${String(emMiB(medidas["gradeComFormato"]! - medidas["grade"]!)).padStart(6)} MiB`,
+      "",
+    ];
+    process.stdout.write(linhas.join("\n"));
+
+    // Nenhuma medida pode sair negativa: quando isso acontece, a linha de base
+    // estava suja e o número não mede o que diz medir.
+    for (const [nome, valor] of Object.entries(medidas))
+      expect(`${nome} positivo: ${valor > 0}`).toBe(`${nome} positivo: true`);
+    if (podeColetar) expect(medidas["gradeComFormato"]).toBeLessThan(medidas["worksheet"]!);
+  });
+});

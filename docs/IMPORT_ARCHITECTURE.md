@@ -560,7 +560,24 @@ domínio de qualidade, data é coluna obrigatória.
 
 O que falta, então, é preciso: **a grade precisa carregar o formato numérico e o
 texto exibido das células de data**, e `sheetToRows` precisa aceitá-los sem
-worksheet. Isso é mudança em `import.ts`, e vem com uma pergunta de custo ainda
-não medida: guardar formato e texto por célula de data reintroduz parte exata do
-que a grade existe para remover. Numa coluna de data de 120 mil linhas, são 120
-mil pares. Medir isso vem antes de prometer ganho.
+worksheet. Isso é mudança em `import.ts`, e trazia uma pergunta de custo:
+guardar formato e texto por célula de data reintroduz parte exata do que a grade
+existe para remover.
+
+### O custo disso, medido
+
+| Representação | Memória viva |
+| --- | ---: |
+| Worksheet, como o leitor monta hoje | 235,5 MiB |
+| Grade de valores e de texto | 61,3 MiB |
+| Grade mais o formato e o texto das datas | **72,2 MiB** |
+
+O formato custa **10,8 MiB**, e a grade completa fica em **69% menos** que a
+worksheet. A pergunta estava certa e a resposta é favorável: o par por célula de
+data é barato perto do que ele destrava. Medido em 120 mil linhas por 8 colunas,
+com uma coluna de data de verdade, e reproduzido até a décima de MiB entre
+execuções (`OLI_GRID_BENCHMARK=1`).
+
+A lacuna vale a pena fechar. O que falta decidir é onde os pares moram: o mapa
+por endereço medido aqui é o desenho mais simples, e não necessariamente o mais
+barato.
