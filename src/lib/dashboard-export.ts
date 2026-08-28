@@ -61,6 +61,7 @@ const SVG_PRESENTATION_PROPERTIES = [
  * variáveis CSS já resolvidas, apenas dentro do clone usado na exportação.
  */
 async function chartSvgSnapshots(element: HTMLElement): Promise<ChartSvgSnapshot[]> {
+  const { Canvg } = await import("canvg");
   return Promise.all(
     [...element.querySelectorAll<SVGSVGElement>("svg.recharts-surface")].map(async (svg) => {
       const rect = svg.getBoundingClientRect();
@@ -85,21 +86,32 @@ async function chartSvgSnapshots(element: HTMLElement): Promise<ChartSvgSnapshot
       });
 
       const serialized = new XMLSerializer().serializeToString(clone);
-      const vectorUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
-      const image = new Image();
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("chart-svg-rasterization-failed"));
-        image.src = vectorUrl;
-      });
       const scale = 2;
       const canvas = document.createElement("canvas");
       canvas.width = width * scale;
       canvas.height = height * scale;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("chart-svg-canvas-context");
-      context.scale(scale, scale);
-      context.drawImage(image, 0, 0, width, height);
+      const renderer = Canvg.fromString(context, serialized, {
+        ignoreAnimation: true,
+        ignoreMouse: true,
+      });
+      await renderer.render({
+        ignoreAnimation: true,
+        ignoreMouse: true,
+        scaleHeight: height * scale,
+        scaleWidth: width * scale,
+      });
+
+      // Uma regressão do renderizador não pode produzir silenciosamente um
+      // arquivo válido, porém sem gráfico. O limite baixo também contempla
+      // sparklines de um único traço, sem confundir transparência com sucesso.
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let paintedPixels = 0;
+      for (let index = 3; index < pixels.length; index += 4) {
+        if (pixels[index] !== 0) paintedPixels += 1;
+      }
+      if (paintedPixels < 4) throw new Error("chart-svg-rasterization-empty");
       const dataUrl = canvas.toDataURL("image/png");
       canvas.width = 1;
       canvas.height = 1;
