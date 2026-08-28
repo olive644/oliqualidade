@@ -8,6 +8,7 @@ import {
   readWorkbookBytesWithEngine,
   validateWorkbookComplexity,
   validateZipWorkbook,
+  type WorkbookReadProgress,
 } from "@/lib/workbook-reader";
 import { inspectOoxml } from "@/lib/ooxml-reader";
 import * as ooxmlArchive from "@/lib/ooxml-archive";
@@ -23,7 +24,7 @@ describe("leitor universal de planilhas", () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
     const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
 
-    const progress: string[] = [];
+    const progress: WorkbookReadProgress[] = [];
     const result = await readWorkbookBytesWithEngine(bytes, "vendas.xlsx", (phase) =>
       progress.push(phase),
     );
@@ -39,7 +40,71 @@ describe("leitor universal de planilhas", () => {
     expect(result.report.analysisMs).toBeGreaterThanOrEqual(0);
     expect(result.report.visitedCells).toBe(4);
     expect(result.report.estimatedPeakMemoryBytes).toBeGreaterThan(result.report.expandedBytes);
-    expect(progress).toEqual(["decoding", "parsing", "verifying", "analyzing", "complete"]);
+    // As etapas continuam na mesma ordem; o que mudou é que as mensuráveis
+    // agora reportam mais de uma vez, uma por aba percorrida.
+    const stages = progress
+      .map((phase) => phase.stage)
+      .filter((stage, index, all) => stage !== all[index - 1]);
+    expect(stages).toEqual(["decoding", "parsing", "verifying", "analyzing", "complete"]);
+  });
+
+  it("reporta fração monotônica e completa nas etapas que sabem medir", async () => {
+    const workbook = XLSX.utils.book_new();
+    for (const nome of ["Um", "Dois", "Três"])
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.aoa_to_sheet([
+          ["Produto", "Valor"],
+          [`Item ${nome}`, 7],
+        ]),
+        nome,
+      );
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const progress: WorkbookReadProgress[] = [];
+    await readWorkbookBytesWithEngine(bytes, "tres-abas.xlsx", (phase) => progress.push(phase));
+
+    for (const stage of ["verifying", "analyzing"] as const) {
+      const medidas = progress.filter(
+        (phase) => phase.stage === stage && phase.completed !== undefined,
+      );
+      expect(medidas.length, `${stage} precisa reportar fração`).toBeGreaterThan(1);
+      const fracoes = medidas.map((phase) => phase.completed! / phase.total!);
+      // Nunca anda para trás: uma barra que recua é pior que nenhuma barra.
+      expect(fracoes).toEqual([...fracoes].sort((a, b) => a - b));
+      expect(fracoes.at(-1)).toBe(1);
+    }
+
+    // O parse continua sem fração de propósito: é uma chamada única ao leitor
+    // principal, que não expõe progresso nenhum.
+    const parsing = progress.filter((phase) => phase.stage === "parsing");
+    expect(parsing).toEqual([{ stage: "parsing" }]);
+  });
+
+  it("entrega as abas uma a uma quando recebe um escoador, sem repetir o conjunto no resultado", async () => {
+    const workbook = XLSX.utils.book_new();
+    for (const nome of ["Um", "Dois"])
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.aoa_to_sheet([
+          ["Produto", "Valor"],
+          [`Item ${nome}`, 3],
+        ]),
+        nome,
+      );
+    const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const streamed: string[] = [];
+    const comEscoador = await readWorkbookBytesWithEngine(bytes, "duas-abas.xlsx", undefined, {
+      onSheet: (sheet) => streamed.push(sheet.name),
+    });
+    const semEscoador = await readWorkbookBytesWithEngine(bytes, "duas-abas.xlsx");
+
+    expect(streamed).toEqual(semEscoador.sheets.map((sheet) => sheet.name));
+    // O conjunto não volta no resultado: quem recebeu os pedaços já o tem, e a
+    // segunda cópia é justamente o que o escoamento existe para evitar.
+    expect(comEscoador.sheets).toEqual([]);
+    expect(comEscoador.report.sheets).toBe(semEscoador.report.sheets);
   });
 
   it("descompacta o pacote OOXML uma única vez, compartilhada entre metadados e verificação independente", async () => {

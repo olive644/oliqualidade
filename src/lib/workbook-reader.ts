@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { checkWorkbookContent } from "@/lib/file-signature";
 
-import { sheetsWithData, type SheetOption } from "@/lib/import";
+import { streamSheetsWithData, type SheetOption } from "@/lib/import";
 import { unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import {
@@ -45,8 +45,26 @@ export const MAX_ZIP_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024;
 export const MAX_ZIP_ENTRY_BYTES = 512 * 1024 * 1024;
 export const MAX_SUSPICIOUS_COMPRESSION_RATIO = 1_000;
 
-export type WorkbookReadProgress =
+export type WorkbookReadStage =
   "decoding" | "parsing" | "verifying" | "analyzing" | "comparing" | "complete";
+
+/**
+ * Etapa da leitura e, quando dá para saber, o quanto dela já passou.
+ *
+ * `completed`/`total` contam abas, e vêm ausentes de propósito nas etapas que
+ * não conseguem medir. `parsing` é a principal delas: é uma chamada única ao
+ * leitor principal, que não expõe progresso, e medida em 32% do tempo de um
+ * arquivo de 61 MiB. Inventar uma porcentagem ali seria pior que assumir a
+ * indeterminação, porque a barra andaria sem relação com o trabalho real.
+ *
+ * As duas etapas que somam os outros 68% (`verifying` e `analyzing`) percorrem
+ * abas uma a uma e reportam fração de verdade.
+ */
+export type WorkbookReadProgress = {
+  stage: WorkbookReadStage;
+  completed?: number;
+  total?: number;
+};
 
 export type WorksheetWithReaderDiagnostics = XLSX.WorkSheet & {
   "!oliReaderDivergences"?: ReaderDivergence[];
@@ -57,6 +75,19 @@ export type WorkbookReadEngineOptions = {
   wasmSampleRate?: number;
   wasmReaderMode?: WasmReaderMode;
   wasmCandidateFormats?: readonly string[];
+  /**
+   * Recebe cada aba assim que ela fica pronta, em vez de todas no fim.
+   *
+   * Quando presente, o resultado volta com `sheets` vazio: quem recebeu os
+   * pedaços já tem o conjunto, e manter uma segunda cópia aqui anularia a
+   * economia de memória que o escoamento existe para dar.
+   *
+   * Em modo candidato o conjunto ainda pode ser trocado pelo resultado do
+   * leitor Rust, mas só por um que `sameImportedSheets` provou idêntico, então
+   * o escoamento continua valendo; nesse caso o resultado volta com o conjunto
+   * preenchido, porque a comparação precisou dele.
+   */
+  onSheet?: (sheet: SheetOption) => void;
 };
 
 /**
@@ -325,12 +356,12 @@ export async function readWorkbookBytesWithEngine(
 ): Promise<WorkbookReadResult> {
   const startedAt = performance.now();
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  onProgress?.("decoding");
+  onProgress?.({ stage: "decoding" });
   const content = resolveWorkbookContent(bytes, fileName);
   const textFile = content.container === "text";
   const zipInfo = content.container === "zip" ? validateZipWorkbook(bytes) : null;
   const source = textFile ? decodeText(bytes) : bytes;
-  onProgress?.("parsing");
+  onProgress?.({ stage: "parsing" });
   const parseStartedAt = performance.now();
   let wb: XLSX.WorkBook;
   let fallbackUsed = false;
@@ -367,14 +398,27 @@ export async function readWorkbookBytesWithEngine(
   let repairedCells = 0;
   let divergentCells = 0;
   let independentInspection: OoxmlInspection | undefined;
-  onProgress?.("verifying");
+  // A verificação passa por cada aba duas vezes: uma lendo o XML original e
+  // outra comparando com o leitor principal. As duas viram uma fração só, com
+  // denominador dobrado, para a barra andar sem voltar ao meio da etapa.
+  onProgress?.({ stage: "verifying", completed: 0, total: wb.SheetNames.length * 2 });
   const verificationStartedAt = performance.now();
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
     const archive = sharedOoxmlArchive(bytes);
     attachWorkbookFeatures(wb, archive);
     try {
-      independentInspection = inspectOoxml(archive);
-      const divergences = compareAndRepairWithOoxml(wb, independentInspection);
+      let inspectedSheets = 0;
+      independentInspection = inspectOoxml(archive, (done, total) => {
+        inspectedSheets = total;
+        onProgress?.({ stage: "verifying", completed: done, total: total * 2 });
+      });
+      const divergences = compareAndRepairWithOoxml(wb, independentInspection, (done, total) =>
+        onProgress?.({
+          stage: "verifying",
+          completed: (inspectedSheets || total) + done,
+          total: (inspectedSheets || total) + total,
+        }),
+      );
       repairedCells = divergences.filter((item) => item.repaired).length;
       divergentCells = divergences.length;
       for (const sheetName of wb.SheetNames) {
@@ -389,10 +433,6 @@ export async function readWorkbookBytesWithEngine(
     }
   }
   const verificationMs = Math.round(performance.now() - verificationStartedAt);
-  onProgress?.("analyzing");
-  const analysisStartedAt = performance.now();
-  let sheets = sheetsWithData(wb);
-  const analysisMs = Math.round(performance.now() - analysisStartedAt);
   const format = workbookFormat(fileName);
   const wasmReaderMode = options.wasmReaderMode ?? configuredWasmReaderMode();
   const wasmCandidateFormats = options.wasmCandidateFormats ?? configuredWasmCandidateFormats();
@@ -408,6 +448,31 @@ export async function readWorkbookBytesWithEngine(
     ? candidateEligible || shouldSampleWasm(fileName, bytes, wasmSampleRate)
     : false;
   const wasmReader = sampled ? registeredReader : undefined;
+  // Só o modo candidato com leitor Rust presente pode trocar o conjunto de abas
+  // depois desta etapa, e mesmo assim apenas por um conjunto que
+  // `sameImportedSheets` provou idêntico. Por isso o escoamento acontece sempre:
+  // o que a pessoa vê chegando nunca é uma aba que será desmentida. O que muda
+  // é só poder descartar a cópia daqui, e isso exige que ninguém mais precise
+  // dela para a comparação.
+  const mayReplaceSheets = candidateEligible && Boolean(wasmReader);
+  const collectSheets = !options.onSheet || mayReplaceSheets;
+  onProgress?.({ stage: "analyzing", completed: 0, total: wb.SheetNames.length });
+  const analysisStartedAt = performance.now();
+  let sheets: SheetOption[] = [];
+  // Contada à parte porque `sheets` pode ficar vazio de propósito quando o
+  // conjunto é escoado. O relatório precisa continuar dizendo quantas abas
+  // foram importadas, e não quantas sobraram em memória aqui.
+  let emittedSheets = 0;
+  streamSheetsWithData(
+    wb,
+    (option) => {
+      emittedSheets += 1;
+      options.onSheet?.(option);
+      if (collectSheets) sheets.push(option);
+    },
+    (done, total) => onProgress?.({ stage: "analyzing", completed: done, total }),
+  );
+  const analysisMs = Math.round(performance.now() - analysisStartedAt);
   let wasmShadowStatus: WasmShadowStatus = registeredReader
     ? sampled
       ? "failed"
@@ -426,7 +491,7 @@ export async function readWorkbookBytesWithEngine(
     candidateEligible && !registeredReader ? "unavailable" : null;
   let wasmOutputUsed = false;
   if (wasmReader) {
-    onProgress?.("comparing");
+    onProgress?.({ stage: "comparing" });
     const wasmStartedAt = performance.now();
     try {
       const inventory = await wasmReader.inventory(bytes);
@@ -451,7 +516,8 @@ export async function readWorkbookBytesWithEngine(
           wasmFallbackReason = "diverged";
         } else {
           const wasmWorkbook = attachWorkbookFeatures(workbookFromWasmInventory(inventory), bytes);
-          const wasmSheets = sheetsWithData(wasmWorkbook);
+          const wasmSheets: SheetOption[] = [];
+          streamSheetsWithData(wasmWorkbook, (option) => wasmSheets.push(option));
           if (sameImportedSheets(wasmSheets, sheets)) {
             sheets = wasmSheets;
             wasmCandidateStatus = "primary";
@@ -469,7 +535,7 @@ export async function readWorkbookBytesWithEngine(
       wasmShadowMs = Math.round(performance.now() - wasmStartedAt);
     }
   }
-  onProgress?.("complete");
+  onProgress?.({ stage: "complete" });
   return {
     sheets,
     report: {
@@ -493,7 +559,7 @@ export async function readWorkbookBytesWithEngine(
         expandedBytes: zipInfo?.totalUncompressedBytes ?? bytes.length,
         visitedCells,
       }),
-      sheets: sheets.length,
+      sheets: sheets.length || emittedSheets,
       repairedCells,
       divergentCells,
       fallbackUsed,
@@ -527,9 +593,9 @@ export function readWorkbookBytes(
   const content = resolveWorkbookContent(bytes, fileName);
   const textFile = content.container === "text";
   if (content.container === "zip") validateZipWorkbook(bytes);
-  onProgress?.("decoding");
+  onProgress?.({ stage: "decoding" });
   const source = textFile ? decodeText(bytes) : bytes;
-  onProgress?.("parsing");
+  onProgress?.({ stage: "parsing" });
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(source, {
@@ -558,13 +624,23 @@ export function readWorkbookBytes(
       (sheet as WorksheetWithReaderDiagnostics)["!oliOoxmlFallback"] = true;
   }
   validateWorkbookComplexity(wb);
-  onProgress?.("verifying");
+  onProgress?.({ stage: "verifying", completed: 0, total: wb.SheetNames.length * 2 });
   if (ZIP_WORKBOOK_EXTENSIONS.test(fileName)) {
     const archive = sharedOoxmlArchive(bytes);
     attachWorkbookFeatures(wb, archive);
     try {
-      const independent = inspectOoxml(archive);
-      const divergences = compareAndRepairWithOoxml(wb, independent);
+      let inspectedSheets = 0;
+      const independent = inspectOoxml(archive, (done, total) => {
+        inspectedSheets = total;
+        onProgress?.({ stage: "verifying", completed: done, total: total * 2 });
+      });
+      const divergences = compareAndRepairWithOoxml(wb, independent, (done, total) =>
+        onProgress?.({
+          stage: "verifying",
+          completed: (inspectedSheets || total) + done,
+          total: (inspectedSheets || total) + total,
+        }),
+      );
       for (const sheetName of wb.SheetNames) {
         const perSheet = divergences.filter((item) => item.sheet === sheetName);
         if (perSheet.length)
@@ -575,8 +651,13 @@ export function readWorkbookBytes(
       // A verificação independente não bloqueia um arquivo legível.
     }
   }
-  onProgress?.("analyzing");
-  const sheets = sheetsWithData(wb);
-  onProgress?.("complete");
+  onProgress?.({ stage: "analyzing", completed: 0, total: wb.SheetNames.length });
+  const sheets: SheetOption[] = [];
+  streamSheetsWithData(
+    wb,
+    (option) => sheets.push(option),
+    (done, total) => onProgress?.({ stage: "analyzing", completed: done, total }),
+  );
+  onProgress?.({ stage: "complete" });
   return sheets;
 }
