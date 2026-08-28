@@ -5,6 +5,12 @@ import { streamSheetsWithData, type SheetOption } from "@/lib/import";
 import { unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
 import { attachWorkbookFeatures } from "@/lib/workbook-metadata";
 import {
+  assertZipDirectoryFits,
+  locateZipDirectory,
+  readZipCentralDirectory,
+  ZIP_TAIL_SEARCH_BYTES,
+} from "@/lib/zip-directory";
+import {
   compareAndRepairWithOoxml,
   inspectOoxml,
   type OoxmlInspection,
@@ -40,10 +46,16 @@ const TEXT_EXTENSIONS = /\.(csv|tsv|txt)$/i;
 const ZIP_WORKBOOK_EXTENSIONS = /\.(xlsx|xlsm|xltx|xltm)$/i;
 export const MAX_WORKBOOK_SHEETS = 100;
 export const MAX_WORKBOOK_CELLS = 2_000_000;
-export const MAX_ZIP_ENTRIES = 10_000;
-export const MAX_ZIP_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024;
-export const MAX_ZIP_ENTRY_BYTES = 512 * 1024 * 1024;
-export const MAX_SUSPICIOUS_COMPRESSION_RATIO = 1_000;
+
+// Os limites do pacote ZIP moram em `zip-directory.ts`, junto do código que os
+// aplica, e continuam exportados daqui porque é daqui que o resto do projeto
+// sempre os leu.
+export {
+  MAX_SUSPICIOUS_COMPRESSION_RATIO,
+  MAX_ZIP_ENTRIES,
+  MAX_ZIP_ENTRY_BYTES,
+  MAX_ZIP_UNCOMPRESSED_BYTES,
+} from "@/lib/zip-directory";
 
 /**
  * Recusa por excesso de celulas, escrita uma vez so.
@@ -130,47 +142,17 @@ function resolveWorkbookContent(bytes: Uint8Array, fileName: string) {
 }
 
 export function validateZipWorkbook(bytes: Uint8Array): { totalUncompressedBytes: number } {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const searchStart = Math.max(0, bytes.length - 65_557);
-  let eocd = -1;
-  for (let offset = bytes.length - 22; offset >= searchStart; offset--) {
-    if (view.getUint32(offset, true) === 0x06054b50) {
-      eocd = offset;
-      break;
-    }
-  }
-  if (eocd < 0) throw new Error("O pacote da planilha está incompleto ou corrompido.");
-
-  const entries = view.getUint16(eocd + 10, true);
-  const directorySize = view.getUint32(eocd + 12, true);
-  const directoryOffset = view.getUint32(eocd + 16, true);
-  if (entries > MAX_ZIP_ENTRIES) throw new Error("A planilha contém arquivos internos demais.");
-  if (directoryOffset + directorySize > bytes.length)
-    throw new Error("O pacote da planilha possui um diretório interno inválido.");
-
-  let offset = directoryOffset;
-  let totalUncompressed = 0;
-  for (let index = 0; index < entries; index++) {
-    if (offset + 46 > bytes.length || view.getUint32(offset, true) !== 0x02014b50)
-      throw new Error("O pacote da planilha possui uma entrada interna inválida.");
-    const compressed = view.getUint32(offset + 20, true);
-    const uncompressed = view.getUint32(offset + 24, true);
-    const nameLength = view.getUint16(offset + 28, true);
-    const extraLength = view.getUint16(offset + 30, true);
-    const commentLength = view.getUint16(offset + 32, true);
-    if (uncompressed > MAX_ZIP_ENTRY_BYTES)
-      throw new Error("Uma parte interna da planilha é grande demais para leitura segura.");
-    if (
-      uncompressed > 50 * 1024 * 1024 &&
-      uncompressed / Math.max(1, compressed) > MAX_SUSPICIOUS_COMPRESSION_RATIO
-    )
-      throw new Error("A planilha possui uma taxa de compressão potencialmente insegura.");
-    totalUncompressed += uncompressed;
-    if (totalUncompressed > MAX_ZIP_UNCOMPRESSED_BYTES)
-      throw new Error("A planilha ultrapassa o limite seguro após descompactação.");
-    offset += 46 + nameLength + extraLength + commentLength;
-  }
-  return { totalUncompressedBytes: totalUncompressed };
+  // O formato e os limites moram em `zip-directory.ts`, e são os mesmos que a
+  // leitura por `Blob` aplica. Duas cópias das mesmas regras de segurança
+  // seriam dois lugares onde o critério pode divergir sem ninguém notar.
+  const tailStart = Math.max(0, bytes.length - ZIP_TAIL_SEARCH_BYTES);
+  const location = locateZipDirectory(bytes.subarray(tailStart), tailStart);
+  assertZipDirectoryFits(location, bytes.length);
+  const { totalUncompressedBytes } = readZipCentralDirectory(
+    bytes.subarray(location.offset),
+    location.entryCount,
+  );
+  return { totalUncompressedBytes };
 }
 
 export function validateWorkbookComplexity(workbook: XLSX.WorkBook): number {

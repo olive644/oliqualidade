@@ -9133,3 +9133,102 @@ validado.
 ### Versão
 
 `0.10.0-beta.12` para `0.10.0-beta.13`.
+## 150. O ZIP lido por posição, e a medida que disse onde isso não ajuda
+
+Primeira peça do caminho progressivo de OOXML. A seção 146 já tinha registrado
+que os dois primeiros passos existiam: `validateZipWorkbook` localiza o registro
+de fim e percorre o diretório central sem descompactar nada. Faltava operá-los
+sobre `Blob.slice()` em vez de sobre um `Uint8Array` completo. É isso, e só
+isso, que esta seção entrega.
+
+### As regras do formato passaram a morar num lugar só
+
+`zip-directory.ts` é o formato e os limites, sem saber de onde os bytes vieram.
+`validateZipWorkbook` foi reescrito em cima dele e `zip-blob-reader.ts` nasce em
+cima dele. A alternativa seria duas cópias das mesmas regras de segurança, e
+duas cópias são dois lugares onde o critério pode divergir sem ninguém notar,
+justamente nas conferências que existem para recusar uma bomba de
+descompactação.
+
+O comportamento de `validateZipWorkbook` não mudou: mesmas mensagens, mesma
+ordem de recusa, e os 44 testes do leitor continuam passando sem alteração.
+
+### O leitor por posição
+
+`openZipFromBlob` abre o pacote com duas leituras pequenas, a cauda onde o
+registro de fim pode estar e o índice que ele aponta, e a partir daí entrega uma
+entrada por vez. O arquivo nunca entra num `ArrayBuffer` e nenhuma entrada que
+ninguém pediu é expandida.
+
+Uma armadilha do formato que o código evita explicitamente: o índice aponta para
+o cabeçalho local, não para o conteúdo, e o cabeçalho local tem nome e campo
+extra com tamanhos **próprios**, que não precisam coincidir com os do índice.
+Confiar nos tamanhos do índice ali é o erro clássico de quem lê ZIP à mão, e
+produz bytes deslocados em alguns pacotes.
+
+Um teste pegou um desperdício antes de ele ser publicado: o leitor lia até 131
+KiB para descobrir onde o conteúdo começava, quando os 30 bytes fixos do
+cabeçalho local já trazem os dois tamanhos. São duas leituras por entrada, e a
+primeira precisa ser barata.
+
+### A equivalência
+
+25 pacotes reais locais, **756 entradas conferidas byte a byte** contra
+`unzipSync` sobre o pacote inteiro, mais o total expandido declarado conferido
+contra o do caminho atual em cada um. Um XML deslocado ainda é um XML que quase
+analisa, então a comparação é de bytes e não de resultado.
+
+Nos sintéticos: nome com acentuação, entrada vazia, entrada guardada sem
+compressão, comentário no fim do pacote deslocando o registro final, pacote
+truncado, teto de entradas e índice que não cabe no arquivo. As três últimas
+conferem que a recusa é a mesma dos dois caminhos, com a mesma mensagem.
+
+### A medida, e o que ela desmentiu
+
+| Pacote | Entradas | Expandido total | Maior entrada |
+| --- | ---: | ---: | ---: |
+| 1 aba x 120 mil linhas | 10 | 37,2 MiB | 37,2 MiB (**100%**) |
+| 12 abas x 10 mil linhas | 21 | 35,9 MiB | 3,0 MiB (**8%**) |
+
+Os dois pacotes têm 13,9 MiB de arquivo e o mesmo total de linhas. A diferença
+entre eles é a resposta inteira: **expandir uma entrada por vez só ajuda quando
+existem várias entradas grandes.** Numa planilha de aba única, a maior entrada é
+o pacote inteiro, e não há o que economizar.
+
+Isso limita o alcance desta peça mais do que a intuição sugeria, e limita de um
+jeito específico: o caso que motivou toda esta frente, o arquivo grande de uma
+tabela só, é exatamente o caso em que ela não paga. O ganho real para OOXML
+continua dependendo do que a seção 146 já dizia, que o workbook do SheetJS
+deixe de ser materializado, e agora com um detalhe a mais: para uma aba só,
+nem o acesso por entrada nem o índice barato mudam alguma coisa.
+
+### Duas medições descartadas, e por quê
+
+A primeira comparava memória viva entre um `Blob` de teste e a expansão inteira.
+O `Blob` de teste **copia** a cada fatia, então ela media a cópia do teste, e
+não o programa. Trocada por `fs.openAsBlob` sobre um arquivo real.
+
+A segunda comparava memória viva com `--expose-gc` em dois cenários seguidos, e
+chegou a reportar um caminho consumindo **menos vinte e dois MiB**: o lixo do
+primeiro cenário era coletado durante a medição do segundo, e a subtração saía
+negativa. Um número que pode sair negativo não estava medindo o que dizia medir.
+
+A medida que ficou não observa o coletor: ela usa os tamanhos que o próprio
+pacote declara, que são exatos, e para descobri-los nada precisa ser expandido,
+que é justamente a capacidade em teste. Fica registrado porque a tentação de
+medir memória com uma subtração simples reaparece toda vez.
+
+### O que isto não faz
+
+Nada chama o leitor novo ainda. A importação de OOXML continua idêntica,
+expandindo o pacote inteiro com `unzipSync`. O que falta para o caminho
+progressivo de OOXML existir é o XML da aba virar grade e alimentar
+`sheetsWithData(wb, { gridFor })`, como o CSV já faz. `inspectOoxml` já lê o
+pacote entrada por entrada e é o candidato natural a receber este leitor, mas
+ele é síncrono e o acesso por `Blob` é assíncrono, o que é a próxima decisão de
+desenho.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa, pela mesma razão das seções 146 a 148.
