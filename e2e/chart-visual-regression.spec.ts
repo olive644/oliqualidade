@@ -22,6 +22,14 @@ const rows = [
   { date: "2025-10-01", category: "Norte", amount: 190, target: 145, score: 24, team: "Ativo" },
   { date: "2025-11-01", category: "Litoral", amount: 135, target: 150, score: 17, team: "Ativo" },
   { date: "2025-12-01", category: "Interior", amount: 240, target: 155, score: 27, team: "Ativo" },
+  ...Array.from({ length: 12 }, (_, index) => ({
+    date: `2026-${String(index + 1).padStart(2, "0")}-01`,
+    category: ["Norte", "Sul", "Centro", "Leste"][index % 4],
+    amount: 96 + index * 17.25,
+    target: 160 + index * 5,
+    score: 11 + index,
+    team: "Ativo",
+  })),
   {
     date: "2025-12-01",
     category: "Fora do filtro",
