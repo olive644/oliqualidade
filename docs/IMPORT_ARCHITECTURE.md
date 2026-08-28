@@ -190,3 +190,32 @@ Ligar o CSV com ganho real exige, portanto, que a normalização passe a aceitar
 uma grade além de uma worksheet. Isso é uma mudança em `import.ts`, o arquivo do
 qual todo o corpus depende, e não cabe ser feita de passagem. Fica registrada
 como decisão pendente, com o número que a justifica: 67% de redução de pico.
+
+## Três atalhos testados e descartados
+
+Antes de aceitar que a normalização precisa mudar, três formas de ligar o
+leitor progressivo sem tocar em `import.ts` foram medidas. Todas perdem para o
+caminho atual, e ficam registradas para ninguém repetir a tentativa.
+
+| Tentativa | Worksheet | Pico total |
+| --- | ---: | ---: |
+| Grade acumulada sem reaproveitar strings | 193,7 MiB | 381,4 MiB |
+| `aoa_to_sheet` esparso, com strings reaproveitadas | 193,7 MiB | 330,5 MiB |
+| `aoa_to_sheet` denso, com strings reaproveitadas | 98,1 MiB | 234,9 MiB |
+| **Caminho atual** | 164,5 MiB | **231,5 MiB** |
+
+A forma densa foi a que mais se aproximou: ela corta a worksheet pela metade,
+porque guarda células em arrays em vez de criar 1,6 milhão de propriedades com
+chave. Ainda assim empata com o atual, e empate não justifica um segundo
+caminho de código para manter, testar e divergir.
+
+O motivo do empate é instrutivo. O custo das strings apenas **migra**: no
+caminho atual, `XLSX.read` com `cellText` já materializa o texto formatado e as
+linhas o reaproveitam; na construção a partir da grade, esse texto não existe e
+a normalização o cria na hora, então o que sai da worksheet reaparece nas
+linhas. Medido: as linhas custam 29,9 MiB pelo caminho atual e 90,3 MiB pelo
+outro, com conteúdo idêntico e verificado célula a célula.
+
+O ganho de 231,5 para 76,5 MiB continua existindo, e continua exigindo o mesmo:
+a normalização precisa aceitar uma grade sem construir worksheet nenhuma. Não
+há atalho.
