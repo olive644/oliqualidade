@@ -375,3 +375,30 @@ repassá-la para `sheetToRows`, para a detecção de regiões e para os fatiador
 Enquanto isso não acontece, todas as peças estão prontas e testadas, e o
 comportamento atual é bit a bit o mesmo, porque nenhum chamador usa as opções
 novas.
+
+### Quinto incremento: a ligação, e o ganho medido
+
+`sheetOptionsForName`, `streamSheetsWithData` e `sheetsWithData` passaram a
+aceitar uma fonte de grade e a repassá-la para a normalização, para a detecção
+de regiões e para o fatiamento. É o ponto em que a leitura por streaming deixa
+de precisar de uma worksheet completa.
+
+Medido com 120 mil linhas por 8 colunas, contabilizando **todas** as estruturas
+vivas de cada caminho:
+
+| Caminho | Worksheet | Grade | Linhas | Pico |
+| --- | ---: | ---: | ---: | ---: |
+| Atual | 106,6 MiB | — | 60,5 MiB | **167,1 MiB** |
+| Fonte de grade | 0 MiB | 22,4 MiB | 17,6 MiB | **40,0 MiB** |
+
+**76% menos, com resultado idêntico célula a célula.**
+
+Duas coisas explicam o ganho. A worksheet completa desaparece: a mínima tem só
+`!ref` e custa zero. E as linhas ficam três vezes mais baratas, porque o
+caminho atual materializa texto formatado por célula que as linhas depois
+referenciam, enquanto a grade não tem esse texto para carregar.
+
+O que a ligação **não** faz é escolher sozinha: nenhum chamador passa uma fonte
+de grade ainda. `sheetsWithData(wb)` sem fonte continua idêntico, e a rede de
+paridade sobre as 110 abas reais confirma isso. Falta o coordenador que junta o
+seletor de estratégia, o leitor de CSV por streaming e esta ligação.
