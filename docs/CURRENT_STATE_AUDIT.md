@@ -9330,10 +9330,36 @@ data é barato perto do que ele destrava. Medido em 120 mil linhas por 8 colunas
 com uma coluna de data de verdade, e reproduzido até a décima de MiB entre
 execuções (`OLI_GRID_BENCHMARK=1`).
 
-Ou seja, a lacuna que esta seção encontrou vale a pena fechar, e o próximo
-incremento tem número para justificar-se antes de começar. O que ele não tem
-ainda é a decisão de onde os pares moram: um mapa por endereço, como o medido
-aqui, é o desenho mais simples, e não necessariamente o mais barato.
+Ou seja, a lacuna vale a pena fechar, e o próximo incremento tem número para
+justificar-se antes de começar.
+
+### Onde os pares moram, também medido antes de escolher
+
+O mapa por endereço com o par completo é o mais simples de escrever, e não é o
+mais barato. Duas observações o encolhem, e as duas foram medidas antes de virar
+código.
+
+A primeira é que o texto exibido **já** está na grade: `textAoa` guarda
+exatamente o `w` que `formatTemporalCell` consulta, então guardá-lo de novo é
+pagar duas vezes pela mesma string. A segunda é que o formato numérico repete:
+uma coluna de data costuma ter um formato só, e o próprio pacote OOXML guarda
+formatos por índice de estilo, e não por célula.
+
+| Desenho | Custo sobre a grade |
+| --- | ---: |
+| Mapa por célula, com formato e texto | 10,8 MiB |
+| Mapa por célula, só o formato | 6,3 MiB |
+| Um formato por coluna | ~0 MiB |
+
+O formato por coluna é praticamente de graça, mas só vale se a coluna for
+homogênea, e isso é afirmação sobre planilha real, não sobre o formato OOXML.
+Quem respondeu foi o corpus: **214 colunas de data, 13 com mais de um formato**,
+ou seja 6%.
+
+O desenho, então, está decidido e tem número: **formato por coluna quando ela é
+homogênea, e por célula só nas que não são.** Os 94% saem de graça, e os 6%
+pagam 6,3 MiB no pior caso. O texto exibido nunca é duplicado, porque a grade já
+o tem.
 
 ### Uma inconsistência de tipo encontrada de passagem
 

@@ -437,3 +437,140 @@ describe.skipIf(!medicaoLigada)("o que cada representação custa", () => {
     if (podeColetar) expect(medidas["gradeComFormato"]).toBeLessThan(medidas["worksheet"]!);
   });
 });
+
+/**
+ * Onde os pares de formato moram, medido antes de escolher.
+ *
+ * A medição acima respondeu que fechar a lacuna compensa. Esta responde a
+ * pergunta seguinte, que é de desenho: o mapa por endereço com o par completo é
+ * o mais simples de escrever, e não é o mais barato. Duas observações o
+ * encolhem, e as duas precisam de número antes de virar código.
+ *
+ * A primeira é que o texto exibido **já** está na grade: `textAoa` guarda
+ * exatamente o `w` que `formatTemporalCell` consulta. Guardá-lo de novo no mapa
+ * é pagar duas vezes pela mesma string.
+ *
+ * A segunda é que o formato numérico repete: uma coluna de data inteira
+ * costuma ter um formato só, e o pacote OOXML já guarda formatos por índice de
+ * estilo, e não por célula.
+ *
+ * As variantes são medidas sobre a mesma grade viva, uma de cada vez, com a
+ * anterior descartada e o coletor chamado entre elas. Toda medida é conferida
+ * como positiva, pela mesma razão da seção 150.
+ */
+describe.skipIf(!medicaoLigada)("onde os pares de formato moram", () => {
+  it("compara os três desenhos possíveis", { timeout: 900_000 }, () => {
+    const grade = readOoxmlSheetGrids(pacoteComData().bytes).get("Dados")!;
+    const ehData = (linha: number, coluna: number) => grade.aoa[linha]![coluna] instanceof Date;
+
+    /** Mede uma variante com a grade viva, e devolve só o que ela acrescenta. */
+    const acrescentadoPor = (construir: () => unknown): number => {
+      const base = vivoAgora();
+      let retido: unknown = construir();
+      const custo = vivoAgora() - base;
+      retido = null;
+      expect(retido).toBeNull();
+      return custo;
+    };
+
+    // A: o desenho mais simples. Par completo por célula de data.
+    const mapaCompleto = acrescentadoPor(() => {
+      const mapa = new Map<string, { z: string; w: string }>();
+      for (let linha = 0; linha < grade.aoa.length; linha += 1)
+        for (let coluna = 0; coluna < grade.aoa[linha]!.length; coluna += 1)
+          if (ehData(linha, coluna))
+            mapa.set(`${linha},${coluna}`, {
+              z: "m/d/yy",
+              w: String(grade.textAoa[linha]![coluna] ?? ""),
+            });
+      return mapa;
+    });
+
+    // B: só o formato por célula. O texto exibido vem de `textAoa`, que a grade
+    // já carrega, e a string do formato é a mesma instância em todas.
+    const mapaSoFormato = acrescentadoPor(() => {
+      const mapa = new Map<string, string>();
+      const formato = "m/d/yy";
+      for (let linha = 0; linha < grade.aoa.length; linha += 1)
+        for (let coluna = 0; coluna < grade.aoa[linha]!.length; coluna += 1)
+          if (ehData(linha, coluna)) mapa.set(`${linha},${coluna}`, formato);
+      return mapa;
+    });
+
+    // C: um formato por coluna. Só vale quando a coluna é homogênea, e o teste
+    // ao lado confere se isso se sustenta no corpus real.
+    const porColuna = acrescentadoPor(() => {
+      const formatos: (string | null)[] = [];
+      for (let coluna = 0; coluna < (grade.aoa[0]?.length ?? 0); coluna += 1) {
+        let formato: string | null = null;
+        for (let linha = 0; linha < grade.aoa.length; linha += 1)
+          if (ehData(linha, coluna)) {
+            formato = "m/d/yy";
+            break;
+          }
+        formatos[coluna] = formato;
+      }
+      return formatos;
+    });
+
+    process.stdout.write(
+      [
+        "",
+        `  A) mapa por célula, com formato e texto: ${String(emMiB(mapaCompleto)).padStart(5)} MiB`,
+        `  B) mapa por célula, só o formato:        ${String(emMiB(mapaSoFormato)).padStart(5)} MiB`,
+        `  C) um formato por coluna:                ${String(emMiB(porColuna)).padStart(5)} MiB`,
+        "",
+      ].join("\n"),
+    );
+
+    for (const [nome, valor] of Object.entries({ mapaCompleto, mapaSoFormato, porColuna }))
+      expect(`${nome} positivo: ${valor > 0}`).toBe(`${nome} positivo: true`);
+    expect(mapaSoFormato).toBeLessThan(mapaCompleto);
+    expect(porColuna).toBeLessThan(mapaSoFormato);
+  });
+});
+
+describe.skipIf(!locais.length)("o formato de data é homogêneo por coluna?", () => {
+  it(
+    "conta as colunas de data com mais de um formato, no corpus real",
+    { timeout: 300_000 },
+    () => {
+      // O desenho C só é possível se a coluna de data tiver um formato só. Isso é
+      // uma afirmação sobre planilha real, não sobre o formato OOXML, então quem
+      // responde é o corpus.
+      let colunasComData = 0;
+      let colunasComVariosFormatos = 0;
+
+      for (const caminho of locais) {
+        let inspecao;
+        try {
+          inspecao = inspectOoxml(new Uint8Array(readFileSync(caminho)));
+        } catch {
+          continue;
+        }
+        for (const nome of inspecao.workbook.SheetNames) {
+          const worksheet = inspecao.workbook.Sheets[nome]!;
+          if (!worksheet["!ref"]) continue;
+          const usado = XLSX.utils.decode_range(worksheet["!ref"]);
+          for (let coluna = usado.s.c; coluna <= usado.e.c; coluna += 1) {
+            const formatos = new Set<string>();
+            for (let linha = usado.s.r; linha <= usado.e.r; linha += 1) {
+              const celula = worksheet[XLSX.utils.encode_cell({ r: linha, c: coluna })] as
+                XLSX.CellObject | undefined;
+              if (celula?.t === "d") formatos.add(String(celula.z ?? ""));
+            }
+            if (formatos.size === 0) continue;
+            colunasComData += 1;
+            if (formatos.size > 1) colunasComVariosFormatos += 1;
+          }
+        }
+      }
+
+      process.stdout.write(
+        `\n  ${colunasComData} colunas de data no corpus` +
+          `\n  ${colunasComVariosFormatos} com mais de um formato\n`,
+      );
+      expect(colunasComData).toBeGreaterThan(0);
+    },
+  );
+});
