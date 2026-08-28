@@ -205,6 +205,7 @@ audit inteiro.
 | Erro do servidor (500, recuperação de stack) | `error-capture.ts` (`AsyncLocalStorage` por requisição), `server.ts`  | `error-capture.test.ts`                      |
 | Exportação PNG/PDF e tabelas                | `dashboard-export.ts`, `data-table-widget.tsx`, CSS `.oliam-export-*` | layout + teste de exportação                 |
 | Desempenho                                  | workers, `latest-task-queue.ts`, CSS `.oliam-widget`, budgets         | `npm run verify`                             |
+| Estratégia e limites de importação          | `import-strategy.ts` é o único lugar com limite numérico de importação; `progressive-import.ts` traz o contrato de blocos, backpressure e equivalência; `docs/IMPORT_ARCHITECTURE.md` explica o caminho inteiro e o mapa de cópias | `import-strategy.test.ts`, `progressive-import.test.ts`, `npm run benchmark:import` — ver [[CURRENT_STATE_AUDIT#146. Baseline da importação: o pico não é o ZIP, é o workbook do SheetJS]] |
 | Progresso da importação na tela             | `workbook-reader.ts` emite `{ stage, completed?, total? }`; `import-progress.ts` traduz para rótulo, percentual e fração; `empty.tsx` desenha a barra só quando há medida | `import-progress.test.ts`, `empty.test.tsx`, `workbook-reader.test.ts` — ver [[CURRENT_STATE_AUDIT#145. Progresso medido na leitura de planilha, e as abas saindo do worker uma a uma]] |
 | Métricas de importação (leitor, tempo, bytes, fallback) | `import-metrics.ts`, `storage.ts` (`loadImportMetrics`/`saveImportMetrics`), painel em `components/oliam/import-diagnostics-dialog.tsx` | `import-metrics.test.ts`, `workbook-reader.test.ts` |
 | Testes E2E reais de navegador | `e2e/*.spec.ts` (Playwright), `playwright.config.ts` — usar `OLI_E2E_BASE_URL` para apontar a um servidor já pronto (evita o probe nativo do Playwright, que colide com uma corrida real do dev server) | `npm run test:e2e`; CI roda em job próprio (`application.yml`, job `e2e`) — ver [[CURRENT_STATE_AUDIT#73. Primeiro teste E2E real (Playwright), e um bug real de corrida de hidratação SSR encontrado no processo]] |
@@ -613,6 +614,7 @@ npm run test:security-smoke # cabeçalhos de segurança + CORS contra um servido
 npm run test:e2e            # E2E real via Playwright (roda na CI, job e2e); localmente sobe o dev server sozinho, ou use OLI_E2E_BASE_URL para apontar a um servidor já pronto
 ANALYZE=1 npm run build     # gera client-chunk-report.json (gitignored) com módulo->chunk->tamanho real do bundle do cliente, sem SSR misturado; ver seção 58 do CURRENT_STATE_AUDIT.md
 npm run test:gemini-smoke   # contrato real da Interactions API; pulado sem OLI_GEMINI_SMOKE=1 + GEMINI_API_KEY
+npm run benchmark:import    # baseline da importação e mapa de cópias; exige --expose-gc, já embutido no script
 ```
 
 **Smoke do contrato real do Gemini**: mock nenhum confirma sozinho o contrato
@@ -997,6 +999,12 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 - Este documento explica intenção. O mapa estrutural que ficava em
   `graphify-out/` foi removido: ver
   [[CURRENT_STATE_AUDIT#143. O grafo de código versionado foi removido]].
+- **O pico de memória da importação é o workbook do SheetJS, não o ZIP.**
+  Medido: o ZIP expandido custa cerca de 1x o arquivo e o workbook cerca de
+  3,5x, com o conjunto vivo entre 5,8x e 6,5x. Um arquivo de 65 MiB pede 430
+  MiB. Isso muda a ordem de prioridade de qualquer trabalho de leitura
+  progressiva: acesso progressivo ao ZIP elimina a cópia menor. Ver [[CURRENT_STATE_AUDIT#146. Baseline da importação: o pico não é o ZIP, é o workbook do SheetJS]] e
+  `docs/IMPORT_ARCHITECTURE.md`.
 - **A primeira aba ainda chega a 75% da leitura.** A verificação precisa
   terminar antes de a análise começar, e é a análise que produz as abas.
   Canalizar as duas fases por aba (verificar a aba 1, analisar a aba 1, emitir,
