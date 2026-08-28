@@ -8761,3 +8761,87 @@ nenhuma barra fora de importação.
 ### Versão
 
 `0.10.0-beta.11` → `0.10.0-beta.12`.
+## 146. Baseline da importação: o pico não é o ZIP, é o workbook do SheetJS
+
+Pedido de leitura progressiva para planilhas grandes. A primeira decisão foi não
+escrever leitor nenhum antes de medir, porque a suspeita registrada no pedido
+(ZIP expandido em memória) é verdadeira mas não é onde está o custo.
+
+### O mapa de cópias, medido
+
+`scripts/benchmark-import-baseline.mjs` gera fixtures sintéticas
+determinísticas e mede cada cópia grande viva ao mesmo tempo. A medição soma
+heap e memória externa: um `Uint8Array` grande vive fora do heap do V8, e medir
+só `heapUsed` mostrava o ZIP expandido como zero, justamente a cópia sob
+investigação.
+
+| Cenário | Arquivo | ZIP expandido | `XLSX.read` | Linhas | Soma viva | Razão |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10 mil linhas | 3,3 MiB | 3,3 | 12,0 | 1,4 | 20,1 | 6,1x |
+| 100 mil linhas | 33,9 MiB | 33,8 | 114,3 | 13,9 | 195,7 | 5,8x |
+| 500 mil linhas (3 colunas) | 65,7 MiB | 65,8 | 267,7 | 31,1 | 430,4 | 6,5x |
+| 12 abas x 15 mil | 59,9 MiB | 59,7 | 203,3 | 25,3 | 348,1 | 5,8x |
+
+O ZIP expandido custa cerca de **1x** o arquivo. O workbook do SheetJS custa
+cerca de **3,5x**. Acesso progressivo ao ZIP, que era a linha de trabalho mais
+óbvia, elimina a cópia menor: no cenário de 500 mil linhas ele tiraria 65 dos
+430 MiB. A cópia que domina só desaparece se o workbook deixar de ser
+materializado, o que significa o caminho Rust/WASM ou um leitor que produza
+linhas sem construir o workbook antes.
+
+Um arquivo de 65 MiB já pede 430 MiB. O teto de 100 MB do produto implica pico
+da ordem de 600 MiB, mais do que uma aba de celular costuma sobreviver.
+
+### O que a auditoria confirmou do caminho atual
+
+`File.arrayBuffer()` sobre o arquivo completo, sim. Transferência ao worker,
+sim, mas com `postMessage(bytes, [bytes])`, ou seja, transferível e **sem
+cópia**: essa suspeita do pedido não se confirma. ZIP inteiro expandido por
+`unzipSync`, sim. Worksheets completas em memória, sim.
+
+E um achado que encurta o trabalho futuro: `validateZipWorkbook` já localiza o
+EOCD e percorre o diretório central **sem descompactar nada**, aplicando os
+limites de entradas, tamanho expandido e razão de compressão. Os dois primeiros
+passos de um acesso progressivo ao ZIP já existem; falta operá-los sobre
+`Blob.slice()` em vez de sobre um `Uint8Array` completo.
+
+### Vocabulário
+
+Enquanto o arquivo inteiro estiver num `ArrayBuffer` e o ZIP for expandido em
+memória, o nome correto é leitura progressiva ou importação em blocos.
+"Streaming verdadeiro" fica reservado para quando o arquivo não é carregado
+inteiro, com memória limitada e backpressure, e hoje só o caminho de CSV tem
+como alcançar isso. A regra está escrita em `docs/IMPORT_ARCHITECTURE.md`
+porque a tentação de chamar o trabalho pelo nome bonito reaparece a cada PR.
+
+### O seletor e o contrato
+
+`import-strategy.ts` é o único lugar onde limites numéricos de importação podem
+existir. A razão de 6x vem da medição, não de estimativa, e os tetos de conforto
+(200 MiB no computador, 48 MiB em aparelho modesto) saem dela. O sinal de
+aparelho modesto combina `deviceMemory`, `hardwareConcurrency` e user agent, e
+trata qualquer um como suficiente: `deviceMemory` não existe no Safari nem no
+Firefox, e usá-la sozinha classificaria todo iPhone como máquina folgada.
+
+`progressive-import.ts` traz só o contrato: etapas reais, blocos com ordem
+garantida, confirmação por bloco com teto de dois pendentes, `runId` em toda
+mensagem para descartar execução antiga, e um comparador de equivalência que diz
+**onde** dois resultados divergem sem colocar valor de célula na descrição.
+
+Nenhum caminho progressivo está ligado nesta etapa. O seletor decide e cai
+sempre no atual, com motivo `caminho-progressivo-indisponivel`. É deliberado:
+limites e decisão podem ser revisados e testados antes de existir leitor novo, e
+nada muda para quem importa hoje.
+
+### Duas armadilhas do SheetJS
+
+Encontradas montando as fixtures, e ambas do SheetJS e não do leitor do projeto:
+`XLSX.write` falha com `RangeError` acima de cerca de 4 milhões de células
+porque monta o ZIP inteiro como uma string só, e `sheet_to_json` de meio milhão
+de linhas estoura a pilha se o resultado for espalhado com `push(...)`.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa. O seletor não está ligado, a interface não muda e o
+resultado de qualquer importação continua idêntico.
