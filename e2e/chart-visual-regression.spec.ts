@@ -191,7 +191,21 @@ async function openChartDashboard(page: Page, theme: "light" | "dark" = "light")
   );
   await page.goto(`/painel/${dashboardId}`);
   await expect(page.locator(".oliam-widget-grid")).toBeVisible();
-  await expect(page.locator("svg.recharts-surface")).toHaveCount(9);
+  for (const widgetId of [
+    "metric",
+    "bar",
+    "pie",
+    "radar",
+    "area",
+    "histogram",
+    "pareto",
+    "scatter",
+    "control",
+  ]) {
+    await expect(
+      page.locator(`[data-widget-id="${widgetId}"] svg.recharts-surface`).first(),
+    ).toBeVisible();
+  }
   await page.addStyleTag({
     content:
       "*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}",

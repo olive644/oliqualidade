@@ -1127,6 +1127,7 @@ export function ChartWidgetBody({
                         fill={`url(#area-above-${w.id})`}
                         dot={false}
                         activeDot={{ r: 4 }}
+                        isAnimationActive={chartAnimationEnabled()}
                       />
                       <Area
                         type="monotone"
@@ -1139,6 +1140,7 @@ export function ChartWidgetBody({
                         fill={`url(#area-below-${w.id})`}
                         dot={false}
                         activeDot={{ r: 4 }}
+                        isAnimationActive={chartAnimationEnabled()}
                       />
                       <Line
                         type="monotone"
@@ -1150,6 +1152,7 @@ export function ChartWidgetBody({
                         strokeDasharray="5 4"
                         dot={false}
                         activeDot={false}
+                        isAnimationActive={chartAnimationEnabled()}
                       />
                       <Line
                         type="monotone"
@@ -1188,6 +1191,7 @@ export function ChartWidgetBody({
                             />
                           );
                         }}
+                        isAnimationActive={chartAnimationEnabled()}
                       />
                       <Line
                         type="monotone"
@@ -1197,6 +1201,7 @@ export function ChartWidgetBody({
                         stroke="transparent"
                         dot={false}
                         activeDot={false}
+                        isAnimationActive={chartAnimationEnabled()}
                       />
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -1327,6 +1332,7 @@ export function ChartWidgetBody({
                           />
                         );
                       }}
+                      isAnimationActive={chartAnimationEnabled()}
                     />
                   </LineChart>
                 </ResponsiveContainer>

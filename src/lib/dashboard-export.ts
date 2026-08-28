@@ -25,6 +25,73 @@ type DashboardCapture = {
   breakpoints: number[];
 };
 
+type ChartSvgSnapshot = {
+  dataUrl: string;
+  height: number;
+  width: number;
+};
+
+const SVG_PRESENTATION_PROPERTIES = [
+  "color",
+  "display",
+  "fill",
+  "fill-opacity",
+  "font-family",
+  "font-size",
+  "font-style",
+  "font-weight",
+  "letter-spacing",
+  "opacity",
+  "stroke",
+  "stroke-dasharray",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-opacity",
+  "stroke-width",
+  "stop-color",
+  "stop-opacity",
+  "text-anchor",
+  "visibility",
+] as const;
+
+/**
+ * O Recharts 3 separa as camadas do gráfico em grupos SVG com z-index. O
+ * html2canvas não preserva essas camadas de forma confiável ao clonar um DOM
+ * grande para PNG/PDF. Congelamos cada SVG como uma imagem autocontida, com
+ * variáveis CSS já resolvidas, apenas dentro do clone usado na exportação.
+ */
+function chartSvgSnapshots(element: HTMLElement): ChartSvgSnapshot[] {
+  return [...element.querySelectorAll<SVGSVGElement>("svg.recharts-surface")].map((svg) => {
+    const rect = svg.getBoundingClientRect();
+    const width = Math.max(1, Math.round(rect.width));
+    const height = Math.max(1, Math.round(rect.height));
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("width", String(width));
+    clone.setAttribute("height", String(height));
+    if (!clone.hasAttribute("viewBox")) clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+    const sourceNodes = [svg, ...svg.querySelectorAll<SVGElement>("*")];
+    const clonedNodes = [clone, ...clone.querySelectorAll<SVGElement>("*")];
+    sourceNodes.forEach((source, index) => {
+      const target = clonedNodes[index];
+      if (!target) return;
+      const computed = getComputedStyle(source);
+      SVG_PRESENTATION_PROPERTIES.forEach((property) => {
+        const value = computed.getPropertyValue(property);
+        if (value) target.style.setProperty(property, value);
+      });
+    });
+
+    const serialized = new XMLSerializer().serializeToString(clone);
+    return {
+      dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`,
+      height,
+      width,
+    };
+  });
+}
+
 async function settleExportLayout() {
   await document.fonts?.ready;
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -71,6 +138,7 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
     const cssWidth = Math.ceil(element.getBoundingClientRect().width);
     const cssHeight = element.scrollHeight;
     const cleanBreakpoints = exportBreakpoints(element);
+    const chartSnapshots = chartSvgSnapshots(element);
     const { default: html2canvas } = await import("html2canvas-pro");
     const canvas = await html2canvas(element, {
       backgroundColor: getComputedStyle(element).backgroundColor,
@@ -88,6 +156,22 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
       onclone: (clonedDocument, clonedElement) => {
         clonedElement.classList.add("oliam-export-mode");
         clonedDocument.querySelectorAll("[data-export-controls]").forEach((node) => node.remove());
+        clonedElement
+          .querySelectorAll<SVGSVGElement>("svg.recharts-surface")
+          .forEach((svg, index) => {
+            const snapshot = chartSnapshots[index];
+            if (!snapshot) return;
+            const image = clonedDocument.createElement("img");
+            image.src = snapshot.dataUrl;
+            image.alt = "";
+            image.setAttribute("aria-hidden", "true");
+            image.setAttribute("data-export-chart", "true");
+            image.style.width = `${snapshot.width}px`;
+            image.style.height = `${snapshot.height}px`;
+            image.style.maxWidth = "100%";
+            image.style.display = "block";
+            svg.replaceWith(image);
+          });
       },
     });
     const renderedScale = canvas.width / cssWidth;

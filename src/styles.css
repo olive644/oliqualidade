@@ -1420,6 +1420,9 @@
   width: 100% !important;
   max-width: 100% !important;
 }
+.oliam-export-mode .recharts-tooltip-wrapper {
+  display: none !important;
+}
 .oliam-export-mode .leaflet-control-container {
   display: none !important;
 }

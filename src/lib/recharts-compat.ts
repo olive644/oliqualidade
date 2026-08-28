@@ -4,6 +4,7 @@ import type { Kind } from "@/lib/types";
 
 export function chartAnimationEnabled(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  if (document.querySelector(".oliam-export-mode")) return false;
   return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
