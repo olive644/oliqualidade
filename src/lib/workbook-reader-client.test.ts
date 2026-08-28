@@ -143,3 +143,114 @@ describe("montagem das abas escoadas pelo worker", () => {
     expect(resultado.sheets.map((s) => s.name)).toEqual(["Autoritativa"]);
   });
 });
+
+/**
+ * A escolha entre os dois caminhos, vista de fora.
+ *
+ * O que estes testes protegem nao e a decisao em si (isso e `import-strategy`,
+ * que e uma funcao pura de tamanho e nome), e sim a consequencia dela: um CSV
+ * grande precisa chegar ao worker como referencia ao arquivo, e nunca como
+ * bytes, senao o streaming perde o sentido antes de comecar.
+ */
+describe("escolha do caminho de importacao", () => {
+  class RecordingWorker {
+    static ultima: Record<string, unknown> | null = null;
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    onerror: ((event: ErrorEvent) => void) | null = null;
+    terminate = vi.fn();
+
+    postMessage(request: Record<string, unknown>) {
+      RecordingWorker.ultima = request;
+      queueMicrotask(() =>
+        this.onmessage?.({
+          data: {
+            id: request["id"],
+            type: "result",
+            result: { sheets: [{ name: "Sheet1", rows: [{ a: 1 }] }], report: { sheets: 1 } },
+          },
+        } as MessageEvent),
+      );
+    }
+  }
+
+  const csv = (size: number) =>
+    ({
+      name: "dados.csv",
+      size,
+      arrayBuffer: async () => {
+        throw new Error("o caminho progressivo nao pode materializar o arquivo");
+      },
+    }) as unknown as File;
+
+  it("manda o proprio arquivo ao worker quando o CSV e grande", async () => {
+    vi.stubGlobal("Worker", RecordingWorker);
+    vi.stubGlobal("crypto", { randomUUID: () => "id-fixo" });
+    RecordingWorker.ultima = null;
+
+    // 40 MiB de CSV: o pico previsto do caminho atual passa do teto de conforto.
+    await readWorkbookFileWithReport(csv(40 * 1024 * 1024));
+
+    expect(RecordingWorker.ultima?.["strategy"]).toBe("csv-progressivo");
+    expect(RecordingWorker.ultima?.["file"]).toBeDefined();
+    expect(RecordingWorker.ultima?.["bytes"]).toBeUndefined();
+  });
+
+  it("mantem o caminho atual para o CSV pequeno, que e o validado pelo corpus", async () => {
+    vi.stubGlobal("Worker", RecordingWorker);
+    vi.stubGlobal("crypto", { randomUUID: () => "id-fixo" });
+    RecordingWorker.ultima = null;
+    const pequeno = {
+      name: "dados.csv",
+      size: 1_000,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    } as unknown as File;
+
+    await readWorkbookFileWithReport(pequeno);
+
+    expect(RecordingWorker.ultima?.["strategy"]).toBe("atual");
+    expect(RecordingWorker.ultima?.["bytes"]).toBeDefined();
+  });
+
+  it("cai no leitor validado quando o worker diz que o caminho novo nao serve", async () => {
+    // Acontece com um pacote OOXML renomeado para `.csv`: o caminho progressivo
+    // reconhece que o conteudo nao e texto e devolve a leitura, sem recusar o
+    // arquivo e sem que a pessoa veja nada disso.
+    const pedidos: Record<string, unknown>[] = [];
+    class FallbackWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      terminate = vi.fn();
+
+      postMessage(request: Record<string, unknown>) {
+        pedidos.push(request);
+        const primeiro = request["strategy"] === "csv-progressivo";
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: primeiro
+              ? { id: request["id"], type: "fallback", message: "o conteudo nao e texto" }
+              : {
+                  id: request["id"],
+                  type: "result",
+                  result: {
+                    sheets: [{ name: "Planilha", rows: [{ a: 1 }] }],
+                    report: { sheets: 1 },
+                  },
+                },
+          } as MessageEvent),
+        );
+      }
+    }
+    vi.stubGlobal("Worker", FallbackWorker);
+    vi.stubGlobal("crypto", { randomUUID: () => "id-fixo" });
+    const arquivo = {
+      name: "renomeada.csv",
+      size: 40 * 1024 * 1024,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    } as unknown as File;
+
+    const resultado = await readWorkbookFileWithReport(arquivo);
+
+    expect(pedidos.map((p) => p["strategy"])).toEqual(["csv-progressivo", "atual"]);
+    expect(resultado.sheets.map((s) => s.name)).toEqual(["Planilha"]);
+  });
+});

@@ -33,6 +33,27 @@ const LF = "\n";
 const QUOTE = '"';
 
 /**
+ * Quantas linhas do inicio do arquivo entram na decisao do delimitador, e o
+ * teto de bytes que essa espera pode custar.
+ *
+ * O numero nao e escolha nova: `detectDelimiter` pontua os candidatos ao longo
+ * das primeiras 25 linhas e penaliza o candidato ausente em parte delas. Com
+ * uma linha so, essa penalidade nao existe, e um arquivo cuja primeira linha e
+ * um titulo com ponto e virgula ("Relatorio de vendas; janeiro") seguido de
+ * dados separados por virgula seria analisado com o separador errado, sem nada
+ * na tela indicando. O teto de bytes existe porque uma linha pode ser enorme, e
+ * a espera nao pode virar uma copia do arquivo.
+ */
+const DELIMITER_SAMPLE_LINES = 25;
+const DELIMITER_SAMPLE_MAX_BYTES = 64 * 1024;
+
+const LINE_BREAK = /\r\n|\r|\n/g;
+
+function countLines(text: string): number {
+  return text.match(LINE_BREAK)?.length ?? 0;
+}
+
+/**
  * Analisador incremental de registros CSV.
  *
  * Guarda entre alimentações: o campo em construção, o registro em construção,
@@ -193,6 +214,7 @@ function encodingFromBom(head: Uint8Array): CsvEncodingSniff["encoding"] | null 
 export async function sniffCsvEncoding(
   blob: Blob,
   signal?: AbortSignal,
+  onProgress?: (bytesRead: number, totalBytes: number) => void,
 ): Promise<CsvEncodingSniff> {
   const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
   const bom = encodingFromBom(head);
@@ -201,15 +223,21 @@ export async function sniffCsvEncoding(
   const decoder = new TextDecoder("utf-8", { fatal: false });
   let replacements = 0;
   let characters = 0;
+  let bytesRead = 0;
   const reader = blob.stream().getReader();
   try {
     while (true) {
       if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
       const chunk = await reader.read();
       if (chunk.done) break;
+      bytesRead += chunk.value.byteLength;
       const texto = decoder.decode(chunk.value, { stream: true });
       characters += texto.length;
       for (const char of texto) if (char === "�") replacements += 1;
+      // Esta passagem percorre o arquivo inteiro. Sem reportar nada, ela seria
+      // uma espera sem medida na tela, e num arquivo grande ela responde por
+      // metade do tempo da leitura.
+      onProgress?.(bytesRead, blob.size);
     }
     const resto = decoder.decode();
     characters += resto.length;
@@ -275,16 +303,32 @@ export async function readCsvInBlocks(
   let delimiter = options.delimiter ?? null;
   let parser = delimiter ? new CsvRecordParser(delimiter) : null;
   let cabecalhoPendente = "";
-  let bloco: string[][] = [];
+  const bloco: string[][] = [];
   let records = 0;
   let bytesRead = 0;
   let primeiroTrecho = true;
 
+  /**
+   * Entrega o acumulado em blocos de no maximo `blockSize` linhas.
+   *
+   * O teto e um teto de verdade, e nao um gatilho: um unico pedaco de bytes
+   * pode fechar muitos registros de uma vez, e entregar todos juntos faria o
+   * consumidor receber um lote de tamanho imprevisivel justamente no comeco do
+   * arquivo, que e onde a decisao do delimitador retem mais texto.
+   *
+   * O sinal e conferido a cada bloco, e nao so a cada leitura do `Blob`: uma
+   * unica leitura pode render varios blocos, e quem cancelou no meio nao pode
+   * continuar recebendo o resto deles.
+   */
   const entregar = async (forcar: boolean) => {
-    if (!bloco.length || (!forcar && bloco.length < blockSize)) return;
-    const enviar = bloco;
-    bloco = [];
-    await onBlock(enviar);
+    while (bloco.length >= blockSize) {
+      if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
+      await onBlock(bloco.splice(0, blockSize));
+    }
+    if (forcar && bloco.length) {
+      if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
+      await onBlock(bloco.splice(0, bloco.length));
+    }
   };
 
   const reader = source.stream().getReader();
@@ -307,7 +351,11 @@ export async function readCsvInBlocks(
       // como desfazer.
       if (!parser) {
         cabecalhoPendente += texto;
-        if (cabecalhoPendente.length < 64 * 1024 && !cabecalhoPendente.includes(LF)) continue;
+        if (
+          cabecalhoPendente.length < DELIMITER_SAMPLE_MAX_BYTES &&
+          countLines(cabecalhoPendente) < DELIMITER_SAMPLE_LINES
+        )
+          continue;
         delimiter = options.delimiter ?? (detectDelimiter(cabecalhoPendente) as string);
         parser = new CsvRecordParser(delimiter);
         texto = cabecalhoPendente;
@@ -363,6 +411,10 @@ export async function readCsvInBlocks(
  * conversao, todo CSV importado pelo caminho novo teria metricas de qualidade
  * diferentes das do caminho atual, sem nada na tela indicando isso.
  */
+export function csvCellToSheetValue(cell: string): string | null {
+  return cell === "" ? null : cell;
+}
+
 export function csvGridToSheetRows(grid: string[][]): (string | null)[][] {
-  return grid.map((linha) => linha.map((celula) => (celula === "" ? null : celula)));
+  return grid.map((linha) => linha.map(csvCellToSheetValue));
 }

@@ -45,8 +45,26 @@ export const MAX_ZIP_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024;
 export const MAX_ZIP_ENTRY_BYTES = 512 * 1024 * 1024;
 export const MAX_SUSPICIOUS_COMPRESSION_RATIO = 1_000;
 
+/**
+ * Recusa por excesso de celulas, escrita uma vez so.
+ *
+ * O caminho progressivo de CSV aplica o mesmo teto durante a leitura, e duas
+ * copias do texto seriam duas mensagens que podem divergir sem ninguem notar.
+ */
+export const MAX_WORKBOOK_CELLS_MESSAGE =
+  "A planilha ultrapassa 2 milhões de células. Divida o arquivo para evitar travamentos e perda de dados.";
+
 export type WorkbookReadStage =
-  "decoding" | "parsing" | "verifying" | "analyzing" | "comparing" | "complete";
+  | "decoding"
+  // Leitura do arquivo em blocos, no caminho progressivo de CSV. Existe
+  // separada de `parsing` porque, ao contrario dela, sabe medir: o denominador
+  // e o tamanho do arquivo e o numerador sao os bytes ja lidos.
+  | "streaming"
+  | "parsing"
+  | "verifying"
+  | "analyzing"
+  | "comparing"
+  | "complete";
 
 /**
  * Etapa da leitura e, quando dá para saber, o quanto dela já passou.
@@ -164,10 +182,7 @@ export function validateWorkbookComplexity(workbook: XLSX.WorkBook): number {
     if (!range) continue;
     const decoded = XLSX.utils.decode_range(range);
     cells += (decoded.e.r - decoded.s.r + 1) * (decoded.e.c - decoded.s.c + 1);
-    if (cells > MAX_WORKBOOK_CELLS)
-      throw new Error(
-        "A planilha ultrapassa 2 milhões de células. Divida o arquivo para evitar travamentos e perda de dados.",
-      );
+    if (cells > MAX_WORKBOOK_CELLS) throw new Error(MAX_WORKBOOK_CELLS_MESSAGE);
   }
   return cells;
 }

@@ -1,25 +1,54 @@
 /// <reference lib="webworker" />
 
+import {
+  ProgressiveImportFallback,
+  readCsvWorkbookProgressively,
+} from "@/lib/csv-progressive-import";
 import type { SheetOption } from "@/lib/import";
 import { readWorkbookBytesWithEngine, type WorkbookReadProgress } from "@/lib/workbook-reader";
 import "@/lib/ooxml-wasm-shadow";
 
-type Request = { id: string; bytes: ArrayBuffer; fileName: string };
+/**
+ * O caminho progressivo recebe o próprio `Blob`, e não os bytes.
+ *
+ * Um `File` atravessa o `postMessage` como referência ao conteúdo no disco, sem
+ * cópia e sem materialização: é isso que permite ao worker ler o arquivo por
+ * streaming em vez de recebê-lo inteiro na memória. Mandar `ArrayBuffer` aqui
+ * anularia o trabalho antes de ele começar.
+ */
+type Request =
+  | { id: string; strategy?: "atual"; bytes: ArrayBuffer; fileName: string }
+  | { id: string; strategy: "csv-progressivo"; file: Blob; fileName: string };
 
 self.addEventListener("message", async (event: MessageEvent<Request>) => {
-  const { id, bytes, fileName } = event.data;
+  const { id, fileName } = event.data;
+  const onProgress = (progress: WorkbookReadProgress) =>
+    self.postMessage({ id, type: "progress", progress });
+  const onSheet = (sheet: SheetOption) => self.postMessage({ id, type: "sheet", sheet });
   try {
+    if (event.data.strategy === "csv-progressivo") {
+      const result = await readCsvWorkbookProgressively(event.data.file, {
+        fileName,
+        onProgress,
+        onSheet,
+      });
+      self.postMessage({ id, type: "result", result });
+      return;
+    }
     // Cada aba sai daqui assim que fica pronta. Antes, o worker montava o
     // conjunto inteiro e mandava num `postMessage` só: naquele instante o
     // modelo existia em dobro, a cópia daqui e o clone estrutural da aba.
-    const result = await readWorkbookBytesWithEngine(
-      bytes,
-      fileName,
-      (progress: WorkbookReadProgress) => self.postMessage({ id, type: "progress", progress }),
-      { onSheet: (sheet: SheetOption) => self.postMessage({ id, type: "sheet", sheet }) },
-    );
+    const result = await readWorkbookBytesWithEngine(event.data.bytes, fileName, onProgress, {
+      onSheet,
+    });
     self.postMessage({ id, type: "result", result });
   } catch (error) {
+    // Indisponibilidade do caminho novo não é falha do arquivo: quem chamou
+    // repete a leitura pelo leitor validado, e a pessoa não vê nada disso.
+    if (error instanceof ProgressiveImportFallback) {
+      self.postMessage({ id, type: "fallback", message: error.message });
+      return;
+    }
     self.postMessage({
       id,
       type: "error",

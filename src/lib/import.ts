@@ -3155,15 +3155,17 @@ function sheetOptionsForName(
   // simplesmente não existem, e ausência é a resposta correta.
   const grid = source?.gridFor?.(name);
   const scan: RegionScanOptions | undefined = grid?.textAoa ? { textAoa: grid.textAoa } : undefined;
-  const previewRange = compatibilityPreviewRange(ws);
-  const preview = previewRange
-    ? XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
-        header: 1,
-        defval: null,
-        raw: false,
-        range: previewRange,
-      })
-    : [];
+  const previewRange = grid ? undefined : compatibilityPreviewRange(ws);
+  const preview: (string | number | boolean | Date | null)[][] = grid
+    ? (grid.textAoa ?? grid.aoa).slice(0, COMPATIBILITY_PREVIEW_ROWS)
+    : previewRange
+      ? XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+          header: 1,
+          defval: null,
+          raw: false,
+          range: previewRange,
+        })
+      : [];
   const compatibilityText = preview
     .slice(0, COMPATIBILITY_PREVIEW_ROWS)
     .flat()
