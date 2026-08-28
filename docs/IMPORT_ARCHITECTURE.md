@@ -326,3 +326,24 @@ leem células para achar tabelas independentes dentro de uma aba; sobre uma
 worksheet mínima elas não encontrariam nada, o que **mudaria** o resultado de
 um CSV com várias regiões. Essa é a única parte do refactor que ainda exige
 desenho, e não só ligação.
+
+### Terceiro incremento: a detecção de regiões também aceita a grade
+
+`detectIndependentSections` e `regionsAreSafeToSplit` liam a planilha do mesmo
+jeito, com o mesmo mascaramento de linhas ocultas, em código duplicado. As duas
+passaram a compartilhar `visibleTextGrid`, que aceita a grade de texto já
+pronta pela mesma razão de `sheetToRows`: quem lê por streaming já a tem, e
+refazê-la aqui custaria a planilha inteira formatada como texto **duas vezes**,
+uma por função.
+
+A duplicação entre as duas não era só peso: eram dois lugares onde o critério
+de o que conta como linha visível podia divergir sem ninguém notar.
+
+O mascaramento de linha oculta continua vindo da worksheet mesmo quando a grade
+é informada, porque essa informação não existe numa grade de valores. Numa
+fonte sem worksheet não há linha oculta, e a máscara é inofensiva.
+
+O que falta agora é só o fatiamento: `independentSectionWorksheet` e
+`independentRegionWorksheet` recortam uma worksheet nova copiando célula a
+célula. Numa fonte de grade, o equivalente é recortar a grade, que é barato.
+Esse é o último passo antes de `sheetOptionsForName` poder repassar tudo.

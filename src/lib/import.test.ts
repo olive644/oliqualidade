@@ -6,6 +6,7 @@ import {
   preferredSheetIndex,
   sheetsWithData,
   sheetToRows,
+  visibleTextGrid,
   type ImportAudit,
 } from "@/lib/import";
 import type { WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
@@ -2102,5 +2103,58 @@ describe("normalização a partir de worksheet mínima", () => {
     expect(enxuta?.columns.map((coluna) => coluna.key)).toEqual(
       referencia?.columns.map((coluna) => coluna.key),
     );
+  });
+});
+
+describe("grade de texto compartilhada pela detecção de regiões", () => {
+  it("apaga as linhas ocultas, e só elas", () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Nome", "Valor"],
+      ["Visível", 1],
+      ["Oculta", 2],
+      ["Visível 2", 3],
+    ]);
+    ws["!rows"] = [undefined, undefined, { hidden: true }, undefined] as XLSX.RowInfo[];
+    const used = XLSX.utils.decode_range(ws["!ref"]!);
+
+    expect(visibleTextGrid(ws, used)).toEqual([
+      ["Nome", "Valor"],
+      ["Visível", "1"],
+      [],
+      ["Visível 2", "3"],
+    ]);
+  });
+
+  it("aceita a grade pronta e chega ao mesmo resultado", () => {
+    // Sem isto, a leitura por streaming pagaria pela planilha inteira
+    // formatada como texto duas vezes, uma por função de detecção.
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Nome", "Valor"],
+      ["A", 1],
+      ["B", 2],
+    ]);
+    const used = XLSX.utils.decode_range(ws["!ref"]!);
+    const pronta = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+      header: 1,
+      defval: null,
+      raw: false,
+    });
+
+    expect(visibleTextGrid(ws, used, { textAoa: pronta })).toEqual(visibleTextGrid(ws, used));
+  });
+
+  it("continua mascarando linha oculta mesmo com a grade pronta", () => {
+    // A informação de linha oculta não existe numa grade de valores, então ela
+    // continua vindo da worksheet. Numa fonte sem worksheet não há linha
+    // oculta, e a máscara é inofensiva.
+    const ws = XLSX.utils.aoa_to_sheet([["Nome"], ["Some"], ["Fica"]]);
+    ws["!rows"] = [undefined, { hidden: true }, undefined] as XLSX.RowInfo[];
+    const used = XLSX.utils.decode_range(ws["!ref"]!);
+
+    expect(visibleTextGrid(ws, used, { textAoa: [["Nome"], ["Some"], ["Fica"]] })).toEqual([
+      ["Nome"],
+      [],
+      ["Fica"],
+    ]);
   });
 });
