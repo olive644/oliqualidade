@@ -8921,3 +8921,58 @@ medida do caminho ligado, não antes.
 
 Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
 visível para quem usa.
+## 148. A equivalência do CSV subiu para as linhas tipadas, e achou um defeito real
+
+A seção 147 registrou a equivalência do leitor de CSV como provada. Ela estava
+provada menos do que o texto sugeria: a comparação convertia os dois lados para
+texto antes de confrontar, então garantia a grade de células e não os valores
+que o painel recebe. Esta seção fecha a lacuna e corrige o registro.
+
+### O que a comparação mais forte encontrou
+
+A comparação agora confronta `SheetOption[]` contra `SheetOption[]`, usando o
+`describeImportedSheetsDifferences` da seção 146, em doze formas de CSV. Onze
+passaram de primeira, incluindo número com decimal brasileira, data, moeda,
+booleano, negativo, campo entre aspas, quebra de linha dentro de aspas, CRLF e
+última linha sem quebra. Os tipos batem: número chega como número.
+
+A décima segunda achou um defeito real. O caminho atual entrega `null` para
+célula vazia; o leitor de streaming entregava texto vazio.
+
+```text
+atual: [{"a":"1","b":null,"c":"3"}]
+novo:  [{"a":"1","b":"","c":"3"}]
+```
+
+A causa é estrutural. O SheetJS não cria célula para campo vazio ao ler CSV,
+então a normalização lê ausência. A grade do leitor de streaming tem a string
+vazia de verdade, e `aoa_to_sheet` cria uma célula com ela.
+
+A diferença não é cosmética. No modelo do produto, `null` é ausência e alimenta
+as regras de valor faltante e a contagem de nulos, enquanto texto vazio conta
+como preenchido. Sem a tradução, **todo CSV importado pelo caminho novo teria
+métricas de qualidade diferentes das do atual, sem nada na tela indicando**.
+`csvGridToSheetRows` faz a conversão explícita, e um teste guarda a regra,
+inclusive os casos que não podem virar ausência: zero, espaço e a palavra false.
+
+### Correção de registro
+
+Duas afirmações anteriores ficam corrigidas aqui. A primeira: a equivalência da
+seção 147 valia só no nível da grade de textos, e agora vale nas linhas
+tipadas. A segunda: cheguei a registrar que os valores tipados divergiam, a
+partir de uma medida de memória que mostrou as linhas do caminho novo custando o
+triplo. Aquilo era artefato de atribuição da medição, e não divergência de
+conteúdo; a única divergência real era a da célula vazia.
+
+### O atalho que ficou provado impossível
+
+Medido no mesmo arquivo de referência: montar a worksheet a partir da grade com
+`aoa_to_sheet` custa **193,7 MiB**, contra 164,5 MiB do `XLSX.read` do caminho
+atual. Ligar o caminho progressivo por esse atalho piora a memória em vez de
+melhorar. O ganho de 231,5 para 76,5 MiB continua existindo, mas exige que a
+normalização aceite uma grade sem construir worksheet, e essa mudança é em
+`import.ts`, de quem todo o corpus depende.
+
+### Versão
+
+Sem avanço: o leitor continua desligado.

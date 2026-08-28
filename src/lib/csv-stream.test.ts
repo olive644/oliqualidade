@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import * as XLSX from "xlsx";
-import { CsvRecordParser, readCsvInBlocks, sniffCsvEncoding } from "@/lib/csv-stream";
+import {
+  CsvRecordParser,
+  csvGridToSheetRows,
+  readCsvInBlocks,
+  sniffCsvEncoding,
+} from "@/lib/csv-stream";
 
 const encoder = new TextEncoder();
 
@@ -343,5 +348,29 @@ describe("reaproveitamento de strings repetidas", () => {
 
     expect(linhas).toEqual(referencia);
     expect(linhas[0]![0]).toBe(linhas[1]![1]);
+  });
+});
+
+describe("campo vazio contra célula ausente", () => {
+  it("traduz string vazia para ausência, e só ela", () => {
+    // A diferença não é cosmética: `null` alimenta as regras de valor faltante
+    // e a contagem de nulos, enquanto texto vazio conta como preenchido. Foi
+    // uma divergência real contra o leitor atual, pega comparando linhas
+    // tipadas em csv-equivalence.test.ts.
+    expect(
+      csvGridToSheetRows([
+        ["a", "", "c"],
+        ["", "0", " "],
+      ]),
+    ).toEqual([
+      ["a", null, "c"],
+      [null, "0", " "],
+    ]);
+  });
+
+  it("não confunde zero nem espaço com ausência", () => {
+    const [linha] = csvGridToSheetRows([["0", " ", "false"]]);
+
+    expect(linha).toEqual(["0", " ", "false"]);
   });
 });
