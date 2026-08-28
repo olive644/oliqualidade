@@ -155,3 +155,38 @@ quem for mexer nisto: `XLSX.write` falha com `RangeError` acima de cerca de 4
 milhões de células, porque monta o ZIP inteiro como uma string só; e
 `sheet_to_json` de meio milhão de linhas estoura a pilha se o resultado for
 espalhado com `push(...)`.
+
+## Por que o CSV progressivo ainda não está ligado
+
+Medido com um CSV de 19,6 MiB e 200 mil linhas por 8 colunas:
+
+| Estrutura | Memória |
+| --- | ---: |
+| Workbook do SheetJS | 164,5 MiB |
+| Grade interna que a normalização monta (`sheet_to_json`) | 37,1 MiB |
+| Linhas finais | 29,9 MiB |
+| **Pico do caminho atual** | **231,5 MiB** |
+| Grade do leitor progressivo, sem reaproveitar strings | 267,6 MiB |
+| Grade do leitor progressivo, com reaproveitamento | **46,5 MiB** |
+| **Pico progressivo possível** (grade mais linhas) | **76,5 MiB** |
+
+Duas conclusões saem daí.
+
+A primeira já foi aplicada: o analisador criava uma string nova por célula, 1,6
+milhão delas, enquanto o SheetJS reaproveita as strings já alocadas no
+workbook. Uma tabela de reaproveitamento com teto derrubou a grade de 267,6
+para 46,5 MiB. Sem isso, qualquer desenho progressivo perderia para o atual
+antes de começar.
+
+A segunda ainda bloqueia a ligação. O ganho de 231,5 para 76,5 MiB só existe se
+o caminho progressivo **não** materializar uma worksheet do SheetJS, que sozinha
+custa 164,5 MiB. Mas toda a normalização depende dela: `sheetToRows(ws, wb)`,
+`detectIndependentSections(ws)`, `independentSectionWorksheet(ws, ...)`,
+`regionsAreSafeToSplit(ws, ...)` e `independentRegionWorksheet(ws, ...)`.
+Montar uma worksheet a partir da grade lida em streaming devolve exatamente o
+custo que se queria remover, e o resultado fica pior que o atual.
+
+Ligar o CSV com ganho real exige, portanto, que a normalização passe a aceitar
+uma grade além de uma worksheet. Isso é uma mudança em `import.ts`, o arquivo do
+qual todo o corpus depende, e não cabe ser feita de passagem. Fica registrada
+como decisão pendente, com o número que a justifica: 67% de redução de pico.

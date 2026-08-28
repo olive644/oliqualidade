@@ -315,3 +315,33 @@ describe("equivalência com o leitor atual", () => {
     expect(linhas).toEqual(gradeDoLeitorAtual(texto, delimitador));
   });
 });
+
+describe("reaproveitamento de strings repetidas", () => {
+  it("devolve a mesma instância para células iguais", () => {
+    // Medido: sem isto, a grade de 200 mil linhas por 8 colunas custou 267 MiB
+    // contra 37 MiB da grade equivalente do SheetJS, que reaproveita as strings
+    // já alocadas. Planilha real repete muito, então a tabela colapsa a maior
+    // parte do custo.
+    const parser = new CsvRecordParser(",");
+    const linhas = [...parser.push("Setor A,Concluido\nSetor A,Concluido\n"), ...parser.finish()];
+
+    expect(linhas[0]![0]).toBe(linhas[1]![0]);
+    expect(linhas[0]![1]).toBe(linhas[1]![1]);
+  });
+
+  it("continua correto quando o texto repetido chega partido entre pedaços", () => {
+    const inteiro = new CsvRecordParser(",");
+    const referencia = [...inteiro.push("Ana,Ana\nAna,Ana\n"), ...inteiro.finish()];
+
+    const partido = new CsvRecordParser(",");
+    const linhas = [
+      ...partido.push("An"),
+      ...partido.push("a,A"),
+      ...partido.push("na\nAna,Ana\n"),
+      ...partido.finish(),
+    ];
+
+    expect(linhas).toEqual(referencia);
+    expect(linhas[0]![0]).toBe(linhas[1]![1]);
+  });
+});
