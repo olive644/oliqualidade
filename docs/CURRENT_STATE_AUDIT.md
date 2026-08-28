@@ -8976,3 +8976,160 @@ normalização aceite uma grade sem construir worksheet, e essa mudança é em
 ### Versão
 
 Sem avanço: o leitor continua desligado.
+## 149. O coordenador liga o CSV progressivo: pico de 141,8 para 34,9 MiB
+
+As seções 146 a 148 entregaram três peças que não mudavam nada sozinhas: o
+seletor de estratégia, o leitor de CSV por streaming e a normalização aceitando
+uma fonte de grade. Cada uma testada, nenhuma ligada. Esta seção é a ligação, e
+é o ponto em que o ganho medido vira ganho para quem importa.
+
+### O que o coordenador faz
+
+`csv-progressive-import.ts` faz o caminho inteiro: reconhece o conteúdo pelos
+primeiros 8 KiB, decide a codificação, lê o arquivo em blocos direto do `Blob`,
+monta a grade e chama a normalização com uma worksheet mínima. Nenhum
+`ArrayBuffer` do arquivo, nenhum ZIP, nenhuma worksheet do SheetJS.
+
+O worker continua obrigatório. O que mudou é o que ele recebe: o `File`
+atravessa o `postMessage` como referência ao conteúdo no disco. Mandar bytes ali
+anularia o trabalho antes de ele começar, e um teste do cliente guarda
+exatamente isso, com um arquivo cujo `arrayBuffer()` lança se for chamado.
+
+### A medição, do código que é entregue
+
+`src/lib/csv-progressive-benchmark.test.ts` mede os dois caminhos sobre o mesmo
+arquivo, no ponto mais largo de cada um: o instante em que a aba fica pronta. É
+ali que tudo o que o caminho precisou coexiste, e medir no fim mediria só o que
+sobrou, que é a mesma coisa nos dois lados.
+
+120 mil linhas por 8 colunas, arquivo de 8,4 MiB, 960 mil células:
+
+| Caminho | Pico | Tempo |
+| --- | ---: | ---: |
+| Atual | 141,8 MiB | 6.974 ms |
+| Progressivo, blocos de 1.000 | **34,9 MiB** | 6.421 ms |
+| Progressivo, blocos de 2.000 | 42,9 MiB | 6.514 ms |
+| Progressivo, blocos de 5.000 | 41,8 MiB | 6.867 ms |
+
+**75% menos memória, com o mesmo resultado e sem custo de tempo.**
+
+O benchmark mede o código entregue, e não uma réplica montada para ele: é por
+isso que ele mora num teste desligado por variável de ambiente, e não num script
+`.mjs`, que não resolveria os módulos do projeto.
+
+### O tamanho de bloco saiu de medida, e o critério não é o tempo
+
+`progressive-import.ts` guardava 1.000, 2.000 e 5.000 como candidatos, com a
+decisão adiada para a PR do CSV. Os três tempos ficam dentro de 2% uns dos
+outros e qual deles sai na frente muda a cada execução; os picos se repetem até
+a décima de MiB entre execuções. Por isso o critério é o pico, e o escolhido é o
+menor: **mil linhas por bloco**.
+
+### Duas divergências silenciosas encontradas ao ligar
+
+A primeira, e a mais séria. O leitor de streaming decidia o delimitador com o
+texto retido até a **primeira** quebra de linha, enquanto `detectDelimiter`
+pontua os candidatos ao longo de **25 linhas** e penaliza o candidato ausente em
+parte delas. Com uma linha só essa penalidade não existe. Um arquivo cuja
+primeira linha é um título com ponto e vírgula, seguido de dados separados por
+vírgula, seria analisado com o separador errado e viraria uma tabela de uma
+coluna, sem nada na tela indicando. A janela passou a ser a mesma da função que
+decide, com teto de 64 KiB para a espera não virar uma cópia do arquivo.
+
+A segunda, menor mas do mesmo tipo. A checagem de relatório de compatibilidade
+do Excel lia as doze primeiras linhas **da worksheet**, e numa worksheet mínima
+não há célula nenhuma: a aba passaria sem ser checada. A checagem passou a vir
+da grade quando existe uma.
+
+Nenhuma das duas apareceria num teste de unidade das peças isoladas. As duas
+apareceram ao confrontar os dois caminhos sobre as mesmas 23 formas de CSV.
+
+### O bloco virou um teto de verdade
+
+Com a janela de 25 linhas, o começo do arquivo retém mais texto antes de começar
+a analisar, e a entrega mandava tudo o que tivesse acumulado de uma vez.
+`readCsvInBlocks` passou a entregar em blocos de no máximo `blockSize` linhas, e
+a conferir o sinal de cancelamento **a cada bloco**, e não só a cada leitura do
+`Blob`: uma leitura só pode render vários blocos, e quem cancelou no meio não
+pode continuar recebendo o resto deles. Isso é correção, e não detalhe do
+refactor: antes, cancelar no meio de um lote grande continuava entregando o lote
+inteiro.
+
+### Recusa e indisponibilidade são coisas diferentes
+
+Um PDF renomeado para `.csv` precisa ser recusado, com a mesma mensagem dos dois
+lados. Um pacote OOXML renomeado para `.csv` precisa do caminho atual, que sabe
+lê-lo, e a pessoa não pode ver nada disso. As duas situações levam a coisas
+opostas, então elas não podem ser o mesmo erro: `ProgressiveImportFallback` marca
+a segunda, e o worker a devolve numa mensagem própria, porque tipo de erro não
+sobrevive à fronteira do `postMessage`.
+
+O cliente só aceita o fallback enquanto nenhuma aba tiver sido escoada. Hoje isso
+só acontece no reconhecimento do conteúdo, antes de qualquer leitura, mas a
+garantia mora no cliente e não na ordem interna do coordenador.
+
+### O teto de células é conferido durante a leitura
+
+O caminho atual confere as 2 milhões de células depois de o workbook estar
+montado. O progressivo confere enquanto lê, sobre o mesmo retângulo declarado,
+para os dois recusarem exatamente os mesmos arquivos. Recusar só no fim
+significaria ter montado a planilha inteira na memória antes de dizer que ela não
+cabe. A mensagem virou uma constante só, porque duas cópias do mesmo texto são
+duas mensagens que podem divergir sem ninguém notar.
+
+### Uma etapa nova na barra, porque ela sabe medir
+
+`parsing` não tem fração de propósito: é uma chamada única ao SheetJS, que não
+expõe progresso. A leitura em blocos sabe medir: o denominador é o tamanho do
+arquivo e o numerador são os bytes já lidos. Ela entrou como etapa própria
+(`streaming`, "Lendo o arquivo em blocos") em vez de emprestar o rótulo de
+`parsing`, que fala de fórmulas e formatação que um CSV não tem.
+
+A passagem de reconhecimento de codificação também passou a reportar bytes. Ela
+percorre o arquivo inteiro, e sem isso seria uma espera sem medida na tela.
+
+### Estimativa de pico própria, porque a fórmula antiga descreve outro programa
+
+`estimateWorkbookPeakMemoryBytes` soma o pacote de origem e duas representações
+descompactadas, porque no caminho atual as três existem ao mesmo tempo. No
+progressivo nenhuma delas existe. Reaproveitá-la mostraria no diagnóstico de
+importação um pico várias vezes maior do que o programa produz.
+`estimateProgressiveCsvPeakMemoryBytes` usa os 38,1 bytes por célula medidos,
+arredondados para cima pelo mesmo motivo conservador da razão de 6x do seletor.
+
+### Vocabulário
+
+A leitura do arquivo aqui é streaming de verdade no sentido da seção 146: o
+arquivo não entra num `ArrayBuffer` e nenhum ZIP é expandido. A **grade** não é
+ilimitada: a normalização precisa da aba inteira para achar cabeçalho e regiões,
+então grade e linhas ficam vivas ao mesmo tempo. É isso que os 34,9 MiB
+contabilizam, e nada disto deve ser descrito como memória constante.
+
+### O que continua igual
+
+XLSX não mudou nada: o seletor devolve `caminho-progressivo-indisponivel` para
+OOXML, que é a verdade. CSV pequeno continua no caminho atual, que é o validado
+pelo corpus. A rede de paridade sobre 110 abas de 25 arquivos reais foi gravada
+antes e conferida depois da mudança em `import.ts`, com resultado idêntico.
+
+### Custo
+
+O chunk `global-search` foi de 403,0 para 411,0 KiB de um teto de 450,0. O
+coordenador e o leitor de CSV passaram a ser alcançáveis a partir do cliente de
+importação. Continua aprovado, com 39 KiB de folga.
+
+### Verificação
+
+`npm run verify` com 1.136 testes. Os novos: 23 formas de CSV confrontadas linha
+tipada a linha tipada entre os dois caminhos, mais windows-1252, marcador de
+ordem de bytes, todo tamanho de pedaço contra todo tamanho de bloco, progresso
+monotônico que fecha em 100% nas duas etapas mensuráveis, recusa com mensagem
+idêntica à do caminho atual, fallback por conteúdo não textual, teto de células
+durante a leitura, cancelamento, escoamento sem segunda cópia, campos do
+relatório, e no cliente: o arquivo indo ao worker como referência, o CSV pequeno
+continuando no caminho atual e o fallback repetindo a leitura pelo leitor
+validado.
+
+### Versão
+
+`0.10.0-beta.12` para `0.10.0-beta.13`.

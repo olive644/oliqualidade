@@ -121,14 +121,14 @@ Nenhuma implementação de leitor mora ali.
 
 | Formato | Hoje | Planejado |
 | --- | --- | --- |
-| CSV, TXT, TSV | Caminho atual | `csv-stream.ts` já implementa streaming real com `Blob.stream()`, provado equivalente à análise do SheetJS; falta o coordenador que o liga à normalização |
+| CSV, TXT, TSV | **Caminho progressivo acima do teto de conforto**, caminho atual abaixo dele | Ligado por `csv-progressive-import.ts` |
 | XLSX, XLSM, XLTX, XLTM | Caminho atual | Leitura progressiva com acesso ao ZIP por entrada |
 | ODS e demais | Caminho atual | Sem plano de caminho progressivo |
 
-Nesta etapa **nenhum caminho progressivo está ligado**. O seletor decide e
-registra, e a escolha cai sempre no caminho atual com motivo
-`caminho-progressivo-indisponivel`. Isso é deliberado: os limites e a decisão
-podem ser revisados e testados antes de existir código de leitor novo.
+O CSV está ligado; o OOXML não. Para ele o seletor continua devolvendo
+`caminho-progressivo-indisponivel`, que é a verdade, e a distinção entre "não
+vale a pena trocar" e "ainda não existe" continua valendo para quem lê a
+telemetria.
 
 ## O que já existe e ajuda
 
@@ -368,13 +368,12 @@ Os dois fatiadores entram sem tocar nas funções existentes: são aditivos, e
 nenhum caminho atual os chama. Com eles, todas as peças da normalização sobre
 grade existem.
 
-### O que falta para o ganho aparecer
+### O que faltava para o ganho aparecer
 
-Só a ligação: `sheetOptionsForName` precisa aceitar uma fonte de grade e
+Só a ligação: `sheetOptionsForName` precisava aceitar uma fonte de grade e
 repassá-la para `sheetToRows`, para a detecção de regiões e para os fatiadores.
-Enquanto isso não acontece, todas as peças estão prontas e testadas, e o
-comportamento atual é bit a bit o mesmo, porque nenhum chamador usa as opções
-novas.
+Isso é o quinto incremento, abaixo, e o coordenador que usa tudo isso está na
+última seção deste documento.
 
 ### Quinto incremento: a ligação, e o ganho medido
 
@@ -398,7 +397,82 @@ Duas coisas explicam o ganho. A worksheet completa desaparece: a mínima tem só
 caminho atual materializa texto formatado por célula que as linhas depois
 referenciam, enquanto a grade não tem esse texto para carregar.
 
-O que a ligação **não** faz é escolher sozinha: nenhum chamador passa uma fonte
-de grade ainda. `sheetsWithData(wb)` sem fonte continua idêntico, e a rede de
-paridade sobre as 110 abas reais confirma isso. Falta o coordenador que junta o
-seletor de estratégia, o leitor de CSV por streaming e esta ligação.
+O que a ligação **não** faz é escolher sozinha: `sheetsWithData(wb)` sem fonte
+continua idêntico, e a rede de paridade sobre as 110 abas reais confirma isso.
+Quem escolhe é o coordenador, na seção seguinte.
+
+## O coordenador, e o ganho na tela
+
+`csv-progressive-import.ts` junta as três peças. Ele reconhece o conteúdo pelos
+primeiros 8 KiB do `Blob`, decide a codificação, lê o arquivo em blocos, monta a
+grade e chama `sheetsWithData(wb, { gridFor })` com uma worksheet mínima.
+
+```text
+seleção do arquivo
+  → chooseImportStrategy(nome, tamanho, aparelho, support)
+  → estratégia "csv-progressivo"?
+      não → caminho atual (arrayBuffer, worker, SheetJS)
+      sim → postMessage(file)                 [referência, não bytes]
+            → worker: readCsvWorkbookProgressively
+                → checkWorkbookContent nos 8 KiB iniciais
+                → sniffCsvEncoding              passagem que só conta
+                → readCsvInBlocks               [única estrutura que cresce: a grade]
+                → minimalWorksheetForGrid       só `!ref`
+                → sheetsWithData(wb, gridFor)
+            → postMessage por aba
+```
+
+Medido pelo próprio código entregue, em `src/lib/csv-progressive-benchmark.test.ts`:
+
+```bash
+OLI_CSV_BENCHMARK=1 NODE_OPTIONS=--expose-gc npx vitest run src/lib/csv-progressive-benchmark.test.ts
+```
+
+120 mil linhas por 8 colunas, arquivo de 8,4 MiB, 960 mil células, medindo no
+ponto mais largo de cada caminho (o instante em que a aba fica pronta):
+
+| Caminho | Pico | Tempo |
+| --- | ---: | ---: |
+| Atual | 141,8 MiB | 6.974 ms |
+| Progressivo, blocos de 1.000 | **34,9 MiB** | 6.421 ms |
+| Progressivo, blocos de 2.000 | 42,9 MiB | 6.514 ms |
+| Progressivo, blocos de 5.000 | 41,8 MiB | 6.867 ms |
+
+**75% menos memória, mesmo resultado, sem custo de tempo.** O tamanho de bloco
+saiu daí: os tempos ficam dentro de 2% e trocam de posição a cada execução,
+enquanto os picos se repetem até a décima de MiB, então o critério é o pico.
+
+### O que a medição não diz
+
+O pico de 34,9 MiB é de grade mais linhas. A grade **não** é limitada: a
+normalização precisa da aba inteira para achar cabeçalho e regiões. O que
+desapareceu foi o arquivo em memória e a worksheet do SheetJS. Descrever isto
+como memória constante seria falso.
+
+O benchmark roda em Node. O clone estrutural da aba na fronteira do worker
+continua não medido aqui, como no baseline.
+
+### Duas divergências que só aparecem confrontando os dois caminhos
+
+Ao ligar, duas diferenças silenciosas apareceram, e ambas estão corrigidas.
+
+O delimitador era decidido com o texto até a **primeira** quebra de linha,
+enquanto `detectDelimiter` pontua 25 linhas e penaliza o candidato ausente em
+parte delas. Um arquivo cuja primeira linha é um título com ponto e vírgula,
+seguido de dados por vírgula, sairia como uma tabela de uma coluna. A janela
+agora é a mesma da função que decide, com teto de 64 KiB.
+
+A checagem de relatório de compatibilidade do Excel lia a worksheet, que numa
+fonte de grade é mínima e não tem célula nenhuma. Ela passou a ler a grade.
+
+Quem for ligar o caminho de OOXML deve esperar mais divergências desse tipo, e o
+jeito de encontrá-las é o mesmo: confrontar os dois caminhos sobre muitas formas
+do mesmo formato, nas linhas tipadas.
+
+### Recusa contra indisponibilidade
+
+`ProgressiveImportFallback` marca "este arquivo não é para este caminho" e faz o
+leitor validado assumir, sem que a pessoa veja nada. Qualquer outro erro é
+recusa e chega à tela. O worker devolve as duas em mensagens diferentes, porque
+tipo de erro não sobrevive ao `postMessage`. O cliente só aceita o fallback
+enquanto nenhuma aba tiver sido escoada.

@@ -16,6 +16,7 @@ export type ImportProgressView = { label: string; detail: string | null; ratio: 
 
 export const IMPORT_STAGE_LABELS: Record<WorkbookReadStage, string> = {
   decoding: "Identificando formato e codificação…",
+  streaming: "Lendo o arquivo em blocos…",
   parsing: "Lendo células, fórmulas e formatação…",
   verifying: "Conferindo valores com o XML original…",
   analyzing: "Analisando cabeçalhos e regiões de dados…",

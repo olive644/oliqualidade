@@ -1,7 +1,8 @@
 import type { SheetOption } from "@/lib/import";
 import type { OoxmlInspection } from "@/lib/ooxml-reader";
 
-export type WorkbookReaderId = "sheetjs" | "sheetjs-verified" | "rust-wasm" | "ooxml-recovery";
+export type WorkbookReaderId =
+  "sheetjs" | "sheetjs-verified" | "rust-wasm" | "ooxml-recovery" | "csv-progressivo";
 export type WasmShadowStatus = "unavailable" | "sampled-out" | "matched" | "diverged" | "failed";
 export type WasmReaderMode = "shadow" | "candidate";
 export type WasmCandidateStatus = "shadow" | "not-eligible" | "primary" | "fallback";
@@ -61,6 +62,31 @@ export function estimateWorkbookPeakMemoryBytes({
   return Math.round(
     Math.max(0, sourceBytes) + Math.max(0, expandedBytes) * 2 + Math.max(0, visitedCells) * 160,
   );
+}
+
+/**
+ * Estimativa de pico para o caminho progressivo de CSV.
+ *
+ * A formula acima descreve outro programa: ela soma o pacote de origem e duas
+ * representacoes descompactadas porque, no caminho atual, as tres existem ao
+ * mesmo tempo. No caminho progressivo nenhuma delas existe. O arquivo atravessa
+ * como fluxo e nunca vira `ArrayBuffer`, a worksheet do SheetJS nao e
+ * construida, e o que fica vivo ao mesmo tempo e a grade mais as linhas
+ * normalizadas.
+ *
+ * Os bytes por celula sao medidos, e nao estimados: em 120 mil linhas por 8
+ * colunas (960 mil celulas) o ponto mais largo do caminho progressivo ficou em
+ * 34,9 MiB, ou 38,1 bytes por celula, medido em
+ * `src/lib/csv-progressive-benchmark.test.ts`. O valor usado e arredondado para
+ * cima, pelo mesmo motivo conservador da razao de 6x do seletor: numa
+ * estimativa de pico, errar para baixo e o erro caro.
+ *
+ * Reaproveitar a constante do caminho atual apresentaria um pico varias vezes
+ * maior do que este programa produz, e o numero apareceria no diagnostico de
+ * importacao como se fosse deste caminho.
+ */
+export function estimateProgressiveCsvPeakMemoryBytes({ cells }: { cells: number }): number {
+  return Math.round(Math.max(0, cells) * 40);
 }
 
 export type WorkbookReadResult = {
