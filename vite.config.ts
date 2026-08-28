@@ -67,6 +67,16 @@ export default defineConfig({
           if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-")) {
             return "recharts-vendor";
           }
+          // Mesma razão do recharts acima: a virtualização é uma biblioteca
+          // de terceiro, estável entre versões do produto, e sem isto ela
+          // entra no maior chunk de rota e é rebaixada a cada mudança nossa.
+          // São 36 KiB que passam a ser baixados uma vez e ficam em cache.
+          if (
+            id.includes("node_modules/@tanstack/virtual-core") ||
+            id.includes("node_modules/@tanstack/react-virtual")
+          ) {
+            return "virtual-vendor";
+          }
           if (
             id.includes("node_modules/@radix-ui") ||
             id.includes("node_modules/@floating-ui") ||

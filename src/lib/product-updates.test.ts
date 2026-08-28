@@ -3,9 +3,9 @@ import {
   APP_VERSION,
   APP_VERSION_LABEL,
   CURRENT_UPDATE_ID,
-  PRODUCT_UPDATES,
   hasUnreadProductUpdate,
 } from "./product-updates";
+import { PRODUCT_UPDATES } from "./product-updates-entries";
 
 describe("product updates", () => {
   it("mantém a leitura e os registros ligados à versão atual", () => {
