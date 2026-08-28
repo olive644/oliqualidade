@@ -525,8 +525,42 @@ para obtê-los nada precisa ser expandido, que é a própria capacidade em teste
 
 ### O que falta para o caminho progressivo de OOXML
 
-Nada chama o leitor novo ainda. O que falta é o XML da aba virar grade e
-alimentar `sheetsWithData(wb, { gridFor })`, como o CSV já faz. `inspectOoxml`
-já lê o pacote entrada por entrada e é o candidato natural a receber este
-leitor, mas ele é síncrono e o acesso por `Blob` é assíncrono: essa é a próxima
-decisão de desenho, e não uma questão de esforço.
+Nada chama o leitor novo ainda. `inspectOoxml` já lê o pacote entrada por
+entrada e é o candidato natural a receber este leitor, mas ele é síncrono e o
+acesso por `Blob` é assíncrono: essa é uma decisão de desenho, e não uma
+questão de esforço.
+
+## A grade da aba, e por que ela ainda não serve
+
+`readOoxmlSheetGrid` lê o XML de uma aba direto para uma grade densa, sem
+worksheet nenhuma. Ao contrário do CSV, aqui `aoa` e `textAoa` **não**
+coincidem: um número com formato de data é `Date` numa e texto formatado na
+outra.
+
+Confrontada com a worksheet do mesmo leitor, sobre o corpus real:
+
+```text
+25 planilhas reais com data
+25 ainda divergem, em: celula, colunas, nome-de-aba, quantidade-de-abas, quantidade-de-linhas
+0 já coincidem
+```
+
+A causa é única. `formatTemporalCell` decide granularidade, fuso e formato a
+partir de `cell.z` e `cell.w` **da célula de origem**. Numa worksheet mínima não
+existe célula, a data é descartada, a coluna de data perde valor ou some
+inteira, e a coluna que some desloca a detecção de cabeçalho.
+
+**A grade de OOXML, como está, não substitui a worksheet em nenhuma planilha
+real do corpus.** A substituibilidade está provada só nos casos sintéticos sem
+data.
+
+O teste natural do outro lado, "em planilha real sem data a grade é
+substituível", não pôde ser escrito: não existe planilha assim no corpus. Num
+domínio de qualidade, data é coluna obrigatória.
+
+O que falta, então, é preciso: **a grade precisa carregar o formato numérico e o
+texto exibido das células de data**, e `sheetToRows` precisa aceitá-los sem
+worksheet. Isso é mudança em `import.ts`, e vem com uma pergunta de custo ainda
+não medida: guardar formato e texto por célula de data reintroduz parte exata do
+que a grade existe para remover. Numa coluna de data de 120 mil linhas, são 120
+mil pares. Medir isso vem antes de prometer ganho.

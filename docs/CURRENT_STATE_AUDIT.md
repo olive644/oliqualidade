@@ -9232,3 +9232,104 @@ desenho.
 
 Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
 visível para quem usa, pela mesma razão das seções 146 a 148.
+## 151. A grade de OOXML existe, e o corpus provou que ela ainda não serve
+
+Segunda peça do caminho progressivo de OOXML, e a mais informativa até agora,
+porque o resultado foi negativo e o número que o mostra é grande: **25 de 25
+planilhas reais divergem**.
+
+### O que foi construído
+
+`readOoxmlSheetGrid` lê o XML de uma aba direto para uma grade densa, sem
+construir worksheet nenhuma. É o equivalente OOXML do que `csv-stream.ts` faz
+para CSV, e existe pela mesma medida: a worksheet do SheetJS é a cópia que
+domina o pico, e a normalização já sabe trabalhar sobre uma grade.
+
+Ao contrário do CSV, aqui `aoa` e `textAoa` **não** coincidem: um número com
+formato de data aparece como `Date` numa e como texto formatado na outra. É
+exatamente por isso que `SheetGridSource` tem os dois campos separados.
+
+A leitura de célula, que o corpus real conferiu célula a célula ao longo de
+várias seções, não foi reescrita: ela virou `parseSheetCells`, e tanto a
+worksheet do verificador quanto a grade consomem o mesmo gerador. Duas leituras
+seriam dois lugares onde a interpretação de tipo, formato e data pode divergir
+sem ninguém notar.
+
+### O teste que primeiro mediu errado
+
+A comparação óbvia é `grade.aoa` contra `sheet_to_json` da worksheet. Ela
+acusa divergências que **não existem no resultado**, e as duas primeiras que
+apareceram foram instrutivas.
+
+Numa planilha do corpus, uma célula de texto com formato de data (`t="s"` com
+`z="d-mmm"`) faz o `sheet_to_json` produzir `Date { NaN }`, enquanto a grade
+entrega o texto certo. E numa data válida, o `sheet_to_json` aplica um
+deslocamento de fuso que a grade não aplica. Nos dois casos quem conserta é
+`normalizeRawRow`, que consulta a célula de origem antes de aceitar a data.
+
+Ou seja, a grade intermediária dos dois caminhos legitimamente difere, e o que
+precisa coincidir é o que a normalização produz. O teste passou a comparar
+`sheetsWithData` contra `sheetsWithData`, com o mesmo comparador da
+equivalência do CSV.
+
+### O achado
+
+Corrigido o nível da comparação, o corpus respondeu de forma dura:
+
+```text
+25 planilhas reais com data
+25 ainda divergem, em: celula, colunas, nome-de-aba, quantidade-de-abas, quantidade-de-linhas
+0 já coincidem
+```
+
+A causa é única e está localizada. `formatTemporalCell` decide granularidade,
+fuso e formato a partir de `cell.z` e `cell.w` **da célula de origem**. Numa
+worksheet mínima não existe célula, então `formatTemporalCell` devolve vazio e
+a data é descartada. A coluna de data perde valor; quando ela era só data,
+desaparece inteira; e a coluna que some desloca a detecção de cabeçalho, o que
+muda a contagem de linhas e chega a mudar quais abas sobrevivem.
+
+Vale dizer o tamanho disso sem suavizar: **a grade de OOXML, como está, não
+substitui a worksheet em nenhuma planilha real do corpus.**
+
+### A garantia positiva que não pôde ser escrita
+
+O teste natural seria "em planilha real sem célula de data, a grade é
+substituível". Ele não existe porque não existe planilha assim: as 25 do corpus
+têm data. Num corpus de planilhas de qualidade isso não é acidente, é o formato
+do domínio. Ficou um teste registrando essa ausência, para ninguém procurar o
+outro e concluir que foi esquecido.
+
+A substituibilidade está provada nos casos sintéticos: números, textos, vazios,
+booleanos, célula só com formatação, mesclagem e linha oculta, mais o caso de
+texto com formato de data que o corpus revelou.
+
+### O que isso muda no plano
+
+A seção 150 já tinha limitado o alcance do acesso ao ZIP por posição. Esta
+limita o passo seguinte, e junto as duas dizem o que falta de verdade para o
+OOXML progressivo: **a grade precisa carregar o formato numérico e o texto
+exibido das células de data**, e `sheetToRows` precisa aceitá-los sem
+worksheet.
+
+Isso é uma mudança em `import.ts`, e vem com uma pergunta de custo que ainda
+não foi medida: guardar formato e texto por célula de data reintroduz parte
+exata do que a grade existe para remover. Numa coluna de data de 120 mil
+linhas, são 120 mil pares. A próxima etapa precisa medir isso antes de
+prometer ganho, e não depois.
+
+### Uma inconsistência de tipo encontrada de passagem
+
+`SheetSourceGrid`, em `import.ts`, está declarado sem `boolean`, embora o
+caminho atual já produza `true`/`false`: uma célula `t="b"` chega assim pelo
+`sheet_to_json`, e a anotação genérica ali é uma asserção, não uma conversão.
+Alargar o tipo cascateia por cerca de oito assinaturas internas do arquivo do
+qual todo o corpus depende, então não foi feito aqui. Fica registrado no tipo
+`OoxmlSheetGrid`, que declara o conjunto correto, e num comentário.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa. Nenhum chamador usa a grade nova, e o comportamento da
+importação de OOXML é o mesmo, verificado pela rede de paridade sobre 110 abas
+de 25 arquivos reais.
