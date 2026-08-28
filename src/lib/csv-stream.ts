@@ -349,3 +349,20 @@ export async function readCsvInBlocks(
 
   return { records, bytesRead, encoding: sniff.encoding, delimiter: delimiter ?? "," };
 }
+
+/**
+ * Converte a grade lida em algo que a normalizacao interprete igual ao atual.
+ *
+ * Um campo vazio num CSV e uma celula **ausente**, e nao um texto vazio. O
+ * leitor atual chega nisso de graca, porque o SheetJS nao cria celula para
+ * campo vazio e a normalizacao le `null`. A grade do leitor de streaming tem
+ * a string vazia de verdade, entao a traducao precisa ser explicita.
+ *
+ * A diferenca nao e cosmetica: `null` alimenta as regras de valor faltante e a
+ * contagem de nulos, enquanto texto vazio conta como preenchido. Sem esta
+ * conversao, todo CSV importado pelo caminho novo teria metricas de qualidade
+ * diferentes das do caminho atual, sem nada na tela indicando isso.
+ */
+export function csvGridToSheetRows(grid: string[][]): (string | null)[][] {
+  return grid.map((linha) => linha.map((celula) => (celula === "" ? null : celula)));
+}
