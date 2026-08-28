@@ -54,6 +54,8 @@ const SVG_PRESENTATION_PROPERTIES = [
   "visibility",
 ] as const;
 
+const SVG_COLOR_PROPERTIES = new Set<string>(["color", "fill", "stroke", "stop-color"]);
+
 /**
  * O Recharts 3 separa as camadas do gráfico em grupos SVG com z-index. O
  * html2canvas não preserva essas camadas de forma confiável ao clonar um DOM
@@ -62,6 +64,22 @@ const SVG_PRESENTATION_PROPERTIES = [
  */
 async function chartSvgSnapshots(element: HTMLElement): Promise<ChartSvgSnapshot[]> {
   const { Canvg } = await import("canvg");
+  const colorCanvas = document.createElement("canvas");
+  colorCanvas.width = 1;
+  colorCanvas.height = 1;
+  const colorContext = colorCanvas.getContext("2d", { willReadFrequently: true });
+  if (!colorContext) throw new Error("chart-svg-color-context");
+  const portableColor = (value: string) => {
+    if (value === "none" || value.startsWith("url(")) return value;
+    colorContext.clearRect(0, 0, 1, 1);
+    colorContext.fillStyle = "#000";
+    colorContext.fillStyle = value;
+    colorContext.fillRect(0, 0, 1, 1);
+    const [red = 0, green = 0, blue = 0, alpha = 255] = colorContext.getImageData(0, 0, 1, 1).data;
+    return alpha === 255
+      ? `rgb(${red}, ${green}, ${blue})`
+      : `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+  };
   return Promise.all(
     [...element.querySelectorAll<SVGSVGElement>("svg.recharts-surface")].map(async (svg) => {
       const rect = svg.getBoundingClientRect();
@@ -81,7 +99,12 @@ async function chartSvgSnapshots(element: HTMLElement): Promise<ChartSvgSnapshot
         const computed = getComputedStyle(source);
         SVG_PRESENTATION_PROPERTIES.forEach((property) => {
           const value = computed.getPropertyValue(property);
-          if (value) target.style.setProperty(property, value);
+          if (value) {
+            target.style.setProperty(
+              property,
+              SVG_COLOR_PROPERTIES.has(property) ? portableColor(value) : value,
+            );
+          }
         });
       });
 
