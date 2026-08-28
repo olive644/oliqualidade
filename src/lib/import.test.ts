@@ -6,6 +6,7 @@ import {
   preferredSheetIndex,
   sheetsWithData,
   sheetToRows,
+  minimalWorksheetForGrid,
   sliceGridRegion,
   sliceGridSection,
   visibleTextGrid,
@@ -2252,5 +2253,55 @@ describe("fatiamento sobre a grade", () => {
     });
 
     expect(recorte).toEqual([[], []]);
+  });
+});
+
+describe("normalização a partir de uma fonte de grade", () => {
+  /**
+   * A ligação: `sheetsWithData` aceita uma fonte de grade e a repassa para a
+   * normalização, para a detecção de regiões e para o fatiamento. É o ponto em
+   * que a leitura por streaming deixa de precisar de uma worksheet completa.
+   */
+  const conteudo = [
+    ["Produto", "Valor", "Setor"],
+    ["Bolo", 42, "A"],
+    ["Torta", 7, "B"],
+    ["Pão", null, "A"],
+  ];
+
+  it("produz o mesmo resultado da worksheet completa", () => {
+    const completa = XLSX.utils.aoa_to_sheet(conteudo);
+    const wbCompleto = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbCompleto, completa, "Dados");
+
+    const grade = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(completa, {
+      header: 1,
+      defval: null,
+    });
+    const wbMinimo = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbMinimo, minimalWorksheetForGrid(grade), "Dados");
+
+    const pelaWorksheet = sheetsWithData(wbCompleto);
+    const pelaGrade = sheetsWithData(wbMinimo, { gridFor: () => ({ aoa: grade }) });
+
+    expect(pelaGrade.map((opcao) => opcao.rows)).toEqual(pelaWorksheet.map((opcao) => opcao.rows));
+  });
+
+  it("ignora a fonte que não conhece a aba e cai na worksheet", () => {
+    // O `gridFor` devolve `undefined` para dizer "esta aba vem da worksheet,
+    // como sempre". Um workbook misto precisa continuar funcionando.
+    const ws = XLSX.utils.aoa_to_sheet(conteudo);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dados");
+
+    expect(sheetsWithData(wb, { gridFor: () => undefined })).toEqual(sheetsWithData(wb));
+  });
+
+  it("sem fonte nenhuma, o caminho é o de sempre", () => {
+    const ws = XLSX.utils.aoa_to_sheet(conteudo);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dados");
+
+    expect(sheetsWithData(wb, {})).toEqual(sheetsWithData(wb));
   });
 });

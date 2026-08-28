@@ -2470,6 +2470,31 @@ export type SheetOption = {
 /** Grade de texto de uma aba, com as linhas ocultas apagadas. */
 export type SheetTextGrid = (string | number | boolean | null)[][];
 
+/**
+ * Fonte de grade para uma aba, quando ela não vem de uma worksheet completa.
+ *
+ * `aoa` são os valores crus, no formato que `sheetToRows` consome. `textAoa` é o
+ * texto formatado, que a detecção de regiões usa. Numa grade lida de CSV as duas
+ * coincidem, porque tudo já é texto; num futuro leitor OOXML progressivo elas
+ * podem diferir, e por isso são campos separados em vez de um só.
+ */
+export type SheetGridSource = {
+  aoa: SheetSourceGrid;
+  textAoa?: SheetTextGrid;
+};
+
+/**
+ * De onde a normalização tira a grade de cada aba.
+ *
+ * A função recebe o nome da aba e devolve a grade, ou `undefined` para dizer
+ * "esta aba vem da worksheet, como sempre". É uma função e não um mapa porque
+ * quem lê por streaming produz a grade aba a aba e não quer montar todas antes
+ * de começar.
+ */
+export type SheetGridLookup = (sheetName: string) => SheetGridSource | undefined;
+
+export type SheetOptionsSource = { gridFor?: SheetGridLookup };
+
 export type RegionScanOptions = {
   /**
    * Grade de texto já pronta, para não reconstruí-la a partir da worksheet.
@@ -2609,6 +2634,22 @@ type IndependentSection = {
  * As coordenadas são relativas e começam em 1, iguais às da função de
  * worksheet, para que os dois caminhos possam ser confrontados diretamente.
  */
+/**
+ * Worksheet com o mínimo que a normalização exige de uma fonte de grade.
+ *
+ * Só `!ref`. Verificado por teste: com a grade passada à parte, isso produz as
+ * mesmas linhas, o mesmo aviso e o mesmo diagnóstico que a worksheet completa,
+ * porque todas as outras leituras são de metadado opcional que uma grade de
+ * valores não tem.
+ */
+export function minimalWorksheetForGrid(grid: SheetSourceGrid): XLSX.WorkSheet {
+  const rows = Math.max(1, grid.length);
+  const columns = Math.max(1, ...grid.map((row) => row.length));
+  return {
+    "!ref": XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows - 1, c: columns - 1 } }),
+  } as XLSX.WorkSheet;
+}
+
 export function sliceGridRegion(
   grid: SheetSourceGrid,
   region: { startRow: number; endRow: number; startColumn: number; endColumn: number },
@@ -3101,9 +3142,19 @@ function compatibilityPreviewRange(ws: XLSX.WorkSheet): XLSX.Range | undefined {
   };
 }
 
-function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
+function sheetOptionsForName(
+  name: string,
+  wb: XLSX.WorkBook,
+  source?: SheetOptionsSource,
+): SheetOption[] {
   const ws = wb.Sheets[name];
   if (!ws) return [];
+  // Quando existe grade, ela é a fonte dos valores e do texto. A worksheet
+  // continua sendo consultada para o que só ela sabe (mesclagem, fórmula, linha
+  // oculta, metadado avançado); numa fonte sem worksheet completa esses campos
+  // simplesmente não existem, e ausência é a resposta correta.
+  const grid = source?.gridFor?.(name);
+  const scan: RegionScanOptions | undefined = grid?.textAoa ? { textAoa: grid.textAoa } : undefined;
   const previewRange = compatibilityPreviewRange(ws);
   const preview = previewRange
     ? XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
@@ -3124,17 +3175,24 @@ function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
     /loss of functionality|loss of fidelity/i.test(compatibilityText)
   )
     return [];
-  const result = sheetToRows(ws, wb);
+  const result = sheetToRows(ws, wb, grid ? { aoa: grid.aoa } : undefined);
   if (result.tableMode !== "repeated-blocks") {
-    const sections = detectIndependentSections(ws);
+    const sections = detectIndependentSections(ws, scan);
     if (sections.length > 1) {
       const labelTotals = new Map<string, number>();
       for (const section of sections)
         labelTotals.set(section.label, (labelTotals.get(section.label) ?? 0) + 1);
       const split = sections.flatMap((section, index) => {
-        const sectionSheet = independentSectionWorksheet(ws, section);
+        const slicedGrid = grid ? sliceGridSection(grid.aoa, section) : null;
+        const sectionSheet = slicedGrid
+          ? minimalWorksheetForGrid(slicedGrid)
+          : independentSectionWorksheet(ws, section);
         if (!sectionSheet) return [];
-        const imported = sheetToRows(sectionSheet, wb);
+        const imported = sheetToRows(
+          sectionSheet,
+          wb,
+          slicedGrid ? { aoa: slicedGrid } : undefined,
+        );
         if (!imported.rows.length) return [];
         const separationWarning = `A aba "${name}" continha ${sections.length} tabelas independentes empilhadas e foi separada automaticamente. Esta opção corresponde à tabela ${index + 1}.`;
         return [
@@ -3156,12 +3214,15 @@ function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
   if (
     result.tableMode !== "repeated-blocks" &&
     result.diagnostics &&
-    regionsAreSafeToSplit(ws, result.diagnostics.tableRegions)
+    regionsAreSafeToSplit(ws, result.diagnostics.tableRegions, scan)
   ) {
     const split = result.diagnostics.tableRegions.flatMap((region, index) => {
-      const regionSheet = independentRegionWorksheet(ws, region);
+      const slicedGrid = grid ? sliceGridRegion(grid.aoa, region) : null;
+      const regionSheet = slicedGrid
+        ? minimalWorksheetForGrid(slicedGrid)
+        : independentRegionWorksheet(ws, region);
       if (!regionSheet) return [];
-      const imported = sheetToRows(regionSheet, wb);
+      const imported = sheetToRows(regionSheet, wb, slicedGrid ? { aoa: slicedGrid } : undefined);
       if (!imported.rows.length) return [];
       const separationWarning = `A aba "${name}" continha ${result.diagnostics!.tableRegions.length} tabelas independentes e foi separada automaticamente. Esta opção corresponde à região ${index + 1}.`;
       return [
@@ -3237,20 +3298,21 @@ export function streamSheetsWithData(
   wb: XLSX.WorkBook,
   onOption: (option: SheetOption) => void,
   onSheetDone?: (completed: number, total: number) => void,
+  source?: SheetOptionsSource,
 ): void {
   const total = wb.SheetNames.length;
   for (const [index, name] of wb.SheetNames.entries()) {
     const unified = unifiedBlocksOption(name, wb);
-    const options = sheetOptionsForName(name, wb);
+    const options = sheetOptionsForName(name, wb, source);
     for (const option of unified ? [unified, ...options] : options)
       if (option.rows.length > 0 || hasVisualOnlyContent(option)) onOption(option);
     onSheetDone?.(index + 1, total);
   }
 }
 
-export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
+export function sheetsWithData(wb: XLSX.WorkBook, source?: SheetOptionsSource): SheetOption[] {
   const collected: SheetOption[] = [];
-  streamSheetsWithData(wb, (option) => collected.push(option));
+  streamSheetsWithData(wb, (option) => collected.push(option), undefined, source);
   return collected;
 }
 
