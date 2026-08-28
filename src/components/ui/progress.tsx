@@ -11,6 +11,11 @@ const Progress = React.forwardRef<
 >(({ className, value, ...props }, ref) => (
   <ProgressPrimitive.Root
     ref={ref}
+    // O `value` precisa chegar na raiz do Radix, e não só no indicador: é ele
+    // que vira `aria-valuenow`. O componente copiado do shadcn desestrutura o
+    // valor para calcular a transformação e esquecia de repassá-lo, então a
+    // barra desenhava certo e não anunciava nada a leitor de tela.
+    value={value}
     className={cn("relative h-2 w-full overflow-hidden rounded-full bg-primary/20", className)}
     {...props}
   >
