@@ -1877,6 +1877,25 @@ describe("sheetsWithData", () => {
     expect(sheetsWithData(wb).map((option) => option.name)).toEqual(["Dados"]);
   });
 
+  it("procura o aviso de compatibilidade só no topo da aba", () => {
+    // A checagem sempre olhou apenas as primeiras linhas, mas fazia isso a
+    // partir de uma conversão da aba inteira para texto formatado, que era
+    // descartada em seguida: medidos 107 MiB e 1,4s por aba num arquivo de 200
+    // mil linhas. Hoje a conversão é limitada ao topo, e este teste fixa a
+    // janela: um texto igual ao do relatório, mas fora dela, não pode fazer
+    // uma aba de dados legítima desaparecer.
+    const wb = XLSX.utils.book_new();
+    const linhas: (string | number | null)[][] = [["Nome", "Valor"]];
+    for (let indice = 1; indice <= 40; indice += 1) linhas.push([`Item ${indice}`, indice]);
+    linhas.push(["Compatibility Report for arquivo.xls", "Significant loss of functionality"]);
+    XLSX.utils.book_append_sheet(wb, sheet(linhas), "Dados");
+
+    const opcoes = sheetsWithData(wb);
+
+    expect(opcoes.map((option) => option.name)).toEqual(["Dados"]);
+    expect(opcoes[0]?.rows.length).toBe(41);
+  });
+
   it("pula abas sem nenhuma linha de dado, mas mantém as abas com dado", () => {
     // Reproduz o caso comum de um arquivo de exemplo com uma aba "Página1"
     // vazia (sobra de template) além das abas de verdade.

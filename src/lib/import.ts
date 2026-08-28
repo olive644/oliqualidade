@@ -2973,16 +2973,42 @@ function unifiedBlocksOption(name: string, wb: XLSX.WorkBook): SheetOption | nul
  * blocos (ver `unifiedBlocksOption`): a aba inteira, ou as tabelas
  * independentes quando a separação automática se aplica.
  */
+/** Linhas do topo que a checagem de relatório de compatibilidade precisa ver. */
+const COMPATIBILITY_PREVIEW_ROWS = 12;
+
+/**
+ * Intervalo do topo da aba, para não formatar a planilha inteira à toa.
+ *
+ * A checagem abaixo lê só as primeiras linhas, mas fazia isso a partir de um
+ * `sheet_to_json` com `raw: false` sobre a aba toda. Esse modo formata **cada
+ * célula** como texto, e o resultado inteiro era descartado fora do topo: num
+ * CSV de 200 mil linhas por 8 colunas, medidos 37 MiB alocados e jogados fora
+ * em toda importação, de todo formato.
+ */
+function compatibilityPreviewRange(ws: XLSX.WorkSheet): XLSX.Range | undefined {
+  const ref = ws["!ref"];
+  if (!ref) return undefined;
+  const range = XLSX.utils.decode_range(ref);
+  return {
+    s: range.s,
+    e: { r: Math.min(range.e.r, range.s.r + COMPATIBILITY_PREVIEW_ROWS - 1), c: range.e.c },
+  };
+}
+
 function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
   const ws = wb.Sheets[name];
   if (!ws) return [];
-  const preview = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
+  const previewRange = compatibilityPreviewRange(ws);
+  const preview = previewRange
+    ? XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+        header: 1,
+        defval: null,
+        raw: false,
+        range: previewRange,
+      })
+    : [];
   const compatibilityText = preview
-    .slice(0, 12)
+    .slice(0, COMPATIBILITY_PREVIEW_ROWS)
     .flat()
     .filter((value) => value !== null && value !== "")
     .map(String)
