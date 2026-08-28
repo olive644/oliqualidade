@@ -60,36 +60,56 @@ const SVG_PRESENTATION_PROPERTIES = [
  * grande para PNG/PDF. Congelamos cada SVG como uma imagem autocontida, com
  * variáveis CSS já resolvidas, apenas dentro do clone usado na exportação.
  */
-function chartSvgSnapshots(element: HTMLElement): ChartSvgSnapshot[] {
-  return [...element.querySelectorAll<SVGSVGElement>("svg.recharts-surface")].map((svg) => {
-    const rect = svg.getBoundingClientRect();
-    const width = Math.max(1, Math.round(rect.width));
-    const height = Math.max(1, Math.round(rect.height));
-    const clone = svg.cloneNode(true) as SVGSVGElement;
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    clone.setAttribute("width", String(width));
-    clone.setAttribute("height", String(height));
-    if (!clone.hasAttribute("viewBox")) clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+async function chartSvgSnapshots(element: HTMLElement): Promise<ChartSvgSnapshot[]> {
+  return Promise.all(
+    [...element.querySelectorAll<SVGSVGElement>("svg.recharts-surface")].map(async (svg) => {
+      const rect = svg.getBoundingClientRect();
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      const clone = svg.cloneNode(true) as SVGSVGElement;
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("width", String(width));
+      clone.setAttribute("height", String(height));
+      if (!clone.hasAttribute("viewBox")) clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
-    const sourceNodes = [svg, ...svg.querySelectorAll<SVGElement>("*")];
-    const clonedNodes = [clone, ...clone.querySelectorAll<SVGElement>("*")];
-    sourceNodes.forEach((source, index) => {
-      const target = clonedNodes[index];
-      if (!target) return;
-      const computed = getComputedStyle(source);
-      SVG_PRESENTATION_PROPERTIES.forEach((property) => {
-        const value = computed.getPropertyValue(property);
-        if (value) target.style.setProperty(property, value);
+      const sourceNodes = [svg, ...svg.querySelectorAll<SVGElement>("*")];
+      const clonedNodes = [clone, ...clone.querySelectorAll<SVGElement>("*")];
+      sourceNodes.forEach((source, index) => {
+        const target = clonedNodes[index];
+        if (!target) return;
+        const computed = getComputedStyle(source);
+        SVG_PRESENTATION_PROPERTIES.forEach((property) => {
+          const value = computed.getPropertyValue(property);
+          if (value) target.style.setProperty(property, value);
+        });
       });
-    });
 
-    const serialized = new XMLSerializer().serializeToString(clone);
-    return {
-      dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`,
-      height,
-      width,
-    };
-  });
+      const serialized = new XMLSerializer().serializeToString(clone);
+      const vectorUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("chart-svg-rasterization-failed"));
+        image.src = vectorUrl;
+      });
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("chart-svg-canvas-context");
+      context.scale(scale, scale);
+      context.drawImage(image, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/png");
+      canvas.width = 1;
+      canvas.height = 1;
+      return {
+        dataUrl,
+        height,
+        width,
+      };
+    }),
+  );
 }
 
 async function settleExportLayout() {
@@ -138,7 +158,7 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
     const cssWidth = Math.ceil(element.getBoundingClientRect().width);
     const cssHeight = element.scrollHeight;
     const cleanBreakpoints = exportBreakpoints(element);
-    const chartSnapshots = chartSvgSnapshots(element);
+    const chartSnapshots = await chartSvgSnapshots(element);
     const { default: html2canvas } = await import("html2canvas-pro");
     const canvas = await html2canvas(element, {
       backgroundColor: getComputedStyle(element).backgroundColor,
