@@ -112,6 +112,39 @@ async function chartSvgSnapshots(element: HTMLElement): Promise<ChartSvgSnapshot
   );
 }
 
+async function replaceChartSvgsForCapture(
+  element: HTMLElement,
+  snapshots: ChartSvgSnapshot[],
+): Promise<() => void> {
+  const originals = [...element.querySelectorAll<SVGSVGElement>("svg.recharts-surface")];
+  const replacements = await Promise.all(
+    originals.map(async (svg, index) => {
+      const snapshot = snapshots[index];
+      if (!snapshot) return null;
+      const image = document.createElement("img");
+      image.alt = "";
+      image.setAttribute("aria-hidden", "true");
+      image.setAttribute("data-export-chart", "true");
+      image.style.width = `${snapshot.width}px`;
+      image.style.height = `${snapshot.height}px`;
+      image.style.maxWidth = "100%";
+      image.style.display = "block";
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("chart-png-loading-failed"));
+        image.src = snapshot.dataUrl;
+      });
+      return { image, svg };
+    }),
+  );
+  replacements.forEach((replacement) => replacement?.svg.replaceWith(replacement.image));
+  return () => {
+    replacements.forEach((replacement) => {
+      if (replacement?.image.isConnected) replacement.image.replaceWith(replacement.svg);
+    });
+  };
+}
+
 async function settleExportLayout() {
   await document.fonts?.ready;
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -140,6 +173,7 @@ function exportBreakpoints(element: HTMLElement) {
 
 async function captureDashboard(element: HTMLElement): Promise<DashboardCapture> {
   const previousScroll = { left: element.scrollLeft, top: element.scrollTop };
+  let restoreChartSvgs = () => {};
   element.classList.add("oliam-export-mode");
   element.scrollTo(0, 0);
   // <details> fechado (ex.: "Observações da planilha") esconde o conteúdo
@@ -159,6 +193,8 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
     const cssHeight = element.scrollHeight;
     const cleanBreakpoints = exportBreakpoints(element);
     const chartSnapshots = await chartSvgSnapshots(element);
+    restoreChartSvgs = await replaceChartSvgsForCapture(element, chartSnapshots);
+    await settleExportLayout();
     const { default: html2canvas } = await import("html2canvas-pro");
     const canvas = await html2canvas(element, {
       backgroundColor: getComputedStyle(element).backgroundColor,
@@ -176,22 +212,6 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
       onclone: (clonedDocument, clonedElement) => {
         clonedElement.classList.add("oliam-export-mode");
         clonedDocument.querySelectorAll("[data-export-controls]").forEach((node) => node.remove());
-        clonedElement
-          .querySelectorAll<SVGSVGElement>("svg.recharts-surface")
-          .forEach((svg, index) => {
-            const snapshot = chartSnapshots[index];
-            if (!snapshot) return;
-            const image = clonedDocument.createElement("img");
-            image.src = snapshot.dataUrl;
-            image.alt = "";
-            image.setAttribute("aria-hidden", "true");
-            image.setAttribute("data-export-chart", "true");
-            image.style.width = `${snapshot.width}px`;
-            image.style.height = `${snapshot.height}px`;
-            image.style.maxWidth = "100%";
-            image.style.display = "block";
-            svg.replaceWith(image);
-          });
       },
     });
     const renderedScale = canvas.width / cssWidth;
@@ -200,6 +220,7 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
       breakpoints: cleanBreakpoints.map((point) => Math.round(point * renderedScale)),
     };
   } finally {
+    restoreChartSvgs();
     element.classList.remove("oliam-export-mode");
     element.scrollTo(previousScroll.left, previousScroll.top);
     detailsElements.forEach((node, index) => (node.open = previousDetailsOpen[index] ?? false));
