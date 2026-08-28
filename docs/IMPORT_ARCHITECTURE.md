@@ -305,3 +305,24 @@ Os próximos incrementos, na ordem de risco crescente: as leituras de metadado
 (`!rows`, `!merges`, `!oliAdvanced`) aceitarem ausência declarada; o acesso por
 endereço aceitar uma fonte sem worksheet; e por fim `detectIndependentSections`
 e as duas construtoras de worksheet de região, que são as mais entrelaçadas.
+
+### Segundo incremento: a worksheet mínima basta
+
+A pergunta que decidia o tamanho do refactor era se `sheetToRows` conseguiria
+trabalhar sem uma worksheet completa. A resposta, verificada e agora fixada por
+teste: **consegue**. Uma worksheet contendo apenas `!ref`, somada à grade
+passada pronta, produz as mesmas linhas, o mesmo aviso, o mesmo modo de tabela
+e o mesmo diagnóstico naquilo que uma planilha sem formato pode ter.
+
+Isso muda o tamanho do que falta. As quinze leituras de worksheet dentro de
+`sheetToRows` são todas de metadado opcional (mesclagem, fórmula, linha oculta,
+elemento visual), e todas já tratam ausência. Uma grade de valores não tem
+nenhum desses, então a ausência é a resposta correta, não uma degradação.
+
+O que continua faltando não é `sheetToRows`, e sim o caminho acima dele:
+`sheetOptionsForName` precisa repassar a grade, e `detectIndependentSections`
+com as duas construtoras de worksheet de região precisam de uma decisão. Elas
+leem células para achar tabelas independentes dentro de uma aba; sobre uma
+worksheet mínima elas não encontrariam nada, o que **mudaria** o resultado de
+um CSV com várias regiões. Essa é a única parte do refactor que ainda exige
+desenho, e não só ligação.

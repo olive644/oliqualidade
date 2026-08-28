@@ -2050,3 +2050,57 @@ describe("grade pronta na normalização", () => {
     expect(sheetToRows(ws, undefined, {}).rows).toEqual(sheetToRows(ws).rows);
   });
 });
+
+describe("normalização a partir de worksheet mínima", () => {
+  /**
+   * O passo que decide se o refactor pesado é necessário.
+   *
+   * O ganho de memória da leitura por streaming depende de não construir uma
+   * worksheet completa, com um objeto de célula por célula. Este teste mede o
+   * quanto disso já é possível hoje: uma worksheet com apenas `!ref`, mais a
+   * grade passada pronta, contra a worksheet completa.
+   */
+  const linhas: (string | number | null)[][] = [
+    ["Produto", "Valor", "Data", "Setor"],
+    ["Bolo", 42, "2026-08-27", "A"],
+    ["Torta", 7.5, "2026-08-28", "B"],
+    ["Pão", null, "2026-08-29", "A"],
+    ["Café", -3, "2026-08-30", ""],
+  ];
+
+  const completa = () => XLSX.utils.aoa_to_sheet(linhas);
+  const grade = (ws: XLSX.WorkSheet) =>
+    XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, { header: 1, defval: null });
+
+  it("produz as mesmas linhas que a worksheet completa", () => {
+    const cheia = completa();
+    const minima = { "!ref": cheia["!ref"] } as XLSX.WorkSheet;
+
+    const referencia = sheetToRows(cheia);
+    const enxuta = sheetToRows(minima, undefined, { aoa: grade(cheia) });
+
+    expect(enxuta.rows).toEqual(referencia.rows);
+    expect(enxuta.warning).toEqual(referencia.warning);
+    expect(enxuta.tableMode).toEqual(referencia.tableMode);
+  });
+
+  it("chega ao mesmo diagnóstico naquilo que uma planilha sem formato pode ter", () => {
+    // Uma grade de valores não tem fórmula, mesclagem, linha oculta nem
+    // elemento visual. O diagnóstico precisa refletir isso nos dois caminhos,
+    // e não inventar ausência num e presença no outro.
+    const cheia = completa();
+    const minima = { "!ref": cheia["!ref"] } as XLSX.WorkSheet;
+
+    const referencia = sheetToRows(cheia).diagnostics;
+    const enxuta = sheetToRows(minima, undefined, { aoa: grade(cheia) }).diagnostics;
+
+    expect(enxuta?.rowCount).toBe(referencia?.rowCount);
+    expect(enxuta?.columnCount).toBe(referencia?.columnCount);
+    expect(enxuta?.formulaCells).toBe(referencia?.formulaCells);
+    expect(enxuta?.mergedRanges).toBe(referencia?.mergedRanges);
+    expect(enxuta?.hiddenRows).toBe(referencia?.hiddenRows);
+    expect(enxuta?.columns.map((coluna) => coluna.key)).toEqual(
+      referencia?.columns.map((coluna) => coluna.key),
+    );
+  });
+});
