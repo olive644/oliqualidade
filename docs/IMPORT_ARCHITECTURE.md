@@ -347,3 +347,31 @@ O que falta agora é só o fatiamento: `independentSectionWorksheet` e
 `independentRegionWorksheet` recortam uma worksheet nova copiando célula a
 célula. Numa fonte de grade, o equivalente é recortar a grade, que é barato.
 Esse é o último passo antes de `sheetOptionsForName` poder repassar tudo.
+
+### Quarto incremento: o fatiamento sobre a grade
+
+`independentSectionWorksheet` e `independentRegionWorksheet` recortam uma
+worksheet nova copiando célula a célula, e também recortam mesclagens, linhas
+ocultas e o pacote `!oliAdvanced` (hyperlinks, comentários, imagens, formas,
+gráficos, cor de preenchimento), com remapeamento de intervalos.
+
+Numa grade de valores nada disso existe. `sliceGridRegion` e `sliceGridSection`
+fazem só o que sobra: recorte de linhas e colunas. As coordenadas são as mesmas,
+relativas e começando em 1, para os dois caminhos poderem ser confrontados.
+
+A garantia verificada não é o formato do recorte, e sim que **normalizar o
+recorte da grade dá o mesmo que normalizar o recorte da worksheet**. A seleção
+de linhas da seção preserva a ordem original (contexto na frente, sem
+repetição), porque é ela que define qual linha vira cabeçalho do recorte.
+
+Os dois fatiadores entram sem tocar nas funções existentes: são aditivos, e
+nenhum caminho atual os chama. Com eles, todas as peças da normalização sobre
+grade existem.
+
+### O que falta para o ganho aparecer
+
+Só a ligação: `sheetOptionsForName` precisa aceitar uma fonte de grade e
+repassá-la para `sheetToRows`, para a detecção de regiões e para os fatiadores.
+Enquanto isso não acontece, todas as peças estão prontas e testadas, e o
+comportamento atual é bit a bit o mesmo, porque nenhum chamador usa as opções
+novas.

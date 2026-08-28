@@ -6,6 +6,8 @@ import {
   preferredSheetIndex,
   sheetsWithData,
   sheetToRows,
+  sliceGridRegion,
+  sliceGridSection,
   visibleTextGrid,
   type ImportAudit,
 } from "@/lib/import";
@@ -2156,5 +2158,99 @@ describe("grade de texto compartilhada pela detecção de regiões", () => {
       [],
       ["Fica"],
     ]);
+  });
+});
+
+describe("fatiamento sobre a grade", () => {
+  /**
+   * Os fatiadores de grade existem para uma fonte sem worksheet. A garantia
+   * que interessa não é o formato do recorte, e sim que normalizar o recorte
+   * da grade dá o mesmo que normalizar o recorte da worksheet.
+   */
+  const planilha = [
+    ["Relatório mensal", null, null, null],
+    ["Produto", "Jan", "Fev", "Ignorar"],
+    ["Bolo", 10, 20, "x"],
+    ["Torta", 30, 40, "y"],
+    ["Pão", 50, 60, "z"],
+  ];
+
+  it("recorta a mesma região que o caminho de worksheet", () => {
+    const ws = XLSX.utils.aoa_to_sheet(planilha);
+    const grade = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
+      header: 1,
+      defval: null,
+    });
+    const regiao = { startRow: 2, endRow: 5, startColumn: 1, endColumn: 3 };
+
+    const recorte = sliceGridRegion(grade, regiao);
+
+    expect(recorte).toEqual([
+      ["Produto", "Jan", "Fev"],
+      ["Bolo", 10, 20],
+      ["Torta", 30, 40],
+      ["Pão", 50, 60],
+    ]);
+  });
+
+  it("normalizar o recorte da grade dá o mesmo que normalizar o recorte da worksheet", () => {
+    const ws = XLSX.utils.aoa_to_sheet(planilha);
+    const grade = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
+      header: 1,
+      defval: null,
+    });
+    const regiao = { startRow: 2, endRow: 5, startColumn: 1, endColumn: 3 };
+
+    const recorteDaGrade = sliceGridRegion(grade, regiao);
+    const minima = {
+      "!ref": XLSX.utils.encode_range({
+        s: { r: 0, c: 0 },
+        e: { r: recorteDaGrade.length - 1, c: (recorteDaGrade[0]?.length ?? 1) - 1 },
+      }),
+    } as XLSX.WorkSheet;
+    const pelaGrade = sheetToRows(minima, undefined, { aoa: recorteDaGrade });
+    const pelaWorksheet = sheetToRows(XLSX.utils.aoa_to_sheet(recorteDaGrade));
+
+    expect(pelaGrade.rows).toEqual(pelaWorksheet.rows);
+    expect(pelaGrade.rows).toEqual([
+      { Produto: "Bolo", Jan: 10, Fev: 20 },
+      { Produto: "Torta", Jan: 30, Fev: 40 },
+      { Produto: "Pão", Jan: 50, Fev: 60 },
+    ]);
+  });
+
+  it("mantém as linhas de contexto na frente, sem repetir nenhuma", () => {
+    // A ordem define qual linha vira o cabeçalho do recorte, então ela é
+    // comportamento e não detalhe.
+    const grade = planilha as (string | number | Date | null)[][];
+
+    const recorte = sliceGridSection(grade, {
+      startRow: 3,
+      endRow: 5,
+      startColumn: 1,
+      endColumn: 3,
+      label: "seção",
+      contextRows: [2, 3],
+    });
+
+    expect(recorte).toEqual([
+      ["Produto", "Jan", "Fev"],
+      ["Bolo", 10, 20],
+      ["Torta", 30, 40],
+      ["Pão", 50, 60],
+    ]);
+  });
+
+  it("tolera linha ausente na grade sem quebrar o recorte", () => {
+    const recorte = sliceGridSection([["a", "b"]], {
+      startRow: 5,
+      endRow: 6,
+      startColumn: 1,
+      endColumn: 2,
+      label: "vazia",
+      contextRows: [],
+    });
+
+    expect(recorte).toEqual([[], []]);
   });
 });

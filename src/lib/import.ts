@@ -2597,6 +2597,51 @@ type IndependentSection = {
   contextRows: number[];
 };
 
+/**
+ * Recorte de uma região retangular sobre a grade.
+ *
+ * Equivale a `independentRegionWorksheet` para uma fonte que não tem worksheet.
+ * Aquela função também recorta mesclagens, linhas ocultas e o pacote
+ * `!oliAdvanced` (hyperlinks, comentários, imagens, formas, gráficos, cor de
+ * preenchimento), com remapeamento de intervalos. Numa grade de valores nada
+ * disso existe, então o recorte é só de linhas e colunas.
+ *
+ * As coordenadas são relativas e começam em 1, iguais às da função de
+ * worksheet, para que os dois caminhos possam ser confrontados diretamente.
+ */
+export function sliceGridRegion(
+  grid: SheetSourceGrid,
+  region: { startRow: number; endRow: number; startColumn: number; endColumn: number },
+): SheetSourceGrid {
+  const linhas = grid.slice(region.startRow - 1, region.endRow);
+  return linhas.map((linha) => linha.slice(region.startColumn - 1, region.endColumn));
+}
+
+/**
+ * Recorte de uma seção independente sobre a grade.
+ *
+ * Equivale a `independentSectionWorksheet`. A seleção de linhas é a mesma:
+ * primeiro as linhas de contexto, depois o intervalo da seção, sem repetir
+ * nenhuma. A ordem importa, porque é ela que define a linha de cabeçalho da
+ * planilha recortada.
+ */
+export function sliceGridSection(
+  grid: SheetSourceGrid,
+  section: IndependentSection,
+): SheetSourceGrid {
+  const relativeRows = [
+    ...section.contextRows,
+    ...Array.from(
+      { length: section.endRow - section.startRow + 1 },
+      (_, index) => section.startRow + index,
+    ),
+  ].filter((row, index, all) => all.indexOf(row) === index);
+
+  return relativeRows.map((linha) =>
+    (grid[linha - 1] ?? []).slice(section.startColumn - 1, section.endColumn),
+  );
+}
+
 const SECTION_HEADER_HINT =
   /^(?:m[eê]s|data|nome|c[oó]digo|item|descri[cç][aã]o|cliente|produto|material|objeto|ponto|m[aá]quina|gramatura|quantidade|amostra|an[aá]lise|refer[eê]ncia|limite|tipo|ferramenta|t[eé]cnica|frequ[eê]ncia|status|valor|pre[cç]o|unidade|resultado)/i;
 const SECTION_TITLE_HINT =
