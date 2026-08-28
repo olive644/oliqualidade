@@ -190,7 +190,7 @@ async function openChartDashboard(page: Page, theme: "light" | "dark" = "light")
     { id: dashboardId, fixtureRows: rows, selectedTheme: theme },
   );
   await page.goto(`/painel/${dashboardId}`);
-  await expect(page.locator(".oliam-dashboard-grid")).toBeVisible();
+  await expect(page.locator(".oliam-widget-grid")).toBeVisible();
   await expect(page.locator("svg.recharts-surface")).toHaveCount(9);
   await page.addStyleTag({
     content:
@@ -205,7 +205,7 @@ test.describe("regressão visual Recharts 3", () => {
   for (const theme of ["light", "dark"] as const) {
     test(`galeria completa no tema ${theme}`, async ({ page }) => {
       await openChartDashboard(page, theme);
-      await expect(page.locator(".oliam-dashboard-grid")).toHaveScreenshot(
+      await expect(page.locator(".oliam-widget-grid")).toHaveScreenshot(
         `recharts-gallery-${theme}.png`,
         { animations: "disabled", maxDiffPixelRatio: 0.001 },
       );
@@ -265,8 +265,8 @@ for (const viewport of [
         .poll(() =>
           area.evaluate((widget) => {
             const svg = widget.querySelector("svg.recharts-surface")?.getBoundingClientRect();
-            const ticks = [...widget.querySelectorAll(".recharts-xAxis text")].map((tick) =>
-              tick.getBoundingClientRect(),
+            const ticks = [...widget.querySelectorAll(".recharts-xAxis-tick-labels text")].map(
+              (tick) => tick.getBoundingClientRect(),
             );
             if (!svg || ticks.length < 2) return false;
             return ticks[0]!.left >= svg.left && ticks.at(-1)!.right <= svg.right;
