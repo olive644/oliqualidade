@@ -121,7 +121,7 @@ Nenhuma implementação de leitor mora ali.
 
 | Formato | Hoje | Planejado |
 | --- | --- | --- |
-| CSV, TXT, TSV | Caminho atual | Streaming real com `Blob.stream()` |
+| CSV, TXT, TSV | Caminho atual | `csv-stream.ts` já implementa streaming real com `Blob.stream()`, provado equivalente à análise do SheetJS; falta o coordenador que o liga à normalização |
 | XLSX, XLSM, XLTX, XLTM | Caminho atual | Leitura progressiva com acesso ao ZIP por entrada |
 | ODS e demais | Caminho atual | Sem plano de caminho progressivo |
 

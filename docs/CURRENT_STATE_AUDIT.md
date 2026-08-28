@@ -8845,3 +8845,79 @@ de linhas estoura a pilha se o resultado for espalhado com `push(...)`.
 Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
 visível para quem usa. O seletor não está ligado, a interface não muda e o
 resultado de qualquer importação continua idêntico.
+## 147. Streaming de CSV de verdade: o arquivo nunca entra inteiro na memória
+
+Segunda etapa do trabalho de leitura progressiva. Aqui o nome é literal, no
+sentido do vocabulário fixado na seção 146: o arquivo **não** é carregado num
+`ArrayBuffer`. O que atravessa é o `ReadableStream` do próprio `Blob`, os
+trechos decodificados viram registro e são descartados, e as linhas saem em
+blocos com um bloco em voo por vez.
+
+### A heurística de codificação obrigou a duas passagens
+
+`decodeText`, do leitor atual, escolhe entre UTF-8 e windows-1252 contando
+caracteres de substituição sobre o texto **inteiro**. Isso não cabe numa
+passagem só, e decidir por um prefixo mudaria o resultado num arquivo cujo
+começo é UTF-8 limpo e o resto não é.
+
+A saída foi uma passagem de reconhecimento antes da leitura. Ela só conta: não
+monta texto, não monta linha, não guarda nada além de dois inteiros. O `Blob` é
+lido do disco duas vezes em troca de manter o comportamento **exato** do leitor
+atual, e a memória continua limitada nas duas passagens. Preferi isso a uma
+aproximação que divergiria em silêncio justamente nos arquivos mal formados,
+que são os que mais precisam da heurística.
+
+### Um pedaço de bytes não é uma linha
+
+O analisador guarda entre alimentações: o campo em construção, o registro em
+construção, se está dentro de aspas, se acabou de fechar aspas (para distinguir
+aspas escapadas de fim de campo) e se o último caractere foi um CR ainda sem o
+LF do par. Esse último estado é o que impede um CRLF cortado exatamente no meio
+de virar dois registros.
+
+A prova disso é um teste que analisa o mesmo CSV cortado em **todas** as
+posições possíveis, de um caractere até o texto inteiro, e exige resultado
+idêntico. O mesmo vale para o caminho de bytes: um texto com acentuação é lido
+com pedaços de 1 byte até o arquivo inteiro, e o caractere multibyte cortado ao
+meio precisa sobreviver.
+
+### Backpressure sem fila
+
+`onBlock` pode devolver uma promessa, e enquanto ela não resolve nada novo é
+lido do `Blob`. Não existe fila: um bloco por vez é o teto natural, e o teste
+verifica que o máximo de blocos em voo é exatamente um. Uma fila seria mais uma
+cópia do arquivo esperando para ser consumida, que é o problema que este
+trabalho existe para evitar.
+
+### Equivalência provada, e até onde ela vale
+
+Dez formas de CSV são analisadas pelos dois caminhos e comparadas grade a
+grade: simples, CRLF, campo entre aspas, aspas escapadas, quebra de linha dentro
+de aspas, células vazias, ponto e vírgula com vírgula decimal, tabulação, sem
+quebra final e cabeçalhos repetidos. Em todas, a grade produzida é idêntica à do
+SheetJS com as mesmas opções do leitor atual.
+
+O que essa prova **não** cobre, e é importante dizer: a equivalência é no nível
+da análise, da sequência de bytes até a grade de textos. A normalização
+posterior (detecção de cabeçalho, divisão em regiões, inferência de tipo) mora
+em `import.ts` e não foi tocada. Ligar o caminho novo ao fluxo de importação
+exige atravessar essa normalização, e isso é trabalho da etapa seguinte.
+
+### O que ainda não está ligado
+
+Nada muda para quem importa hoje. `import-strategy.ts` continua devolvendo
+`caminho-progressivo-indisponivel` para CSV, porque `support.csv` não é ativado
+por ninguém. O leitor existe, é testado e é equivalente; falta o coordenador que
+o conecta à normalização e à revisão.
+
+### Custo conhecido
+
+O analisador percorre o texto por ponto de código, com `for...of`, o que está
+correto para pares substitutos mas é mais lento que um laço por índice. Num
+arquivo de dezenas de MiB isso pesa, e é candidato a otimização quando houver
+medida do caminho ligado, não antes.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa.
