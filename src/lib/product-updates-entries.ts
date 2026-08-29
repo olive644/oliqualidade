@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-29-conferencia-nao-e-mais-pulada-por-uma-celula",
+    version: "0.10.0-beta.17",
+    date: "2026-08-29",
+    title: "Uma célula estranha não cancela mais a conferência da planilha inteira",
+    summary:
+      "Toda planilha do Excel é lida por dois leitores independentes e comparada célula a célula, para recuperar o que um deles deixar passar. Bastava uma única célula com um número grande demais carregando formato de data para essa conferência ser abandonada, e a planilha inteira era importada sem ela, sem nenhum aviso.",
+    highlights: [
+      "Foi encontrado numa planilha real de recebimento: um código de material gravado com formato de data. Das 25 planilhas reais usadas nos testes, 1 caía nisso.",
+      "A conferência agora atravessa a célula estranha e segue conferindo o resto da planilha, recuperando o que precisar ser recuperado.",
+      "Nada muda no que você vê quando a planilha não tem esse tipo de célula.",
+    ],
+  },
+  {
     id: "2026-08-29-planilha-do-excel-ocupa-menos-memoria",
     version: "0.10.0-beta.16",
     date: "2026-08-29",

@@ -725,8 +725,26 @@ export function inspectOoxml(
   };
 }
 
+/**
+ * O valor de uma célula reduzido à forma que a comparação usa.
+ *
+ * A data inválida precisa de tratamento próprio, e a razão é concreta. Uma
+ * célula que guarda um número grande demais para caber no calendário e carrega
+ * formato de data — um código de material com formato `d-mmm`, encontrado em
+ * planilha real — faz o leitor principal produzir `Invalid Date`. Chamar
+ * `toISOString()` nela lança `RangeError`, e como a verificação inteira é
+ * envolvida por um `try/catch` que existe para um arquivo legível não ser
+ * recusado por falha da conferência, o efeito era o **arquivo inteiro** passar
+ * sem verificação nenhuma, em silêncio.
+ *
+ * Vazio é a resposta certa, e não um marcador: uma data inválida não carrega
+ * valor nenhum, exatamente como `null` e como célula ausente, que já viram
+ * vazio aqui. Com isso a célula segue as regras que já existem — se os dois
+ * leitores exibem o mesmo texto, não há divergência; se o outro leitor tem
+ * valor, a célula é tratada como ausente no principal e reparada com ele.
+ */
 function comparable(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString();
   return String(value ?? "").trim();
 }
 

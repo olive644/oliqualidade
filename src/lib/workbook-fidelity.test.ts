@@ -8,7 +8,7 @@ import { sheetToRows } from "@/lib/import";
 import { measureWorkbookFidelity } from "@/lib/fidelity-meter";
 import { compareAndRepairWithOoxml, inspectOoxml } from "@/lib/ooxml-reader";
 import { verifyWorkbookWithExcelJs } from "@/lib/workbook-verifier";
-import { worksheetCellAtAddress } from "@/lib/worksheet-cell";
+import { setWorksheetCellAtAddress, worksheetCellAtAddress } from "@/lib/worksheet-cell";
 
 function minimalWorkbookPackage(sharedStringXml: string): Uint8Array {
   return zipSync({
@@ -234,5 +234,72 @@ describe("fidelidade entre leitores independentes", () => {
     const divergences = compareAndRepairWithOoxml(primary, inspection);
     expect(divergences.some((item) => item.address === "B1" && item.repaired)).toBe(true);
     expect(worksheetCellAtAddress(denseSheet, "B1")?.v).toBe("valor real");
+  });
+
+  describe("uma data inválida não desliga a verificação do resto", () => {
+    /**
+     * A forma encontrada em planilha real: uma célula que guarda um número
+     * grande demais para caber no calendário e carrega formato de data. O
+     * leitor principal a entrega como `Invalid Date`.
+     *
+     * `B1` é a célula problemática e `C1` vem depois dela, porque o defeito é
+     * justamente sobre o que acontece **depois** da célula ruim.
+     */
+    const pacoteComDataInvalida = () => {
+      const worksheet = XLSX.utils.aoa_to_sheet([["Código", 0, "valor depois"]]);
+      worksheet["B1"] = { t: "n", v: 10_005_384_491, z: "d-mmm" };
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Dados");
+      return new Uint8Array(XLSX.write(workbook, { type: "array", bookType: "xlsx" }));
+    };
+
+    const lerPrimario = (bytes: Uint8Array) =>
+      XLSX.read(bytes, {
+        type: "array",
+        cellDates: true,
+        cellNF: true,
+        cellText: true,
+        dense: true,
+      });
+
+    it("o leitor principal realmente produz uma data inválida nessa forma", () => {
+      // Sem esta asserção o resto desta suíte poderia passar por não haver
+      // data inválida nenhuma, e não por a verificação lidar com ela.
+      const cell = worksheetCellAtAddress(
+        lerPrimario(pacoteComDataInvalida()).Sheets["Dados"]!,
+        "B1",
+      );
+      expect(cell?.t).toBe("d");
+      expect(cell?.v).toBeInstanceOf(Date);
+      expect(Number.isNaN((cell?.v as Date).getTime())).toBe(true);
+    });
+
+    it("continua reparando uma célula que vem depois da célula inválida", () => {
+      const bytes = pacoteComDataInvalida();
+      const inspection = inspectOoxml(bytes);
+      const primary = lerPrimario(bytes);
+      // `C1` sai do leitor principal, e só a verificação pode trazê-la de
+      // volta. Antes da correção nada disso acontecia: a célula inválida em
+      // `B1` lançava `RangeError`, o `try/catch` da leitura engolia, e o
+      // arquivo era importado sem conferência nenhuma.
+      const sheet = primary.Sheets["Dados"]!;
+      setWorksheetCellAtAddress(sheet, "C1", { t: "z" } as XLSX.CellObject);
+
+      const divergences = compareAndRepairWithOoxml(primary, inspection);
+
+      expect(divergences.some((item) => item.address === "C1" && item.repaired)).toBe(true);
+      expect(worksheetCellAtAddress(sheet, "C1")?.v).toBe("valor depois");
+    });
+
+    it("não inventa divergência na própria célula inválida, porque os dois exibem vazio", () => {
+      const bytes = pacoteComDataInvalida();
+
+      const divergences = compareAndRepairWithOoxml(lerPrimario(bytes), inspectOoxml(bytes));
+
+      // O leitor principal não representa o valor e o independente o lê como
+      // número, mas os dois exibem a mesma coisa: nada. A regra que já existia
+      // para texto exibido resolve o caso sozinha.
+      expect(divergences.filter((item) => item.address === "B1")).toEqual([]);
+    });
   });
 });

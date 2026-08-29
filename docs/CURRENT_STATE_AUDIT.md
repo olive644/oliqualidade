@@ -9995,3 +9995,121 @@ dependente justamente da parte que ninguém deve mais tocar.
 `0.10.0-beta.15` para `0.10.0-beta.16`, com entrada no Centro de Atualizações:
 menos memória durante a importação é menos chance de a aba do navegador ser
 encerrada no meio dela, o que é visível para quem importa planilha grande.
+## 159. A verificação era pulada inteira, em silêncio, por uma data inválida
+
+Achado pela rede montada para provar a mudança da seção 158, e não por ela: a
+comparação entre a implementação nova e a da `main` estourou nos **dois** lados,
+sobre um arquivo real. Ou seja, é defeito que já existia, e que nenhuma suíte
+apontava.
+
+### O que acontecia
+
+`comparable` reduz o valor de uma célula à forma que a comparação usa, e fazia
+isto:
+
+```ts
+if (value instanceof Date) return value.toISOString();
+```
+
+`toISOString()` numa data inválida lança `RangeError: Invalid time value`. A
+verificação inteira é envolvida por um `try/catch` em `workbook-reader.ts`, que
+existe por uma razão boa — um arquivo legível não pode ser recusado porque a
+conferência falhou. O efeito combinado, porém, é o pior possível: **uma única
+célula derrubava a verificação do arquivo inteiro, e o arquivo era importado sem
+conferência nenhuma, em silêncio.** Sem comparação, sem reparo, sem nada na tela.
+
+Vale medir o tamanho disso sem suavizar. A verificação é o que recupera célula
+que o leitor principal perdeu e aba que ele não enxergou; ela é 40% do prazo da
+leitura justamente porque lê o pacote de novo. Perdê-la não degrada o resultado
+de forma visível: ela some, e o que ela teria consertado simplesmente não é
+consertado.
+
+### A célula, encontrada
+
+`RESINAS PCR!D1309`, num arquivo real de recebimento de resinas:
+
+| | Valor |
+| --- | --- |
+| Valor cru | `10005384491` |
+| Formato numérico | `d-mmm` |
+| Leitor principal | `t="d"`, `v = Invalid Date`, `w = ""` |
+| Leitor independente | `rawValue = 10005384491`, `displayValue = ""` |
+
+É um código de material gravado com formato de data. Dez bilhões de dias não
+cabem no calendário, então `XLSX.SSF.parse_date_code` devolve `null` e o
+SheetJS produz `Invalid Date`. O leitor independente não cai nisso porque
+`serialDate` já trata o `null`, e a célula fica como número.
+
+**1 das 25 planilhas reais do corpus** caía nisso.
+
+### A correção, e por que vazio
+
+```ts
+if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+```
+
+Vazio, e não um marcador do tipo `"data-invalida"`. Uma data inválida não
+carrega valor nenhum, exatamente como `null` e como célula ausente, que já viram
+vazio ali. Com isso a célula passa a seguir as regras que já existem, em vez de
+precisar de regra própria:
+
+- se os dois leitores exibem o mesmo texto, não há divergência — que é o caso
+  desta célula, porque os dois exibem nada;
+- se o outro leitor tem valor e o texto difere, a célula é tratada como ausente
+  no principal e **reparada** com o valor dele, que é melhor que uma data
+  inválida.
+
+Um marcador não vazio faria a primeira regra falhar e produziria uma divergência
+inventada em toda célula desse tipo.
+
+### A garantia
+
+Três testes, e o que eles afirmam importa mais que a quantidade.
+
+O primeiro é a premissa: o leitor principal **realmente** produz uma data
+inválida nessa forma. Sem ele, os outros dois poderiam passar por não haver data
+inválida nenhuma, e não por a verificação lidar com ela.
+
+O segundo é o defeito, e ele mede a coisa certa. Não é "a comparação não
+estoura": é que **uma célula que vem depois da célula inválida continua sendo
+reparada**. O defeito nunca foi sobre a célula ruim, e sim sobre tudo o que vem
+depois dela.
+
+O terceiro fecha o outro lado: a própria célula inválida não vira divergência
+inventada.
+
+Os dois últimos reprovam sem a correção e passam com ela. O primeiro passa dos
+dois lados, porque é premissa e não consequência.
+
+Sobre o corpus real, medido antes e depois: **24 de 25 arquivos verificavam sem
+estouro; agora são 25 de 25**, e nenhum deles produz divergência.
+
+### O método que encontrou isto, e que a suíte não tinha
+
+A rede foi montada para outra coisa: comparar duas implementações da mesma
+função sobre o corpus real. Ela achou este defeito porque **executa o caminho de
+verificação sobre arquivo real**, e nenhum teste do repositório fazia isso.
+`import-parity.test.ts` chama `sheetsWithData` sobre o workbook do leitor
+principal e nunca passa pela verificação; `workbook-fidelity.test.ts` passa, mas
+sobre uma fixture sintética.
+
+O `try/catch` é o que torna essa lacuna cara: ele transforma qualquer estouro na
+verificação em ausência silenciosa de verificação. Enquanto ninguém rodar a
+verificação sobre arquivo real, um estouro desses pode existir por tempo
+indeterminado sem nenhum sinal.
+
+### Verificação
+
+Suíte completa com 1.191 testes, build e orçamento de desempenho aprovados. A
+rede de paridade gravada na `main` e conferida nesta branch, resultado idêntico.
+O chunk `global-search` ficou em 415,9 KiB de um teto de 450,0.
+
+### Versão
+
+`0.10.0-beta.16` para `0.10.0-beta.17`, com entrada no Centro de Atualizações: a
+conferência que recupera dado perdido voltou a acontecer numa planilha em que ela
+não acontecia, e isso é visível para quem importa esse tipo de arquivo.
+
+A seção 158 saiu antes desta, e levou o `0.10.0-beta.16`. As duas foram escritas
+na mesma sessão e as duas apontavam para essa versão; quem entrou depois avançou
+mais uma iteração, em vez de as duas dividirem o mesmo número.
