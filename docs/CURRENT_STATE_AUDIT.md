@@ -9637,3 +9637,91 @@ incremento melhorar de verdade.
 Sem avanço de versão e sem entrada no Centro de Atualizações: nenhuma mudança de
 comportamento, e nenhuma linha de código de produção alterada. O que entra é
 medição.
+## 155. O orçamento de 60s virou medida, e o alvo mudou de lugar
+
+O projeto vinha citando um número da seção 145: um arquivo dentro de todos os
+limites consome 30s do prazo de 60s do leitor. Era uma medição avulsa, feita
+uma vez, antes de várias mudanças no caminho de leitura, e continuava sendo
+repetida como se ainda valesse. Agora ela é reproduzível.
+
+```bash
+OLI_BUDGET_BENCHMARK=1 npx vitest run src/lib/import-budget-benchmark.test.ts
+```
+
+### O número se confirma
+
+| Fase | Seção 145 | Hoje |
+| --- | ---: | ---: |
+| Parse do leitor principal | 9.445 ms (32%) | 8.996 ms (30%) |
+| Verificação | 12.386 ms (41%) | 13.010 ms (43%) |
+| Análise | 8.031 ms (27%) | 8.160 ms (27%) |
+| **Total** | **29.866 ms** | **30.168 ms** |
+
+Metade do prazo, com 1,44 milhão de células. A limitação continua real, e agora
+o teste falha se ela piorar a ponto de o arquivo não caber.
+
+### Uma correção de registro: o custo é de célula, não de byte
+
+A seção 145 descreve a fixture como "um XLSX de 61 MiB". A fixture equivalente
+aqui, com o mesmo número de abas e de células, tem **20,7 MiB**. A diferença é
+de compressão, e o tempo é praticamente o mesmo.
+
+Ou seja, o que custa são as células, e não os bytes. Isso não é detalhe de
+redação: `import-strategy.ts` decide a estratégia **pelo tamanho em bytes**, e a
+razão de memória de 6x que ele usa foi medida em arquivos densos, onde as duas
+grandezas andam juntas. Para tempo elas não andam. Um arquivo pequeno em bytes e
+denso em células gasta o prazo do mesmo jeito, e o seletor não tem como saber
+disso antes de abrir o arquivo.
+
+O acesso ao índice do ZIP por posição, da seção 150, dá justamente essa
+informação sem descompactar nada: o diretório central declara o tamanho
+expandido de cada entrada, e o XML da aba é proporcional às células. Fica
+registrado como o caminho para o seletor decidir por densidade, e não só por
+tamanho.
+
+### O alvo mudou de lugar
+
+A verificação era a maior fase, com 43%, e a suposição natural é que o custo
+esteja em comparar. Medido por dentro:
+
+| Dentro da verificação | Tempo | Fração dela |
+| --- | ---: | ---: |
+| Leitura independente do XML | 9.897 ms | **76%** |
+| Comparação e reparo | 788 ms | **6%** |
+
+**O custo é ler o pacote uma segunda vez.** A comparação que justifica essa
+segunda leitura custa menos de um segundo. Somando com o parse do leitor
+principal, o arquivo é lido duas vezes por completo, e as duas leituras juntas
+são 63% do prazo consumido.
+
+Isso derruba a otimização óbvia antes de ela ser escrita. Acelerar a comparação
+não daria quase nada; amostrar a verificação daria tempo às custas de segurança,
+que não é uma troca aceitável aqui.
+
+### O que a medida aponta como caminho
+
+As duas leituras produzem coisas diferentes do mesmo XML: o leitor principal
+produz o workbook do SheetJS, e a verificação produz o inventário por célula.
+Desde a seção 151 as duas passam pelo mesmo `parseSheetCells`, e desde a 153 a
+leitura independente já sabe produzir a grade que a normalização consome.
+
+O caminho, então, não é acelerar uma das leituras: é uma leitura só alimentar as
+duas coisas. Isso é a mesma peça que o caminho progressivo de OOXML precisa, e
+os dois trabalhos convergem no mesmo lugar em vez de competir.
+
+Ainda não é uma proposta pronta: a verificação existe para **comparar** dois
+leitores independentes, e ela perde o sentido se os dois virarem um. O que a
+medida diz é onde o tempo está, e que a resposta passa por essa pergunta de
+desenho, e não por microotimização.
+
+### Verificação
+
+O benchmark afirma duas coisas além de imprimir: que as fases medidas explicam
+a maior parte do tempo, senão o que ele mostra não é o que a leitura faz, e que
+o arquivo cabe no prazo nesta máquina. Se um dia não couber, a importação passa
+a ser recusada por tempo e não por tamanho, e é melhor descobrir aqui.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nenhuma linha de
+código de produção alterada. O que entra é medição.
