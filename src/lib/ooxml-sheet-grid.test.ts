@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
-import { sheetsWithData, type SheetSourceGrid } from "@/lib/import";
+import { sheetsWithData } from "@/lib/import";
 import { inspectOoxml, readOoxmlSheetGrids, type OoxmlSheetGrid } from "@/lib/ooxml-reader";
 import { describeImportedSheetsDifferences } from "@/lib/progressive-import";
 
@@ -75,10 +75,7 @@ function diferencasDoPacote(bytes: Uint8Array | Record<string, Uint8Array>) {
   const pelaGrade = sheetsWithData(minimo, {
     gridFor: (nome) => {
       const grade = grades.get(nome);
-      if (!grade) return undefined;
-      // `SheetSourceGrid` ainda não declara booleano, embora o caminho atual o
-      // produza. O elenco marca esse ponto até o tipo ser corrigido.
-      return { aoa: grade.aoa as SheetSourceGrid, textAoa: grade.textAoa };
+      return grade ? { aoa: grade.aoa, textAoa: grade.textAoa } : undefined;
     },
   });
 

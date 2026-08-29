@@ -408,14 +408,11 @@ export type OoxmlSheetGrid = {
   ref: string;
   /**
    * O booleano faz parte do conjunto: uma célula `t="b"` chega como `true` ou
-   * `false`, e é assim que a worksheet equivalente já a entrega hoje.
+   * `false`, e é assim que a worksheet equivalente já a entrega.
    *
-   * `SheetSourceGrid`, em `import.ts`, ainda **não** declara booleano, embora o
-   * caminho atual o produza: `sheet_to_json` devolve `true`/`false` para uma
-   * célula `t="b"`, e a anotação ali é uma asserção, não uma conversão. Alargar
-   * aquele tipo cascateia por oito assinaturas internas do arquivo do qual todo
-   * o corpus depende, e não pertence a esta etapa. Fica registrado aqui porque é
-   * a primeira coisa que quem ligar esta grade à normalização vai encontrar.
+   * Este tipo já coincide com `SheetSourceGrid`, de `import.ts`. Coincidir foi
+   * trabalho: aquele tipo omitia o booleano, embora o caminho atual sempre o
+   * tenha produzido, e a omissão só apareceu ao escrever esta grade.
    */
   aoa: (string | number | boolean | Date | null)[][];
   textAoa: (string | number | boolean | null)[][];
