@@ -74,6 +74,7 @@ import { finiteChartCoordinate, sourceRowFromChartPayload } from "@/lib/recharts
 import type { TooltipPayloadEntry } from "recharts";
 import {
   aggregationLabels,
+  compactDateAxisLabel,
   NOT_INFORMED,
   type AggregationOp,
   type PieComparison,
@@ -469,6 +470,41 @@ export const scheduleCellClass: Record<ScheduleCellState, string> = {
 /** Trunca um rótulo comprido com reticências, mantendo o texto completo
  * disponível via <title> (tooltip nativo do navegador ao passar o mouse),
  * em vez de deixar o SVG quebrar ou sobrepor letras entre rótulos vizinhos. */
+/**
+ * O que impede o balão de tooltip de ultrapassar a borda do card.
+ *
+ * O balão nasce do tamanho do texto, numa linha só, e um texto como
+ * "100% do total · 1 categoria agrupada : R$ 240,00" fica mais largo que a área
+ * do gráfico. O Recharts só consegue encaixar o balão dentro da área quando ele
+ * cabe nela, então limitar a largura é o que faz o encaixe voltar a funcionar;
+ * sem isso o texto era cortado na borda e a informação ficava inalcançável.
+ *
+ * São só as três propriedades de contenção, e não o estilo inteiro: os balões
+ * do projeto têm três aparências diferentes (raio, fonte, sombra), e unificá-las
+ * aqui mudaria o desenho de quatro deles sem que ninguém tenha pedido.
+ */
+export const chartTooltipContainment = {
+  maxWidth: "14rem",
+  whiteSpace: "normal",
+  wordBreak: "break-word",
+} as const;
+
+/**
+ * "1 categoria agrupada", e não "1 categorias agrupadas".
+ *
+ * A fatia "Outros" da pizza junta o que sobrou depois das cinco maiores, e com
+ * sete categorias na planilha ela junta exatamente uma. O texto aparecia em três
+ * lugares — tooltip, legenda e tabela alternativa para leitor de tela — sempre no
+ * plural, e o caso de uma só é comum o bastante para ter chegado às imagens de
+ * referência da regressão visual, onde estava gravado como resultado esperado.
+ *
+ * Existe num lugar só porque três cópias do mesmo texto são três lugares onde
+ * ele pode divergir sem ninguém notar.
+ */
+export function groupedCategoriesLabel(count: number): string {
+  return `${count.toLocaleString("pt-BR")} ${count === 1 ? "categoria agrupada" : "categorias agrupadas"}`;
+}
+
 export function truncateLabel(value: string, max = 10): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
@@ -689,6 +725,12 @@ export function AxisTick({
   if (normalizedX === null || normalizedY === null) return null;
   const value = String(payload?.value ?? "");
   const missing = value === NOT_INFORMED;
+  // Data que não cabe vira `jan/25` em vez de `2025-01-`. Truncar uma data
+  // ocupa quase o mesmo espaço e apaga justamente o que distingue um ponto do
+  // seguinte. O valor inteiro continua no `<title>`, que é o que o leitor de
+  // tela anuncia e o que aparece ao passar o mouse.
+  const compact = max !== undefined && value.length > max ? compactDateAxisLabel(value) : null;
+  const shown = compact && compact.length <= (max ?? compact.length) ? compact : null;
   const isFirst = index === 0;
   const isLast =
     visibleTicksCount !== undefined && visibleTicksCount > 1 && index === visibleTicksCount - 1;
@@ -702,7 +744,7 @@ export function AxisTick({
       fill={missing ? "var(--muted-foreground)" : "var(--foreground)"}
     >
       <title>{value}</title>
-      {truncateLabel(value, max)}
+      {shown ?? truncateLabel(value, max)}
     </text>
   );
 }
@@ -1004,7 +1046,7 @@ export function PieLegend({
               </span>
               {entry.count ? (
                 <span className="col-span-2 pl-[18px] text-[9px] text-muted-foreground">
-                  {entry.count.toLocaleString("pt-BR")} categorias agrupadas
+                  {groupedCategoriesLabel(entry.count)}
                 </span>
               ) : null}
             </button>

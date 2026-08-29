@@ -332,6 +332,32 @@ for (const viewport of [
           }),
         )
         .toBe(true);
+
+      // Caber dentro do SVG não é a mesma coisa que ser legível: dois rótulos
+      // podem estar os dois dentro da área e escritos um por cima do outro. Era
+      // exatamente esse o estado gravado nas imagens de referência, com
+      // "2025-01-01" e "2025-02-01" sobrepostos em 320 px, e o teste dos
+      // extremos passando o tempo todo.
+      const sobreposicoes = await area.evaluate((widget) => {
+        const rotulos = [...widget.querySelectorAll(".recharts-xAxis-tick-labels text")]
+          .map((tick) => ({ caixa: tick.getBoundingClientRect(), texto: tick.textContent ?? "" }))
+          .filter((rotulo) => rotulo.caixa.width > 0)
+          .sort((a, b) => a.caixa.left - b.caixa.left);
+        const colididos: string[] = [];
+        for (let i = 1; i < rotulos.length; i += 1) {
+          const anterior = rotulos[i - 1]!;
+          const atual = rotulos[i]!;
+          // Dois pixels de folga mínima: encostar já é ilegível.
+          if (atual.caixa.left < anterior.caixa.right + 2)
+            // O texto entra na mensagem porque é ele que diz o que consertar:
+            // sem isso a falha é um par de coordenadas que não explica nada.
+            colididos.push(
+              `"${anterior.texto}" invade "${atual.texto}" em ${Math.round(anterior.caixa.right - atual.caixa.left)}px`,
+            );
+        }
+        return colididos;
+      });
+      expect(sobreposicoes, `rótulos do eixo sobrepostos em ${viewport.name}`).toEqual([]);
       await expect(area).toHaveScreenshot(`recharts-area-${viewport.name}.png`, {
         animations: "disabled",
         maxDiffPixelRatio: 0.001,
@@ -339,3 +365,54 @@ for (const viewport of [
     });
   });
 }
+
+/**
+ * O mascote mora fixo no canto inferior direito, e em telas estreitas isso cai
+ * exatamente em cima do rodapé do card: nas imagens de referência ele cobria a
+ * linha "Horizontal: Data · Vertical: Soma de Resultado" do gráfico de área.
+ *
+ * A garantia é geométrica, e não de classe CSS: o que importa é ele parar de
+ * ocupar o mesmo espaço do rodapé, não qual atributo mudou. Afirmar o atributo
+ * passaria mesmo que o recolhimento não movesse nada na tela.
+ */
+test.describe("o mascote sai da frente do gráfico no celular", () => {
+  test.use({
+    viewport: { width: 320, height: 844 },
+    screen: { width: 320, height: 844 },
+    deviceScaleFactor: 1,
+    hasTouch: true,
+    isMobile: true,
+  });
+
+  test("recolhe ao tocar no gráfico e volta ao tocar fora", async ({ page }) => {
+    await openChartDashboard(page);
+    const area = page.locator('[data-widget-id="area"]');
+    await area.scrollIntoViewIfNeeded();
+    const mascote = page.locator(".oli-mascot-group");
+    await expect(mascote).toBeVisible();
+
+    const antes = await mascote.boundingBox();
+    await area.locator(".recharts-wrapper").first().tap();
+    // A largura ocupada precisa encolher de verdade. Sem número, "recolheu"
+    // seria só a presença de um atributo.
+    await expect
+      .poll(async () => {
+        const agora = await mascote.boundingBox();
+        return agora && antes ? Math.round(agora.width) < Math.round(antes.width) : false;
+      })
+      .toBe(true);
+
+    // E volta: o assistente não pode ficar recolhido depois que a pessoa saiu
+    // do gráfico, senão a correção troca um problema por outro.
+    await page
+      .locator(".oliam-dashboard-content")
+      .first()
+      .tap({ position: { x: 5, y: 5 } });
+    await expect
+      .poll(async () => {
+        const agora = await mascote.boundingBox();
+        return agora && antes ? Math.round(agora.width) === Math.round(antes.width) : false;
+      })
+      .toBe(true);
+  });
+});

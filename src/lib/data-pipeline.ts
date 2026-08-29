@@ -174,6 +174,55 @@ const AXIS_LABEL_CHAR_PX = 6.5;
 const AXIS_LABEL_MAX_CHARS = 10;
 const AXIS_LABEL_MIN_CHARS = 4;
 
+/**
+ * Folga mínima entre dois rótulos vizinhos do eixo.
+ *
+ * Sem ela o orçamento diz que o rótulo cabe quando ele ocupa a fatia inteira,
+ * encostando no vizinho. E encostar não é o pior caso: as pontas do eixo usam
+ * âncora `start` e `end` para não vazarem do SVG, o que **desloca** o rótulo
+ * para dentro em cerca de meia largura. Medido em 320 px, era assim que o
+ * primeiro e o último rótulo invadiam o vizinho em 22 px enquanto os do meio
+ * ficavam alinhados: o orçamento estava certo para o meio e errado para as
+ * pontas, que são justamente as que a outra garantia obriga a deslocar.
+ */
+const AXIS_LABEL_GAP_PX = 8;
+
+const AXIS_MONTH_ABBREVIATIONS = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+];
+
+/**
+ * A forma curta de um rótulo de data no eixo: `jan/25`.
+ *
+ * Existe porque truncar uma data não produz nada legível. `2025-01-01` cortado
+ * em oito caracteres vira `2025-01-`, que ocupa quase o mesmo espaço e perde
+ * justamente o que distingue um ponto do seguinte. Seis caracteres dizem mês e
+ * ano, que é a leitura que uma série mensal pede.
+ *
+ * Devolve `null` quando o valor não é uma data reconhecível, e aí quem chama
+ * trunca como sempre. Reconhece as duas formas que chegam aqui: a ISO, que vem
+ * de planilha, e a brasileira, que é como a interface escreve.
+ */
+export function compactDateAxisLabel(value: string): string | null {
+  const iso = /^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/.exec(value);
+  const brasileira = /^(?:\d{1,2}\/)?(\d{1,2})\/(\d{4})$/.exec(value);
+  const ano = iso ? Number(iso[1]) : brasileira ? Number(brasileira[2]) : null;
+  const mes = iso ? Number(iso[2]) : brasileira ? Number(brasileira[1]) : null;
+  if (ano === null || mes === null || mes < 1 || mes > 12) return null;
+  return `${AXIS_MONTH_ABBREVIATIONS[mes - 1]}/${String(ano).slice(-2)}`;
+}
+
 export type AxisLabelPresentation = {
   /** Quantos caracteres do nome cabem sem colidir com o vizinho exibido. */
   maxChars: number;
@@ -224,7 +273,10 @@ export function axisLabelPresentation({
   return {
     maxChars: Math.min(
       AXIS_LABEL_MAX_CHARS,
-      Math.max(AXIS_LABEL_MIN_CHARS, Math.floor(effectiveSlot / AXIS_LABEL_CHAR_PX)),
+      Math.max(
+        AXIS_LABEL_MIN_CHARS,
+        Math.floor((effectiveSlot - AXIS_LABEL_GAP_PX) / AXIS_LABEL_CHAR_PX),
+      ),
     ),
     interval: step - 1,
   };

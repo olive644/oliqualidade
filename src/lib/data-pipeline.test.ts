@@ -4,6 +4,7 @@ import {
   aggregate,
   applyMissingRules,
   axisLabelPresentation,
+  compactDateAxisLabel,
   barChartPresentation,
   barValueLabelsFit,
   buildAreaComparisonSeries,
@@ -328,10 +329,25 @@ describe("axisLabelPresentation", () => {
     // Caso real: seis categorias de um orçamento pessoal em um cartão de um
     // terço deixam cerca de 24px por barra, e mesmo "Hip…" ocupa 28px. Ler
     // três nomes inteiros é melhor que ler seis pedaços sobrepostos.
+    //
+    // São seis caracteres, e não sete, porque o orçamento passou a reservar
+    // uma folga entre um rótulo e o vizinho. Sem ela o cálculo dizia que o
+    // rótulo cabia ocupando a fatia inteira, encostado no seguinte, e nas
+    // pontas do eixo — que usam âncora `start` e `end` para não vazar do SVG —
+    // isso virava sobreposição de verdade.
     expect(axisLabelPresentation({ count: 6, scrollable: false, span: 1, slotPx: 88 })).toEqual({
-      maxChars: 7,
+      maxChars: 6,
       interval: 1,
     });
+  });
+
+  it("reserva folga entre um rótulo e o vizinho, e não só a largura dele", () => {
+    // Com fatia de 65px e 6,5px por caractere, dez caracteres ocupam a fatia
+    // inteira. O orçamento antigo dizia que cabiam dez; o novo desconta a
+    // folga e diz oito, que é o que de fato cabe sem encostar.
+    expect(
+      axisLabelPresentation({ count: 10, scrollable: false, span: 3, slotPx: 65, plotWidth: 650 }),
+    ).toEqual({ maxChars: 8, interval: 0 });
   });
 
   it("mostra todos os rótulos inteiros quando há espaço de sobra", () => {
@@ -1303,5 +1319,35 @@ describe("filterDashboardRows", () => {
         "sul",
       ),
     ).toEqual([rows[1]]);
+  });
+});
+
+describe("compactDateAxisLabel", () => {
+  it("encurta a data ISO para mês e ano", () => {
+    expect(compactDateAxisLabel("2025-01-01")).toBe("jan/25");
+    expect(compactDateAxisLabel("2026-12-31")).toBe("dez/26");
+    // Sem o dia também vale: uma série mensal costuma vir assim.
+    expect(compactDateAxisLabel("2025-07")).toBe("jul/25");
+  });
+
+  it("encurta a data brasileira, que é como a interface escreve", () => {
+    expect(compactDateAxisLabel("01/03/2025")).toBe("mar/25");
+    expect(compactDateAxisLabel("03/2025")).toBe("mar/25");
+  });
+
+  it("devolve nulo no que não é data, para o eixo truncar como sempre", () => {
+    // O ponto desta garantia é que uma categoria não vire data por acidente.
+    // "Compras" e "12,5" não têm forma de data; "2025-13-01" tem a forma mas
+    // não tem o mês, e aceitar isso produziria um rótulo inventado.
+    expect(compactDateAxisLabel("Compras")).toBeNull();
+    expect(compactDateAxisLabel("12,5")).toBeNull();
+    expect(compactDateAxisLabel("2025-13-01")).toBeNull();
+    expect(compactDateAxisLabel("")).toBeNull();
+  });
+
+  it("mantém a leitura curta o bastante para caber onde a inteira não cabia", () => {
+    // Seis caracteres contra dez: é essa diferença que tira a sobreposição das
+    // pontas do eixo, onde a âncora desloca o rótulo para dentro.
+    expect(compactDateAxisLabel("2025-01-01")).toHaveLength(6);
   });
 });

@@ -40,6 +40,7 @@ import {
   paretoChartValidity,
 } from "@/lib/chart-validity";
 import {
+  chartTooltipContainment,
   CalculationButton,
   compactAxisValue,
   FieldDropSlot,
@@ -293,6 +294,7 @@ export function ParetoWidgetBody({
                     <ChartTooltip
                       cursor={{ fill: "var(--muted)", opacity: 0.35 }}
                       contentStyle={{
+                        ...chartTooltipContainment,
                         background: "var(--popover)",
                         border: "1px solid var(--border)",
                         borderRadius: 12,

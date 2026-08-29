@@ -10243,3 +10243,166 @@ interface.
 `0.10.0-beta.17` para `0.10.0-beta.18`, com entrada no Centro de Atualizações: a
 seleção passar a descrever outra categoria depois de um filtro é visível para
 quem usa, e o histograma inteiro apagado também.
+## 161. A estabilização visual dos widgets, e a régua que faltava para o eixo
+
+Segunda parte da lista de regressões relatada pelo usuário. A seção 160 fechou o
+único ponto de comportamento; esta fecha os de apresentação, que compartilham as
+mesmas imagens de referência e por isso vieram juntos.
+
+As duas decisões de desenho foram do usuário: **altura por tamanho do widget com
+rolagem interna**, e **mascote recolhido durante a interação**.
+
+### O eixo: a colisão não era de data comprida, era de âncora
+
+A hipótese natural, e a que o relato sugeria, é que `2025-01-01` é longo demais.
+Medido, não era isso.
+
+```text
+23 rótulos, largura 63px cada, passo entre eles 69px
+distância entre o 1º e o 2º: 38px
+```
+
+Os rótulos do meio ficam com 6 px de folga. Quem colide é o **primeiro e o
+último**, porque `AxisTick` usa âncora `start` e `end` neles para não vazarem do
+SVG, e isso desloca o rótulo para dentro em cerca de meia largura. Ou seja, a
+garantia que existia — "os ticks extremos ficam dentro do SVG" — criava a
+colisão que nenhuma garantia media.
+
+Duas mudanças saíram daí, e as duas têm número:
+
+- o orçamento de largura passou a **reservar 8 px de folga** entre um rótulo e o
+  vizinho, em vez de aprovar um rótulo que ocupa a fatia inteira encostado no
+  seguinte;
+- data que não cabe vira `jan/25` em vez de `2025-01-`. Truncar uma data ocupa
+  quase o mesmo espaço e apaga justamente o que distingue um ponto do seguinte.
+  São 6 caracteres contra 10, e é essa diferença que absorve o deslocamento das
+  pontas. O valor inteiro continua no `<title>`.
+
+### A régua nova, e por que a antiga passava
+
+O teste do eixo verificava se o primeiro e o último rótulo estavam dentro do
+SVG. Dois rótulos podem estar os dois dentro da área e escritos um por cima do
+outro, e era exatamente esse o estado gravado nas imagens de referência.
+
+A garantia nova percorre os rótulos por posição e reprova qualquer par com menos
+de 2 px entre eles, nos seis viewports. Ela reprova antes da correção e passa
+depois. A mensagem de falha nomeia os rótulos e o tamanho da invasão, porque
+sem isso a falha é um par de coordenadas que não explica nada:
+
+```text
+"2025-01-01" invade "2025-02-01" em 22px
+```
+
+### A altura dos cards, e uma primeira tentativa que regrediu
+
+O card é item de grade, e a grade estica todo item da linha até a altura do mais
+alto. Uma métrica ao lado de um gráfico de barras virava um card com o dobro de
+vazio dentro.
+
+A primeira implementação trocou o piso `min-h` por altura declarada, com os
+mesmos valores. **Reprovou na inspeção visual**: os gráficos apareceram cortados
+no meio em todos os cards. A medição explicou por quê, e o número é grande:
+
+| Widget `md` | Altura do conteúdo |
+| --- | ---: |
+| Dispersão | 440 px |
+| Pareto | 569 px |
+| Radar | 571 px |
+| Barras | 635 px |
+| Área | 647 px |
+| Histograma | 815 px |
+| Pizza | 833 px |
+
+O `min-h` de um `md` era **256 px**. Ele nunca foi um orçamento de conteúdo, e
+lê-lo como tal encolhia todo card a menos da metade do que ele precisa.
+
+A implementação que ficou usa o intervalo, e não um valor: `min-h` continua o
+piso, entra um **teto medido** por tamanho, e quem para de esticar é
+`items-start` na grade. Com teto de 640 px num `md`, cinco dos sete cabem
+inteiros e os dois mais altos rolam.
+
+Fica registrado porque a tentativa errada é a leitura mais natural do enunciado,
+e a próxima pessoa vai chegar nela.
+
+### O corte que era o mesmo problema pelo lado oposto
+
+`.oliam-widget` tinha `overflow: hidden`. A legenda da pizza terminava no meio
+de uma linha, sem nenhuma forma de alcançar o resto — não era um card sobrando
+espaço, era um card faltando. Passou a `hidden auto`: horizontal continua
+escondido, porque o gráfico que rola de lado tem o próprio container e um
+segundo competiria com ele; vertical rola.
+
+Teto e rolagem não fazem sentido separados: teto sem rolagem só mudaria o corte
+de lugar.
+
+O papel não rola, então a exportação desfaz os dois (`height: auto`,
+`overflow: visible`), senão o PNG e o PDF sairiam com o conteúdo cortado.
+
+### O tooltip que ultrapassava o card
+
+O balão nasce do tamanho do texto, numa linha só, e `100% do total · 1 categoria
+agrupada : R$ 240,00` fica mais largo que a área do gráfico. O Recharts só
+consegue encaixar o balão dentro da área quando ele **cabe** nela, então limitar
+a largura é o que faz o encaixe voltar a funcionar.
+
+Entrou só a contenção — largura máxima, quebra de linha — e não o estilo inteiro:
+os balões do projeto têm três aparências diferentes de raio, fonte e sombra, e
+unificá-las mudaria o desenho de quatro deles sem que ninguém tenha pedido. São
+sete pontos de chamada compartilhando a mesma constante.
+
+### O mascote
+
+Ele mora fixo no canto inferior direito, e em 320 px isso cai em cima do rodapé
+do card. As outras duas saídas foram recusadas pelo usuário com razão: esconder
+no celular tira o assistente de onde a leitura rápida acontece, e ancorá-lo na
+barra inferior gasta altura permanente, que é o que falta nessas telas.
+
+Recolhido, ele encolhe para uma aba na borda enquanto a pessoa mexe num gráfico,
+e volta ao primeiro toque fora dele. Só no toque: no desktop o ponteiro não fica
+em cima do que está sendo lido.
+
+A garantia é **geométrica**, e não de atributo: o teste compara a largura ocupada
+antes e depois. Afirmar que o atributo mudou passaria mesmo que nada se movesse
+na tela.
+
+### O plural
+
+`1 categorias agrupadas` aparecia em três lugares — tooltip, legenda e tabela
+alternativa para leitor de tela — e duas vezes na mesma imagem de referência. A
+fatia "Outros" junta o que sobra depois das cinco maiores, então uma planilha com
+sete categorias produz exatamente uma. Virou uma função só, porque três cópias
+do mesmo texto são três lugares onde ele pode divergir.
+
+### O que esta seção não faz
+
+Dois itens da lista relatada ficaram de fora, e vale dizer qual é o estado de
+cada um.
+
+**Reteste da exportação depois de interações** não entrou. A exportação já
+desfaz o teto e a rolagem, o que é a parte que esta mudança podia quebrar, mas
+não há teste percorrendo interagir e depois exportar.
+
+**Captura do widget móvel inteiro** já era verdade antes: a captura de 320 px é
+do widget inteiro, com cabeçalho, filtro, métrica, gráfico, detalhe e rodapé. Foi
+conferido nas próprias imagens de referência.
+
+### As imagens de referência
+
+Todas as onze mudam, porque quase toda mudança aqui é de pixel. Elas são geradas
+na CI, porque o Playwright as nomeia com o sufixo da plataforma e uma gerada no
+Windows nunca casa. **Precisam ser conferidas visualmente antes de versionar**: a
+primeira leva desta série saiu quase em branco e quase foi versionada assim.
+
+### Verificação
+
+Suíte completa com 1.199 testes, build e orçamento aprovados. O chunk
+`global-search` ficou em 416,7 KiB de um teto de 450,0. A galeria de regressão
+visual caiu de 3.386 para 3.004 px de altura, com o mesmo conteúdo.
+
+Um teste de unidade precisou mudar de número: `axisLabelPresentation` passou a
+devolver 6 caracteres onde devolvia 7, que é o efeito direto da folga reservada.
+
+### Versão
+
+`0.10.0-beta.18` para `0.10.0-beta.19`, com entrada no Centro de Atualizações:
+tudo aqui é visível para quem usa.

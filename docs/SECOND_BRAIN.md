@@ -714,6 +714,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Rótulo de eixo tem folga reservada, e data que não cabe vira `jan/25` | a colisão em 320 px não era de data comprida: os rótulos do meio tinham 6 px de folga e só o primeiro e o último colidiam, porque a âncora `start`/`end` que os mantém dentro do SVG os desloca meia largura para dentro | o orçamento reserva 8 px entre vizinhos, e a forma curta da data absorve o deslocamento; truncar data não serve, porque `2025-01-` ocupa quase o mesmo espaço e apaga o que distingue um ponto do outro — ver [[CURRENT_STATE_AUDIT#161. A estabilização visual dos widgets, e a régua que faltava para o eixo]] |
+| `min-h` de widget é piso, e nunca orçamento de conteúdo | trocar `min-h` por altura declarada com os mesmos valores cortou o gráfico de todo card: um `md` tem 256 px de piso e conteúdo real entre 440 e 833 px | a altura do card é um intervalo — piso `min-h`, teto medido, `items-start` na grade para não esticar, e rolagem interna no que exceder; teto e rolagem não fazem sentido separados |
+| Garantia de interface é geométrica, e não de atributo | "o mascote recolheu" afirmado pelo atributo passaria mesmo que nada se movesse na tela | o teste compara a largura ocupada antes e depois; vale igual para colisão de rótulo, que é comparada por posição e não por contagem de elementos |
 | Estado de seleção de widget é guardado por identidade, e nunca por índice | os quatro widgets com seleção persistente guardavam a posição e nenhum tinha invalidação; depois de um filtro a posição apontava para outro item, e o painel de detalhe inteiro passava a descrever uma categoria que ninguém escolheu | quando a identidade some da série a seleção é desfeita: melhor nenhuma seleção do que a de outra coisa; `hover` continua por índice porque nasce e morre na mesma renderização — ver [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]] |
 | Teste que não separa os dois lados é pior que teste nenhum | o teste de componente da dispersão foi escrito, medido e descartado: o gráfico dela não redesenha os símbolos depois de uma troca de dado no jsdom, então ele passava igual com e sem a correção | no lugar dele ficou a garantia da regra de identidade, com a ausência registrada no próprio arquivo, para ninguém procurar o teste que falta e concluir que foi esquecido |
 | Uma célula que o leitor principal não consegue representar vira vazio na comparação, e não um marcador | `comparable` chamava `toISOString()` numa data inválida e lançava; como a verificação inteira é envolvida por um `try/catch`, o arquivo passava a ser importado **sem conferência nenhuma, em silêncio** | vazio faz a célula seguir as regras que já existem — se os dois leitores exibem o mesmo texto não há divergência, e se o outro tem valor a célula é reparada com ele; um marcador não vazio inventaria divergência em toda célula desse tipo — ver [[CURRENT_STATE_AUDIT#159. A verificação era pulada inteira, em silêncio, por uma data inválida]] |
@@ -1005,6 +1008,12 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   seguir a identidade do item, e não a posição) avança a iteração: é correção de
   defeito. Ver
   [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]].
+
+- `v0.10.0-beta.19` (datas do eixo em forma curta, altura do card por tamanho
+  com rolagem, tooltip contido, mascote recolhido durante a interação e plural
+  de "1 categoria agrupada") avança a iteração: é acabamento visível, com as
+  duas decisões de desenho tomadas pelo usuário. Ver
+  [[CURRENT_STATE_AUDIT#161. A estabilização visual dos widgets, e a régua que faltava para o eixo]].
 
 - `v0.10.0-beta.11` (botão para parar a resposta, mensagens distintas para os
   três prazos, estado de resposta interrompida e agrupamento das atualizações

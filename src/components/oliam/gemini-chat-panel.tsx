@@ -6,6 +6,7 @@ import type { Dashboard, Row, SheetData } from "@/lib/types";
 import { askGemini, AssistantStreamError, type GeminiChatMessage } from "@/lib/gemini-client";
 import { ASSISTANT_STOPPED_MESSAGE, type AssistantStreamFailure } from "@/lib/assistant-stream";
 import { buildLiveSuggestedPrompts, type LiveDashboardContext } from "@/lib/assistant-context";
+import { isCoarsePointer } from "./widget-support";
 import { OliFace } from "./oli-face";
 import { OliLoader } from "./oli-loader";
 
@@ -67,6 +68,21 @@ export function GeminiChatPanel({
   liveView: LiveDashboardContext;
 }) {
   const [open, setOpen] = useState(false);
+  /**
+   * O mascote se recolhe enquanto a pessoa está mexendo num gráfico.
+   *
+   * Ele mora fixo no canto inferior direito, e em 320 px e no modo horizontal
+   * isso cai exatamente em cima do rodapé do card: nas imagens de referência ele
+   * cobria a linha "Horizontal: Data · Vertical: Soma de Resultado" do gráfico
+   * de área. Esconder no celular resolveria a sobreposição e tiraria o
+   * assistente de onde a leitura rápida acontece; ancorá-lo na barra inferior
+   * gastaria altura permanente, que é o que falta nessas telas.
+   *
+   * Recolhido, ele encolhe para uma aba discreta na borda e volta assim que a
+   * pessoa toca fora de um gráfico. Ou seja, ele sai justamente enquanto
+   * atrapalha, e continua alcançável o tempo todo.
+   */
+  const [recolhido, setRecolhido] = useState(false);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState<ChatEntry[]>([]);
@@ -214,8 +230,21 @@ export function GeminiChatPanel({
 
   const canRetry = !loading && Boolean(lastQuestion) && entries.at(-1)?.status !== "concluida";
 
+  useEffect(() => {
+    // Só no toque. No desktop o ponteiro não fica em cima do que está sendo
+    // lido, e recolher ali seria movimento sem motivo.
+    if (!isCoarsePointer()) return;
+    // Com a conversa aberta o mascote já não é o que está por cima.
+    if (open) return;
+    const dentroDeGrafico = (alvo: EventTarget | null) =>
+      alvo instanceof Element && alvo.closest(".recharts-wrapper, .oliam-widget-detail") !== null;
+    const aoTocar = (evento: PointerEvent) => setRecolhido(dentroDeGrafico(evento.target));
+    document.addEventListener("pointerdown", aoTocar, { passive: true });
+    return () => document.removeEventListener("pointerdown", aoTocar);
+  }, [open]);
+
   return (
-    <div className="oli-assistant-shell">
+    <div className="oli-assistant-shell" data-recolhido={recolhido ? "true" : undefined}>
       {open && (
         <section className="oli-chat-panel" aria-label="Conversa com o assistente Oli">
           <header className="oli-chat-header">

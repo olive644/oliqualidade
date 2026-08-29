@@ -20,6 +20,7 @@ import {
 } from "@/lib/data-pipeline";
 import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import {
+  chartTooltipContainment,
   CalculationButton,
   EmptyWidget,
   FieldDropSlot,
@@ -240,6 +241,7 @@ export function MetricWidgetBody({
                           </defs>
                           <ChartTooltip
                             contentStyle={{
+                              ...chartTooltipContainment,
                               background: "var(--popover)",
                               border: "1px solid var(--border)",
                               borderRadius: 10,

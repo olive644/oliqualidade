@@ -668,11 +668,34 @@ export function spanClass(span: WidgetSpan): string {
 // tamanho "Alto") fiquem esticados por engano. Em telas de desktop
 // (lg: 1024px+) o piso cai um pouco: menos espaço vazio desperdiçado sem
 // afetar o toque em mobile, que já usa outras regras de tamanho mínimo.
+/**
+ * A altura do card sai do tamanho escolhido, e não do vizinho mais alto.
+ *
+ * Antes havia só um piso (`min-h`), e o card é item de grade: a grade estica
+ * todo item da linha até a altura do mais alto, então uma métrica ao lado de um
+ * gráfico de barras ganhava um vazio do tamanho do gráfico. Quem para de
+ * esticar é o `items-start` da grade; o que este cálculo dá é o intervalo em
+ * que cada tamanho pode crescer.
+ *
+ * Os tetos saem de medição, e não do nome do tamanho. Medido na galeria de
+ * regressão visual, a altura de conteúdo de um card `md` vai de 440 px
+ * (dispersão) a 833 px (pizza), contra os 256 px que o `min-h` sugeria. Fixar a
+ * altura no valor antigo cortava o gráfico de quase todo widget, então o teto
+ * fica onde a maioria cabe inteira e só os dois mais altos rolam.
+ *
+ * O outro lado do mesmo problema é o card que **não cabe**: a legenda da pizza
+ * era cortada no meio, sem como alcançar o resto, porque `.oliam-widget` tem
+ * `overflow: hidden`. Teto sem rolagem só mudaria o corte de lugar, então os
+ * dois andam juntos e não fazem sentido separados.
+ *
+ * A tabela continua de fora: ela já governa a própria altura e tem rolagem
+ * própria.
+ */
 export function sizeClass(size: WidgetSize, type: WidgetType): string {
   if (type === "table") return "";
-  if (size === "sm") return "min-h-36 lg:min-h-28";
-  if (size === "md") return "min-h-80 lg:min-h-64";
-  return "min-h-[28rem] lg:min-h-[22rem]";
+  if (size === "sm") return "min-h-36 max-h-[22rem] lg:min-h-28";
+  if (size === "md") return "min-h-80 max-h-[40rem] lg:min-h-64";
+  return "min-h-[28rem] max-h-[52rem] lg:min-h-[22rem]";
 }
 
 /**
