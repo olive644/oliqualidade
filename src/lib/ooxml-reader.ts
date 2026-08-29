@@ -2,6 +2,7 @@ import { strFromU8 } from "fflate";
 import * as XLSX from "xlsx";
 
 import { isOoxmlArchive, unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
+import type { SheetCellFormatLookup } from "@/lib/import";
 import { setWorksheetCellAtAddress, worksheetCellAtAddress } from "@/lib/worksheet-cell";
 import { stripXmlMarkup } from "@/lib/xml-text";
 
@@ -387,6 +388,46 @@ function readWorkbookParts(archive: OoxmlArchive) {
 }
 
 /**
+ * Monta a consulta de formato de uma aba, no armazenamento mais barato.
+ *
+ * Medido em 120 mil linhas por 8 colunas com uma coluna de data: guardar o par
+ * completo por célula custa 10,8 MiB, só o formato por célula custa 6,3 MiB, e
+ * um formato por coluna é praticamente de graça. Como 94% das colunas de data
+ * do corpus real têm um formato só, a coluna é o caso comum e a célula é a
+ * exceção.
+ */
+function buildCellFormats(
+  porCelula: Map<string, string>,
+  textAoa: OoxmlSheetGrid["textAoa"],
+  colunas: number,
+): SheetCellFormatLookup {
+  // Uma coluna cujas células de data compartilham o mesmo formato guarda um
+  // valor só; as demais mantêm as entradas por célula.
+  const porColuna: (string | null)[] = new Array(colunas).fill(null);
+  const formatosDaColuna = new Map<number, Set<string>>();
+  for (const [chave, formato] of porCelula) {
+    const coluna = Number(chave.slice(chave.indexOf(",") + 1));
+    const conhecidos = formatosDaColuna.get(coluna) ?? new Set<string>();
+    conhecidos.add(formato);
+    formatosDaColuna.set(coluna, conhecidos);
+  }
+  for (const [coluna, formatos] of formatosDaColuna)
+    if (formatos.size === 1) porColuna[coluna] = [...formatos][0]!;
+
+  for (const chave of [...porCelula.keys()]) {
+    const coluna = Number(chave.slice(chave.indexOf(",") + 1));
+    if (porColuna[coluna] !== null) porCelula.delete(chave);
+  }
+
+  return (linha, coluna) => {
+    const formato = porColuna[coluna] ?? porCelula.get(`${linha},${coluna}`);
+    if (formato === undefined || formato === null) return undefined;
+    const exibido = textAoa[linha]?.[coluna];
+    return { z: formato, ...(typeof exibido === "string" ? { w: exibido } : {}) };
+  };
+}
+
+/**
  * A aba do pacote como grade, sem worksheet nenhuma.
  *
  * É o equivalente OOXML do que `csv-stream.ts` produz para CSV, e existe pela
@@ -418,6 +459,19 @@ export type OoxmlSheetGrid = {
   textAoa: (string | number | boolean | null)[][];
   hiddenRows: number[];
   mergedRanges: string[];
+  /**
+   * Formato numérico e texto exibido das células de data.
+   *
+   * A normalização lê os dois da célula de origem para formatar uma data, e
+   * numa fonte de grade essa célula não existe. Sem esta consulta a data é
+   * descartada e a coluna some, que foi o que o corpus mostrou.
+   *
+   * O armazenamento segue o que a medição disse: um formato por coluna quando
+   * ela é homogênea, o que é praticamente de graça, e um mapa por célula só nas
+   * que não são, que no corpus são 6% das colunas de data. O texto exibido não
+   * é guardado de novo, porque `textAoa` já o tem.
+   */
+  cellFormats: SheetCellFormatLookup;
 };
 
 /**
@@ -477,6 +531,9 @@ export function readOoxmlSheetGrid(
     new Array<string | number | boolean | null>(colunas).fill(null),
   );
 
+  // Só as células de data entram: são as únicas que a normalização precisa
+  // consultar, e guardar as outras devolveria o custo que a grade remove.
+  const formatosDeData = new Map<string, string>();
   for (const cell of parsed) {
     const decoded = XLSX.utils.decode_cell(cell.address);
     const linha = decoded.r - usado.s.r;
@@ -484,6 +541,7 @@ export function readOoxmlSheetGrid(
     if (linha < 0 || coluna < 0 || linha >= linhas || coluna >= colunas) continue;
     aoa[linha]![coluna] = cell.dateValue ?? cell.rawValue ?? "";
     textAoa[linha]![coluna] = cell.displayValue;
+    if (cell.dateValue) formatosDeData.set(`${linha},${coluna}`, cell.numberFormat);
   }
 
   return {
@@ -492,6 +550,7 @@ export function readOoxmlSheetGrid(
     textAoa,
     hiddenRows,
     mergedRanges,
+    cellFormats: buildCellFormats(formatosDeData, textAoa, colunas),
   };
 }
 

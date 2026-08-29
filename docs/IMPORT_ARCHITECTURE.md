@@ -550,9 +550,18 @@ partir de `cell.z` e `cell.w` **da célula de origem**. Numa worksheet mínima n
 existe célula, a data é descartada, a coluna de data perde valor ou some
 inteira, e a coluna que some desloca a detecção de cabeçalho.
 
-**A grade de OOXML, como está, não substitui a worksheet em nenhuma planilha
-real do corpus.** A substituibilidade está provada só nos casos sintéticos sem
-data.
+**Isso foi resolvido**: a grade passou a carregar o formato das datas, por
+coluna quando ela é homogênea, e 17 das 25 planilhas reais passaram a normalizar
+igual. O custo foi zero, porque o desenho por coluna sai de graça: a grade
+entregue custa os mesmos 61,3 MiB, contra 235,8 da worksheet. Ver
+[[CURRENT_STATE_AUDIT#153. A grade de OOXML ligada à normalização: de 25 divergências para 8]].
+
+As 8 que restam têm duas causas. Fórmula volátil, que o caminho atual recalcula
+e uma grade não tem como recalcular, porque exige o texto da fórmula e acesso às
+outras células: essa é a fronteira real da representação. E recorte sem
+metadado, porque `minimalWorksheetForGrid` leva só o `!ref` e o caminho atual
+remapeia mesclagem e linha oculta para o recorte: essa se fecha, e é o próximo
+passo.
 
 O teste natural do outro lado, "em planilha real sem data a grade é
 substituível", não pôde ser escrito: não existe planilha assim no corpus. Num

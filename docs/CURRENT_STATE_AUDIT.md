@@ -9440,3 +9440,100 @@ lacuna, saiu junto: os dois tipos agora coincidem de verdade.
 
 Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
 visível para quem usa, e nenhum byte de comportamento mudou.
+## 153. A grade de OOXML ligada à normalização: de 25 divergências para 8
+
+A seção 151 encontrou o bloqueio e mediu que valia a pena fechá-lo. Esta fecha.
+
+### O que a normalização passou a aceitar
+
+`formatTemporalCell` decide granularidade, fuso e formato a partir de `cell.z` e
+`cell.w` da célula de origem, e numa worksheet mínima não existe célula. Agora
+existe uma fonte de reserva: `SheetCellFormatLookup`, uma consulta por
+coordenada da grade que devolve exatamente esses dois campos, e nada mais.
+
+O tipo é estreito de propósito. `SheetCellFormat` tem só `z` e `w`, então uma
+`XLSX.CellObject` continua servindo sem conversão, e uma fonte de grade
+consegue responder sem inventar uma célula inteira. A worksheet, quando tem a
+célula, continua tendo precedência: a consulta é reserva, não substituição.
+
+Ela desce por `SheetToRowsOptions.cellFormats` e por `SheetGridSource.cellFormats`,
+e os recortes a remapeiam: `sliceCellFormatsRegion` desloca linha e coluna, e
+`sliceCellFormatsSection` escolhe as linhas pela mesma lista que
+`sliceGridSection` usa, agora extraída em `sectionGridRows`. Sem o remapeamento,
+um recorte consultaria o formato da célula errada e a data sairia com a
+granularidade de outra coluna.
+
+### O que a grade de OOXML passou a carregar
+
+Só as células de data, e no armazenamento que a seção 151 mediu: um formato por
+coluna quando ela é homogênea, e um mapa por célula só nas que não são. O texto
+exibido não é guardado de novo, porque `textAoa` já o tem.
+
+### O resultado
+
+| | Antes | Depois |
+| --- | ---: | ---: |
+| Planilhas reais que normalizam igual pela grade | 0 de 25 | **17 de 25** |
+
+E o custo do que foi acrescentado, medido em 120 mil linhas por 8 colunas com
+uma coluna de data:
+
+| Representação | Memória viva |
+| --- | ---: |
+| Worksheet, como o leitor monta hoje | 235,8 MiB |
+| Grade, antes de carregar formato | 61,3 MiB |
+| **Grade como é entregue, com o formato ligado** | **61,3 MiB** |
+
+**O desenho por coluna saiu de graça**, como a medição da seção 151 previa: a
+grade completa fica **74% abaixo** da worksheet. O mapa por célula, que custaria
+6,3 MiB, só é usado nas colunas heterogêneas, que no corpus são 13 de 214.
+
+### As duas causas do que ainda diverge
+
+**Fórmula volátil.** O caminho atual **recalcula** uma fórmula que depende de
+hoje, para um cronograma de 2023 não mostrar o número de dias que faltavam
+quando o arquivo foi salvo. Foi isso que apareceu nas colunas de "dias
+restantes", com o caminho atual dizendo `-836` e a grade `-548`. Recalcular
+exige o texto da fórmula **e** acesso às outras células, que é justamente o que
+uma grade não é. Esta não se fecha carregando mais um campo, e é a fronteira
+real da representação.
+
+**Recorte sem metadado.** Ao dividir uma aba em seções, a worksheet do recorte
+vem de `minimalWorksheetForGrid`, que leva só o `!ref`, enquanto o caminho atual
+remapeia mesclagem e linha oculta para o recorte. Sem a mesclagem, uma seção de
+poucas linhas pode não produzir linha nenhuma; quando isso acontece a divisão
+inteira é descartada e a aba fica junta. Foi o que se viu num plano de ação: o
+caminho atual entrega `Causa 1` em duas opções e a grade entrega uma. Esta se
+fecha, e é o próximo passo.
+
+Nenhuma das duas perde dado. As linhas continuam lá, agrupadas de outro jeito ou
+com um número recalculado a menos, e o teste do corpus cobra isso: nenhuma
+divergência pode ser de um tipo fora da lista conhecida.
+
+### Um erro de leitura de código que quase virou conclusão errada
+
+Ao investigar as abas que "sumiam", a primeira hipótese foi perda de dado. Ela
+estava errada: as abas não sumiam, a aba deixava de ser **dividida**, e as
+linhas apareciam juntas em vez de separadas. A diferença entre as duas
+descrições é o que separa um defeito grave de uma diferença de agrupamento, e
+custou uma sonda para ficar clara.
+
+A segunda hipótese, de que a grade de texto divergia, também estava errada: as
+duas grades são idênticas, célula a célula. O que diverge vem depois, na
+construção da worksheet do recorte.
+
+### Verificação
+
+Rede de paridade gravada antes e conferida depois: **110 abas de 25 arquivos
+reais, resultado idêntico**. Isso vale mais que o normal aqui, porque a mudança
+é dentro de `normalizeRawRow`, que é onde toda data de toda importação passa.
+
+Suíte completa com 1.161 testes. Os novos: coluna de data sobrevivendo pela
+grade, a consulta respondendo por coluna e não guardando o texto de novo, e no
+corpus o piso de 17 planilhas que precisam continuar coincidindo.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nenhum chamador
+usa a fonte de grade para OOXML ainda, e o comportamento da importação é o
+mesmo.
