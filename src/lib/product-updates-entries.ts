@@ -1,4 +1,4 @@
-import { APP_VERSION, type ProductUpdate } from "@/lib/product-updates";
+import type { ProductUpdate } from "@/lib/product-updates";
 
 /**
  * O texto de cada entrega, do mais recente para o mais antigo.
@@ -11,8 +11,21 @@ import { APP_VERSION, type ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-29-graficos-em-biblioteca-nova",
+    version: "0.10.0-beta.15",
+    date: "2026-08-29",
+    title: "Os gráficos passaram para uma versão nova da biblioteca que os desenha",
+    summary:
+      "Todos os gráficos do painel foram migrados para a versão 3 da biblioteca de desenho. A leitura, as cores e o comportamento continuam os mesmos: a mudança é de motor, não de aparência.",
+    highlights: [
+      "Onze imagens de referência passaram a guardar como cada gráfico deve aparecer, nos dois temas e em cinco larguras de tela. Se um ajuste futuro mudar o desenho sem querer, isso é percebido antes de chegar até você.",
+      "A troca traz as correções e o suporte da versão nova, que a anterior já não recebe.",
+      "Nenhum painel precisa ser refeito, e nada muda no que você já montou.",
+    ],
+  },
+  {
     id: "2026-08-29-histograma-e-dispersao-nao-somem-mais",
-    version: APP_VERSION,
+    version: "0.10.0-beta.14",
     date: "2026-08-29",
     title: "Histograma e dispersão param de perder a configuração ao recarregar",
     summary:
@@ -25,7 +38,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-28-csv-grande-lido-em-blocos",
-    version: APP_VERSION,
+    version: "0.10.0-beta.13",
     date: "2026-08-28",
     title: "Arquivo CSV grande agora é lido aos poucos, sem carregar tudo de uma vez",
     summary:
@@ -40,7 +53,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-27-leitura-com-progresso-real",
-    version: APP_VERSION,
+    version: "0.10.0-beta.12",
     date: "2026-08-27",
     title: "A importação passou a mostrar o quanto já andou",
     summary:
@@ -54,7 +67,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-27-parar-resposta-do-assistente",
-    version: APP_VERSION,
+    version: "0.10.0-beta.11",
     date: "2026-08-27",
     title: "Agora dá para parar a resposta do Oli no meio",
     summary:
@@ -69,7 +82,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-26-limpeza-de-artefato",
-    version: APP_VERSION,
+    version: "0.10.0-beta.10",
     date: "2026-08-26",
     title: "Limpeza interna: saiu um mapa de código que ninguém usava",
     summary:
@@ -82,7 +95,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-26-assistente-responde-enquanto-escreve",
-    version: APP_VERSION,
+    version: "0.10.0-beta.9",
     date: "2026-08-26",
     title: "O assistente passou a responder enquanto escreve",
     summary:
@@ -96,7 +109,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-26-leitor-xml-atualizado",
-    version: APP_VERSION,
+    version: "0.10.0-beta.8",
     date: "2026-08-26",
     title: "O leitor de planilha ganhou uma base mais nova por dentro",
     summary:
@@ -109,7 +122,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-26-orcamento-pegou-carregamento",
-    version: APP_VERSION,
+    version: "0.10.0-beta.7",
     date: "2026-08-26",
     title: "Uma atualização deixaria o aplicativo mais lento para abrir, e foi barrada",
     summary:
@@ -122,7 +135,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-26-ci-na-versao-de-producao",
-    version: APP_VERSION,
+    version: "0.10.0-beta.6",
     date: "2026-08-26",
     title: "As verificações automáticas passaram a rodar na mesma versão do servidor real",
     summary:
@@ -135,7 +148,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-limite-e-verificacao",
-    version: APP_VERSION,
+    version: "0.10.0-beta.5",
     date: "2026-08-24",
     title: "O limite de uso do assistente passou a valer de verdade",
     summary:
@@ -149,7 +162,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-teste-de-componente",
-    version: APP_VERSION,
+    version: "0.10.0-beta.4",
     date: "2026-08-24",
     title: "Os widgets passaram a ser testados como a tela mostra, não só por dentro",
     summary:
@@ -162,7 +175,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-analise-estatica",
-    version: APP_VERSION,
+    version: "0.10.0-beta.3",
     date: "2026-08-24",
     title: "Todo código passa por uma varredura de segurança antes de entrar",
     summary:
@@ -175,7 +188,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-retencao-de-caches",
-    version: APP_VERSION,
+    version: "0.10.0-beta.2",
     date: "2026-08-24",
     title: "O que fica guardado agora tem prazo de validade",
     summary:
@@ -189,7 +202,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-arquivo-pelo-conteudo",
-    version: APP_VERSION,
+    version: "0.10.0-beta.1",
     date: "2026-08-24",
     title: "O arquivo passa a ser reconhecido pelo conteúdo, não pela extensão",
     summary:
@@ -203,7 +216,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-leitura-de-texto-do-xml",
-    version: APP_VERSION,
+    version: "0.9.0-beta.2",
     date: "2026-08-24",
     title: "Leitura de texto da planilha ficou mais resistente a arquivo malformado",
     summary:
@@ -215,7 +228,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-historico-do-painel",
-    version: APP_VERSION,
+    version: "0.9.0-beta.1",
     date: "2026-08-24",
     title: "Histórico do painel: volte a como estava semana passada",
     summary:
@@ -230,7 +243,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-modelos-por-finalidade",
-    version: APP_VERSION,
+    version: "0.8.0-beta.1",
     date: "2026-08-24",
     title: "Modelos por finalidade: vendas, financeiro, qualidade e estudos",
     summary:
@@ -245,7 +258,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-central-de-privacidade",
-    version: APP_VERSION,
+    version: "0.7.0-beta.1",
     date: "2026-08-24",
     title: "Central de privacidade: veja o que fica guardado e o que sai daqui",
     summary:
@@ -260,7 +273,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-meta-nao-e-resultado",
-    version: APP_VERSION,
+    version: "0.6.0-beta.2",
     date: "2026-08-24",
     title: "Painel automático deixa de montar tudo em cima da coluna de meta",
     summary:
@@ -274,7 +287,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-busca-global",
-    version: APP_VERSION,
+    version: "0.6.0-beta.1",
     date: "2026-08-24",
     title: "Busca global: ache coluna, widget, aba ou painel pelo nome",
     summary:
@@ -288,7 +301,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-barra-mobile",
-    version: APP_VERSION,
+    version: "0.5.0-beta.2",
     date: "2026-08-24",
     title: "Barra de navegação no rodapé do celular",
     summary:
@@ -302,7 +315,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-modo-leitura",
-    version: APP_VERSION,
+    version: "0.5.0-beta.1",
     date: "2026-08-24",
     title: "Modo leitura: o painel sem as ferramentas de montagem",
     summary:
@@ -316,7 +329,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-filtro-alcance",
-    version: APP_VERSION,
+    version: "0.4.0-beta.2",
     date: "2026-08-24",
     title: "O painel diz quantos widgets um filtro alcançou",
     summary:
@@ -329,7 +342,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-hierarquia-dos-widgets",
-    version: APP_VERSION,
+    version: "0.4.0-beta.1",
     date: "2026-08-24",
     title: "O resultado vem primeiro em todos os widgets",
     summary:
@@ -343,7 +356,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-widgets-adaptaveis",
-    version: APP_VERSION,
+    version: "0.3.0-beta.2",
     date: "2026-08-24",
     title: "Cada widget passa a se ajustar ao espaço que ele tem",
     summary:
@@ -357,7 +370,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-blocos-unificados",
-    version: APP_VERSION,
+    version: "0.3.0-beta.1",
     date: "2026-08-24",
     title: "Planilhas feitas de vários blocos viram uma tabela analisável",
     summary:
@@ -371,7 +384,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-linhas-de-total",
-    version: APP_VERSION,
+    version: "0.2.0-beta.4",
     date: "2026-08-24",
     title: "Linhas de total da planilha não entram mais em dobro nas contas",
     summary:
@@ -385,7 +398,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-acabamento-de-leitura",
-    version: APP_VERSION,
+    version: "0.2.0-beta.3",
     date: "2026-08-24",
     title: "Gráfico de área com legenda e valores que não se sobrepõem mais",
     summary:
@@ -400,7 +413,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-ordem-das-categorias",
-    version: APP_VERSION,
+    version: "0.2.0-beta.2",
     date: "2026-08-24",
     title: "Meses, turnos e faixas deixam de sair fora de ordem",
     summary:
@@ -416,7 +429,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-leitura-de-graficos",
-    version: APP_VERSION,
+    version: "0.2.0-beta.1",
     date: "2026-08-24",
     title: "Gráficos que dizem o que está sendo medido",
     summary:
@@ -431,7 +444,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-24-correcoes-de-estabilidade",
-    version: APP_VERSION,
+    version: "0.1.0-beta.2",
     date: "2026-08-24",
     title: "Correções de estabilidade em datas, cores, fórmulas e leitura automática",
     summary:
@@ -450,7 +463,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-23-investigacao-guiada",
-    version: APP_VERSION,
+    version: "0.1.0-beta.1",
     date: "2026-08-23",
     title: "Investigação guiada para entender o resultado",
     summary:
@@ -464,7 +477,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-23-area-analitica",
-    version: APP_VERSION,
+    version: "0.1.0-beta.1",
     date: "2026-08-23",
     title: "Gráfico de área com leitura mais clara",
     summary:
@@ -477,7 +490,7 @@ export const PRODUCT_UPDATES: ProductUpdate[] = [
   },
   {
     id: "2026-08-23-roteiro-analitico",
-    version: APP_VERSION,
+    version: "0.1.0-beta.1",
     date: "2026-08-23",
     title: "Roteiro analítico reorganizado",
     summary:

@@ -9814,3 +9814,58 @@ com 1.168 testes, e a rede de paridade da importação sem alteração.
 
 `0.10.0-beta.13` → `0.10.0-beta.14`, com entrada no Centro de Atualizações: é
 correção visível, e vale para painel já salvo, sem precisar remontar nada.
+## 157. O Centro de Atualizações reescrevia o passado a cada versão
+
+O sino mostra a versão de cada entrega ao lado da entrega. As 34 entradas
+declaravam `version: APP_VERSION`, ou seja, a versão **de hoje**, não a versão em
+que aquela mudança saiu.
+
+O efeito era o histórico inteiro se renomear a cada release. Uma correção de
+datas brasileiras entregue em `0.1.0-beta.2` aparecia como se tivesse saído em
+`0.10.0-beta.14`, e a coluna de versão, que existe para situar a pessoa no
+tempo, não dizia nada. A regra escrita no `SECOND_BRAIN` sempre foi outra: "o
+centro de atualizações mostra a versão atual no cabeçalho **e a versão de cada
+registro**".
+
+### Por que sobreviveu tanto
+
+Porque um teste exigia o erro:
+
+```ts
+expect(PRODUCT_UPDATES.every((update) => update.version === APP_VERSION)).toBe(true);
+```
+
+Qualquer tentativa de dar a uma entrada a versão correta reprovava a suíte. O
+teste que deveria proteger o registro era o que o apagava, e a cada release ele
+confirmava que estava tudo certo.
+
+### Como a versão de cada entrada foi determinada
+
+O histórico do Git sozinho não serve. A seção 116 conta que as entradas de
+várias PRs ficaram para trás e foram consolidadas depois, num commit só: o
+commit que introduziu a entrada carrega a versão da consolidação, e não a da
+entrega. Conferindo, ele erra em três casos, todos para mais
+(`acabamento-de-leitura`, `linhas-de-total` e `busca-global` saíram uma versão
+antes do que o Git sugere).
+
+A fonte usada foi a lista "Versionamento público do produto" do `SECOND_BRAIN`,
+que registra a decisão de versão de cada entrega com o link para a seção do
+audit. As três entradas de 2026-08-23 são anteriores ao versionamento público,
+que começa em `0.1.0-beta.1`, e receberam essa versão.
+
+### As garantias que ficaram no lugar
+
+Três, e nenhuma delas é a que existia:
+
+- toda entrada tem uma versão no formato esperado;
+- existe mais de uma versão distinta no histórico, que é o que falha se alguém
+  voltar a carimbar tudo com a versão de hoje;
+- a entrada mais nova é a da versão atual, porque `CURRENT_UPDATE_ID` é
+  `APP_VERSION` e é ele que acende o sino. Sem isso, uma release sem entrada
+  própria acenderia o sino para mostrar o que já estava lido.
+
+### Versão
+
+`0.10.0-beta.14` → `0.10.0-beta.15`, junto da entrada da migração dos gráficos
+para a versão 3 da biblioteca de desenho, que veio na seção anterior sem
+marcador próprio.

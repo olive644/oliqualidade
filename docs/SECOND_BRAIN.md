@@ -714,6 +714,7 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Cada entrada do Centro de Atualizações guarda a versão em que saiu, escrita à mão | as 34 entradas usavam `version: APP_VERSION`, então o histórico inteiro se renomeava a cada release e uma correção de agosto aparecia como se fosse da versão de hoje; um teste exigia exatamente isso, e era ele que travava a correção | a versão de cada entrega sai da lista "Versionamento público do produto" deste documento, e não do histórico do Git, que erra por causa da consolidação retroativa da seção 116 — ver [[CURRENT_STATE_AUDIT#157. O Centro de Atualizações reescrevia o passado a cada versão]] |
 | Teste de widget compara identidade, e não presença do tipo | o conserto indevido repunha um histograma recomendado no lugar do configurado, então "existe um histograma no painel" continuava verdadeiro enquanto o trabalho da pessoa sumia | id, título, coluna e contagem de faixas entram na asserção; foi o que separou "sobreviveu" de "foi substituído" — ver [[CURRENT_STATE_AUDIT#156. O histograma configurado era destruído ao recarregar o painel]] |
 | Quando um teste de interface falha depois de trocar dependência, listar o que existe na página antes de culpar a biblioteca | na migração para Recharts 3 o Playwright reprovava sempre no sexto widget, e duas hipóteses erradas (content-visibility e o componente sob Recharts 3) sobreviveram até a página ser sondada | listar os `data-widget-id` renderizados mostrou que `histogram` e `scatter` nunca chegaram ao DOM, o que separa "a biblioteca quebrou" de "o dado nunca chegou lá" |
 | O prazo da leitura é gasto lendo o pacote duas vezes, e não comparando | medido por dentro da verificação: a leitura independente do XML é 76% dela e a comparação com reparo é 6%; somada ao parse do leitor principal, o arquivo é lido inteiro duas vezes e isso é 63% do prazo consumido | acelerar a comparação não daria quase nada, e amostrar a verificação trocaria tempo por segurança, que não é troca aceitável; o caminho é uma leitura só alimentar as duas coisas, que é a mesma peça do OOXML progressivo — ver [[CURRENT_STATE_AUDIT#155. O orçamento de 60s virou medida, e o alvo mudou de lugar]] |
@@ -977,6 +978,11 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   recarregar o painel) avança a iteração: é correção de defeito. Ver
   [[CURRENT_STATE_AUDIT#156. O histograma configurado era destruído ao recarregar o painel]].
 
+- `v0.10.0-beta.15` (gráficos migrados para a versão 3 da biblioteca de
+  desenho, com regressão visual coberta; e cada entrada do sino passa a
+  guardar a versão em que saiu) avança a iteração. Ver
+  [[CURRENT_STATE_AUDIT#157. O Centro de Atualizações reescrevia o passado a cada versão]].
+
 - `v0.10.0-beta.11` (botão para parar a resposta, mensagens distintas para os
   três prazos, estado de resposta interrompida e agrupamento das atualizações
   por quadro de tela) avança a iteração: refina o streaming entregue em
@@ -997,7 +1003,7 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 7. Se a mudança é visível ao usuário (bug corrigido, comportamento novo,
    não um refactor interno puro): avançar `APP_VERSION`/`package.json`/
    `package-lock.json` (ver [[#Versionamento público do produto]]) e
-   publicar uma entrada em `PRODUCT_UPDATES` (ver [[#Centro de
+   publicar uma entrada em `PRODUCT_UPDATES` **com a versão escrita à mão** (ver [[#Centro de
    atualizações]]) **na mesma PR**, não depois. CI verde e autorização de
    merge não substituem esse passo — ver
    [[CURRENT_STATE_AUDIT#116. Revisão retroativa das PRs #225-#243 (8 subagentes) e correção de processo: versão, sino, testes e este registro ficaram para trás]],
