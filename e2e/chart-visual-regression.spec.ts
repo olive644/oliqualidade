@@ -161,7 +161,12 @@ async function openChartDashboard(page: Page, theme: "light" | "dark" = "light")
                 type: "pareto",
                 title: "Pareto por região",
                 groupKey: "category",
-                valueKey: "amount",
+                // Não é `amount`: essa coluna tem negativos de propósito, para
+                // exercitar a barra, e o Pareto recusa contribuição negativa
+                // porque ela distorce o acumulado. Com `amount` o widget mostra
+                // o aviso em vez de desenhar, e a espera pelo gráfico nunca
+                // termina.
+                valueKey: "score",
                 op: "sum",
                 span: 2,
                 size: "md",
@@ -199,6 +204,16 @@ async function openChartDashboard(page: Page, theme: "light" | "dark" = "light")
   );
   await page.goto(`/painel/${dashboardId}`);
   await expect(page.locator(".oliam-widget-grid")).toBeVisible();
+  // `.oliam-widget` usa `content-visibility: auto`, então o navegador pula a
+  // subárvore do widget que está fora da viewport, e o `svg` do gráfico não
+  // existe. O próprio projeto já trata disso na exportação, com
+  // `.oliam-export-mode .oliam-widget { content-visibility: visible }`, e aqui
+  // vale pela mesma razão: uma captura da galeria inteira precisa da galeria
+  // inteira desenhada.
+  await page.addStyleTag({
+    content:
+      ".oliam-widget{content-visibility:visible!important;contain-intrinsic-size:none!important}",
+  });
   for (const widgetId of [
     "metric",
     "bar",
@@ -208,7 +223,13 @@ async function openChartDashboard(page: Page, theme: "light" | "dark" = "light")
     "histogram",
     "pareto",
     "scatter",
-    "control",
+    // A carta de controle não entra nesta lista: `refreshAutomaticWidgets`
+    // regenera os tipos operacionais a cada carregamento, com id novo, então o
+    // `control` do fixture nunca chega à tela com esse nome. Conferi-la por id
+    // seria esperar por algo que o carregamento garante não existir, e não há
+    // atributo de tipo no cartão para procurá-la de outro jeito. Ela continua
+    // aparecendo na captura da galeria, que é onde a regressão visual dela é
+    // vista.
   ]) {
     await expect(
       page.locator(`[data-widget-id="${widgetId}"] svg.recharts-surface`).first(),
