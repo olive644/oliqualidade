@@ -141,7 +141,28 @@ const MERGE_FILL_MAX_LENGTH = 60;
  * (é o placeholder mostrado no filtro de intervalo de data, e o formato
  * que a detecção de tipo de coluna em format.ts reconhece).
  */
-function calendarParts(d: Date, cell?: XLSX.CellObject) {
+/**
+ * O que a formatação de data consulta na célula de origem, e nada além disso.
+ *
+ * São dois campos: o formato numérico, que decide granularidade e ordem, e o
+ * texto exibido, que o Excel já resolveu. Ter o tipo estreito é o que permite a
+ * uma fonte de grade responder a essa consulta sem existir worksheet nenhuma:
+ * uma `XLSX.CellObject` continua servindo, porque tem os dois campos.
+ */
+export type SheetCellFormat = { z?: XLSX.CellObject["z"]; w?: XLSX.CellObject["w"] };
+
+/**
+ * De onde a normalização tira formato e texto exibido de uma célula.
+ *
+ * As coordenadas são as da grade, com zero na primeira linha e na primeira
+ * coluna do intervalo usado, iguais às que `normalizeRawRow` já percorre.
+ */
+export type SheetCellFormatLookup = (
+  rowIndex: number,
+  columnIndex: number,
+) => SheetCellFormat | undefined;
+
+function calendarParts(d: Date, cell?: SheetCellFormat) {
   // Quando a data veio de XLSX.read(cellDates:true), o SheetJS preserva em
   // `w` o dia civil exibido no Excel, mas o objeto Date pode cair no dia
   // anterior no fuso do navegador (ex.: Jun-25 vira 31/05 às 21h no Brasil).
@@ -202,7 +223,7 @@ function calendarParts(d: Date, cell?: XLSX.CellObject) {
   };
 }
 
-function formatDateCell(d: Date, cell?: XLSX.CellObject): string {
+function formatDateCell(d: Date, cell?: SheetCellFormat): string {
   if (!Number.isFinite(d.getTime())) return "";
   const parts = calendarParts(d, cell);
   const dd = String(parts.day).padStart(2, "0");
@@ -210,7 +231,7 @@ function formatDateCell(d: Date, cell?: XLSX.CellObject): string {
   return `${dd}/${mm}/${parts.year}`;
 }
 
-function formatTemporalCell(d: Date, cell?: XLSX.CellObject): string {
+function formatTemporalCell(d: Date, cell?: SheetCellFormat): string {
   if (!Number.isFinite(d.getTime())) return "";
   const numberFormat = String(cell?.z ?? "")
     .replace(/"[^"]*"/g, "")
@@ -282,6 +303,7 @@ function normalizeRawRow(
   worksheet: XLSX.WorkSheet,
   rowIndex: number,
   start: XLSX.CellAddress,
+  cellFormats?: SheetCellFormatLookup,
 ): (string | number | boolean | null)[] {
   return row.map((value, columnIndex) => {
     if (!(value instanceof Date)) return value;
@@ -289,7 +311,12 @@ function normalizeRawRow(
       r: start.r + rowIndex,
       c: start.c + columnIndex,
     });
-    const sourceCell = worksheetCellAtAddress(worksheet, address);
+    const worksheetCell = worksheetCellAtAddress(worksheet, address);
+    // Numa fonte de grade a worksheet é mínima e não tem célula nenhuma. Sem a
+    // consulta de reserva, `formatTemporalCell` fica sem formato, devolve vazio
+    // e a data é descartada: era assim que toda coluna de data sumia.
+    const sourceCell: SheetCellFormat | undefined =
+      worksheetCell ?? cellFormats?.(rowIndex, columnIndex);
 
     // O SheetJS 0.20 pode tentar converter uma célula textual para Date
     // apenas porque o estilo dela é de data. Nesse caso ele entrega
@@ -305,11 +332,11 @@ function normalizeRawRow(
     // célula nunca teve data nenhuma. Recuperar a string original (mesmo
     // vazia) evita alterar o tratamento normal de datas e números
     // legítimos.
-    if (sourceCell?.t === "s" && typeof sourceCell.v === "string") {
-      return sourceCell.v || null;
+    if (worksheetCell?.t === "s" && typeof worksheetCell.v === "string") {
+      return worksheetCell.v || null;
     }
 
-    const sourceDate = sourceCell?.v instanceof Date ? sourceCell.v : value;
+    const sourceDate = worksheetCell?.v instanceof Date ? worksheetCell.v : value;
     const formatted = formatTemporalCell(sourceDate, sourceCell);
     if (formatted) return formatted;
 
@@ -1574,6 +1601,17 @@ export type SheetToRowsOptions = {
    * informações não existem numa grade de valores.
    */
   aoa?: SheetSourceGrid;
+  /**
+   * Formato e texto exibido das células, para quando não há worksheet.
+   *
+   * A normalização precisa dos dois para formatar uma data, e os lê da célula
+   * de origem. Numa fonte de grade essa célula não existe, e sem esta consulta
+   * a data é descartada em silêncio, levando a coluna junto.
+   *
+   * A worksheet, quando tem a célula, continua tendo precedência: esta é uma
+   * fonte de reserva, e não uma substituição.
+   */
+  cellFormats?: SheetCellFormatLookup;
 };
 
 export function sheetToRows(
@@ -1590,7 +1628,9 @@ export function sheetToRows(
       header: 1,
       defval: null,
     });
-  const sourceAoa = rawAoa.map((row, rowIndex) => normalizeRawRow(row, ws, rowIndex, range.s));
+  const sourceAoa = rawAoa.map((row, rowIndex) =>
+    normalizeRawRow(row, ws, rowIndex, range.s, options?.cellFormats),
+  );
   const sourceNonEmptyCells = sourceAoa.reduce(
     (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
     0,
@@ -2502,6 +2542,16 @@ export type SheetTextGrid = (string | number | boolean | null)[][];
 export type SheetGridSource = {
   aoa: SheetSourceGrid;
   textAoa?: SheetTextGrid;
+  /**
+   * Formato e texto exibido por célula, para a formatação de data.
+   *
+   * Só as células de data precisam disso, e é por isso que a consulta é uma
+   * função e não uma terceira grade: guardar um par por célula da planilha
+   * inteira devolveria o custo que a fonte de grade existe para remover. Medido
+   * em 120 mil linhas por 8 colunas com uma coluna de data: um formato por
+   * coluna é praticamente de graça, e um mapa por célula custa 6,3 MiB.
+   */
+  cellFormats?: SheetCellFormatLookup;
 };
 
 /**
@@ -2687,21 +2737,60 @@ export function sliceGridRegion(
  * nenhuma. A ordem importa, porque é ela que define a linha de cabeçalho da
  * planilha recortada.
  */
-export function sliceGridSection(
-  grid: SheetSourceGrid,
-  section: IndependentSection,
-): SheetSourceGrid {
-  const relativeRows = [
+/**
+ * As linhas da grade que uma seção independente leva, na ordem em que leva.
+ *
+ * Primeiro as de contexto, depois o intervalo da seção, sem repetir nenhuma. A
+ * ordem importa, porque é ela que define a linha de cabeçalho do recorte, e a
+ * lista existe separada porque quem remapeia a consulta de formato precisa
+ * saber de qual linha original veio cada linha recortada.
+ */
+export function sectionGridRows(section: IndependentSection): number[] {
+  return [
     ...section.contextRows,
     ...Array.from(
       { length: section.endRow - section.startRow + 1 },
       (_, index) => section.startRow + index,
     ),
   ].filter((row, index, all) => all.indexOf(row) === index);
+}
 
-  return relativeRows.map((linha) =>
+export function sliceGridSection(
+  grid: SheetSourceGrid,
+  section: IndependentSection,
+): SheetSourceGrid {
+  return sectionGridRows(section).map((linha) =>
     (grid[linha - 1] ?? []).slice(section.startColumn - 1, section.endColumn),
   );
+}
+
+/**
+ * A mesma consulta de formato, vista pelas coordenadas do recorte.
+ *
+ * Sem isto, um recorte consultaria o formato da célula errada, e a data sairia
+ * com a granularidade de outra coluna. As duas seguem exatamente o recorte de
+ * grade correspondente: uma região desloca linha e coluna, e uma seção escolhe
+ * linhas por lista.
+ */
+export function sliceCellFormatsRegion(
+  cellFormats: SheetCellFormatLookup | undefined,
+  region: { startRow: number; startColumn: number },
+): SheetCellFormatLookup | undefined {
+  if (!cellFormats) return undefined;
+  return (row, column) => cellFormats(row + region.startRow - 1, column + region.startColumn - 1);
+}
+
+export function sliceCellFormatsSection(
+  cellFormats: SheetCellFormatLookup | undefined,
+  section: IndependentSection,
+): SheetCellFormatLookup | undefined {
+  if (!cellFormats) return undefined;
+  const rows = sectionGridRows(section);
+  return (row, column) => {
+    const original = rows[row];
+    if (original === undefined) return undefined;
+    return cellFormats(original - 1, column + section.startColumn - 1);
+  };
 }
 
 const SECTION_HEADER_HINT =
@@ -3198,7 +3287,10 @@ function sheetOptionsForName(
     /loss of functionality|loss of fidelity/i.test(compatibilityText)
   )
     return [];
-  const result = sheetToRows(ws, wb, grid ? { aoa: grid.aoa } : undefined);
+  const gridOptions: SheetToRowsOptions | undefined = grid
+    ? { aoa: grid.aoa, ...(grid.cellFormats ? { cellFormats: grid.cellFormats } : {}) }
+    : undefined;
+  const result = sheetToRows(ws, wb, gridOptions);
   if (result.tableMode !== "repeated-blocks") {
     const sections = detectIndependentSections(ws, scan);
     if (sections.length > 1) {
@@ -3211,10 +3303,15 @@ function sheetOptionsForName(
           ? minimalWorksheetForGrid(slicedGrid)
           : independentSectionWorksheet(ws, section);
         if (!sectionSheet) return [];
+        const slicedFormats = slicedGrid
+          ? sliceCellFormatsSection(grid?.cellFormats, section)
+          : undefined;
         const imported = sheetToRows(
           sectionSheet,
           wb,
-          slicedGrid ? { aoa: slicedGrid } : undefined,
+          slicedGrid
+            ? { aoa: slicedGrid, ...(slicedFormats ? { cellFormats: slicedFormats } : {}) }
+            : undefined,
         );
         if (!imported.rows.length) return [];
         const separationWarning = `A aba "${name}" continha ${sections.length} tabelas independentes empilhadas e foi separada automaticamente. Esta opção corresponde à tabela ${index + 1}.`;
@@ -3245,7 +3342,16 @@ function sheetOptionsForName(
         ? minimalWorksheetForGrid(slicedGrid)
         : independentRegionWorksheet(ws, region);
       if (!regionSheet) return [];
-      const imported = sheetToRows(regionSheet, wb, slicedGrid ? { aoa: slicedGrid } : undefined);
+      const slicedFormats = slicedGrid
+        ? sliceCellFormatsRegion(grid?.cellFormats, region)
+        : undefined;
+      const imported = sheetToRows(
+        regionSheet,
+        wb,
+        slicedGrid
+          ? { aoa: slicedGrid, ...(slicedFormats ? { cellFormats: slicedFormats } : {}) }
+          : undefined,
+      );
       if (!imported.rows.length) return [];
       const separationWarning = `A aba "${name}" continha ${result.diagnostics!.tableRegions.length} tabelas independentes e foi separada automaticamente. Esta opção corresponde à região ${index + 1}.`;
       return [

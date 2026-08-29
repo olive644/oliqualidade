@@ -75,7 +75,9 @@ function diferencasDoPacote(bytes: Uint8Array | Record<string, Uint8Array>) {
   const pelaGrade = sheetsWithData(minimo, {
     gridFor: (nome) => {
       const grade = grades.get(nome);
-      return grade ? { aoa: grade.aoa, textAoa: grade.textAoa } : undefined;
+      return grade
+        ? { aoa: grade.aoa, textAoa: grade.textAoa, cellFormats: grade.cellFormats }
+        : undefined;
     },
   });
 
@@ -183,6 +185,52 @@ describe("a grade da aba normaliza igual à worksheet do mesmo leitor", () => {
     expect(diferencasDoPacote(archive).diferencas).toEqual([]);
   });
 
+  it("coluna de data sobrevive, porque a grade carrega o formato", () => {
+    // Era este o bloqueio: sem o formato numérico da célula de origem,
+    // `formatTemporalCell` devolvia vazio e a coluna inteira desaparecia. A
+    // grade agora responde a essa consulta, e por coluna quando ela é
+    // homogênea, que é o caso comum.
+    const bytes = pacoteDe([
+      ["Quando", "Item"],
+      [new Date(Date.UTC(2026, 7, 27)), "Ana"],
+      [new Date(Date.UTC(2026, 7, 28)), "Bia"],
+      [new Date(Date.UTC(2026, 7, 29)), "Carlos"],
+    ]);
+
+    const grade = readOoxmlSheetGrids(bytes).get("Dados")!;
+    const [aba] = sheetsWithData(
+      { SheetNames: ["Dados"], Sheets: { Dados: { "!ref": grade.ref } } } as XLSX.WorkBook,
+      {
+        gridFor: () => ({
+          aoa: grade.aoa,
+          textAoa: grade.textAoa,
+          cellFormats: grade.cellFormats,
+        }),
+      },
+    );
+
+    expect(aba?.rows).toHaveLength(3);
+    expect(aba?.rows.map((linha) => linha["Quando"])).not.toContain(null);
+    expect(diferencasDoPacote(bytes).diferencas).toEqual([]);
+  });
+
+  it("a consulta de formato responde por coluna, e não guarda o texto de novo", () => {
+    const bytes = pacoteDe([
+      ["Quando", "Item"],
+      [new Date(Date.UTC(2026, 7, 27)), "Ana"],
+    ]);
+
+    const grade = readOoxmlSheetGrids(bytes).get("Dados")!;
+
+    // A célula de data responde com formato e com o texto que `textAoa` já tem.
+    const formato = grade.cellFormats(1, 0);
+    expect(formato?.z).toBeTruthy();
+    expect(formato?.w).toBe(grade.textAoa[1]![0]);
+    // A célula que não é data não responde nada: guardar as outras devolveria o
+    // custo que a grade existe para remover.
+    expect(grade.cellFormats(1, 1)).toBeUndefined();
+  });
+
   it("linha oculta e mesclagem viajam com a grade", () => {
     const worksheet = XLSX.utils.aoa_to_sheet([
       ["Título", null],
@@ -278,32 +326,70 @@ describe.skipIf(!locais.length)("a grade contra a worksheet, em planilhas reais"
     expect(analisadas.filter((item) => !item.temData).map((item) => item.caminho)).toEqual([]);
   });
 
-  it("com célula de data, a grade ainda não substitui a worksheet", { timeout: 300_000 }, () => {
-    // O achado desta etapa, e o que ele custa. `formatTemporalCell` decide
-    // granularidade, fuso e formato a partir de `cell.z` e `cell.w` da célula
-    // de origem. Numa worksheet mínima não há célula, então a data é
-    // descartada: a coluna perde valor, e quando ela era só data, some inteira,
-    // o que ainda desloca a detecção de cabeçalho e muda a contagem de linhas.
-    //
-    // Não é defeito da grade. É o formato numérico que ela ainda não carrega, e
-    // é a próxima peça do caminho progressivo de OOXML. O teste registra o
-    // estado atual: se alguém fechar essa lacuna, ele quebra e obriga a
-    // atualizar o registro, em vez de deixar a limitação documentada mentindo.
-    const comData = locais
+  it("a grade substitui a worksheet na maioria das planilhas reais", { timeout: 300_000 }, () => {
+    // O bloqueio da data está resolvido, e o número mede isso: antes de a grade
+    // carregar o formato, as 25 planilhas do corpus divergiam. O piso existe
+    // para a melhora não regredir em silêncio.
+    const analisadas = locais
       .map((caminho) => comparar(caminho))
-      .filter((item): item is NonNullable<typeof item> => item !== null && item.temData);
-    const comDivergencia = comData.filter((item) => item.diferencas.length > 0);
-    const tipos = [...new Set(comDivergencia.flatMap((item) => item.diferencas.map((d) => d.kind)))]
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+    const coincidem = analisadas.filter((item) => item.diferencas.length === 0);
+    const divergem = analisadas.filter((item) => item.diferencas.length > 0);
+    const tipos = [...new Set(divergem.flatMap((item) => item.diferencas.map((d) => d.kind)))]
       .sort()
       .join(", ");
 
-    expect(comDivergencia.length).toBeGreaterThan(0);
     process.stdout.write(
-      `\n  ${comData.length} planilhas reais com data` +
-        `\n  ${comDivergencia.length} ainda divergem, em: ${tipos}` +
-        `\n  ${comData.length - comDivergencia.length} já coincidem\n`,
+      `\n  ${analisadas.length} planilhas reais analisadas` +
+        `\n  ${coincidem.length} normalizam igual pela grade` +
+        `\n  ${divergem.length} ainda divergem, em: ${tipos}\n`,
     );
+
+    expect(coincidem.length).toBeGreaterThanOrEqual(17);
   });
+
+  it(
+    "o que ainda diverge tem duas causas conhecidas, e nenhuma perde dado",
+    { timeout: 300_000 },
+    () => {
+      // A primeira é fórmula volátil. O caminho atual **recalcula** uma fórmula
+      // que depende de hoje, para um cronograma de 2023 não mostrar o número de
+      // dias que faltavam quando o arquivo foi salvo. Recalcular exige o texto da
+      // fórmula e acesso às outras células, que é justamente o que uma grade não
+      // é. Esta não se fecha carregando mais um campo.
+      //
+      // A segunda é recorte: ao dividir uma aba em seções, a worksheet do recorte
+      // vem de `minimalWorksheetForGrid`, que leva só o `!ref`, enquanto o
+      // caminho atual remapeia mesclagem e linha oculta para o recorte. Sem a
+      // mesclagem, uma seção de poucas linhas pode não produzir linha nenhuma, e
+      // aí a divisão inteira é descartada e a aba fica junta. Esta se fecha, e é
+      // o próximo passo.
+      //
+      // O que o teste garante é que nenhuma das duas perde dado: as linhas
+      // continuam lá, agrupadas de outro jeito ou com um número recalculado a
+      // menos.
+      const divergem = locais
+        .map((caminho) => comparar(caminho))
+        .filter(
+          (item): item is NonNullable<typeof item> => item !== null && item.diferencas.length > 0,
+        );
+
+      expect(divergem.length).toBeGreaterThan(0);
+      const permitidos = new Set([
+        "celula",
+        "colunas",
+        "nome-de-aba",
+        "quantidade-de-abas",
+        "quantidade-de-linhas",
+      ]);
+      for (const item of divergem) {
+        const inesperados = [
+          ...new Set(item.diferencas.map((d) => d.kind).filter((kind) => !permitidos.has(kind))),
+        ].sort();
+        expect(`${item.caminho}: ${inesperados.join(",")}`).toBe(`${item.caminho}: `);
+      }
+    },
+  );
 });
 
 /**
@@ -416,6 +502,19 @@ describe.skipIf(!medicaoLigada)("o que cada representação custa", () => {
     retida = null;
   });
 
+  it("a grade como ela é entregue hoje, já com o formato ligado", { timeout: 900_000 }, () => {
+    const base = vivoAgora();
+    let retida: unknown = (() => {
+      const grade = readOoxmlSheetGrids(fixture!.bytes).get(fixture!.aba)!;
+      // O que o coordenador vai reter: os três campos que a normalização
+      // consome, e nada mais.
+      return { aoa: grade.aoa, textAoa: grade.textAoa, cellFormats: grade.cellFormats };
+    })();
+    medidas["entregue"] = vivoAgora() - base;
+    expect(retida).toBeTruthy();
+    retida = null;
+  });
+
   it("diz se vale fechar a lacuna", () => {
     const linhas = [
       "",
@@ -423,6 +522,7 @@ describe.skipIf(!medicaoLigada)("o que cada representação custa", () => {
       `  grade:                          ${String(emMiB(medidas["grade"]!)).padStart(6)} MiB`,
       `  grade mais formato das datas:   ${String(emMiB(medidas["gradeComFormato"]!)).padStart(6)} MiB`,
       `  custo do formato:               ${String(emMiB(medidas["gradeComFormato"]! - medidas["grade"]!)).padStart(6)} MiB`,
+      `  grade entregue, com o formato:  ${String(emMiB(medidas["entregue"]!)).padStart(6)} MiB`,
       "",
     ];
     process.stdout.write(linhas.join("\n"));
