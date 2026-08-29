@@ -2032,7 +2032,12 @@ function Dashboard(p: {
         </span>
       </button>
     ) : (
-      <div className="oliam-widget-grid grid grid-cols-1 gap-px bg-border lg:grid-cols-3 lg:grid-flow-dense">
+      <div className="oliam-widget-grid grid grid-cols-1 items-start gap-px bg-border lg:grid-cols-3 lg:grid-flow-dense">
+        {/* `items-start` é o que impede a grade de esticar cada card até a
+            altura do mais alto da linha. Sem ele, uma métrica ao lado de um
+            gráfico de barras virava um card com o dobro do vazio dentro, e o
+            teto por tamanho de `sizeClass` não teria efeito nenhum: `stretch`
+            sobrepõe a altura calculada sempre que a declarada é `auto`. */}
         {widgets.map((w, i) => (
           <div
             key={w.id}

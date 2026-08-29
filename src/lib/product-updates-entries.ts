@@ -11,6 +11,21 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-29-widgets-mais-legiveis-no-celular",
+    version: "0.10.0-beta.19",
+    date: "2026-08-29",
+    title: "Widgets mais legíveis, principalmente no celular",
+    summary:
+      "Um conjunto de acabamentos na apresentação dos widgets. As datas do gráfico de evolução apareciam escritas umas por cima das outras em tela estreita, o card de um widget curto era esticado até a altura do vizinho mais alto, e o mascote do assistente cobria o rodapé do gráfico.",
+    highlights: [
+      "As datas do eixo passam a aparecer como jan/25 quando não há espaço para a data inteira. A data completa continua ao passar o mouse e para o leitor de tela.",
+      "Cada card passa a terminar onde o conteúdo dele termina, em vez de esticar até o vizinho mais alto. O que não couber rola dentro do próprio card, em vez de ser cortado sem aviso.",
+      "O detalhe que aparece ao passar o mouse não ultrapassa mais a borda do card, então o texto para de ser cortado.",
+      "O mascote se recolhe enquanto você mexe num gráfico e volta assim que você toca fora dele.",
+      "Correção de texto: um único item agrupado passa a ler “1 categoria agrupada”.",
+    ],
+  },
+  {
     id: "2026-08-29-selecao-do-widget-segue-o-que-voce-escolheu",
     version: "0.10.0-beta.18",
     date: "2026-08-29",

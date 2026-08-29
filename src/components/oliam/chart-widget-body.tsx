@@ -71,6 +71,7 @@ import {
 } from "@/lib/data-pipeline";
 import type { ColumnSemanticProfile } from "@/lib/spreadsheet-intelligence";
 import {
+  chartTooltipContainment,
   AxisTick,
   BarTooltip,
   CalculationButton,
@@ -80,6 +81,7 @@ import {
   compactAxisValue,
   FieldDropSlot,
   FilterChip,
+  groupedCategoriesLabel,
   isCoarsePointer,
   PieLegend,
   SeriesComparisonPanel,
@@ -833,6 +835,7 @@ export function ChartWidgetBody({
                 <RPieChart margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
                   <ChartTooltip
                     contentStyle={{
+                      ...chartTooltipContainment,
                       background: "var(--popover)",
                       border: "1px solid var(--border)",
                       borderRadius: 12,
@@ -869,7 +872,7 @@ export function ChartWidgetBody({
                       return [
                         formatted,
                         count
-                          ? `${share} do total · ${count.toLocaleString("pt-BR")} categorias agrupadas`
+                          ? `${share} do total · ${groupedCategoriesLabel(count)}`
                           : `${share} do total`,
                       ];
                     }}
@@ -1047,7 +1050,7 @@ export function ChartWidgetBody({
             {pieSeries
               .map((g) =>
                 "count" in g && g.count
-                  ? `${g.name} (${g.count} categorias agrupadas), ${g.total}`
+                  ? `${g.name} (${groupedCategoriesLabel(g.count)}), ${g.total}`
                   : `${g.name}, ${g.total}`,
               )
               .join("; ")}
@@ -1119,6 +1122,7 @@ export function ChartWidgetBody({
                       />
                       <ChartTooltip
                         contentStyle={{
+                          ...chartTooltipContainment,
                           background: "var(--popover)",
                           border: "1px solid var(--border)",
                           borderRadius: 12,
@@ -1302,6 +1306,7 @@ export function ChartWidgetBody({
                     />
                     <ChartTooltip
                       contentStyle={{
+                        ...chartTooltipContainment,
                         background: "var(--popover)",
                         border: "1px solid var(--border)",
                         borderRadius: 12,

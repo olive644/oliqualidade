@@ -25,6 +25,7 @@ import {
 } from "@/lib/data-pipeline";
 import { scatterChartValidity } from "@/lib/chart-validity";
 import {
+  chartTooltipContainment,
   compactAxisValue,
   FieldDropSlot,
   WidgetDetailStrip,
@@ -273,6 +274,7 @@ export function ScatterWidgetBody({
                 <ChartTooltip
                   cursor={{ strokeDasharray: "3 3", stroke: "var(--border)" }}
                   contentStyle={{
+                    ...chartTooltipContainment,
                     background: "var(--popover)",
                     border: "1px solid var(--border)",
                     borderRadius: 12,

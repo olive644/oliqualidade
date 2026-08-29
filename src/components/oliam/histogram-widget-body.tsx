@@ -26,6 +26,7 @@ import {
 } from "@/lib/data-pipeline";
 import { histogramChartValidity, numericValuesFor } from "@/lib/chart-validity";
 import {
+  chartTooltipContainment,
   FieldDropSlot,
   SeriesComparisonPanel,
   WidgetHead,
@@ -295,6 +296,7 @@ export function HistogramWidgetBody({
                     <ChartTooltip
                       cursor={{ fill: "var(--muted)", opacity: 0.35 }}
                       contentStyle={{
+                        ...chartTooltipContainment,
                         background: "var(--popover)",
                         border: "1px solid var(--border)",
                         borderRadius: 12,
