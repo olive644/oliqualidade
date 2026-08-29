@@ -1,4 +1,10 @@
+import {
+  PROGRESSIVE_IMPORT_SUPPORT,
+  ProgressiveImportFallback,
+  readCsvWorkbookProgressively,
+} from "@/lib/csv-progressive-import";
 import type { SheetOption } from "@/lib/import";
+import { chooseImportStrategy, isConstrainedDevice } from "@/lib/import-strategy";
 import { readWorkbookBytesWithEngine, type WorkbookReadProgress } from "@/lib/workbook-reader";
 import type { WorkbookReadResult } from "@/lib/workbook-reading-engine";
 
@@ -6,10 +12,42 @@ type WorkerResponse =
   | { id: string; type: "progress"; progress: WorkbookReadProgress }
   | { id: string; type: "sheet"; sheet: SheetOption }
   | { id: string; type: "result"; result: WorkbookReadResult }
+  | { id: string; type: "fallback"; message: string }
   | { id: string; type: "error"; message: string };
+
+type WorkerRequestBody =
+  | { strategy: "atual"; bytes: ArrayBuffer; fileName: string }
+  | { strategy: "csv-progressivo"; file: Blob; fileName: string };
 
 export const MAX_WORKBOOK_BYTES = 100 * 1024 * 1024;
 export const WORKBOOK_READ_TIMEOUT_MS = 60_000;
+
+/**
+ * Sinais de aparelho, lidos uma vez por importação.
+ *
+ * Ficam aqui e não no seletor porque o seletor é uma função pura: ele recebe o
+ * resultado da leitura do ambiente, e por isso pode ser reproduzido num teste
+ * com um número.
+ */
+function deviceSignals(): {
+  deviceMemory?: number;
+  hardwareConcurrency?: number;
+  userAgent?: string;
+} {
+  if (typeof navigator === "undefined") return {};
+  const source = navigator as Navigator & { deviceMemory?: number };
+  return {
+    ...(typeof source.deviceMemory === "number" ? { deviceMemory: source.deviceMemory } : {}),
+    ...(typeof source.hardwareConcurrency === "number"
+      ? { hardwareConcurrency: source.hardwareConcurrency }
+      : {}),
+    ...(typeof source.userAgent === "string" ? { userAgent: source.userAgent } : {}),
+  };
+}
+
+const cancelled = () => new DOMException("Importação cancelada.", "AbortError");
+
+const isAbort = (error: unknown) => error instanceof DOMException && error.name === "AbortError";
 
 export async function readWorkbookFile(
   file: File,
@@ -27,23 +65,125 @@ export async function readWorkbookFileWithReport(
 ): Promise<WorkbookReadResult> {
   if (file.size > MAX_WORKBOOK_BYTES)
     throw new Error("A planilha excede o limite de 100 MB. Divida o arquivo antes de importar.");
-  if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
+  if (signal?.aborted) throw cancelled();
+
+  const decision = chooseImportStrategy({
+    fileName: file.name,
+    bytes: file.size,
+    constrained: isConstrainedDevice(deviceSignals()),
+    support: PROGRESSIVE_IMPORT_SUPPORT,
+  });
+
+  if (decision.strategy === "csv-progressivo") {
+    // Uma aba já entregue não pode ser entregue de novo pelo outro caminho, e
+    // por isso o fallback só é aceito enquanto nada saiu. Hoje ele só acontece
+    // no reconhecimento do conteúdo, antes de qualquer leitura, mas essa
+    // garantia mora aqui e não na ordem interna do coordenador.
+    let streamed = false;
+    try {
+      return await readProgressively(
+        file,
+        onProgress,
+        signal,
+        onSheet &&
+          ((sheet: SheetOption) => {
+            streamed = true;
+            onSheet(sheet);
+          }),
+      );
+    } catch (error) {
+      if (isAbort(error) || streamed) throw error;
+      if (!(error instanceof ProgressiveImportFallback)) throw error;
+      // O caminho novo não se aplica a este arquivo. O leitor validado assume,
+      // e quem importa não vê diferença nenhuma.
+    }
+  }
+
+  return readCurrentPath(file, onProgress, signal, onSheet);
+}
+
+/**
+ * Caminho progressivo de CSV: o arquivo atravessa como `Blob`.
+ *
+ * O worker continua obrigatório, como em toda leitura de planilha do projeto.
+ * O que muda é o que ele recebe: uma referência ao arquivo, e não os bytes. Um
+ * `ArrayBuffer` aqui traria o arquivo inteiro para a memória e anularia o
+ * streaming antes de ele começar.
+ */
+async function readProgressively(
+  file: File,
+  onProgress?: (progress: WorkbookReadProgress) => void,
+  signal?: AbortSignal,
+  onSheet?: (sheet: SheetOption) => void,
+): Promise<WorkbookReadResult> {
+  if (typeof Worker === "undefined")
+    return withStreamedSheets((collect) =>
+      readCsvWorkbookProgressively(file, {
+        fileName: file.name,
+        ...(signal ? { signal } : {}),
+        ...(onProgress ? { onProgress } : {}),
+        onSheet: (sheet) => {
+          collect(sheet);
+          onSheet?.(sheet);
+        },
+      }),
+    );
+
+  return runInWorker(
+    { strategy: "csv-progressivo", file, fileName: file.name },
+    [],
+    onProgress,
+    signal,
+    onSheet,
+  );
+}
+
+async function readCurrentPath(
+  file: File,
+  onProgress?: (progress: WorkbookReadProgress) => void,
+  signal?: AbortSignal,
+  onSheet?: (sheet: SheetOption) => void,
+): Promise<WorkbookReadResult> {
   const bytes = await file.arrayBuffer();
-  if (signal?.aborted) throw new DOMException("Importação cancelada.", "AbortError");
+  if (signal?.aborted) throw cancelled();
   // Sem worker (ambiente de teste, navegador antigo) a leitura acontece no
   // mesmo thread. O escoamento continua valendo para quem quiser mostrar a
   // primeira aba antes do fim, mas aqui não há segunda cópia para economizar.
-  if (typeof Worker === "undefined") {
-    const collected: SheetOption[] = [];
-    const result = await readWorkbookBytesWithEngine(bytes, file.name, onProgress, {
-      onSheet: (sheet) => {
-        collected.push(sheet);
-        onSheet?.(sheet);
-      },
-    });
-    return { ...result, sheets: collected };
-  }
+  if (typeof Worker === "undefined")
+    return withStreamedSheets((collect) =>
+      readWorkbookBytesWithEngine(bytes, file.name, onProgress, {
+        onSheet: (sheet) => {
+          collect(sheet);
+          onSheet?.(sheet);
+        },
+      }),
+    );
 
+  return runInWorker(
+    { strategy: "atual", bytes, fileName: file.name },
+    [bytes],
+    onProgress,
+    signal,
+    onSheet,
+  );
+}
+
+/** Remonta o conjunto a partir do escoamento, quando a leitura roda sem worker. */
+async function withStreamedSheets(
+  read: (collect: (sheet: SheetOption) => void) => Promise<WorkbookReadResult>,
+): Promise<WorkbookReadResult> {
+  const collected: SheetOption[] = [];
+  const result = await read((sheet) => collected.push(sheet));
+  return { ...result, sheets: collected };
+}
+
+function runInWorker(
+  request: WorkerRequestBody,
+  transfer: Transferable[],
+  onProgress?: (progress: WorkbookReadProgress) => void,
+  signal?: AbortSignal,
+  onSheet?: (sheet: SheetOption) => void,
+): Promise<WorkbookReadResult> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("../workers/workbook.worker.ts", import.meta.url), {
       type: "module",
@@ -64,7 +204,7 @@ export async function readWorkbookFileWithReport(
     };
     const abort = () => {
       if (!finish()) return;
-      reject(new DOMException("Importação cancelada.", "AbortError"));
+      reject(cancelled());
     };
     const timeout = setTimeout(() => {
       if (!finish()) return;
@@ -89,6 +229,10 @@ export async function readWorkbookFileWithReport(
         const { result } = event.data;
         resolve(result.sheets.length ? result : { ...result, sheets: streamed });
       }
+      if (event.data.type === "fallback") {
+        if (!finish()) return;
+        reject(new ProgressiveImportFallback(event.data.message));
+      }
       if (event.data.type === "error") {
         if (!finish()) return;
         reject(new Error(event.data.message));
@@ -99,6 +243,6 @@ export async function readWorkbookFileWithReport(
       reject(new Error(event.message || "Falha ao processar a planilha."));
     };
     signal?.addEventListener("abort", abort, { once: true });
-    worker.postMessage({ id, bytes, fileName: file.name }, [bytes]);
+    worker.postMessage({ ...request, id }, transfer);
   });
 }

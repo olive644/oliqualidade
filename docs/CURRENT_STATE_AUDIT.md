@@ -8845,3 +8845,883 @@ de linhas estoura a pilha se o resultado for espalhado com `push(...)`.
 Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
 visível para quem usa. O seletor não está ligado, a interface não muda e o
 resultado de qualquer importação continua idêntico.
+## 147. Streaming de CSV de verdade: o arquivo nunca entra inteiro na memória
+
+Segunda etapa do trabalho de leitura progressiva. Aqui o nome é literal, no
+sentido do vocabulário fixado na seção 146: o arquivo **não** é carregado num
+`ArrayBuffer`. O que atravessa é o `ReadableStream` do próprio `Blob`, os
+trechos decodificados viram registro e são descartados, e as linhas saem em
+blocos com um bloco em voo por vez.
+
+### A heurística de codificação obrigou a duas passagens
+
+`decodeText`, do leitor atual, escolhe entre UTF-8 e windows-1252 contando
+caracteres de substituição sobre o texto **inteiro**. Isso não cabe numa
+passagem só, e decidir por um prefixo mudaria o resultado num arquivo cujo
+começo é UTF-8 limpo e o resto não é.
+
+A saída foi uma passagem de reconhecimento antes da leitura. Ela só conta: não
+monta texto, não monta linha, não guarda nada além de dois inteiros. O `Blob` é
+lido do disco duas vezes em troca de manter o comportamento **exato** do leitor
+atual, e a memória continua limitada nas duas passagens. Preferi isso a uma
+aproximação que divergiria em silêncio justamente nos arquivos mal formados,
+que são os que mais precisam da heurística.
+
+### Um pedaço de bytes não é uma linha
+
+O analisador guarda entre alimentações: o campo em construção, o registro em
+construção, se está dentro de aspas, se acabou de fechar aspas (para distinguir
+aspas escapadas de fim de campo) e se o último caractere foi um CR ainda sem o
+LF do par. Esse último estado é o que impede um CRLF cortado exatamente no meio
+de virar dois registros.
+
+A prova disso é um teste que analisa o mesmo CSV cortado em **todas** as
+posições possíveis, de um caractere até o texto inteiro, e exige resultado
+idêntico. O mesmo vale para o caminho de bytes: um texto com acentuação é lido
+com pedaços de 1 byte até o arquivo inteiro, e o caractere multibyte cortado ao
+meio precisa sobreviver.
+
+### Backpressure sem fila
+
+`onBlock` pode devolver uma promessa, e enquanto ela não resolve nada novo é
+lido do `Blob`. Não existe fila: um bloco por vez é o teto natural, e o teste
+verifica que o máximo de blocos em voo é exatamente um. Uma fila seria mais uma
+cópia do arquivo esperando para ser consumida, que é o problema que este
+trabalho existe para evitar.
+
+### Equivalência provada, e até onde ela vale
+
+Dez formas de CSV são analisadas pelos dois caminhos e comparadas grade a
+grade: simples, CRLF, campo entre aspas, aspas escapadas, quebra de linha dentro
+de aspas, células vazias, ponto e vírgula com vírgula decimal, tabulação, sem
+quebra final e cabeçalhos repetidos. Em todas, a grade produzida é idêntica à do
+SheetJS com as mesmas opções do leitor atual.
+
+O que essa prova **não** cobre, e é importante dizer: a equivalência é no nível
+da análise, da sequência de bytes até a grade de textos. A normalização
+posterior (detecção de cabeçalho, divisão em regiões, inferência de tipo) mora
+em `import.ts` e não foi tocada. Ligar o caminho novo ao fluxo de importação
+exige atravessar essa normalização, e isso é trabalho da etapa seguinte.
+
+### O que ainda não está ligado
+
+Nada muda para quem importa hoje. `import-strategy.ts` continua devolvendo
+`caminho-progressivo-indisponivel` para CSV, porque `support.csv` não é ativado
+por ninguém. O leitor existe, é testado e é equivalente; falta o coordenador que
+o conecta à normalização e à revisão.
+
+### Custo conhecido
+
+O analisador percorre o texto por ponto de código, com `for...of`, o que está
+correto para pares substitutos mas é mais lento que um laço por índice. Num
+arquivo de dezenas de MiB isso pesa, e é candidato a otimização quando houver
+medida do caminho ligado, não antes.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa.
+## 148. A equivalência do CSV subiu para as linhas tipadas, e achou um defeito real
+
+A seção 147 registrou a equivalência do leitor de CSV como provada. Ela estava
+provada menos do que o texto sugeria: a comparação convertia os dois lados para
+texto antes de confrontar, então garantia a grade de células e não os valores
+que o painel recebe. Esta seção fecha a lacuna e corrige o registro.
+
+### O que a comparação mais forte encontrou
+
+A comparação agora confronta `SheetOption[]` contra `SheetOption[]`, usando o
+`describeImportedSheetsDifferences` da seção 146, em doze formas de CSV. Onze
+passaram de primeira, incluindo número com decimal brasileira, data, moeda,
+booleano, negativo, campo entre aspas, quebra de linha dentro de aspas, CRLF e
+última linha sem quebra. Os tipos batem: número chega como número.
+
+A décima segunda achou um defeito real. O caminho atual entrega `null` para
+célula vazia; o leitor de streaming entregava texto vazio.
+
+```text
+atual: [{"a":"1","b":null,"c":"3"}]
+novo:  [{"a":"1","b":"","c":"3"}]
+```
+
+A causa é estrutural. O SheetJS não cria célula para campo vazio ao ler CSV,
+então a normalização lê ausência. A grade do leitor de streaming tem a string
+vazia de verdade, e `aoa_to_sheet` cria uma célula com ela.
+
+A diferença não é cosmética. No modelo do produto, `null` é ausência e alimenta
+as regras de valor faltante e a contagem de nulos, enquanto texto vazio conta
+como preenchido. Sem a tradução, **todo CSV importado pelo caminho novo teria
+métricas de qualidade diferentes das do atual, sem nada na tela indicando**.
+`csvGridToSheetRows` faz a conversão explícita, e um teste guarda a regra,
+inclusive os casos que não podem virar ausência: zero, espaço e a palavra false.
+
+### Correção de registro
+
+Duas afirmações anteriores ficam corrigidas aqui. A primeira: a equivalência da
+seção 147 valia só no nível da grade de textos, e agora vale nas linhas
+tipadas. A segunda: cheguei a registrar que os valores tipados divergiam, a
+partir de uma medida de memória que mostrou as linhas do caminho novo custando o
+triplo. Aquilo era artefato de atribuição da medição, e não divergência de
+conteúdo; a única divergência real era a da célula vazia.
+
+### O atalho que ficou provado impossível
+
+Medido no mesmo arquivo de referência: montar a worksheet a partir da grade com
+`aoa_to_sheet` custa **193,7 MiB**, contra 164,5 MiB do `XLSX.read` do caminho
+atual. Ligar o caminho progressivo por esse atalho piora a memória em vez de
+melhorar. O ganho de 231,5 para 76,5 MiB continua existindo, mas exige que a
+normalização aceite uma grade sem construir worksheet, e essa mudança é em
+`import.ts`, de quem todo o corpus depende.
+
+### Versão
+
+Sem avanço: o leitor continua desligado.
+## 149. O coordenador liga o CSV progressivo: pico de 141,8 para 34,9 MiB
+
+As seções 146 a 148 entregaram três peças que não mudavam nada sozinhas: o
+seletor de estratégia, o leitor de CSV por streaming e a normalização aceitando
+uma fonte de grade. Cada uma testada, nenhuma ligada. Esta seção é a ligação, e
+é o ponto em que o ganho medido vira ganho para quem importa.
+
+### O que o coordenador faz
+
+`csv-progressive-import.ts` faz o caminho inteiro: reconhece o conteúdo pelos
+primeiros 8 KiB, decide a codificação, lê o arquivo em blocos direto do `Blob`,
+monta a grade e chama a normalização com uma worksheet mínima. Nenhum
+`ArrayBuffer` do arquivo, nenhum ZIP, nenhuma worksheet do SheetJS.
+
+O worker continua obrigatório. O que mudou é o que ele recebe: o `File`
+atravessa o `postMessage` como referência ao conteúdo no disco. Mandar bytes ali
+anularia o trabalho antes de ele começar, e um teste do cliente guarda
+exatamente isso, com um arquivo cujo `arrayBuffer()` lança se for chamado.
+
+### A medição, do código que é entregue
+
+`src/lib/csv-progressive-benchmark.test.ts` mede os dois caminhos sobre o mesmo
+arquivo, no ponto mais largo de cada um: o instante em que a aba fica pronta. É
+ali que tudo o que o caminho precisou coexiste, e medir no fim mediria só o que
+sobrou, que é a mesma coisa nos dois lados.
+
+120 mil linhas por 8 colunas, arquivo de 8,4 MiB, 960 mil células:
+
+| Caminho | Pico | Tempo |
+| --- | ---: | ---: |
+| Atual | 141,8 MiB | 6.974 ms |
+| Progressivo, blocos de 1.000 | **34,9 MiB** | 6.421 ms |
+| Progressivo, blocos de 2.000 | 42,9 MiB | 6.514 ms |
+| Progressivo, blocos de 5.000 | 41,8 MiB | 6.867 ms |
+
+**75% menos memória, com o mesmo resultado e sem custo de tempo.**
+
+O benchmark mede o código entregue, e não uma réplica montada para ele: é por
+isso que ele mora num teste desligado por variável de ambiente, e não num script
+`.mjs`, que não resolveria os módulos do projeto.
+
+### O tamanho de bloco saiu de medida, e o critério não é o tempo
+
+`progressive-import.ts` guardava 1.000, 2.000 e 5.000 como candidatos, com a
+decisão adiada para a PR do CSV. Os três tempos ficam dentro de 2% uns dos
+outros e qual deles sai na frente muda a cada execução; os picos se repetem até
+a décima de MiB entre execuções. Por isso o critério é o pico, e o escolhido é o
+menor: **mil linhas por bloco**.
+
+### Duas divergências silenciosas encontradas ao ligar
+
+A primeira, e a mais séria. O leitor de streaming decidia o delimitador com o
+texto retido até a **primeira** quebra de linha, enquanto `detectDelimiter`
+pontua os candidatos ao longo de **25 linhas** e penaliza o candidato ausente em
+parte delas. Com uma linha só essa penalidade não existe. Um arquivo cuja
+primeira linha é um título com ponto e vírgula, seguido de dados separados por
+vírgula, seria analisado com o separador errado e viraria uma tabela de uma
+coluna, sem nada na tela indicando. A janela passou a ser a mesma da função que
+decide, com teto de 64 KiB para a espera não virar uma cópia do arquivo.
+
+A segunda, menor mas do mesmo tipo. A checagem de relatório de compatibilidade
+do Excel lia as doze primeiras linhas **da worksheet**, e numa worksheet mínima
+não há célula nenhuma: a aba passaria sem ser checada. A checagem passou a vir
+da grade quando existe uma.
+
+Nenhuma das duas apareceria num teste de unidade das peças isoladas. As duas
+apareceram ao confrontar os dois caminhos sobre as mesmas 23 formas de CSV.
+
+### O bloco virou um teto de verdade
+
+Com a janela de 25 linhas, o começo do arquivo retém mais texto antes de começar
+a analisar, e a entrega mandava tudo o que tivesse acumulado de uma vez.
+`readCsvInBlocks` passou a entregar em blocos de no máximo `blockSize` linhas, e
+a conferir o sinal de cancelamento **a cada bloco**, e não só a cada leitura do
+`Blob`: uma leitura só pode render vários blocos, e quem cancelou no meio não
+pode continuar recebendo o resto deles. Isso é correção, e não detalhe do
+refactor: antes, cancelar no meio de um lote grande continuava entregando o lote
+inteiro.
+
+### Recusa e indisponibilidade são coisas diferentes
+
+Um PDF renomeado para `.csv` precisa ser recusado, com a mesma mensagem dos dois
+lados. Um pacote OOXML renomeado para `.csv` precisa do caminho atual, que sabe
+lê-lo, e a pessoa não pode ver nada disso. As duas situações levam a coisas
+opostas, então elas não podem ser o mesmo erro: `ProgressiveImportFallback` marca
+a segunda, e o worker a devolve numa mensagem própria, porque tipo de erro não
+sobrevive à fronteira do `postMessage`.
+
+O cliente só aceita o fallback enquanto nenhuma aba tiver sido escoada. Hoje isso
+só acontece no reconhecimento do conteúdo, antes de qualquer leitura, mas a
+garantia mora no cliente e não na ordem interna do coordenador.
+
+### O teto de células é conferido durante a leitura
+
+O caminho atual confere as 2 milhões de células depois de o workbook estar
+montado. O progressivo confere enquanto lê, sobre o mesmo retângulo declarado,
+para os dois recusarem exatamente os mesmos arquivos. Recusar só no fim
+significaria ter montado a planilha inteira na memória antes de dizer que ela não
+cabe. A mensagem virou uma constante só, porque duas cópias do mesmo texto são
+duas mensagens que podem divergir sem ninguém notar.
+
+### Uma etapa nova na barra, porque ela sabe medir
+
+`parsing` não tem fração de propósito: é uma chamada única ao SheetJS, que não
+expõe progresso. A leitura em blocos sabe medir: o denominador é o tamanho do
+arquivo e o numerador são os bytes já lidos. Ela entrou como etapa própria
+(`streaming`, "Lendo o arquivo em blocos") em vez de emprestar o rótulo de
+`parsing`, que fala de fórmulas e formatação que um CSV não tem.
+
+A passagem de reconhecimento de codificação também passou a reportar bytes. Ela
+percorre o arquivo inteiro, e sem isso seria uma espera sem medida na tela.
+
+### Estimativa de pico própria, porque a fórmula antiga descreve outro programa
+
+`estimateWorkbookPeakMemoryBytes` soma o pacote de origem e duas representações
+descompactadas, porque no caminho atual as três existem ao mesmo tempo. No
+progressivo nenhuma delas existe. Reaproveitá-la mostraria no diagnóstico de
+importação um pico várias vezes maior do que o programa produz.
+`estimateProgressiveCsvPeakMemoryBytes` usa os 38,1 bytes por célula medidos,
+arredondados para cima pelo mesmo motivo conservador da razão de 6x do seletor.
+
+### Vocabulário
+
+A leitura do arquivo aqui é streaming de verdade no sentido da seção 146: o
+arquivo não entra num `ArrayBuffer` e nenhum ZIP é expandido. A **grade** não é
+ilimitada: a normalização precisa da aba inteira para achar cabeçalho e regiões,
+então grade e linhas ficam vivas ao mesmo tempo. É isso que os 34,9 MiB
+contabilizam, e nada disto deve ser descrito como memória constante.
+
+### O que continua igual
+
+XLSX não mudou nada: o seletor devolve `caminho-progressivo-indisponivel` para
+OOXML, que é a verdade. CSV pequeno continua no caminho atual, que é o validado
+pelo corpus. A rede de paridade sobre 110 abas de 25 arquivos reais foi gravada
+antes e conferida depois da mudança em `import.ts`, com resultado idêntico.
+
+### Custo
+
+O chunk `global-search` foi de 403,0 para 411,0 KiB de um teto de 450,0. O
+coordenador e o leitor de CSV passaram a ser alcançáveis a partir do cliente de
+importação. Continua aprovado, com 39 KiB de folga.
+
+### Verificação
+
+`npm run verify` com 1.136 testes. Os novos: 23 formas de CSV confrontadas linha
+tipada a linha tipada entre os dois caminhos, mais windows-1252, marcador de
+ordem de bytes, todo tamanho de pedaço contra todo tamanho de bloco, progresso
+monotônico que fecha em 100% nas duas etapas mensuráveis, recusa com mensagem
+idêntica à do caminho atual, fallback por conteúdo não textual, teto de células
+durante a leitura, cancelamento, escoamento sem segunda cópia, campos do
+relatório, e no cliente: o arquivo indo ao worker como referência, o CSV pequeno
+continuando no caminho atual e o fallback repetindo a leitura pelo leitor
+validado.
+
+### Versão
+
+`0.10.0-beta.12` para `0.10.0-beta.13`.
+## 150. O ZIP lido por posição, e a medida que disse onde isso não ajuda
+
+Primeira peça do caminho progressivo de OOXML. A seção 146 já tinha registrado
+que os dois primeiros passos existiam: `validateZipWorkbook` localiza o registro
+de fim e percorre o diretório central sem descompactar nada. Faltava operá-los
+sobre `Blob.slice()` em vez de sobre um `Uint8Array` completo. É isso, e só
+isso, que esta seção entrega.
+
+### As regras do formato passaram a morar num lugar só
+
+`zip-directory.ts` é o formato e os limites, sem saber de onde os bytes vieram.
+`validateZipWorkbook` foi reescrito em cima dele e `zip-blob-reader.ts` nasce em
+cima dele. A alternativa seria duas cópias das mesmas regras de segurança, e
+duas cópias são dois lugares onde o critério pode divergir sem ninguém notar,
+justamente nas conferências que existem para recusar uma bomba de
+descompactação.
+
+O comportamento de `validateZipWorkbook` não mudou: mesmas mensagens, mesma
+ordem de recusa, e os 44 testes do leitor continuam passando sem alteração.
+
+### O leitor por posição
+
+`openZipFromBlob` abre o pacote com duas leituras pequenas, a cauda onde o
+registro de fim pode estar e o índice que ele aponta, e a partir daí entrega uma
+entrada por vez. O arquivo nunca entra num `ArrayBuffer` e nenhuma entrada que
+ninguém pediu é expandida.
+
+Uma armadilha do formato que o código evita explicitamente: o índice aponta para
+o cabeçalho local, não para o conteúdo, e o cabeçalho local tem nome e campo
+extra com tamanhos **próprios**, que não precisam coincidir com os do índice.
+Confiar nos tamanhos do índice ali é o erro clássico de quem lê ZIP à mão, e
+produz bytes deslocados em alguns pacotes.
+
+Um teste pegou um desperdício antes de ele ser publicado: o leitor lia até 131
+KiB para descobrir onde o conteúdo começava, quando os 30 bytes fixos do
+cabeçalho local já trazem os dois tamanhos. São duas leituras por entrada, e a
+primeira precisa ser barata.
+
+### A equivalência
+
+25 pacotes reais locais, **756 entradas conferidas byte a byte** contra
+`unzipSync` sobre o pacote inteiro, mais o total expandido declarado conferido
+contra o do caminho atual em cada um. Um XML deslocado ainda é um XML que quase
+analisa, então a comparação é de bytes e não de resultado.
+
+Nos sintéticos: nome com acentuação, entrada vazia, entrada guardada sem
+compressão, comentário no fim do pacote deslocando o registro final, pacote
+truncado, teto de entradas e índice que não cabe no arquivo. As três últimas
+conferem que a recusa é a mesma dos dois caminhos, com a mesma mensagem.
+
+### A medida, e o que ela desmentiu
+
+| Pacote | Entradas | Expandido total | Maior entrada |
+| --- | ---: | ---: | ---: |
+| 1 aba x 120 mil linhas | 10 | 37,2 MiB | 37,2 MiB (**100%**) |
+| 12 abas x 10 mil linhas | 21 | 35,9 MiB | 3,0 MiB (**8%**) |
+
+Os dois pacotes têm 13,9 MiB de arquivo e o mesmo total de linhas. A diferença
+entre eles é a resposta inteira: **expandir uma entrada por vez só ajuda quando
+existem várias entradas grandes.** Numa planilha de aba única, a maior entrada é
+o pacote inteiro, e não há o que economizar.
+
+Isso limita o alcance desta peça mais do que a intuição sugeria, e limita de um
+jeito específico: o caso que motivou toda esta frente, o arquivo grande de uma
+tabela só, é exatamente o caso em que ela não paga. O ganho real para OOXML
+continua dependendo do que a seção 146 já dizia, que o workbook do SheetJS
+deixe de ser materializado, e agora com um detalhe a mais: para uma aba só,
+nem o acesso por entrada nem o índice barato mudam alguma coisa.
+
+### Duas medições descartadas, e por quê
+
+A primeira comparava memória viva entre um `Blob` de teste e a expansão inteira.
+O `Blob` de teste **copia** a cada fatia, então ela media a cópia do teste, e
+não o programa. Trocada por `fs.openAsBlob` sobre um arquivo real.
+
+A segunda comparava memória viva com `--expose-gc` em dois cenários seguidos, e
+chegou a reportar um caminho consumindo **menos vinte e dois MiB**: o lixo do
+primeiro cenário era coletado durante a medição do segundo, e a subtração saía
+negativa. Um número que pode sair negativo não estava medindo o que dizia medir.
+
+A medida que ficou não observa o coletor: ela usa os tamanhos que o próprio
+pacote declara, que são exatos, e para descobri-los nada precisa ser expandido,
+que é justamente a capacidade em teste. Fica registrado porque a tentação de
+medir memória com uma subtração simples reaparece toda vez.
+
+### O que isto não faz
+
+Nada chama o leitor novo ainda. A importação de OOXML continua idêntica,
+expandindo o pacote inteiro com `unzipSync`. O que falta para o caminho
+progressivo de OOXML existir é o XML da aba virar grade e alimentar
+`sheetsWithData(wb, { gridFor })`, como o CSV já faz. `inspectOoxml` já lê o
+pacote entrada por entrada e é o candidato natural a receber este leitor, mas
+ele é síncrono e o acesso por `Blob` é assíncrono, o que é a próxima decisão de
+desenho.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa, pela mesma razão das seções 146 a 148.
+## 151. A grade de OOXML existe, e o corpus provou que ela ainda não serve
+
+Segunda peça do caminho progressivo de OOXML, e a mais informativa até agora,
+porque o resultado foi negativo e o número que o mostra é grande: **25 de 25
+planilhas reais divergem**.
+
+### O que foi construído
+
+`readOoxmlSheetGrid` lê o XML de uma aba direto para uma grade densa, sem
+construir worksheet nenhuma. É o equivalente OOXML do que `csv-stream.ts` faz
+para CSV, e existe pela mesma medida: a worksheet do SheetJS é a cópia que
+domina o pico, e a normalização já sabe trabalhar sobre uma grade.
+
+Ao contrário do CSV, aqui `aoa` e `textAoa` **não** coincidem: um número com
+formato de data aparece como `Date` numa e como texto formatado na outra. É
+exatamente por isso que `SheetGridSource` tem os dois campos separados.
+
+A leitura de célula, que o corpus real conferiu célula a célula ao longo de
+várias seções, não foi reescrita: ela virou `parseSheetCells`, e tanto a
+worksheet do verificador quanto a grade consomem o mesmo gerador. Duas leituras
+seriam dois lugares onde a interpretação de tipo, formato e data pode divergir
+sem ninguém notar.
+
+### O teste que primeiro mediu errado
+
+A comparação óbvia é `grade.aoa` contra `sheet_to_json` da worksheet. Ela
+acusa divergências que **não existem no resultado**, e as duas primeiras que
+apareceram foram instrutivas.
+
+Numa planilha do corpus, uma célula de texto com formato de data (`t="s"` com
+`z="d-mmm"`) faz o `sheet_to_json` produzir `Date { NaN }`, enquanto a grade
+entrega o texto certo. E numa data válida, o `sheet_to_json` aplica um
+deslocamento de fuso que a grade não aplica. Nos dois casos quem conserta é
+`normalizeRawRow`, que consulta a célula de origem antes de aceitar a data.
+
+Ou seja, a grade intermediária dos dois caminhos legitimamente difere, e o que
+precisa coincidir é o que a normalização produz. O teste passou a comparar
+`sheetsWithData` contra `sheetsWithData`, com o mesmo comparador da
+equivalência do CSV.
+
+### O achado
+
+Corrigido o nível da comparação, o corpus respondeu de forma dura:
+
+```text
+25 planilhas reais com data
+25 ainda divergem, em: celula, colunas, nome-de-aba, quantidade-de-abas, quantidade-de-linhas
+0 já coincidem
+```
+
+A causa é única e está localizada. `formatTemporalCell` decide granularidade,
+fuso e formato a partir de `cell.z` e `cell.w` **da célula de origem**. Numa
+worksheet mínima não existe célula, então `formatTemporalCell` devolve vazio e
+a data é descartada. A coluna de data perde valor; quando ela era só data,
+desaparece inteira; e a coluna que some desloca a detecção de cabeçalho, o que
+muda a contagem de linhas e chega a mudar quais abas sobrevivem.
+
+Vale dizer o tamanho disso sem suavizar: **a grade de OOXML, como está, não
+substitui a worksheet em nenhuma planilha real do corpus.**
+
+### A garantia positiva que não pôde ser escrita
+
+O teste natural seria "em planilha real sem célula de data, a grade é
+substituível". Ele não existe porque não existe planilha assim: as 25 do corpus
+têm data. Num corpus de planilhas de qualidade isso não é acidente, é o formato
+do domínio. Ficou um teste registrando essa ausência, para ninguém procurar o
+outro e concluir que foi esquecido.
+
+A substituibilidade está provada nos casos sintéticos: números, textos, vazios,
+booleanos, célula só com formatação, mesclagem e linha oculta, mais o caso de
+texto com formato de data que o corpus revelou.
+
+### O que isso muda no plano
+
+A seção 150 já tinha limitado o alcance do acesso ao ZIP por posição. Esta
+limita o passo seguinte, e junto as duas dizem o que falta de verdade para o
+OOXML progressivo: **a grade precisa carregar o formato numérico e o texto
+exibido das células de data**, e `sheetToRows` precisa aceitá-los sem
+worksheet.
+
+Isso é uma mudança em `import.ts`, e trazia uma pergunta de custo: guardar
+formato e texto por célula de data reintroduz parte exata do que a grade existe
+para remover. Numa coluna de data de 120 mil linhas, são 120 mil pares.
+
+### O custo, medido antes de escrever o código
+
+| Representação | Memória viva |
+| --- | ---: |
+| Worksheet, como o leitor monta hoje | 235,5 MiB |
+| Grade de valores e de texto | 61,3 MiB |
+| Grade mais o formato e o texto das datas | **72,2 MiB** |
+
+O formato custa **10,8 MiB**, e a grade completa fica em **69% menos** que a
+worksheet. A pergunta estava certa e a resposta é favorável: o par por célula de
+data é barato perto do que ele destrava. Medido em 120 mil linhas por 8 colunas,
+com uma coluna de data de verdade, e reproduzido até a décima de MiB entre
+execuções (`OLI_GRID_BENCHMARK=1`).
+
+Ou seja, a lacuna vale a pena fechar, e o próximo incremento tem número para
+justificar-se antes de começar.
+
+### Onde os pares moram, também medido antes de escolher
+
+O mapa por endereço com o par completo é o mais simples de escrever, e não é o
+mais barato. Duas observações o encolhem, e as duas foram medidas antes de virar
+código.
+
+A primeira é que o texto exibido **já** está na grade: `textAoa` guarda
+exatamente o `w` que `formatTemporalCell` consulta, então guardá-lo de novo é
+pagar duas vezes pela mesma string. A segunda é que o formato numérico repete:
+uma coluna de data costuma ter um formato só, e o próprio pacote OOXML guarda
+formatos por índice de estilo, e não por célula.
+
+| Desenho | Custo sobre a grade |
+| --- | ---: |
+| Mapa por célula, com formato e texto | 10,8 MiB |
+| Mapa por célula, só o formato | 6,3 MiB |
+| Um formato por coluna | ~0 MiB |
+
+O formato por coluna é praticamente de graça, mas só vale se a coluna for
+homogênea, e isso é afirmação sobre planilha real, não sobre o formato OOXML.
+Quem respondeu foi o corpus: **214 colunas de data, 13 com mais de um formato**,
+ou seja 6%.
+
+O desenho, então, está decidido e tem número: **formato por coluna quando ela é
+homogênea, e por célula só nas que não são.** Os 94% saem de graça, e os 6%
+pagam 6,3 MiB no pior caso. O texto exibido nunca é duplicado, porque a grade já
+o tem.
+
+### Uma inconsistência de tipo encontrada de passagem
+
+`SheetSourceGrid`, em `import.ts`, está declarado sem `boolean`, embora o
+caminho atual já produza `true`/`false`: uma célula `t="b"` chega assim pelo
+`sheet_to_json`, e a anotação genérica ali é uma asserção, não uma conversão.
+Alargar o tipo cascateia pelas assinaturas internas do arquivo do qual todo o
+corpus depende, então não foi feito aqui. Ficou para a seção seguinte, que o
+corrigiu e descobriu que eram 33 assinaturas, e não oito. Ver
+[[CURRENT_STATE_AUDIT#152. O tipo da grade omitia o booleano, e o caminho atual sempre o produziu]].
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa. Nenhum chamador usa a grade nova, e o comportamento da
+importação de OOXML é o mesmo, verificado pela rede de paridade sobre 110 abas
+de 25 arquivos reais.
+## 152. O tipo da grade omitia o booleano, e o caminho atual sempre o produziu
+
+Correção encontrada de passagem na seção 151, e fechada aqui antes da ligação
+que ia esbarrar nela.
+
+### O que estava errado
+
+`SheetSourceGrid` declarava `(string | number | Date | null)[][]`. Uma célula
+`t="b"` do Excel chega como `true` ou `false` através de
+`sheet_to_json(ws, { header: 1, defval: null })`, e o parâmetro de tipo daquela
+chamada é uma **asserção**, não uma conversão. Ou seja, o caminho atual sempre
+entregou booleanos ali, e o tipo dizia o contrário desde que existe.
+
+Não era erro de comportamento, e não havia defeito visível: `normalizeRawRow`
+deixa passar tudo o que não é `Date`, e as funções seguintes só fazem `String()`
+do valor. O que existia era uma anotação falsa, no arquivo do qual todo o corpus
+depende, esperando a primeira pessoa que confiasse nela.
+
+### Por que a omissão sobreviveu tanto
+
+A união estava repetida à mão em **33 assinaturas internas** de `import.ts`.
+Corrigir uma delas sem corrigir as outras 32 não compila, então a alternativa
+prática era não corrigir nenhuma. Duas uniões repetidas viram dois lugares onde
+o tipo pode divergir; trinta e três viram uma barreira.
+
+A correção, então, não é só acrescentar `boolean`: é dar nome ao que estava
+repetido.
+
+| Tipo | O que é |
+| --- | --- |
+| `SheetSourceGrid` | A grade como entra, com `Date` |
+| `SheetSourceRow` | Uma linha dela |
+| `NormalizedCellValue` | Um valor depois de `normalizeRawRow`: sem `Date`, com booleano |
+| `NormalizedSheetRow` | Uma linha depois dela |
+
+Com os nomes, acrescentar um valor ao conjunto passa a ser uma linha, e não
+trinta e três.
+
+### Duas assinaturas que também mentiam
+
+`isRepeatedHeaderRow` declarava receber `Date`, e recebe linha já normalizada,
+onde data virou texto: o `Date` nunca chegou a acontecer ali, e o booleano
+sempre chegou. E um acumulador de células de cabeçalho estava tipado como
+`(string | number)[]` num ponto que recebe valor de célula qualquer.
+
+### Verificação
+
+A rede de paridade foi gravada antes e conferida depois: **110 abas de 25
+arquivos reais, resultado idêntico**. Isso importa mais que o normal aqui,
+porque uma mudança só de tipo que altera comportamento seria justamente a que
+passaria despercebida.
+
+O diff em `import.ts` foi conferido linha a linha e **não tem nenhuma alteração
+fora de tipo e comentário**. Suíte completa com 1.159 testes, build e orçamento
+aprovados.
+
+O elenco que a seção 151 tinha deixado no teste da grade de OOXML, marcando esta
+lacuna, saiu junto: os dois tipos agora coincidem de verdade.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa, e nenhum byte de comportamento mudou.
+## 153. A grade de OOXML ligada à normalização: de 25 divergências para 8
+
+A seção 151 encontrou o bloqueio e mediu que valia a pena fechá-lo. Esta fecha.
+
+### O que a normalização passou a aceitar
+
+`formatTemporalCell` decide granularidade, fuso e formato a partir de `cell.z` e
+`cell.w` da célula de origem, e numa worksheet mínima não existe célula. Agora
+existe uma fonte de reserva: `SheetCellFormatLookup`, uma consulta por
+coordenada da grade que devolve exatamente esses dois campos, e nada mais.
+
+O tipo é estreito de propósito. `SheetCellFormat` tem só `z` e `w`, então uma
+`XLSX.CellObject` continua servindo sem conversão, e uma fonte de grade
+consegue responder sem inventar uma célula inteira. A worksheet, quando tem a
+célula, continua tendo precedência: a consulta é reserva, não substituição.
+
+Ela desce por `SheetToRowsOptions.cellFormats` e por `SheetGridSource.cellFormats`,
+e os recortes a remapeiam: `sliceCellFormatsRegion` desloca linha e coluna, e
+`sliceCellFormatsSection` escolhe as linhas pela mesma lista que
+`sliceGridSection` usa, agora extraída em `sectionGridRows`. Sem o remapeamento,
+um recorte consultaria o formato da célula errada e a data sairia com a
+granularidade de outra coluna.
+
+### O que a grade de OOXML passou a carregar
+
+Só as células de data, e no armazenamento que a seção 151 mediu: um formato por
+coluna quando ela é homogênea, e um mapa por célula só nas que não são. O texto
+exibido não é guardado de novo, porque `textAoa` já o tem.
+
+### O resultado
+
+| | Antes | Depois |
+| --- | ---: | ---: |
+| Planilhas reais que normalizam igual pela grade | 0 de 25 | **17 de 25** |
+
+E o custo do que foi acrescentado, medido em 120 mil linhas por 8 colunas com
+uma coluna de data:
+
+| Representação | Memória viva |
+| --- | ---: |
+| Worksheet, como o leitor monta hoje | 235,8 MiB |
+| Grade, antes de carregar formato | 61,3 MiB |
+| **Grade como é entregue, com o formato ligado** | **61,3 MiB** |
+
+**O desenho por coluna saiu de graça**, como a medição da seção 151 previa: a
+grade completa fica **74% abaixo** da worksheet. O mapa por célula, que custaria
+6,3 MiB, só é usado nas colunas heterogêneas, que no corpus são 13 de 214.
+
+### As duas causas do que ainda diverge
+
+**Fórmula volátil.** O caminho atual **recalcula** uma fórmula que depende de
+hoje, para um cronograma de 2023 não mostrar o número de dias que faltavam
+quando o arquivo foi salvo. Foi isso que apareceu nas colunas de "dias
+restantes", com o caminho atual dizendo `-836` e a grade `-548`. Recalcular
+exige o texto da fórmula **e** acesso às outras células, que é justamente o que
+uma grade não é. Esta não se fecha carregando mais um campo, e é a fronteira
+real da representação.
+
+**Divisão em seções que nunca começa.** Num plano de ação, o caminho atual
+entrega `Causa 1` em duas opções e a grade entrega uma. A investigação está
+abaixo, e ela desmentiu o diagnóstico inicial: não é o recorte que falha, é a
+detecção que nunca roda.
+
+Nenhuma das duas perde dado. As linhas continuam lá, agrupadas de outro jeito ou
+com um número recalculado a menos, e o teste do corpus cobra isso: nenhuma
+divergência pode ser de um tipo fora da lista conhecida.
+
+### A terceira causa, e por que consertá-la sozinha piora
+
+Depois de registrar as duas causas acima, a segunda foi investigada até o fim, e
+o resultado desmentiu o diagnóstico inicial duas vezes seguidas. Fica registrado
+com esse detalhe porque a próxima pessoa vai chegar exatamente aqui.
+
+O primeiro palpite foi que o recorte perdia mesclagem e linha oculta, porque
+`minimalWorksheetForGrid` leva só o `!ref`. Fazer o recorte passar pelos
+fatiadores de worksheet, que já remapeiam esse metadado, **não mudou nada**: as
+25 planilhas continuaram com o mesmo resultado. O palpite estava errado, e a
+mudança foi desfeita em vez de ficar no repositório sem evidência.
+
+A causa real está antes do recorte. `detectIndependentSections` decide se uma
+linha é banner perguntando se a **célula de origem da mesclagem tem valor**, e
+pergunta isso à worksheet. Numa fonte de grade não há célula nenhuma, então a
+resposta é sempre não, nenhum banner é reconhecido, e **a aba nunca é dividida
+em seções**. Não é o recorte que falha: é a detecção que nunca começa.
+
+Isso foi confirmado instrumentando a função: sobre a mesma aba, a worksheet
+encontra duas seções e a grade encontra zero.
+
+O conserto do mecanismo é pequeno e segue o mesmo padrão da consulta de formato,
+com a worksheet tendo precedência e a grade respondendo por reserva, já que
+`cellHasValue` só olha para presença e o texto da grade responde a mesma
+pergunta. Ele foi escrito, e o efeito medido foi **negativo**: as planilhas que
+normalizam igual caíram de 17 para 16.
+
+O motivo é que ele destrava a divisão sem alinhá-la. Sem o conserto a grade
+nunca divide, e por acaso isso coincide com o caminho atual nas abas que ele
+também não divide. Com o conserto ela passa a dividir, e a divisão às vezes sai
+diferente, o que troca um tipo de divergência por outro.
+
+Por isso o conserto não foi embarcado. A rede de paridade confirma que ele não
+tocaria o caminho atual, então ele é seguro; o que faltava não era segurança.
+
+A medição que faltava foi feita na seção seguinte, e ela encerra a questão: com
+a régua certa, o conserto não faz **nenhuma** aba a mais coincidir, e o que ele
+muda é o tipo do erro. Ver
+[[CURRENT_STATE_AUDIT#154. A régua por aba, e a resposta definitiva sobre a divisão em seções]].
+
+### Um erro de leitura de código que quase virou conclusão errada
+
+Ao investigar as abas que "sumiam", a primeira hipótese foi perda de dado. Ela
+estava errada: as abas não sumiam, a aba deixava de ser **dividida**, e as
+linhas apareciam juntas em vez de separadas. A diferença entre as duas
+descrições é o que separa um defeito grave de uma diferença de agrupamento, e
+custou uma sonda para ficar clara.
+
+A segunda hipótese, de que a grade de texto divergia, também estava errada: as
+duas grades são idênticas, célula a célula. O que diverge vem depois, na
+construção da worksheet do recorte.
+
+### Verificação
+
+Rede de paridade gravada antes e conferida depois: **110 abas de 25 arquivos
+reais, resultado idêntico**. Isso vale mais que o normal aqui, porque a mudança
+é dentro de `normalizeRawRow`, que é onde toda data de toda importação passa.
+
+Suíte completa com 1.161 testes. Os novos: coluna de data sobrevivendo pela
+grade, a consulta respondendo por coluna e não guardando o texto de novo, e no
+corpus o piso de 17 planilhas que precisam continuar coincidindo.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nenhum chamador
+usa a fonte de grade para OOXML ainda, e o comportamento da importação é o
+mesmo.
+## 154. A régua por aba, e a resposta definitiva sobre a divisão em seções
+
+A seção 153 terminou com um próximo passo declarado: medir a divisão dos dois
+lados antes de escrever mais código. Isto é esse passo, e ele encerra a questão.
+
+### A régua estava errada
+
+A contagem que vinha sendo usada é por arquivo: uma planilha conta como
+divergente quando qualquer aba dela diverge. Ela serviu para dizer que a lacuna
+da data tinha fechado, porque ali o efeito era grosso. Ela não serve para
+decidir uma mudança que altera **quantas abas** cada caminho produz, porque um
+arquivo de doze abas sai do numerador inteiro quando uma única aba muda.
+
+A régua nova conta abas: quantas o caminho atual produz, quantas a grade produz,
+e quantas são idênticas nome a nome e linha a linha. O nome entra na comparação
+porque a divisão em seções o muda, e é justamente a divisão que está em
+avaliação.
+
+Estado de hoje: **110 abas pelo caminho atual, 101 pela grade, 87 idênticas**,
+ou 79%.
+
+### A resposta
+
+Com a régua certa, o conserto proposto na seção 153 foi medido de novo:
+
+| | Abas pela grade | Abas idênticas |
+| --- | ---: | ---: |
+| Sem o conserto | 101 | **87** |
+| Com o conserto | 113 | **87** |
+
+**Ele não faz nenhuma aba a mais coincidir.** O que muda é o tipo do erro: sem
+ele a grade divide de menos, com ele divide de mais, e passa das 110 do caminho
+atual para 113. A contagem por arquivo tinha mostrado 17 contra 16, o que
+sugeria uma piora pequena; a contagem por aba mostra que não há troca nenhuma a
+fazer, e a decisão deixa de depender de julgamento.
+
+O conserto foi descartado em definitivo. Ele fica descrito na seção 153 para
+ninguém reescrevê-lo achando que é a peça que falta.
+
+### O que isso diz sobre o caminho
+
+A detecção de seções não é um campo que faltava na grade. Ela lê a planilha por
+um caminho que uma grade responde diferente, e destravá-la produz uma divisão
+que não é a mesma. Alinhar as duas divisões é um trabalho próprio, com o seu
+próprio critério de pronto, e não um detalhe da ligação.
+
+Enquanto isso, o que a grade entrega é conhecido e medido: 79% das abas iguais,
+e o que difere concentrado em duas coisas nomeadas, fórmula volátil e divisão em
+seções.
+
+### Por que a régua fica no repositório
+
+Porque ela é o instrumento que faltava. As duas conclusões erradas desta frente,
+a de que o recorte perdia metadado e a de que o conserto do banner era o próximo
+passo, sobreviveram enquanto a única medida disponível era grossa demais para
+contradizê-las. O piso de 87 abas está escrito no teste, e sobe quando o próximo
+incremento melhorar de verdade.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nenhuma mudança de
+comportamento, e nenhuma linha de código de produção alterada. O que entra é
+medição.
+## 155. O orçamento de 60s virou medida, e o alvo mudou de lugar
+
+O projeto vinha citando um número da seção 145: um arquivo dentro de todos os
+limites consome 30s do prazo de 60s do leitor. Era uma medição avulsa, feita
+uma vez, antes de várias mudanças no caminho de leitura, e continuava sendo
+repetida como se ainda valesse. Agora ela é reproduzível.
+
+```bash
+OLI_BUDGET_BENCHMARK=1 npx vitest run src/lib/import-budget-benchmark.test.ts
+```
+
+### O número se confirma
+
+| Fase | Seção 145 | Hoje |
+| --- | ---: | ---: |
+| Parse do leitor principal | 9.445 ms (32%) | 8.996 ms (30%) |
+| Verificação | 12.386 ms (41%) | 13.010 ms (43%) |
+| Análise | 8.031 ms (27%) | 8.160 ms (27%) |
+| **Total** | **29.866 ms** | **30.168 ms** |
+
+Metade do prazo, com 1,44 milhão de células. A limitação continua real, e agora
+o teste falha se ela piorar a ponto de o arquivo não caber.
+
+### Uma correção de registro: o custo é de célula, não de byte
+
+A seção 145 descreve a fixture como "um XLSX de 61 MiB". A fixture equivalente
+aqui, com o mesmo número de abas e de células, tem **20,7 MiB**. A diferença é
+de compressão, e o tempo é praticamente o mesmo.
+
+Ou seja, o que custa são as células, e não os bytes. Isso não é detalhe de
+redação: `import-strategy.ts` decide a estratégia **pelo tamanho em bytes**, e a
+razão de memória de 6x que ele usa foi medida em arquivos densos, onde as duas
+grandezas andam juntas. Para tempo elas não andam. Um arquivo pequeno em bytes e
+denso em células gasta o prazo do mesmo jeito, e o seletor não tem como saber
+disso antes de abrir o arquivo.
+
+O acesso ao índice do ZIP por posição, da seção 150, dá justamente essa
+informação sem descompactar nada: o diretório central declara o tamanho
+expandido de cada entrada, e o XML da aba é proporcional às células. Fica
+registrado como o caminho para o seletor decidir por densidade, e não só por
+tamanho.
+
+### O alvo mudou de lugar
+
+A verificação era a maior fase, com 43%, e a suposição natural é que o custo
+esteja em comparar. Medido por dentro:
+
+| Dentro da verificação | Tempo | Fração dela |
+| --- | ---: | ---: |
+| Leitura independente do XML | 9.897 ms | **76%** |
+| Comparação e reparo | 788 ms | **6%** |
+
+**O custo é ler o pacote uma segunda vez.** A comparação que justifica essa
+segunda leitura custa menos de um segundo. Somando com o parse do leitor
+principal, o arquivo é lido duas vezes por completo, e as duas leituras juntas
+são 63% do prazo consumido.
+
+Isso derruba a otimização óbvia antes de ela ser escrita. Acelerar a comparação
+não daria quase nada; amostrar a verificação daria tempo às custas de segurança,
+que não é uma troca aceitável aqui.
+
+### O que a medida aponta como caminho
+
+As duas leituras produzem coisas diferentes do mesmo XML: o leitor principal
+produz o workbook do SheetJS, e a verificação produz o inventário por célula.
+Desde a seção 151 as duas passam pelo mesmo `parseSheetCells`, e desde a 153 a
+leitura independente já sabe produzir a grade que a normalização consome.
+
+O caminho, então, não é acelerar uma das leituras: é uma leitura só alimentar as
+duas coisas. Isso é a mesma peça que o caminho progressivo de OOXML precisa, e
+os dois trabalhos convergem no mesmo lugar em vez de competir.
+
+Ainda não é uma proposta pronta: a verificação existe para **comparar** dois
+leitores independentes, e ela perde o sentido se os dois virarem um. O que a
+medida diz é onde o tempo está, e que a resposta passa por essa pergunta de
+desenho, e não por microotimização.
+
+### Verificação
+
+O benchmark afirma duas coisas além de imprimir: que as fases medidas explicam
+a maior parte do tempo, senão o que ele mostra não é o que a leitura faz, e que
+o arquivo cabe no prazo nesta máquina. Se um dia não couber, a importação passa
+a ser recusada por tempo e não por tamanho, e é melhor descobrir aqui.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nenhuma linha de
+código de produção alterada. O que entra é medição.

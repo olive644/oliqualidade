@@ -11,6 +11,21 @@ import { APP_VERSION, type ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-28-csv-grande-lido-em-blocos",
+    version: APP_VERSION,
+    date: "2026-08-28",
+    title: "Arquivo CSV grande agora é lido aos poucos, sem carregar tudo de uma vez",
+    summary:
+      "Até agora, todo arquivo entrava inteiro na memória do navegador antes de ser lido. Um CSV acima de 33 MB passa a ser lido em blocos, direto do arquivo. Medido num arquivo de 120 mil linhas por 8 colunas: a leitura ocupava 141,8 MB e passou a ocupar 34,9 MB, com o mesmo resultado célula a célula.",
+    highlights: [
+      "Menos memória quer dizer menos chance de a aba do navegador ser encerrada no meio da importação, principalmente no celular.",
+      "A barra de progresso ganhou medida real também na etapa de leitura do arquivo, que antes era a maior espera sem número nenhum.",
+      "Vale para CSV, TXT e TSV grandes. Arquivos menores continuam pelo leitor de sempre, que é o mais testado, e planilhas do Excel não mudam nada nesta versão.",
+      "Se o arquivo não for do tipo esperado, a leitura volta sozinha para o caminho de sempre, sem erro na tela.",
+      "Cancelar a importação passa a interromper a leitura na hora, em vez de esperar o bloco seguinte.",
+    ],
+  },
+  {
     id: "2026-08-27-leitura-com-progresso-real",
     version: APP_VERSION,
     date: "2026-08-27",

@@ -141,7 +141,28 @@ const MERGE_FILL_MAX_LENGTH = 60;
  * (é o placeholder mostrado no filtro de intervalo de data, e o formato
  * que a detecção de tipo de coluna em format.ts reconhece).
  */
-function calendarParts(d: Date, cell?: XLSX.CellObject) {
+/**
+ * O que a formatação de data consulta na célula de origem, e nada além disso.
+ *
+ * São dois campos: o formato numérico, que decide granularidade e ordem, e o
+ * texto exibido, que o Excel já resolveu. Ter o tipo estreito é o que permite a
+ * uma fonte de grade responder a essa consulta sem existir worksheet nenhuma:
+ * uma `XLSX.CellObject` continua servindo, porque tem os dois campos.
+ */
+export type SheetCellFormat = { z?: XLSX.CellObject["z"]; w?: XLSX.CellObject["w"] };
+
+/**
+ * De onde a normalização tira formato e texto exibido de uma célula.
+ *
+ * As coordenadas são as da grade, com zero na primeira linha e na primeira
+ * coluna do intervalo usado, iguais às que `normalizeRawRow` já percorre.
+ */
+export type SheetCellFormatLookup = (
+  rowIndex: number,
+  columnIndex: number,
+) => SheetCellFormat | undefined;
+
+function calendarParts(d: Date, cell?: SheetCellFormat) {
   // Quando a data veio de XLSX.read(cellDates:true), o SheetJS preserva em
   // `w` o dia civil exibido no Excel, mas o objeto Date pode cair no dia
   // anterior no fuso do navegador (ex.: Jun-25 vira 31/05 às 21h no Brasil).
@@ -202,7 +223,7 @@ function calendarParts(d: Date, cell?: XLSX.CellObject) {
   };
 }
 
-function formatDateCell(d: Date, cell?: XLSX.CellObject): string {
+function formatDateCell(d: Date, cell?: SheetCellFormat): string {
   if (!Number.isFinite(d.getTime())) return "";
   const parts = calendarParts(d, cell);
   const dd = String(parts.day).padStart(2, "0");
@@ -210,7 +231,7 @@ function formatDateCell(d: Date, cell?: XLSX.CellObject): string {
   return `${dd}/${mm}/${parts.year}`;
 }
 
-function formatTemporalCell(d: Date, cell?: XLSX.CellObject): string {
+function formatTemporalCell(d: Date, cell?: SheetCellFormat): string {
   if (!Number.isFinite(d.getTime())) return "";
   const numberFormat = String(cell?.z ?? "")
     .replace(/"[^"]*"/g, "")
@@ -278,18 +299,24 @@ function formatTemporalCell(d: Date, cell?: XLSX.CellObject): string {
  * horário) em vez de uma data legível.
  */
 function normalizeRawRow(
-  row: (string | number | Date | null)[],
+  row: SheetSourceRow,
   worksheet: XLSX.WorkSheet,
   rowIndex: number,
   start: XLSX.CellAddress,
-): (string | number | null)[] {
+  cellFormats?: SheetCellFormatLookup,
+): (string | number | boolean | null)[] {
   return row.map((value, columnIndex) => {
     if (!(value instanceof Date)) return value;
     const address = XLSX.utils.encode_cell({
       r: start.r + rowIndex,
       c: start.c + columnIndex,
     });
-    const sourceCell = worksheetCellAtAddress(worksheet, address);
+    const worksheetCell = worksheetCellAtAddress(worksheet, address);
+    // Numa fonte de grade a worksheet é mínima e não tem célula nenhuma. Sem a
+    // consulta de reserva, `formatTemporalCell` fica sem formato, devolve vazio
+    // e a data é descartada: era assim que toda coluna de data sumia.
+    const sourceCell: SheetCellFormat | undefined =
+      worksheetCell ?? cellFormats?.(rowIndex, columnIndex);
 
     // O SheetJS 0.20 pode tentar converter uma célula textual para Date
     // apenas porque o estilo dela é de data. Nesse caso ele entrega
@@ -305,11 +332,11 @@ function normalizeRawRow(
     // célula nunca teve data nenhuma. Recuperar a string original (mesmo
     // vazia) evita alterar o tratamento normal de datas e números
     // legítimos.
-    if (sourceCell?.t === "s" && typeof sourceCell.v === "string") {
-      return sourceCell.v || null;
+    if (worksheetCell?.t === "s" && typeof worksheetCell.v === "string") {
+      return worksheetCell.v || null;
     }
 
-    const sourceDate = sourceCell?.v instanceof Date ? sourceCell.v : value;
+    const sourceDate = worksheetCell?.v instanceof Date ? worksheetCell.v : value;
     const formatted = formatTemporalCell(sourceDate, sourceCell);
     if (formatted) return formatted;
 
@@ -319,12 +346,12 @@ function normalizeRawRow(
 
 const INVALID_HEADER_PATTERN = /^(?:nan(?:[\s/.-]*nan)*|invalid date|undefined|null)$/i;
 
-function headerName(raw: string | number | null, index: number) {
+function headerName(raw: NormalizedCellValue, index: number) {
   const value = raw == null ? "" : String(raw).trim();
   return !value || INVALID_HEADER_PATTERN.test(value) ? `coluna_${index + 1}` : value;
 }
 
-function headerIsInvalid(raw: string | number | null) {
+function headerIsInvalid(raw: NormalizedCellValue) {
   const value = raw == null ? "" : String(raw).trim();
   return !value || INVALID_HEADER_PATTERN.test(value);
 }
@@ -446,7 +473,7 @@ function cellLooksDate(v: unknown): boolean {
  * por exemplo um bloco de resumo tipo "Total de vendas: 12", onde cada
  * linha é um par rótulo/valor e não existe cabeçalho nenhum ali.
  */
-function isClearlyNotHeaderRow(row: (string | number | null)[]): boolean {
+function isClearlyNotHeaderRow(row: NormalizedSheetRow): boolean {
   const filled = row.filter((c) => c !== null && c !== "");
   if (!filled.length) return true;
   return filled.some(cellLooksNumeric);
@@ -462,10 +489,7 @@ const MIN_REPEATED_NEXT_ROW_RATIO = 0.3;
  * verdade praticamente nunca é idêntico ao valor de dado logo abaixo dele
  * na mesma coluna.
  */
-function rowRepeatsNextRow(
-  row: (string | number | null)[],
-  next: (string | number | null)[],
-): boolean {
+function rowRepeatsNextRow(row: NormalizedSheetRow, next: NormalizedSheetRow): boolean {
   let comparable = 0;
   let matches = 0;
   const width = Math.max(row.length, next.length);
@@ -480,7 +504,7 @@ function rowRepeatsNextRow(
   return comparable > 0 && matches / comparable >= MIN_REPEATED_NEXT_ROW_RATIO;
 }
 
-function isYearHeaderRow(row: (string | number | null)[]): boolean {
+function isYearHeaderRow(row: NormalizedSheetRow): boolean {
   const filled = row.filter((cell) => cell !== null && cell !== "");
   const numeric = filled.filter(cellLooksNumeric);
   return (
@@ -494,7 +518,7 @@ function isYearHeaderRow(row: (string | number | null)[]): boolean {
   );
 }
 
-function isMetadataRow(row: (string | number | null)[]): boolean {
+function isMetadataRow(row: NormalizedSheetRow): boolean {
   const labels = [
     ...new Set(
       row
@@ -509,7 +533,7 @@ function isMetadataRow(row: (string | number | null)[]): boolean {
   );
 }
 
-function isSheetContextRow(row: (string | number | null)[]): boolean {
+function isSheetContextRow(row: NormalizedSheetRow): boolean {
   const labels = row
     .filter((cell) => cell !== null && cell !== "")
     .map((cell) => String(cell).trim())
@@ -535,12 +559,12 @@ function isSheetContextRow(row: (string | number | null)[]): boolean {
  * Nesse segundo caso, ficamos com a linha mais preenchida dentro da janela
  * de varredura, em vez da primeira linha "aceitável".
  */
-function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<number>): number {
+function findHeaderRowIndex(aoa: NormalizedSheetRow[], bannerRows?: Set<number>): number {
   if (!aoa.length) return 0;
   const scanLimit = Math.min(HEADER_SCAN_LIMIT, aoa.length);
   const width = Math.max(1, ...aoa.slice(0, scanLimit).map((r) => r.length));
 
-  const fillRatio = (row: (string | number | null)[]) =>
+  const fillRatio = (row: NormalizedSheetRow) =>
     row.filter((c) => c !== null && c !== "").length / width;
   const isBanner = (i: number) => bannerRows?.has(i) ?? false;
 
@@ -612,7 +636,7 @@ function findHeaderRowIndex(aoa: (string | number | null)[][], bannerRows?: Set<
 type RelativeMerge = { s: XLSX.CellAddress; e: XLSX.CellAddress };
 
 function findHierarchicalHeaderStart(
-  aoa: (string | number | null)[][],
+  aoa: NormalizedSheetRow[],
   selected: number,
   merges: RelativeMerge[],
 ): number {
@@ -683,7 +707,7 @@ function findHierarchicalHeaderStart(
  * afirmar que ela nomeia todas as colunas.
  */
 function findHierarchicalHeaderEnd(
-  aoa: (string | number | null)[][],
+  aoa: NormalizedSheetRow[],
   start: number,
   merges: RelativeMerge[],
 ): number {
@@ -818,15 +842,15 @@ function findHierarchicalHeaderEnd(
 }
 
 function composeHierarchicalHeaders(
-  aoa: (string | number | null)[][],
+  aoa: NormalizedSheetRow[],
   start: number,
   end: number,
   merges: RelativeMerge[],
-): { raw: (string | number | null)[]; hierarchical: boolean } {
+): { raw: NormalizedSheetRow; hierarchical: boolean } {
   const layers = aoa.slice(start, end + 1);
   const width = Math.max(0, ...layers.map((row) => row.length));
   const expandedParents = layers.slice(0, -1).map((layer) => {
-    let parent: string | number | null = null;
+    let parent: NormalizedCellValue = null;
     return Array.from({ length: width }, (_, column) => {
       const value = layer[column];
       if (!headerIsInvalid(value ?? null)) parent = value ?? null;
@@ -879,10 +903,7 @@ function composeHierarchicalHeaders(
   return { raw, hierarchical: end > start };
 }
 
-function refineGenericDocumentHeaders(
-  headers: string[],
-  dataRows: (string | number | null)[][],
-): string[] {
+function refineGenericDocumentHeaders(headers: string[], dataRows: NormalizedSheetRow[]): string[] {
   const generic = headers
     .map((header, index) => ({ header, index, base: header.replace(/_\d+$/, "") }))
     .filter((item) => /^(?:dados?|informa[cç][oõ]es?)$/i.test(item.base));
@@ -965,17 +986,17 @@ type Block = {
   startCol: number;
   endCol: number;
   headers: string[];
-  dataRows: (string | number | null)[][];
+  dataRows: NormalizedSheetRow[];
 };
 
-function compactCellValues(values: (string | number | null)[]): string | number | null {
+function compactCellValues(values: NormalizedSheetRow): NormalizedCellValue {
   const present = values.filter((value) => value !== null && value !== "");
   if (!present.length) return null;
   const distinct = [...new Map(present.map((value) => [String(value), value])).values()];
   return distinct.length === 1 ? distinct[0]! : distinct.map(String).join(" | ");
 }
 
-function attendanceRosterRows(aoa: (string | number | null)[][]): Row[] | null {
+function attendanceRosterRows(aoa: NormalizedSheetRow[]): Row[] | null {
   const normalize = (value: unknown) =>
     String(value ?? "")
       .normalize("NFD")
@@ -1049,7 +1070,7 @@ function attendanceRosterRows(aoa: (string | number | null)[][]): Row[] | null {
  * resultado. Em vez de escolher uma dessas linhas como cabeçalho global,
  * produz uma linha por horário e conserva os campos operacionais.
  */
-function inspectorValidationRows(aoa: (string | number | null)[][]): Row[] | null {
+function inspectorValidationRows(aoa: NormalizedSheetRow[]): Row[] | null {
   const hourRows = aoa
     .map((row, index) => ({ row, index }))
     .filter(({ row }) => /^hora$/i.test(String(row[0] ?? "").trim()));
@@ -1110,7 +1131,7 @@ function inspectorValidationRows(aoa: (string | number | null)[][]): Row[] | nul
   return output.length ? output : null;
 }
 
-function measurementSeriesRows(aoa: (string | number | null)[][]): Row[] | null {
+function measurementSeriesRows(aoa: NormalizedSheetRow[]): Row[] | null {
   const headerIndex = aoa.findIndex((row) => {
     const first = String(row[0] ?? "").trim();
     const metrics = row.slice(3).filter((value) => value !== null && value !== "");
@@ -1177,7 +1198,7 @@ function measurementSeriesRows(aoa: (string | number | null)[][]): Row[] | null 
   return rows;
 }
 
-function laboratorySeriesRows(aoa: (string | number | null)[][]): Row[] | null {
+function laboratorySeriesRows(aoa: NormalizedSheetRow[]): Row[] | null {
   const sectionRows = aoa
     .map((row, index) => ({ row, index }))
     .filter(({ row }) => row.some((value) => /^viscosidade\s*-/i.test(String(value ?? "").trim())));
@@ -1261,7 +1282,7 @@ function laboratorySeriesRows(aoa: (string | number | null)[][]): Row[] | null {
  * "Núcleo 2" e "Núcleo 5" no mesmo intervalo de linhas, em colunas
  * diferentes).
  */
-function headerRunsInRow(row: (string | number | null)[]): { startCol: number; endCol: number }[] {
+function headerRunsInRow(row: NormalizedSheetRow): { startCol: number; endCol: number }[] {
   const runs: { startCol: number; endCol: number }[] = [];
   let c = 0;
   while (c < row.length) {
@@ -1298,11 +1319,11 @@ function headerRunsInRow(row: (string | number | null)[]): { startCol: number; e
  * colunas — sem isso, seria só uma linha de texto solta (ex: uma legenda),
  * não o cabeçalho de uma tabela de verdade.
  */
-function findHeaderCandidates(aoa: (string | number | null)[][]): HeaderRun[] {
+function findHeaderCandidates(aoa: NormalizedSheetRow[]): HeaderRun[] {
   const candidates: HeaderRun[] = [];
   for (let r = 0; r < aoa.length; r++) {
-    const row = (aoa[r] ?? []) as (string | number | null)[];
-    const next = (aoa[r + 1] ?? []) as (string | number | null)[];
+    const row = (aoa[r] ?? []) as NormalizedSheetRow;
+    const next = (aoa[r + 1] ?? []) as NormalizedSheetRow;
     for (const run of headerRunsInRow(row)) {
       const hasDataBelow = next
         .slice(run.startCol, run.endCol + 1)
@@ -1339,7 +1360,7 @@ function normalizedHeaderKey(headers: string[]): string {
  * perto.
  */
 function findBlockLabel(
-  aoa: (string | number | null)[][],
+  aoa: NormalizedSheetRow[],
   headerRowIndex: number,
   startCol: number,
   endCol: number,
@@ -1357,8 +1378,8 @@ function findBlockLabel(
   // deixar o título repetido como se fosse dado), mas para no primeiro
   // conteúdo real encontrado para não "pular" uma tabela anterior.
   for (let rowIndex = headerRowIndex - 1; rowIndex >= Math.max(0, headerRowIndex - 3); rowIndex--) {
-    const aboveRow = (aoa[rowIndex] ?? []) as (string | number | null)[];
-    const filled: (string | number)[] = [];
+    const aboveRow = (aoa[rowIndex] ?? []) as NormalizedSheetRow;
+    const filled: NormalizedCellValue[] = [];
     aboveRow.forEach((v, c) => {
       if (v !== null && v !== "" && c >= startCol && c <= endCol) filled.push(v);
     });
@@ -1398,7 +1419,7 @@ function commonBlockColumnName(labels: string[]): string {
  * continua funcionando sem mudança pra todo o resto dos arquivos já
  * suportados.
  */
-function detectBlocks(aoa: (string | number | null)[][]): Block[] | null {
+function detectBlocks(aoa: NormalizedSheetRow[]): Block[] | null {
   const candidates = findHeaderCandidates(aoa);
   if (candidates.length < MIN_BLOCKS_FOR_MULTI_BLOCK_MODE) return null;
 
@@ -1447,11 +1468,11 @@ function detectBlocks(aoa: (string | number | null)[][]): Block[] | null {
 
   return chosen.map((run, index) => {
     const label = labels[index]?.label ?? `Bloco ${index + 1}`;
-    const dataRows: (string | number | null)[][] = [];
+    const dataRows: NormalizedSheetRow[] = [];
     let blankStreak = 0;
     for (let r = run.row + 1; r < aoa.length; r++) {
       if (reservedRows.has(r)) break;
-      const row = (aoa[r] ?? []) as (string | number | null)[];
+      const row = (aoa[r] ?? []) as NormalizedSheetRow;
       const slice = row.slice(run.startCol, run.endCol + 1);
       const isBlank = slice.every((c) => c === null || c === "");
       if (isBlank) {
@@ -1531,15 +1552,85 @@ function blocksToRows(blocks: Block[]): { rows: Row[]; blockColumnName: string }
  *   agrupamento e dominam o painel de "Não informado").
  * Um arquivo vazio (sem linhas de dados) retorna rows: [].
  */
-export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): SheetImportResult {
+/**
+ * Grade de valores crus de uma aba, na forma que a normalização consome.
+ *
+ * É o mesmo formato que `sheet_to_json` com `header: 1` produz. Existe como
+ * tipo próprio porque quem já tem a grade não deveria pagar para reconstruí-la.
+ */
+/**
+ * Os valores que uma grade de aba pode conter.
+ *
+ * O booleano esteve ausente desta lista por muito tempo, e a ausência era um
+ * erro de anotação e não de comportamento: uma célula `t="b"` do Excel chega
+ * como `true`/`false` pelo `sheet_to_json`, e o parâmetro de tipo daquela
+ * chamada é uma asserção, não uma conversão. O caminho atual sempre produziu
+ * booleanos aqui; o tipo é que dizia o contrário.
+ *
+ * A omissão apareceu ao escrever a grade de OOXML, que precisa declarar o mesmo
+ * conjunto de valores que a worksheet já entregava.
+ */
+export type SheetSourceGrid = (string | number | boolean | Date | null)[][];
+
+/** Uma linha da grade, para quem recebe uma de cada vez. */
+export type SheetSourceRow = SheetSourceGrid[number];
+
+/**
+ * Uma linha depois de `normalizeRawRow`: sem `Date`, e com booleano.
+ *
+ * A normalização converte data em texto e deixa o resto passar, então o que sai
+ * dela é o conjunto de entrada menos `Date`. Ter um nome para isso evita a
+ * repetição da união em duas dezenas de assinaturas internas, que foi o que
+ * fez o booleano ficar de fora de todas elas por tanto tempo.
+ */
+export type NormalizedCellValue = string | number | boolean | null;
+
+export type NormalizedSheetRow = NormalizedCellValue[];
+
+export type SheetToRowsOptions = {
+  /**
+   * Grade já pronta, para a normalização não reconstruí-la.
+   *
+   * O caminho de leitura por streaming produz essa grade lendo o arquivo, e sem
+   * isto ela seria descartada e refeita a partir da worksheet: medidos 37 MiB e
+   * mais de um segundo por aba num arquivo de 200 mil linhas.
+   *
+   * Quem passa a grade assume a responsabilidade de que ela corresponde à
+   * worksheet informada. Todo o resto da normalização (mesclagens, fórmulas,
+   * linhas ocultas, diagnóstico) continua lendo a worksheet, porque essas
+   * informações não existem numa grade de valores.
+   */
+  aoa?: SheetSourceGrid;
+  /**
+   * Formato e texto exibido das células, para quando não há worksheet.
+   *
+   * A normalização precisa dos dois para formatar uma data, e os lê da célula
+   * de origem. Numa fonte de grade essa célula não existe, e sem esta consulta
+   * a data é descartada em silêncio, levando a coluna junto.
+   *
+   * A worksheet, quando tem a célula, continua tendo precedência: esta é uma
+   * fonte de reserva, e não uma substituição.
+   */
+  cellFormats?: SheetCellFormatLookup;
+};
+
+export function sheetToRows(
+  ws: XLSX.WorkSheet,
+  workbook?: XLSX.WorkBook,
+  options?: SheetToRowsOptions,
+): SheetImportResult {
   const range = ws["!ref"]
     ? XLSX.utils.decode_range(ws["!ref"])
     : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
-  const rawAoa = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
-    header: 1,
-    defval: null,
-  });
-  const sourceAoa = rawAoa.map((row, rowIndex) => normalizeRawRow(row, ws, rowIndex, range.s));
+  const rawAoa =
+    options?.aoa ??
+    XLSX.utils.sheet_to_json<SheetSourceRow>(ws, {
+      header: 1,
+      defval: null,
+    });
+  const sourceAoa = rawAoa.map((row, rowIndex) =>
+    normalizeRawRow(row, ws, rowIndex, range.s, options?.cellFormats),
+  );
   const sourceNonEmptyCells = sourceAoa.reduce(
     (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
     0,
@@ -1579,7 +1670,7 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
   let volatileCellsRecalculated = 0;
   const width = range.e.c - range.s.c + 1;
   for (let r = 0; r < sourceAoa.length; r++) {
-    const row = sourceAoa[r] as (string | number | null)[];
+    const row = sourceAoa[r] as NormalizedSheetRow;
     // Loop com índice explícito até a largura real da planilha (não
     // `row.length`), de propósito, em vez de forEach: uma célula "stub"
     // (fórmula sem valor calculado, só existe no objeto da planilha porque
@@ -1680,7 +1771,7 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
   aoa.forEach((row, i) => {
     originalFilledCount.set(
       i,
-      ((row ?? []) as (string | number | null)[]).filter((c) => c !== null && c !== "").length,
+      ((row ?? []) as NormalizedSheetRow).filter((c) => c !== null && c !== "").length,
     );
   });
   const bannerRows = new Set<number>();
@@ -1717,7 +1808,7 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
     // caso que a checagem original protege) nunca cobre a largura inteira
     // sozinho com um valor idêntico em todas as colunas.
     if (m.s.c === 0 && m.e.c >= width - 1) {
-      const row = (aoa[m.s.r] ?? []) as (string | number | null)[];
+      const row = (aoa[m.s.r] ?? []) as NormalizedSheetRow;
       const filled = row.filter((c) => c !== null && c !== "");
       const distinct = new Set(filled.map((c) => String(c).trim()));
       if (filled.length > 1 && distinct.size === 1) bannerRows.add(m.s.r);
@@ -1726,7 +1817,7 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
 
   const filledByRow = new Map<number, number>();
   for (const m of merges) {
-    const originRow = (aoa[m.s.r] ?? []) as (string | number | null)[];
+    const originRow = (aoa[m.s.r] ?? []) as NormalizedSheetRow;
     const originValue = originRow[m.s.c];
     if (originValue === null || originValue === undefined || originValue === "") continue;
     // Uma célula mesclada cobrindo texto muito comprido (uma frase, uma
@@ -1761,7 +1852,7 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
       // e somas. A linha de origem (r === m.s.r) sempre tem pelo menos o
       // valor de origem, então nunca é pulada por esta condição.
       if (r !== m.s.r && originalFilledCount.get(r) === 0) continue;
-      const row = (aoa[r] ?? []) as (string | number | null)[];
+      const row = (aoa[r] ?? []) as NormalizedSheetRow;
       for (let c = m.s.c; c <= m.e.c; c++) {
         if (r === m.s.r && c === m.s.c) continue;
         if (row[c] === null || row[c] === undefined || row[c] === "") {
@@ -2030,7 +2121,7 @@ export function sheetToRows(ws: XLSX.WorkSheet, workbook?: XLSX.WorkBook): Sheet
   // exatamente para não descartar por engano uma linha de dado que só por
   // coincidência repete o texto de uma única coluna.
   let repeatedHeaderRowsSkipped = 0;
-  const isRepeatedHeaderRow = (row: (string | number | Date | null)[]) => {
+  const isRepeatedHeaderRow = (row: NormalizedSheetRow) => {
     const meaningfulColumns = headerRow.filter((h) => !headerIsInvalid(h));
     if (meaningfulColumns.length < 2) return false;
     return headerRow.every((h, i) => {
@@ -2437,6 +2528,82 @@ export type SheetOption = {
   longScheduleRows?: LongScheduleRow[];
 };
 
+/** Grade de texto de uma aba, com as linhas ocultas apagadas. */
+export type SheetTextGrid = (string | number | boolean | null)[][];
+
+/**
+ * Fonte de grade para uma aba, quando ela não vem de uma worksheet completa.
+ *
+ * `aoa` são os valores crus, no formato que `sheetToRows` consome. `textAoa` é o
+ * texto formatado, que a detecção de regiões usa. Numa grade lida de CSV as duas
+ * coincidem, porque tudo já é texto; num futuro leitor OOXML progressivo elas
+ * podem diferir, e por isso são campos separados em vez de um só.
+ */
+export type SheetGridSource = {
+  aoa: SheetSourceGrid;
+  textAoa?: SheetTextGrid;
+  /**
+   * Formato e texto exibido por célula, para a formatação de data.
+   *
+   * Só as células de data precisam disso, e é por isso que a consulta é uma
+   * função e não uma terceira grade: guardar um par por célula da planilha
+   * inteira devolveria o custo que a fonte de grade existe para remover. Medido
+   * em 120 mil linhas por 8 colunas com uma coluna de data: um formato por
+   * coluna é praticamente de graça, e um mapa por célula custa 6,3 MiB.
+   */
+  cellFormats?: SheetCellFormatLookup;
+};
+
+/**
+ * De onde a normalização tira a grade de cada aba.
+ *
+ * A função recebe o nome da aba e devolve a grade, ou `undefined` para dizer
+ * "esta aba vem da worksheet, como sempre". É uma função e não um mapa porque
+ * quem lê por streaming produz a grade aba a aba e não quer montar todas antes
+ * de começar.
+ */
+export type SheetGridLookup = (sheetName: string) => SheetGridSource | undefined;
+
+export type SheetOptionsSource = { gridFor?: SheetGridLookup };
+
+export type RegionScanOptions = {
+  /**
+   * Grade de texto já pronta, para não reconstruí-la a partir da worksheet.
+   *
+   * Mesma ideia da opção de `sheetToRows`, e pelo mesmo motivo: quem lê por
+   * streaming já tem a grade, e refazê-la aqui custaria a planilha inteira
+   * formatada como texto, duas vezes, uma por função.
+   *
+   * A grade informada já deve estar na forma que estas funções esperam, ou
+   * seja, com o texto formatado de cada célula. Linhas ocultas continuam sendo
+   * apagadas a partir da worksheet, porque essa informação não existe na grade;
+   * numa fonte sem worksheet não há linha oculta, e a máscara é inofensiva.
+   */
+  textAoa?: SheetTextGrid;
+};
+
+/**
+ * Grade de texto usada pela detecção de regiões e de seções independentes.
+ *
+ * As duas liam a planilha do mesmo jeito, com o mesmo mascaramento de linhas
+ * ocultas, em código duplicado. Passaram a compartilhar esta função para que
+ * uma não possa mudar de critério sem a outra.
+ */
+export function visibleTextGrid(
+  ws: XLSX.WorkSheet,
+  used: XLSX.Range,
+  options?: RegionScanOptions,
+): SheetTextGrid {
+  const rawAoa =
+    options?.textAoa ??
+    XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+      header: 1,
+      defval: null,
+      raw: false,
+    });
+  return rawAoa.map((row, index) => (ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row));
+}
+
 function independentRegionWorksheet(
   ws: XLSX.WorkSheet,
   region: { startRow: number; endRow: number; startColumn: number; endColumn: number },
@@ -2525,6 +2692,106 @@ type IndependentSection = {
   label: string;
   contextRows: number[];
 };
+
+/**
+ * Recorte de uma região retangular sobre a grade.
+ *
+ * Equivale a `independentRegionWorksheet` para uma fonte que não tem worksheet.
+ * Aquela função também recorta mesclagens, linhas ocultas e o pacote
+ * `!oliAdvanced` (hyperlinks, comentários, imagens, formas, gráficos, cor de
+ * preenchimento), com remapeamento de intervalos. Numa grade de valores nada
+ * disso existe, então o recorte é só de linhas e colunas.
+ *
+ * As coordenadas são relativas e começam em 1, iguais às da função de
+ * worksheet, para que os dois caminhos possam ser confrontados diretamente.
+ */
+/**
+ * Worksheet com o mínimo que a normalização exige de uma fonte de grade.
+ *
+ * Só `!ref`. Verificado por teste: com a grade passada à parte, isso produz as
+ * mesmas linhas, o mesmo aviso e o mesmo diagnóstico que a worksheet completa,
+ * porque todas as outras leituras são de metadado opcional que uma grade de
+ * valores não tem.
+ */
+export function minimalWorksheetForGrid(grid: SheetSourceGrid): XLSX.WorkSheet {
+  const rows = Math.max(1, grid.length);
+  const columns = Math.max(1, ...grid.map((row) => row.length));
+  return {
+    "!ref": XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows - 1, c: columns - 1 } }),
+  } as XLSX.WorkSheet;
+}
+
+export function sliceGridRegion(
+  grid: SheetSourceGrid,
+  region: { startRow: number; endRow: number; startColumn: number; endColumn: number },
+): SheetSourceGrid {
+  const linhas = grid.slice(region.startRow - 1, region.endRow);
+  return linhas.map((linha) => linha.slice(region.startColumn - 1, region.endColumn));
+}
+
+/**
+ * Recorte de uma seção independente sobre a grade.
+ *
+ * Equivale a `independentSectionWorksheet`. A seleção de linhas é a mesma:
+ * primeiro as linhas de contexto, depois o intervalo da seção, sem repetir
+ * nenhuma. A ordem importa, porque é ela que define a linha de cabeçalho da
+ * planilha recortada.
+ */
+/**
+ * As linhas da grade que uma seção independente leva, na ordem em que leva.
+ *
+ * Primeiro as de contexto, depois o intervalo da seção, sem repetir nenhuma. A
+ * ordem importa, porque é ela que define a linha de cabeçalho do recorte, e a
+ * lista existe separada porque quem remapeia a consulta de formato precisa
+ * saber de qual linha original veio cada linha recortada.
+ */
+export function sectionGridRows(section: IndependentSection): number[] {
+  return [
+    ...section.contextRows,
+    ...Array.from(
+      { length: section.endRow - section.startRow + 1 },
+      (_, index) => section.startRow + index,
+    ),
+  ].filter((row, index, all) => all.indexOf(row) === index);
+}
+
+export function sliceGridSection(
+  grid: SheetSourceGrid,
+  section: IndependentSection,
+): SheetSourceGrid {
+  return sectionGridRows(section).map((linha) =>
+    (grid[linha - 1] ?? []).slice(section.startColumn - 1, section.endColumn),
+  );
+}
+
+/**
+ * A mesma consulta de formato, vista pelas coordenadas do recorte.
+ *
+ * Sem isto, um recorte consultaria o formato da célula errada, e a data sairia
+ * com a granularidade de outra coluna. As duas seguem exatamente o recorte de
+ * grade correspondente: uma região desloca linha e coluna, e uma seção escolhe
+ * linhas por lista.
+ */
+export function sliceCellFormatsRegion(
+  cellFormats: SheetCellFormatLookup | undefined,
+  region: { startRow: number; startColumn: number },
+): SheetCellFormatLookup | undefined {
+  if (!cellFormats) return undefined;
+  return (row, column) => cellFormats(row + region.startRow - 1, column + region.startColumn - 1);
+}
+
+export function sliceCellFormatsSection(
+  cellFormats: SheetCellFormatLookup | undefined,
+  section: IndependentSection,
+): SheetCellFormatLookup | undefined {
+  if (!cellFormats) return undefined;
+  const rows = sectionGridRows(section);
+  return (row, column) => {
+    const original = rows[row];
+    if (original === undefined) return undefined;
+    return cellFormats(original - 1, column + section.startColumn - 1);
+  };
+}
 
 const SECTION_HEADER_HINT =
   /^(?:m[eê]s|data|nome|c[oó]digo|item|descri[cç][aã]o|cliente|produto|material|objeto|ponto|m[aá]quina|gramatura|quantidade|amostra|an[aá]lise|refer[eê]ncia|limite|tipo|ferramenta|t[eé]cnica|frequ[eê]ncia|status|valor|pre[cç]o|unidade|resultado)/i;
@@ -2675,17 +2942,13 @@ function independentSectionWorksheet(
  * separador imediatamente acima. Isso evita tratar uma linha comum de dados
  * como uma nova tabela.
  */
-function detectIndependentSections(ws: XLSX.WorkSheet): IndependentSection[] {
+function detectIndependentSections(
+  ws: XLSX.WorkSheet,
+  options?: RegionScanOptions,
+): IndependentSection[] {
   if (!ws["!ref"]) return [];
   const used = XLSX.utils.decode_range(ws["!ref"]);
-  const rawAoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
-  const aoa = rawAoa.map((row, index) =>
-    ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row,
-  );
+  const aoa = visibleTextGrid(ws, used, options);
   if (aoa.length < 4) return [];
 
   const filled = (row: (string | number | boolean | null)[] | undefined) =>
@@ -2826,20 +3089,14 @@ function detectIndependentSections(ws: XLSX.WorkSheet): IndependentSection[] {
 function regionsAreSafeToSplit(
   ws: XLSX.WorkSheet,
   regions: ImportDiagnostics["tableRegions"],
+  options?: RegionScanOptions,
 ): boolean {
   if (!ws["!ref"] || regions.length < 2 || regions.length > 8) return false;
   if (regions.some((region) => region.rows < 3 || region.columns < 2 || region.confidence < 0.75))
     return false;
 
   const used = XLSX.utils.decode_range(ws["!ref"]);
-  const rawAoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
-  const aoa = rawAoa.map((row, index) =>
-    ws["!rows"]?.[used.s.r + index]?.hidden === true ? [] : row,
-  );
+  const aoa = visibleTextGrid(ws, used, options);
   const occupied = aoa.reduce(
     (sum, row) => sum + row.filter((value) => value !== null && value !== "").length,
     0,
@@ -2973,16 +3230,54 @@ function unifiedBlocksOption(name: string, wb: XLSX.WorkBook): SheetOption | nul
  * blocos (ver `unifiedBlocksOption`): a aba inteira, ou as tabelas
  * independentes quando a separação automática se aplica.
  */
-function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
+/** Linhas do topo que a checagem de relatório de compatibilidade precisa ver. */
+const COMPATIBILITY_PREVIEW_ROWS = 12;
+
+/**
+ * Intervalo do topo da aba, para não formatar a planilha inteira à toa.
+ *
+ * A checagem abaixo lê só as primeiras linhas, mas fazia isso a partir de um
+ * `sheet_to_json` com `raw: false` sobre a aba toda. Esse modo formata **cada
+ * célula** como texto, e o resultado inteiro era descartado fora do topo: num
+ * CSV de 200 mil linhas por 8 colunas, medidos 37 MiB alocados e jogados fora
+ * em toda importação, de todo formato.
+ */
+function compatibilityPreviewRange(ws: XLSX.WorkSheet): XLSX.Range | undefined {
+  const ref = ws["!ref"];
+  if (!ref) return undefined;
+  const range = XLSX.utils.decode_range(ref);
+  return {
+    s: range.s,
+    e: { r: Math.min(range.e.r, range.s.r + COMPATIBILITY_PREVIEW_ROWS - 1), c: range.e.c },
+  };
+}
+
+function sheetOptionsForName(
+  name: string,
+  wb: XLSX.WorkBook,
+  source?: SheetOptionsSource,
+): SheetOption[] {
   const ws = wb.Sheets[name];
   if (!ws) return [];
-  const preview = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
+  // Quando existe grade, ela é a fonte dos valores e do texto. A worksheet
+  // continua sendo consultada para o que só ela sabe (mesclagem, fórmula, linha
+  // oculta, metadado avançado); numa fonte sem worksheet completa esses campos
+  // simplesmente não existem, e ausência é a resposta correta.
+  const grid = source?.gridFor?.(name);
+  const scan: RegionScanOptions | undefined = grid?.textAoa ? { textAoa: grid.textAoa } : undefined;
+  const previewRange = grid ? undefined : compatibilityPreviewRange(ws);
+  const preview: (string | number | boolean | Date | null)[][] = grid
+    ? (grid.textAoa ?? grid.aoa).slice(0, COMPATIBILITY_PREVIEW_ROWS)
+    : previewRange
+      ? XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+          header: 1,
+          defval: null,
+          raw: false,
+          range: previewRange,
+        })
+      : [];
   const compatibilityText = preview
-    .slice(0, 12)
+    .slice(0, COMPATIBILITY_PREVIEW_ROWS)
     .flat()
     .filter((value) => value !== null && value !== "")
     .map(String)
@@ -2992,17 +3287,32 @@ function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
     /loss of functionality|loss of fidelity/i.test(compatibilityText)
   )
     return [];
-  const result = sheetToRows(ws, wb);
+  const gridOptions: SheetToRowsOptions | undefined = grid
+    ? { aoa: grid.aoa, ...(grid.cellFormats ? { cellFormats: grid.cellFormats } : {}) }
+    : undefined;
+  const result = sheetToRows(ws, wb, gridOptions);
   if (result.tableMode !== "repeated-blocks") {
-    const sections = detectIndependentSections(ws);
+    const sections = detectIndependentSections(ws, scan);
     if (sections.length > 1) {
       const labelTotals = new Map<string, number>();
       for (const section of sections)
         labelTotals.set(section.label, (labelTotals.get(section.label) ?? 0) + 1);
       const split = sections.flatMap((section, index) => {
-        const sectionSheet = independentSectionWorksheet(ws, section);
+        const slicedGrid = grid ? sliceGridSection(grid.aoa, section) : null;
+        const sectionSheet = slicedGrid
+          ? minimalWorksheetForGrid(slicedGrid)
+          : independentSectionWorksheet(ws, section);
         if (!sectionSheet) return [];
-        const imported = sheetToRows(sectionSheet, wb);
+        const slicedFormats = slicedGrid
+          ? sliceCellFormatsSection(grid?.cellFormats, section)
+          : undefined;
+        const imported = sheetToRows(
+          sectionSheet,
+          wb,
+          slicedGrid
+            ? { aoa: slicedGrid, ...(slicedFormats ? { cellFormats: slicedFormats } : {}) }
+            : undefined,
+        );
         if (!imported.rows.length) return [];
         const separationWarning = `A aba "${name}" continha ${sections.length} tabelas independentes empilhadas e foi separada automaticamente. Esta opção corresponde à tabela ${index + 1}.`;
         return [
@@ -3024,12 +3334,24 @@ function sheetOptionsForName(name: string, wb: XLSX.WorkBook): SheetOption[] {
   if (
     result.tableMode !== "repeated-blocks" &&
     result.diagnostics &&
-    regionsAreSafeToSplit(ws, result.diagnostics.tableRegions)
+    regionsAreSafeToSplit(ws, result.diagnostics.tableRegions, scan)
   ) {
     const split = result.diagnostics.tableRegions.flatMap((region, index) => {
-      const regionSheet = independentRegionWorksheet(ws, region);
+      const slicedGrid = grid ? sliceGridRegion(grid.aoa, region) : null;
+      const regionSheet = slicedGrid
+        ? minimalWorksheetForGrid(slicedGrid)
+        : independentRegionWorksheet(ws, region);
       if (!regionSheet) return [];
-      const imported = sheetToRows(regionSheet, wb);
+      const slicedFormats = slicedGrid
+        ? sliceCellFormatsRegion(grid?.cellFormats, region)
+        : undefined;
+      const imported = sheetToRows(
+        regionSheet,
+        wb,
+        slicedGrid
+          ? { aoa: slicedGrid, ...(slicedFormats ? { cellFormats: slicedFormats } : {}) }
+          : undefined,
+      );
       if (!imported.rows.length) return [];
       const separationWarning = `A aba "${name}" continha ${result.diagnostics!.tableRegions.length} tabelas independentes e foi separada automaticamente. Esta opção corresponde à região ${index + 1}.`;
       return [
@@ -3105,20 +3427,21 @@ export function streamSheetsWithData(
   wb: XLSX.WorkBook,
   onOption: (option: SheetOption) => void,
   onSheetDone?: (completed: number, total: number) => void,
+  source?: SheetOptionsSource,
 ): void {
   const total = wb.SheetNames.length;
   for (const [index, name] of wb.SheetNames.entries()) {
     const unified = unifiedBlocksOption(name, wb);
-    const options = sheetOptionsForName(name, wb);
+    const options = sheetOptionsForName(name, wb, source);
     for (const option of unified ? [unified, ...options] : options)
       if (option.rows.length > 0 || hasVisualOnlyContent(option)) onOption(option);
     onSheetDone?.(index + 1, total);
   }
 }
 
-export function sheetsWithData(wb: XLSX.WorkBook): SheetOption[] {
+export function sheetsWithData(wb: XLSX.WorkBook, source?: SheetOptionsSource): SheetOption[] {
   const collected: SheetOption[] = [];
-  streamSheetsWithData(wb, (option) => collected.push(option));
+  streamSheetsWithData(wb, (option) => collected.push(option), undefined, source);
   return collected;
 }
 

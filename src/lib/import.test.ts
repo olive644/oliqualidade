@@ -6,6 +6,10 @@ import {
   preferredSheetIndex,
   sheetsWithData,
   sheetToRows,
+  minimalWorksheetForGrid,
+  sliceGridRegion,
+  sliceGridSection,
+  visibleTextGrid,
   type ImportAudit,
 } from "@/lib/import";
 import type { WorksheetWithAdvancedMetadata } from "@/lib/workbook-metadata";
@@ -1877,6 +1881,25 @@ describe("sheetsWithData", () => {
     expect(sheetsWithData(wb).map((option) => option.name)).toEqual(["Dados"]);
   });
 
+  it("procura o aviso de compatibilidade só no topo da aba", () => {
+    // A checagem sempre olhou apenas as primeiras linhas, mas fazia isso a
+    // partir de uma conversão da aba inteira para texto formatado, que era
+    // descartada em seguida: medidos 107 MiB e 1,4s por aba num arquivo de 200
+    // mil linhas. Hoje a conversão é limitada ao topo, e este teste fixa a
+    // janela: um texto igual ao do relatório, mas fora dela, não pode fazer
+    // uma aba de dados legítima desaparecer.
+    const wb = XLSX.utils.book_new();
+    const linhas: (string | number | null)[][] = [["Nome", "Valor"]];
+    for (let indice = 1; indice <= 40; indice += 1) linhas.push([`Item ${indice}`, indice]);
+    linhas.push(["Compatibility Report for arquivo.xls", "Significant loss of functionality"]);
+    XLSX.utils.book_append_sheet(wb, sheet(linhas), "Dados");
+
+    const opcoes = sheetsWithData(wb);
+
+    expect(opcoes.map((option) => option.name)).toEqual(["Dados"]);
+    expect(opcoes[0]?.rows.length).toBe(41);
+  });
+
   it("pula abas sem nenhuma linha de dado, mas mantém as abas com dado", () => {
     // Reproduz o caso comum de um arquivo de exemplo com uma aba "Página1"
     // vazia (sobra de template) além das abas de verdade.
@@ -1994,5 +2017,291 @@ describe("auditFidelityPercent", () => {
     expect(
       auditFidelityPercent({ ...baseAudit, sourceNonEmptyCells: 0, outputNonEmptyCells: 0 }),
     ).toBe(100);
+  });
+});
+
+describe("grade pronta na normalização", () => {
+  it("chega ao mesmo resultado recebendo a grade ou reconstruindo-a", () => {
+    // Primeiro passo para a leitura por streaming não pagar duas vezes pela
+    // mesma grade. A garantia que importa é esta: passar a grade não pode
+    // mudar nada do que sai.
+    const linhas = [
+      ["Produto", "Valor", "Data"],
+      ["Bolo", 42, "2026-08-27"],
+      ["Torta", 7, "2026-08-28"],
+      ["Pão", null, "2026-08-29"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(linhas);
+    const grade = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
+      header: 1,
+      defval: null,
+    });
+
+    const reconstruindo = sheetToRows(ws);
+    const recebendo = sheetToRows(ws, undefined, { aoa: grade });
+
+    expect(recebendo.rows).toEqual(reconstruindo.rows);
+    expect(recebendo.warning).toEqual(reconstruindo.warning);
+    expect(recebendo.tableMode).toEqual(reconstruindo.tableMode);
+  });
+
+  it("ignora a grade ausente e continua reconstruindo", () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Nome", "Valor"],
+      ["A", 1],
+    ]);
+
+    expect(sheetToRows(ws, undefined, {}).rows).toEqual(sheetToRows(ws).rows);
+  });
+});
+
+describe("normalização a partir de worksheet mínima", () => {
+  /**
+   * O passo que decide se o refactor pesado é necessário.
+   *
+   * O ganho de memória da leitura por streaming depende de não construir uma
+   * worksheet completa, com um objeto de célula por célula. Este teste mede o
+   * quanto disso já é possível hoje: uma worksheet com apenas `!ref`, mais a
+   * grade passada pronta, contra a worksheet completa.
+   */
+  const linhas: (string | number | null)[][] = [
+    ["Produto", "Valor", "Data", "Setor"],
+    ["Bolo", 42, "2026-08-27", "A"],
+    ["Torta", 7.5, "2026-08-28", "B"],
+    ["Pão", null, "2026-08-29", "A"],
+    ["Café", -3, "2026-08-30", ""],
+  ];
+
+  const completa = () => XLSX.utils.aoa_to_sheet(linhas);
+  const grade = (ws: XLSX.WorkSheet) =>
+    XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, { header: 1, defval: null });
+
+  it("produz as mesmas linhas que a worksheet completa", () => {
+    const cheia = completa();
+    const minima = { "!ref": cheia["!ref"] } as XLSX.WorkSheet;
+
+    const referencia = sheetToRows(cheia);
+    const enxuta = sheetToRows(minima, undefined, { aoa: grade(cheia) });
+
+    expect(enxuta.rows).toEqual(referencia.rows);
+    expect(enxuta.warning).toEqual(referencia.warning);
+    expect(enxuta.tableMode).toEqual(referencia.tableMode);
+  });
+
+  it("chega ao mesmo diagnóstico naquilo que uma planilha sem formato pode ter", () => {
+    // Uma grade de valores não tem fórmula, mesclagem, linha oculta nem
+    // elemento visual. O diagnóstico precisa refletir isso nos dois caminhos,
+    // e não inventar ausência num e presença no outro.
+    const cheia = completa();
+    const minima = { "!ref": cheia["!ref"] } as XLSX.WorkSheet;
+
+    const referencia = sheetToRows(cheia).diagnostics;
+    const enxuta = sheetToRows(minima, undefined, { aoa: grade(cheia) }).diagnostics;
+
+    expect(enxuta?.rowCount).toBe(referencia?.rowCount);
+    expect(enxuta?.columnCount).toBe(referencia?.columnCount);
+    expect(enxuta?.formulaCells).toBe(referencia?.formulaCells);
+    expect(enxuta?.mergedRanges).toBe(referencia?.mergedRanges);
+    expect(enxuta?.hiddenRows).toBe(referencia?.hiddenRows);
+    expect(enxuta?.columns.map((coluna) => coluna.key)).toEqual(
+      referencia?.columns.map((coluna) => coluna.key),
+    );
+  });
+});
+
+describe("grade de texto compartilhada pela detecção de regiões", () => {
+  it("apaga as linhas ocultas, e só elas", () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Nome", "Valor"],
+      ["Visível", 1],
+      ["Oculta", 2],
+      ["Visível 2", 3],
+    ]);
+    ws["!rows"] = [undefined, undefined, { hidden: true }, undefined] as XLSX.RowInfo[];
+    const used = XLSX.utils.decode_range(ws["!ref"]!);
+
+    expect(visibleTextGrid(ws, used)).toEqual([
+      ["Nome", "Valor"],
+      ["Visível", "1"],
+      [],
+      ["Visível 2", "3"],
+    ]);
+  });
+
+  it("aceita a grade pronta e chega ao mesmo resultado", () => {
+    // Sem isto, a leitura por streaming pagaria pela planilha inteira
+    // formatada como texto duas vezes, uma por função de detecção.
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Nome", "Valor"],
+      ["A", 1],
+      ["B", 2],
+    ]);
+    const used = XLSX.utils.decode_range(ws["!ref"]!);
+    const pronta = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+      header: 1,
+      defval: null,
+      raw: false,
+    });
+
+    expect(visibleTextGrid(ws, used, { textAoa: pronta })).toEqual(visibleTextGrid(ws, used));
+  });
+
+  it("continua mascarando linha oculta mesmo com a grade pronta", () => {
+    // A informação de linha oculta não existe numa grade de valores, então ela
+    // continua vindo da worksheet. Numa fonte sem worksheet não há linha
+    // oculta, e a máscara é inofensiva.
+    const ws = XLSX.utils.aoa_to_sheet([["Nome"], ["Some"], ["Fica"]]);
+    ws["!rows"] = [undefined, { hidden: true }, undefined] as XLSX.RowInfo[];
+    const used = XLSX.utils.decode_range(ws["!ref"]!);
+
+    expect(visibleTextGrid(ws, used, { textAoa: [["Nome"], ["Some"], ["Fica"]] })).toEqual([
+      ["Nome"],
+      [],
+      ["Fica"],
+    ]);
+  });
+});
+
+describe("fatiamento sobre a grade", () => {
+  /**
+   * Os fatiadores de grade existem para uma fonte sem worksheet. A garantia
+   * que interessa não é o formato do recorte, e sim que normalizar o recorte
+   * da grade dá o mesmo que normalizar o recorte da worksheet.
+   */
+  const planilha = [
+    ["Relatório mensal", null, null, null],
+    ["Produto", "Jan", "Fev", "Ignorar"],
+    ["Bolo", 10, 20, "x"],
+    ["Torta", 30, 40, "y"],
+    ["Pão", 50, 60, "z"],
+  ];
+
+  it("recorta a mesma região que o caminho de worksheet", () => {
+    const ws = XLSX.utils.aoa_to_sheet(planilha);
+    const grade = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
+      header: 1,
+      defval: null,
+    });
+    const regiao = { startRow: 2, endRow: 5, startColumn: 1, endColumn: 3 };
+
+    const recorte = sliceGridRegion(grade, regiao);
+
+    expect(recorte).toEqual([
+      ["Produto", "Jan", "Fev"],
+      ["Bolo", 10, 20],
+      ["Torta", 30, 40],
+      ["Pão", 50, 60],
+    ]);
+  });
+
+  it("normalizar o recorte da grade dá o mesmo que normalizar o recorte da worksheet", () => {
+    const ws = XLSX.utils.aoa_to_sheet(planilha);
+    const grade = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, {
+      header: 1,
+      defval: null,
+    });
+    const regiao = { startRow: 2, endRow: 5, startColumn: 1, endColumn: 3 };
+
+    const recorteDaGrade = sliceGridRegion(grade, regiao);
+    const minima = {
+      "!ref": XLSX.utils.encode_range({
+        s: { r: 0, c: 0 },
+        e: { r: recorteDaGrade.length - 1, c: (recorteDaGrade[0]?.length ?? 1) - 1 },
+      }),
+    } as XLSX.WorkSheet;
+    const pelaGrade = sheetToRows(minima, undefined, { aoa: recorteDaGrade });
+    const pelaWorksheet = sheetToRows(XLSX.utils.aoa_to_sheet(recorteDaGrade));
+
+    expect(pelaGrade.rows).toEqual(pelaWorksheet.rows);
+    expect(pelaGrade.rows).toEqual([
+      { Produto: "Bolo", Jan: 10, Fev: 20 },
+      { Produto: "Torta", Jan: 30, Fev: 40 },
+      { Produto: "Pão", Jan: 50, Fev: 60 },
+    ]);
+  });
+
+  it("mantém as linhas de contexto na frente, sem repetir nenhuma", () => {
+    // A ordem define qual linha vira o cabeçalho do recorte, então ela é
+    // comportamento e não detalhe.
+    const grade = planilha as (string | number | Date | null)[][];
+
+    const recorte = sliceGridSection(grade, {
+      startRow: 3,
+      endRow: 5,
+      startColumn: 1,
+      endColumn: 3,
+      label: "seção",
+      contextRows: [2, 3],
+    });
+
+    expect(recorte).toEqual([
+      ["Produto", "Jan", "Fev"],
+      ["Bolo", 10, 20],
+      ["Torta", 30, 40],
+      ["Pão", 50, 60],
+    ]);
+  });
+
+  it("tolera linha ausente na grade sem quebrar o recorte", () => {
+    const recorte = sliceGridSection([["a", "b"]], {
+      startRow: 5,
+      endRow: 6,
+      startColumn: 1,
+      endColumn: 2,
+      label: "vazia",
+      contextRows: [],
+    });
+
+    expect(recorte).toEqual([[], []]);
+  });
+});
+
+describe("normalização a partir de uma fonte de grade", () => {
+  /**
+   * A ligação: `sheetsWithData` aceita uma fonte de grade e a repassa para a
+   * normalização, para a detecção de regiões e para o fatiamento. É o ponto em
+   * que a leitura por streaming deixa de precisar de uma worksheet completa.
+   */
+  const conteudo = [
+    ["Produto", "Valor", "Setor"],
+    ["Bolo", 42, "A"],
+    ["Torta", 7, "B"],
+    ["Pão", null, "A"],
+  ];
+
+  it("produz o mesmo resultado da worksheet completa", () => {
+    const completa = XLSX.utils.aoa_to_sheet(conteudo);
+    const wbCompleto = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbCompleto, completa, "Dados");
+
+    const grade = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(completa, {
+      header: 1,
+      defval: null,
+    });
+    const wbMinimo = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbMinimo, minimalWorksheetForGrid(grade), "Dados");
+
+    const pelaWorksheet = sheetsWithData(wbCompleto);
+    const pelaGrade = sheetsWithData(wbMinimo, { gridFor: () => ({ aoa: grade }) });
+
+    expect(pelaGrade.map((opcao) => opcao.rows)).toEqual(pelaWorksheet.map((opcao) => opcao.rows));
+  });
+
+  it("ignora a fonte que não conhece a aba e cai na worksheet", () => {
+    // O `gridFor` devolve `undefined` para dizer "esta aba vem da worksheet,
+    // como sempre". Um workbook misto precisa continuar funcionando.
+    const ws = XLSX.utils.aoa_to_sheet(conteudo);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dados");
+
+    expect(sheetsWithData(wb, { gridFor: () => undefined })).toEqual(sheetsWithData(wb));
+  });
+
+  it("sem fonte nenhuma, o caminho é o de sempre", () => {
+    const ws = XLSX.utils.aoa_to_sheet(conteudo);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dados");
+
+    expect(sheetsWithData(wb, {})).toEqual(sheetsWithData(wb));
   });
 });
