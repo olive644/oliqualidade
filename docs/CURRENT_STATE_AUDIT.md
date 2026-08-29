@@ -9498,17 +9498,52 @@ exige o texto da fórmula **e** acesso às outras células, que é justamente o 
 uma grade não é. Esta não se fecha carregando mais um campo, e é a fronteira
 real da representação.
 
-**Recorte sem metadado.** Ao dividir uma aba em seções, a worksheet do recorte
-vem de `minimalWorksheetForGrid`, que leva só o `!ref`, enquanto o caminho atual
-remapeia mesclagem e linha oculta para o recorte. Sem a mesclagem, uma seção de
-poucas linhas pode não produzir linha nenhuma; quando isso acontece a divisão
-inteira é descartada e a aba fica junta. Foi o que se viu num plano de ação: o
-caminho atual entrega `Causa 1` em duas opções e a grade entrega uma. Esta se
-fecha, e é o próximo passo.
+**Divisão em seções que nunca começa.** Num plano de ação, o caminho atual
+entrega `Causa 1` em duas opções e a grade entrega uma. A investigação está
+abaixo, e ela desmentiu o diagnóstico inicial: não é o recorte que falha, é a
+detecção que nunca roda.
 
 Nenhuma das duas perde dado. As linhas continuam lá, agrupadas de outro jeito ou
 com um número recalculado a menos, e o teste do corpus cobra isso: nenhuma
 divergência pode ser de um tipo fora da lista conhecida.
+
+### A terceira causa, e por que consertá-la sozinha piora
+
+Depois de registrar as duas causas acima, a segunda foi investigada até o fim, e
+o resultado desmentiu o diagnóstico inicial duas vezes seguidas. Fica registrado
+com esse detalhe porque a próxima pessoa vai chegar exatamente aqui.
+
+O primeiro palpite foi que o recorte perdia mesclagem e linha oculta, porque
+`minimalWorksheetForGrid` leva só o `!ref`. Fazer o recorte passar pelos
+fatiadores de worksheet, que já remapeiam esse metadado, **não mudou nada**: as
+25 planilhas continuaram com o mesmo resultado. O palpite estava errado, e a
+mudança foi desfeita em vez de ficar no repositório sem evidência.
+
+A causa real está antes do recorte. `detectIndependentSections` decide se uma
+linha é banner perguntando se a **célula de origem da mesclagem tem valor**, e
+pergunta isso à worksheet. Numa fonte de grade não há célula nenhuma, então a
+resposta é sempre não, nenhum banner é reconhecido, e **a aba nunca é dividida
+em seções**. Não é o recorte que falha: é a detecção que nunca começa.
+
+Isso foi confirmado instrumentando a função: sobre a mesma aba, a worksheet
+encontra duas seções e a grade encontra zero.
+
+O conserto do mecanismo é pequeno e segue o mesmo padrão da consulta de formato,
+com a worksheet tendo precedência e a grade respondendo por reserva, já que
+`cellHasValue` só olha para presença e o texto da grade responde a mesma
+pergunta. Ele foi escrito, e o efeito medido foi **negativo**: as planilhas que
+normalizam igual caíram de 17 para 16.
+
+O motivo é que ele destrava a divisão sem alinhá-la. Sem o conserto a grade
+nunca divide, e por acaso isso coincide com o caminho atual nas abas que ele
+também não divide. Com o conserto ela passa a dividir, e a divisão às vezes sai
+diferente, o que troca um tipo de divergência por outro.
+
+Por isso o conserto não foi embarcado. A rede de paridade confirma que ele não
+tocaria o caminho atual, então ele é seguro; o que falta não é segurança, é
+saber por que a divisão diverge depois de acontecer. Fechar isso é medir a
+divisão dos dois lados sobre as abas que a exercitam, e não escrever mais
+código antes disso.
 
 ### Um erro de leitura de código que quase virou conclusão errada
 
