@@ -255,7 +255,7 @@ test.describe("regressão visual Recharts 3", () => {
     });
   }
 
-  test("tooltip e seleções de pizza e radar", async ({ page }) => {
+  test("tooltip da barra e seleção da pizza", async ({ page }) => {
     await openChartDashboard(page);
 
     const bar = page.locator('[data-widget-id="bar"]');
@@ -273,14 +273,21 @@ test.describe("regressão visual Recharts 3", () => {
       animations: "disabled",
       maxDiffPixelRatio: 0.001,
     });
+  });
+
+  // O radar tem painel próprio, e não é organização: clicar numa fatia da pizza
+  // **filtra o painel inteiro**. Depois do filtro sobra uma categoria, o radar
+  // passa a dizer que precisa de ao menos três para ser desenhado, e não há mais
+  // ponto para clicar. Clicar no radar filtra do mesmo jeito, então nenhuma
+  // ordem entre os dois resolve: cada seleção precisa de um painel limpo.
+  test("seleção do radar", async ({ page }) => {
+    await openChartDashboard(page);
 
     const radar = page.locator('[data-widget-id="radar"]');
     // O clique vai no grupo, e não no ponto: `.oliam-chart-radar-dot` é o
     // círculo desenhado, tem `pointer-events: none` e nunca recebe evento. Quem
     // é clicável é o `<g role="button">` em volta, que carrega o rótulo
-    // acessível e um círculo transparente maior como área de toque. Clicar no
-    // ponto fazia o Playwright esperar 30s por um elemento que, por desenho,
-    // não responde.
+    // acessível e um círculo transparente maior como área de toque.
     await radar
       .getByRole("button", { name: /^Inspecionar / })
       .nth(1)
