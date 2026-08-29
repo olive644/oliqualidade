@@ -243,7 +243,7 @@ async function openChartDashboard(page: Page, theme: "light" | "dark" = "light")
 }
 
 test.describe("regressão visual Recharts 3", () => {
-  test.use({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  test.use({ viewport: { width: 1440, height: 3600 }, deviceScaleFactor: 1 });
 
   for (const theme of ["light", "dark"] as const) {
     test(`galeria completa no tema ${theme}`, async ({ page }) => {
