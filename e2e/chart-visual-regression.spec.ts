@@ -275,7 +275,16 @@ test.describe("regressão visual Recharts 3", () => {
     });
 
     const radar = page.locator('[data-widget-id="radar"]');
-    await radar.locator(".oliam-chart-radar-dot").nth(1).click();
+    // O clique vai no grupo, e não no ponto: `.oliam-chart-radar-dot` é o
+    // círculo desenhado, tem `pointer-events: none` e nunca recebe evento. Quem
+    // é clicável é o `<g role="button">` em volta, que carrega o rótulo
+    // acessível e um círculo transparente maior como área de toque. Clicar no
+    // ponto fazia o Playwright esperar 30s por um elemento que, por desenho,
+    // não responde.
+    await radar
+      .getByRole("button", { name: /^Inspecionar / })
+      .nth(1)
+      .click();
     await expect(radar).toHaveScreenshot("recharts-radar-selected.png", {
       animations: "disabled",
       maxDiffPixelRatio: 0.001,
