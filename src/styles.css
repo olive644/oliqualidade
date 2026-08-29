@@ -1493,8 +1493,18 @@
    * seus limites vivem em `lib/widget-density.ts`, que é a fonte usada
    * também pelas decisões feitas em JavaScript. */
   container: oliam-widget / inline-size;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 360px;
+  /* Sem `content-visibility: auto`, e isto é decisão medida.
+   *
+   * Ele existia para um painel longo não desenhar o que está fora da tela. O
+   * preço é que o navegador **joga fora** a subárvore do widget quando ela sai
+   * da viewport e a reconstrói quando volta: o `ResponsiveContainer` do gráfico
+   * remede do zero, e o widget pisca a cada rolagem. O mesmo mecanismo já tinha
+   * obrigado o teste de regressão visual a forçar `content-visibility: visible`
+   * para os gráficos existirem.
+   *
+   * O que ele comprava foi medido, com 18 widgets de gráfico: 4.792 ms até o
+   * primeiro gráfico com ele, 4.940 ms sem ele, e **os 18 desenhados nos dois
+   * casos**. Ou seja, ele não estava pulando nada, e cobrava o piscar. */
   animation: oliam-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
   border-radius: var(--radius-2xl);
   border: 1px solid var(--border);

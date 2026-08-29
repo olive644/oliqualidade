@@ -10441,3 +10441,88 @@ devolver 6 caracteres onde devolvia 7, que é o efeito direto da folga reservada
 
 `0.10.0-beta.18` para `0.10.0-beta.19`, com entrada no Centro de Atualizações:
 tudo aqui é visível para quem usa.
+## 162. Os widgets piscavam ao rolar, e o número do meio da pizza tinha sumido
+
+Dois defeitos relatados pelo usuário depois da entrega da seção 161, e os dois
+já existiam antes dela.
+
+### A hipótese que foi testada e descartada primeiro
+
+O usuário levantou que a interface estivesse desajustada com a leitura por
+streaming entregue nas seções 149 a 159. Isso é testável, e foi testado antes de
+qualquer conserto: a sonda monta o painel **direto no armazenamento local**, sem
+passar por importação nenhuma, e os dois defeitos aparecem lá.
+
+A leitura não é a causa, e vale registrar que a pergunta foi respondida por
+medição e não por argumento.
+
+### O número do meio da pizza
+
+`<Label position="center">` decidia se desenhava a partir de `viewBox.cx`. Foi
+sondado o que o Recharts 3 de fato entrega ali:
+
+```text
+props: ["x","y","position","angle","offset","zIndex","textBreakAll","viewBox"]
+viewBox: {"x":6,"y":6,"upperWidth":191,"lowerWidth":191,"width":191,"height":196}
+```
+
+É um viewBox **cartesiano**. A versão 2 entregava um polar, com `cx` e `cy`. Sem
+`cx`, a guarda devolvia `null` em toda renderização e o texto do centro
+desaparecia sem erro nenhum.
+
+Confirmado pela sonda antes do conserto: a pizza tinha 6 setores desenhados e
+**zero elementos `<text>`** no SVG.
+
+Isto é regressão da migração da seção 148, e ela chegou às imagens de referência
+da seção 161 gravada como resultado esperado. É a terceira vez nesta série que
+uma imagem de referência documenta um defeito, e reforça o que já estava escrito:
+conferir a imagem não é formalidade.
+
+`chartLabelCenter` passou a aceitar as duas formas, a polar porque é a que a
+documentação promete e a cartesiana porque é a que chega. Devolve `null` só
+quando nenhuma das duas dá um par finito, para o SVG nunca receber `NaN`.
+
+### O piscar ao rolar
+
+`.oliam-widget` tinha `content-visibility: auto`. O que ele faz é exatamente o
+que o usuário descreveu: o navegador **descarta a subárvore** do widget quando
+ela sai da viewport e a reconstrói quando volta. O `ResponsiveContainer` do
+gráfico remede do zero a cada volta, e o widget pisca.
+
+O mesmo mecanismo já tinha obrigado o teste de regressão visual a forçar
+`content-visibility: visible` para os gráficos existirem, o que era um sinal
+registrado e não lido.
+
+Antes de remover, o que ele comprava foi medido, com 18 widgets de gráfico:
+
+| | Até o primeiro gráfico | Desenhados |
+| --- | ---: | ---: |
+| Com `content-visibility` | 4.792 ms | 18 de 18 |
+| Sem `content-visibility` | 4.940 ms | 18 de 18 |
+
+A diferença está dentro do ruído, e **os 18 são desenhados nos dois casos**: ele
+não estava pulando nada, e cobrava o piscar. Saiu.
+
+### O que não foi possível verificar aqui
+
+O piscar não reproduz em Playwright headless nem no painel de navegador desta
+sessão, que reporta `document.hidden` e viewport `[0,0]`. Sem viewport visível
+não há "fora da tela", que é a condição que dispara o mecanismo.
+
+Ou seja: a causa é mecânica e a medição do custo é real, mas **a confirmação de
+que o piscar acabou depende de olhar na máquina de quem relatou**. Fica dito, em
+vez de a correção ser apresentada como verificada.
+
+### Verificação
+
+Suíte completa com 1.202 testes, build e orçamento aprovados. O centro da pizza
+foi conferido na captura: a rosca passou a mostrar `R$ 1.526,67 / Total`.
+
+As onze imagens de referência foram removidas de novo, porque gravavam a
+ausência do número do centro. Precisam ser regeneradas na CI e conferidas antes
+de versionar.
+
+### Versão
+
+`0.10.0-beta.19` para `0.10.0-beta.20`, com entrada no Centro de Atualizações:
+os dois são visíveis para quem usa.
