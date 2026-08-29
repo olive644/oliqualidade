@@ -683,6 +683,10 @@ export function spanClass(span: WidgetSpan): string {
  * altura no valor antigo cortava o gráfico de quase todo widget, então o teto
  * fica onde a maioria cabe inteira e só os dois mais altos rolam.
  *
+ * O teto de 672 px também saiu de medida, e não de arredondamento: com 640 px o
+ * gráfico de área excedia por **7 px** e ganhava barra de rolagem por causa
+ * deles. Sobram a pizza (833) e o histograma (815), que rolam de verdade.
+ *
  * O outro lado do mesmo problema é o card que **não cabe**: a legenda da pizza
  * era cortada no meio, sem como alcançar o resto, porque `.oliam-widget` tem
  * `overflow: hidden`. Teto sem rolagem só mudaria o corte de lugar, então os
@@ -694,7 +698,7 @@ export function spanClass(span: WidgetSpan): string {
 export function sizeClass(size: WidgetSize, type: WidgetType): string {
   if (type === "table") return "";
   if (size === "sm") return "min-h-36 max-h-[22rem] lg:min-h-28";
-  if (size === "md") return "min-h-80 max-h-[40rem] lg:min-h-64";
+  if (size === "md") return "min-h-80 max-h-[42rem] lg:min-h-64";
   return "min-h-[28rem] max-h-[52rem] lg:min-h-[22rem]";
 }
 

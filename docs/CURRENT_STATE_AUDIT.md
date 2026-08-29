@@ -10318,8 +10318,27 @@ lê-lo como tal encolhia todo card a menos da metade do que ele precisa.
 
 A implementação que ficou usa o intervalo, e não um valor: `min-h` continua o
 piso, entra um **teto medido** por tamanho, e quem para de esticar é
-`items-start` na grade. Com teto de 640 px num `md`, cinco dos sete cabem
-inteiros e os dois mais altos rolam.
+`items-start` na grade.
+
+O teto de um `md` é 672 px, e esse número também saiu de medida, e não de
+arredondamento: com 640 px o gráfico de área excedia por **7 px** e ganhava barra
+de rolagem por causa deles. Com 672 px, medido na galeria:
+
+| Widget | Caixa | Conteúdo | Rola |
+| --- | ---: | ---: | --- |
+| Métrica | 287 | 285 | não |
+| Dispersão | 442 | 440 | não |
+| Pareto | 571 | 569 | não |
+| Radar | 573 | 571 | não |
+| Barras | 637 | 635 | não |
+| Área | 649 | 647 | não |
+| Histograma | 672 | 815 | sim |
+| Pizza | 672 | 833 | sim |
+
+Seis cabem exatos, dois rolam de verdade, e **nenhum é esticado pelo vizinho**.
+Foi essa medida que respondeu a dúvida de leitura da imagem: o bloco "Outros" da
+pizza parece ficar fora do card, e está dentro — é conteúdo rolável recortado no
+limite, com a borda clara contra fundo branco.
 
 Fica registrado porque a tentativa errada é a leitura mais natural do enunciado,
 e a próxima pessoa vai chegar nela.
