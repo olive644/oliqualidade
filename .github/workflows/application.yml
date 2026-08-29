@@ -331,6 +331,25 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+      # As imagens de referência da regressão visual dos gráficos dependem do
+      # sistema: o Playwright as nomeia com o sufixo da plataforma, e uma imagem
+      # gerada no Windows nunca casa com a comparação feita aqui, no Linux. Quem
+      # precisa regerá-las (porque um gráfico mudou de propósito) não tem como
+      # produzi-las na própria máquina.
+      #
+      # Quando falta uma referência, o Playwright grava a imagem real antes de
+      # reprovar. Este passo publica essas imagens para quem for atualizar o
+      # baseline poder baixá-las e versioná-las, em vez de precisar editar o
+      # workflow toda vez.
+      - name: Upload chart visual baselines
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: chart-visual-baselines
+          path: e2e/**/*-snapshots/**
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Stop dev server
         if: always()
         run: kill "$(cat dev-server.pid)" 2>/dev/null || true
