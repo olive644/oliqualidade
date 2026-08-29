@@ -5,7 +5,7 @@ import { HistogramWidgetBody } from "./histogram-widget-body";
 import { MetricWidgetBody } from "./metric-widget-body";
 import { ParetoWidgetBody } from "./pareto-widget-body";
 import { RadarWidgetBody } from "./radar-widget-body";
-import { ScatterWidgetBody } from "./scatter-widget-body";
+import { ScatterWidgetBody, scatterPointKey } from "./scatter-widget-body";
 import { OperationalWidgetBody } from "@/components/operational-widget-body";
 import { setMeasuredSize, setPrefersReducedMotion } from "@/test/component-setup";
 import { renderWidget } from "@/test/render-widget";
@@ -352,5 +352,245 @@ describe("widgets especializados com Recharts 3", () => {
     );
     await waitFor(() => expect(container.querySelector(".recharts-surface")).not.toBeNull());
     expect(container.querySelectorAll(".recharts-line-curve").length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
+ * A seleção precisa acompanhar a identidade do que foi selecionado.
+ *
+ * O que ela não pode fazer é continuar apontando para a mesma **posição**. A
+ * pessoa seleciona a terceira categoria, aplica um filtro, a série encolhe ou
+ * troca de ordem, e a posição 2 passa a ser outra categoria: o widget destaca a
+ * errada, ou não destaca nenhuma e deixa o gráfico inteiro esmaecido.
+ *
+ * Estes testes comparam identidade, e não presença. Afirmar que "existe algo
+ * destacado" passaria dos dois lados, que é como o defeito da seção 156
+ * sobreviveu por tanto tempo.
+ */
+describe("a seleção acompanha a identidade, e não a posição", () => {
+  const catColumns: Column[] = [
+    { key: "setor", label: "Setor", kind: "category", visible: true, description: "" },
+    { key: "custo", label: "Custo", kind: "number", visible: true, description: "" },
+  ];
+  const numColumns: Column[] = [
+    { key: "custo", label: "Custo", kind: "number", visible: true, description: "" },
+    { key: "prazo", label: "Prazo", kind: "number", visible: true, description: "" },
+  ];
+
+  const quatroSetores: Row[] = [
+    { setor: "Alfa", custo: 400 },
+    { setor: "Beta", custo: 300 },
+    { setor: "Gama", custo: 200 },
+    { setor: "Delta", custo: 100 },
+  ];
+  const semAlfa = quatroSetores.filter((linha) => linha["setor"] !== "Alfa");
+
+  /** O texto do bloco de detalhe é onde a pessoa lê qual item está selecionado. */
+  const detalhe = (container: HTMLElement) =>
+    container.querySelector(".oliam-chart-detail-swap")?.textContent ?? "";
+
+  const pieElement = (rows: Row[]) => (
+    <ChartWidgetBody
+      widget={{
+        id: "w-pizza-identidade",
+        type: "pie",
+        groupKey: "setor",
+        valueKey: "custo",
+        op: "sum",
+        dataMode: "aggregate",
+        span: 3,
+        size: "md",
+      }}
+      data={rows}
+      columns={catColumns}
+      numericCols={catColumns.filter((column) => column.kind === "number")}
+      groupableCols={catColumns.filter((column) => column.kind === "category")}
+      semanticProfiles={[]}
+      filters={[]}
+      setFilters={() => {}}
+      onConfigure={() => {}}
+      onShowSource={() => {}}
+      dragProps={{}}
+      sizeControls={null}
+      animationDelay={0}
+    />
+  );
+
+  it("a pizza não passa a destacar outra categoria quando a série encolhe", async () => {
+    setMeasuredSize(900);
+    setPrefersReducedMotion(true);
+    const { container, rerenderWidget } = renderWidget(pieElement(quatroSetores));
+
+    await waitFor(() =>
+      expect(container.querySelectorAll(".recharts-sector").length).toBeGreaterThan(3),
+    );
+    const setores = container.querySelectorAll<SVGPathElement>(".recharts-sector");
+    fireEvent.click(setores[2]!);
+    await waitFor(() => expect(detalhe(container)).toContain("Gama"));
+
+    // "Alfa" sai, como aconteceria ao aplicar um filtro. Tudo o que vinha
+    // depois dela anda uma posição para trás, e a posição 2 vira "Delta".
+    rerenderWidget(pieElement(semAlfa));
+    await waitFor(() =>
+      expect(container.querySelectorAll(".recharts-sector").length).toBeGreaterThan(2),
+    );
+
+    expect(detalhe(container)).not.toContain("Delta");
+  });
+
+  it("o histograma não deixa o gráfico inteiro esmaecido quando as faixas mudam", async () => {
+    setMeasuredSize(900);
+    setPrefersReducedMotion(true);
+    const dados: Row[] = Array.from({ length: 40 }, (_, i) => ({ custo: i * 5, prazo: i }));
+    const comFaixas = (binCount: number) => (
+      <HistogramWidgetBody
+        widget={{
+          id: "w-hist-identidade",
+          type: "histogram",
+          valueKey: "custo",
+          binCount,
+          span: 3,
+          size: "md",
+        }}
+        data={dados}
+        columns={numColumns}
+        numericCols={numColumns}
+        filters={[]}
+        setFilters={() => {}}
+        onConfigure={() => {}}
+        onShowSource={() => {}}
+        dragProps={{}}
+        sizeControls={null}
+        animationDelay={0}
+      />
+    );
+    const { container, rerenderWidget } = renderWidget(comFaixas(8));
+
+    await waitFor(() =>
+      expect(container.querySelectorAll(".oliam-chart-bar-cell").length).toBeGreaterThan(5),
+    );
+    fireEvent.click(container.querySelectorAll<SVGPathElement>(".oliam-chart-bar-cell")[5]!);
+
+    // Com 3 faixas não existe a posição 5. Guardada por índice, a seleção
+    // aponta para uma faixa inexistente: nenhuma barra casa com o destaque e
+    // **todas** ficam esmaecidas, que é o estado que ninguém consegue desfazer
+    // sem clicar de novo.
+    rerenderWidget(comFaixas(3));
+    await waitFor(() =>
+      expect(container.querySelectorAll(".oliam-chart-bar-cell").length).toBeLessThan(5),
+    );
+
+    const barras = [...container.querySelectorAll(".oliam-chart-bar-cell")];
+    const esmaecidas = barras.filter((barra) => barra.getAttribute("opacity") !== "1");
+    expect(barras.length).toBeGreaterThan(0);
+    expect(esmaecidas.length).toBeLessThan(barras.length);
+  });
+});
+
+/**
+ * Pareto e dispersão pelo mesmo critério, com os riscos próprios de cada um.
+ *
+ * O Pareto **reordena** por contribuição, então basta um valor mudar para a
+ * posição 2 virar outra categoria, sem nada sair da série. A dispersão não tem
+ * nome: a identidade dela é a linha de origem, que é justamente o que o botão
+ * "Ver linhas de origem" abre.
+ */
+describe("a seleção acompanha a identidade também no Pareto e na dispersão", () => {
+  const catColumns: Column[] = [
+    { key: "setor", label: "Setor", kind: "category", visible: true, description: "" },
+    { key: "custo", label: "Custo", kind: "number", visible: true, description: "" },
+  ];
+
+  // `oliam-widget-detail` é o gancho da faixa de detalhe. Sem ele a busca
+  // esbarra no painel de métricas, que usa a mesma marcação e também tem título.
+  const tituloDoDetalhe = (container: HTMLElement) =>
+    container.querySelector(".oliam-widget-detail p[title]")?.getAttribute("title") ?? "";
+
+  it("o Pareto não troca de categoria quando a ordem por contribuição muda", async () => {
+    setMeasuredSize(900);
+    setPrefersReducedMotion(true);
+    const paretoElement = (rows: Row[]) => (
+      <ParetoWidgetBody
+        widget={{
+          id: "w-pareto-identidade",
+          type: "pareto",
+          groupKey: "setor",
+          valueKey: "custo",
+          op: "sum",
+          span: 3,
+          size: "md",
+        }}
+        data={rows}
+        columns={catColumns}
+        numericCols={catColumns.filter((column) => column.kind === "number")}
+        groupableCols={catColumns.filter((column) => column.kind === "category")}
+        semanticProfiles={[]}
+        filters={[]}
+        setFilters={() => {}}
+        onConfigure={() => {}}
+        onShowSource={() => {}}
+        dragProps={{}}
+        sizeControls={null}
+        animationDelay={0}
+      />
+    );
+    const { container, rerenderWidget } = renderWidget(
+      paretoElement([
+        { setor: "Alfa", custo: 400 },
+        { setor: "Beta", custo: 300 },
+        { setor: "Gama", custo: 200 },
+      ]),
+    );
+
+    await waitFor(() =>
+      expect(container.querySelectorAll(".oliam-chart-bar-cell").length).toBeGreaterThan(2),
+    );
+    fireEvent.click(container.querySelectorAll<SVGPathElement>(".oliam-chart-bar-cell")[2]!);
+    await waitFor(() => expect(tituloDoDetalhe(container)).toBe("Gama"));
+
+    // Ninguém sai da série: só "Gama" passa a ser a maior. O Pareto reordena, e
+    // a posição 2 vira "Beta".
+    rerenderWidget(
+      paretoElement([
+        { setor: "Alfa", custo: 400 },
+        { setor: "Beta", custo: 300 },
+        { setor: "Gama", custo: 900 },
+      ]),
+    );
+
+    await waitFor(() => expect(tituloDoDetalhe(container)).toBe("Gama"));
+  });
+
+  /**
+   * A dispersão fica sem teste de componente, e isto é deliberado.
+   *
+   * O gráfico dela não redesenha os símbolos depois de uma troca de dado no
+   * jsdom: eles vão a zero e não voltam, e o bloco de detalhe some junto. Com
+   * isso o teste passa igual antes e depois da correção, ou seja, não distingue
+   * nada. Um teste que não separa os dois lados é pior que teste nenhum, porque
+   * dá aparência de cobertura.
+   *
+   * O que dá para garantir aqui é a regra de identidade que o widget usa, e é
+   * ela que está abaixo. A ligação com o clique segue o mesmo desenho dos três
+   * widgets acima, que estão cobertos.
+   */
+  it("a identidade de um ponto prefere a linha de origem, e cai nas coordenadas sem ela", () => {
+    // Duas linhas diferentes com o mesmo par de valores continuam distinguíveis
+    // quando a origem é conhecida. É por isso que ela vem primeiro.
+    expect(scatterPointKey({ x: 60, y: 18, sourceRowIndex: 4 })).not.toBe(
+      scatterPointKey({ x: 60, y: 18, sourceRowIndex: 9 }),
+    );
+    // E a mesma linha continua a mesma depois de um filtro reordenar tudo.
+    expect(scatterPointKey({ x: 60, y: 18, sourceRowIndex: 4 })).toBe(
+      scatterPointKey({ x: 60, y: 18, sourceRowIndex: 4 }),
+    );
+    // Sem origem conhecida, o par de coordenadas responde: dois pontos
+    // exatamente sobrepostos são indistinguíveis na tela de qualquer forma.
+    expect(scatterPointKey({ x: 60, y: 18, sourceRowIndex: null })).toBe(
+      scatterPointKey({ x: 60, y: 18, sourceRowIndex: null }),
+    );
+    expect(scatterPointKey({ x: 60, y: 18, sourceRowIndex: null })).not.toBe(
+      scatterPointKey({ x: 61, y: 18, sourceRowIndex: null }),
+    );
   });
 });

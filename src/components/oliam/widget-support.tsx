@@ -1178,7 +1178,11 @@ export function WidgetDetailStrip({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="oliam-panel-enter flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
+    // `oliam-widget-detail` é um gancho sem estilo, para que a faixa de detalhe
+    // possa ser encontrada por identidade. Sem ele, um teste que procure o item
+    // selecionado esbarra primeiro no painel de métricas, que usa a mesma
+    // marcação de painel e também tem título.
+    <div className="oliam-widget-detail oliam-panel-enter flex flex-wrap items-center gap-3 border-t border-border bg-muted/10 px-4 py-3">
       <div className="min-w-32 flex-[2] basis-40">
         <p className="truncate text-sm font-semibold" title={title}>
           {title}

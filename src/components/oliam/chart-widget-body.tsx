@@ -130,7 +130,18 @@ export function ChartWidgetBody({
   // linha do tempo ao mesmo tempo); clicar de novo no mesmo valor remove o
   // filtro.
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
-  const [selectedPieIndex, setSelectedPieIndex] = useState<number | null>(null);
+  /**
+   * A fatia selecionada é guardada pelo **nome**, e não pela posição.
+   *
+   * A posição não sobrevive a um filtro: a série encolhe ou troca de ordem, e a
+   * posição 2 passa a ser outra categoria. Guardada por índice, a pizza passava
+   * a mostrar o painel de detalhe inteiro — valor, participação e comparação —
+   * de uma categoria que a pessoa nunca escolheu.
+   *
+   * O hover ao lado continua por índice de propósito: ele nasce e morre dentro
+   * da mesma renderização, então não existe mudança de série para atravessar.
+   */
+  const [selectedPieName, setSelectedPieName] = useState<string | null>(null);
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
     useChartHorizontalScroll();
@@ -365,7 +376,17 @@ export function ChartWidgetBody({
   });
   const pieSeries = w.type === "pie" ? collapsePieSeries(completeSeries) : series;
   const pieTotal = pieSeries.reduce((s, e) => s + e.total, 0);
-  const displayedPieIndex = activePieIndex ?? selectedPieIndex;
+  // A posição sai do nome a cada renderização. Se a categoria escolhida não
+  // está mais na série, `findIndex` devolve -1 e a seleção simplesmente deixa
+  // de existir, que é o comportamento certo: melhor nenhuma seleção do que a
+  // seleção de outra coisa.
+  const selectedPieIndex =
+    selectedPieName === null
+      ? null
+      : (pieSeries.findIndex((entry) => entry.name === selectedPieName) ?? -1);
+  const displayedPieIndex =
+    activePieIndex ??
+    (selectedPieIndex !== null && selectedPieIndex >= 0 ? selectedPieIndex : null);
   const largestPieIndex = pieSeries.reduce(
     (largest, entry, index, entries) =>
       largest < 0 || entry.total > (entries[largest]?.total ?? Number.NEGATIVE_INFINITY)
@@ -907,8 +928,8 @@ export function ChartWidgetBody({
                       // filtro só acontece pelo botão "Filtrar por esta
                       // fatia" no painel de detalhe, pra não disparar um
                       // filtro sem querer. Desktop preservado sem mudança.
-                      setSelectedPieIndex(index);
                       const entry = pieSeries[index];
+                      setSelectedPieName(entry ? entry.name : null);
                       if (entry && entry.name !== "Outros" && !isCoarsePointer()) {
                         handleGroupClick(groupCol.key, entry.name);
                       }
@@ -988,8 +1009,8 @@ export function ChartWidgetBody({
               activeIndex={displayedPieIndex}
               onHoverIndex={setActivePieIndex}
               onSelectIndex={(i) => {
-                setSelectedPieIndex(i);
                 const entry = pieSeries[i];
+                setSelectedPieName(entry ? entry.name : null);
                 if (entry && entry.name !== "Outros" && !isCoarsePointer()) {
                   handleGroupClick(groupCol.key, entry.name);
                 }

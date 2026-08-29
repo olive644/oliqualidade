@@ -65,8 +65,18 @@ export function HistogramWidgetBody({
   animationDelay: number;
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const displayedIndex = activeIndex ?? selectedIndex;
+  /**
+   * A faixa selecionada é guardada pelo **rótulo dela**, e não pela posição.
+   *
+   * Mudar o número de faixas reescreve a distribuição inteira: de 8 para 3, a
+   * posição 5 deixa de existir. Guardada por índice, a seleção passava a apontar
+   * para uma faixa inexistente, nenhuma barra casava com o destaque e o gráfico
+   * inteiro ficava esmaecido, num estado que só um clique novo desfazia.
+   *
+   * O hover ao lado continua por índice de propósito: ele nasce e morre dentro
+   * da mesma renderização, então não há mudança de série para atravessar.
+   */
+  const [selectedBinLabel, setSelectedBinLabel] = useState<string | null>(null);
   const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
     useChartHorizontalScroll();
 
@@ -99,6 +109,14 @@ export function HistogramWidgetBody({
     : series.length === 1
       ? "faixa"
       : "faixas";
+  // A posição sai do rótulo a cada renderização. Faixa que não existe mais
+  // deixa de estar selecionada, em vez de virar um destaque sem alvo.
+  const selectedIndex =
+    selectedBinLabel === null
+      ? null
+      : (series.findIndex((bin) => bin.name === selectedBinLabel) ?? -1);
+  const displayedIndex =
+    activeIndex ?? (selectedIndex !== null && selectedIndex >= 0 ? selectedIndex : null);
   const validCount = series.reduce((sum, bin) => sum + bin.total, 0);
   const missingCount = valueCol
     ? data.length - data.filter((row) => parseNumericValue(row[valueCol.key]) !== null).length
@@ -296,7 +314,10 @@ export function HistogramWidgetBody({
                       dataKey="total"
                       fill={`url(#bar-grad-${w.id})`}
                       radius={4}
-                      onClick={(_, i) => setSelectedIndex((current) => (current === i ? null : i))}
+                      onClick={(_, i) => {
+                        const rotulo = series[i]?.name ?? null;
+                        setSelectedBinLabel((atual) => (atual === rotulo ? null : rotulo));
+                      }}
                       onMouseEnter={(_, i) => setActiveIndex(i)}
                       onMouseLeave={() => setActiveIndex(null)}
                       cursor="pointer"

@@ -14,6 +14,22 @@ import { TooltipProvider } from "@/components/ui/tooltip";
  * de raiz virar exigência de renderização, ele entra neste ponto único e os
  * testes existentes continuam valendo.
  */
-export function renderWidget(ui: ReactElement): RenderResult {
-  return render(<TooltipProvider>{ui}</TooltipProvider>);
+export function renderWidget(ui: ReactElement): RenderResult & {
+  /**
+   * Redesenha o widget com props novas, mantendo o mesmo componente montado.
+   *
+   * Existe porque o `rerender` cru do testing-library exige que quem chama
+   * repita a árvore de provedores; esquecer o provedor troca o teste por um
+   * erro de renderização, e acertá-lo espalha o detalhe do provedor por todo
+   * teste que precise de duas passagens. É por essa segunda passagem que se
+   * observa o que sobrevive a uma mudança de dado, como a seleção de um widget
+   * depois de um filtro.
+   */
+  rerenderWidget: (next: ReactElement) => void;
+} {
+  const resultado = render(<TooltipProvider>{ui}</TooltipProvider>);
+  return {
+    ...resultado,
+    rerenderWidget: (next) => resultado.rerender(<TooltipProvider>{next}</TooltipProvider>),
+  };
 }

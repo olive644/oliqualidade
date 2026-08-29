@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-29-selecao-do-widget-segue-o-que-voce-escolheu",
+    version: "0.10.0-beta.18",
+    date: "2026-08-29",
+    title: "A seleção no gráfico continua na categoria que você escolheu",
+    summary:
+      "Ao clicar numa fatia, barra ou faixa, o gráfico passa a mostrar o detalhe dela. Se você aplicasse um filtro em seguida, o destaque escorregava para a categoria vizinha e o painel passava a descrever outra coisa, sem nada indicando que tinha trocado. Agora a seleção acompanha o que você escolheu.",
+    highlights: [
+      "Vale para pizza, histograma, Pareto e dispersão.",
+      "Quando o que estava selecionado deixa de existir depois do filtro, a seleção é simplesmente desfeita, em vez de apontar para outro item.",
+      "O histograma também parava de destacar qualquer coisa ao mudar o número de faixas, deixando o gráfico inteiro apagado até um novo clique. Isso acabou.",
+    ],
+  },
+  {
     id: "2026-08-29-conferencia-nao-e-mais-pulada-por-uma-celula",
     version: "0.10.0-beta.17",
     date: "2026-08-29",
