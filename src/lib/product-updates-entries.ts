@@ -11,6 +11,19 @@ import { APP_VERSION, type ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-29-histograma-e-dispersao-nao-somem-mais",
+    version: APP_VERSION,
+    date: "2026-08-29",
+    title: "Histograma e dispersão param de perder a configuração ao recarregar",
+    summary:
+      "Um histograma ou uma dispersão que você tivesse montado voltava diferente depois de recarregar o painel: outro título, outra coluna e sem a quantidade de faixas escolhida. Agora eles voltam exatamente como você deixou.",
+    highlights: [
+      "O painel também parava de ser inundado de widgets sugeridos toda vez que era aberto. Isso acontecia junto, pelo mesmo motivo.",
+      "A proteção que existia continua valendo: um widget que aponta para uma coluna que não existe mais na planilha continua sendo retirado, como sempre foi.",
+      "Vale para painéis já salvos. Não é preciso remontar nada: basta abrir.",
+    ],
+  },
+  {
     id: "2026-08-28-csv-grande-lido-em-blocos",
     version: APP_VERSION,
     date: "2026-08-28",

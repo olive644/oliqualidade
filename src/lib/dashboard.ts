@@ -60,6 +60,25 @@ function widgetCompatible(widget: Widget, columns: Column[]): boolean {
   if (widget.type === "metric" || widget.type === "metric-trend" || widget.type === "rating") {
     return numericKinds.includes(byKey(widget.metricKey)?.kind ?? "text");
   }
+  // Histograma e dispersão não agrupam por categoria, e por isso não têm
+  // `groupKey`: o histograma mostra a distribuição de uma coluna numérica, e a
+  // dispersão cruza duas. `createWidget` documenta e implementa isso.
+  //
+  // Sem estes dois ramos eles caem na regra geral abaixo, que exige `groupKey`,
+  // e são julgados incompatíveis com a própria planilha que os originou. O
+  // efeito era silencioso e caro: ao recarregar o painel, `repairInvalidWidgets`
+  // descartava o widget configurado e o repunha a partir das recomendações, com
+  // outro título, outra coluna e sem a contagem de faixas escolhida, além de
+  // acrescentar a grade inteira de widgets recomendados.
+  if (widget.type === "histogram") {
+    return numericKinds.includes(byKey(widget.valueKey)?.kind ?? "text");
+  }
+  if (widget.type === "scatter") {
+    return (
+      numericKinds.includes(byKey(widget.valueKey)?.kind ?? "text") &&
+      numericKinds.includes(byKey(widget.valueKey2)?.kind ?? "text")
+    );
+  }
   const group = byKey(widget.groupKey);
   const value = byKey(widget.valueKey);
   return Boolean(
