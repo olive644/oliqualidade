@@ -9540,10 +9540,12 @@ também não divide. Com o conserto ela passa a dividir, e a divisão às vezes 
 diferente, o que troca um tipo de divergência por outro.
 
 Por isso o conserto não foi embarcado. A rede de paridade confirma que ele não
-tocaria o caminho atual, então ele é seguro; o que falta não é segurança, é
-saber por que a divisão diverge depois de acontecer. Fechar isso é medir a
-divisão dos dois lados sobre as abas que a exercitam, e não escrever mais
-código antes disso.
+tocaria o caminho atual, então ele é seguro; o que faltava não era segurança.
+
+A medição que faltava foi feita na seção seguinte, e ela encerra a questão: com
+a régua certa, o conserto não faz **nenhuma** aba a mais coincidir, e o que ele
+muda é o tipo do erro. Ver
+[[CURRENT_STATE_AUDIT#154. A régua por aba, e a resposta definitiva sobre a divisão em seções]].
 
 ### Um erro de leitura de código que quase virou conclusão errada
 
@@ -9572,3 +9574,66 @@ corpus o piso de 17 planilhas que precisam continuar coincidindo.
 Sem avanço de versão e sem entrada no Centro de Atualizações: nenhum chamador
 usa a fonte de grade para OOXML ainda, e o comportamento da importação é o
 mesmo.
+## 154. A régua por aba, e a resposta definitiva sobre a divisão em seções
+
+A seção 153 terminou com um próximo passo declarado: medir a divisão dos dois
+lados antes de escrever mais código. Isto é esse passo, e ele encerra a questão.
+
+### A régua estava errada
+
+A contagem que vinha sendo usada é por arquivo: uma planilha conta como
+divergente quando qualquer aba dela diverge. Ela serviu para dizer que a lacuna
+da data tinha fechado, porque ali o efeito era grosso. Ela não serve para
+decidir uma mudança que altera **quantas abas** cada caminho produz, porque um
+arquivo de doze abas sai do numerador inteiro quando uma única aba muda.
+
+A régua nova conta abas: quantas o caminho atual produz, quantas a grade produz,
+e quantas são idênticas nome a nome e linha a linha. O nome entra na comparação
+porque a divisão em seções o muda, e é justamente a divisão que está em
+avaliação.
+
+Estado de hoje: **110 abas pelo caminho atual, 101 pela grade, 87 idênticas**,
+ou 79%.
+
+### A resposta
+
+Com a régua certa, o conserto proposto na seção 153 foi medido de novo:
+
+| | Abas pela grade | Abas idênticas |
+| --- | ---: | ---: |
+| Sem o conserto | 101 | **87** |
+| Com o conserto | 113 | **87** |
+
+**Ele não faz nenhuma aba a mais coincidir.** O que muda é o tipo do erro: sem
+ele a grade divide de menos, com ele divide de mais, e passa das 110 do caminho
+atual para 113. A contagem por arquivo tinha mostrado 17 contra 16, o que
+sugeria uma piora pequena; a contagem por aba mostra que não há troca nenhuma a
+fazer, e a decisão deixa de depender de julgamento.
+
+O conserto foi descartado em definitivo. Ele fica descrito na seção 153 para
+ninguém reescrevê-lo achando que é a peça que falta.
+
+### O que isso diz sobre o caminho
+
+A detecção de seções não é um campo que faltava na grade. Ela lê a planilha por
+um caminho que uma grade responde diferente, e destravá-la produz uma divisão
+que não é a mesma. Alinhar as duas divisões é um trabalho próprio, com o seu
+próprio critério de pronto, e não um detalhe da ligação.
+
+Enquanto isso, o que a grade entrega é conhecido e medido: 79% das abas iguais,
+e o que difere concentrado em duas coisas nomeadas, fórmula volátil e divisão em
+seções.
+
+### Por que a régua fica no repositório
+
+Porque ela é o instrumento que faltava. As duas conclusões erradas desta frente,
+a de que o recorte perdia metadado e a de que o conserto do banner era o próximo
+passo, sobreviveram enquanto a única medida disponível era grossa demais para
+contradizê-las. O piso de 87 abas está escrito no teste, e sobe quando o próximo
+incremento melhorar de verdade.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nenhuma mudança de
+comportamento, e nenhuma linha de código de produção alterada. O que entra é
+medição.
