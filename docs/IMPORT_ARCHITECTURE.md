@@ -62,8 +62,29 @@ Um arquivo de 65 MiB já pede 430 MiB. O teto de 100 MB do produto implica um
 pico da ordem de 600 MiB, que é mais do que uma aba de celular costuma
 sobreviver.
 
+### A fase que a tabela acima não mede
+
+A tabela vem de `npm run benchmark:import`, que percorre descompactação,
+`XLSX.read` e linhas. Ela **não passa pela verificação**, e a verificação é a
+maior fase de tempo da leitura, com cerca de 40% do prazo. O que ela materializa
+não estava contabilizado em lugar nenhum.
+
+São duas estruturas, e as duas ficam vivas ao mesmo tempo que o workbook do
+leitor principal, porque é justamente contra ele que elas são comparadas:
+
+| Estrutura da verificação | Do que é feita |
+| --- | --- |
+| Inventário por célula | Endereço, valor cru, texto exibido, formato e fórmula de **toda** célula |
+| Worksheet de reparo | Uma segunda worksheet do SheetJS, por aba |
+
+A segunda foi removida do caminho comum: ela agora é montada sob demanda, e o
+que ela custava está medido abaixo. A primeira continua existindo, é o que a
+comparação lê, e continua sem aparecer na tabela de cópias. Fica registrado
+como a maior lacuna conhecida do baseline.
+
 ### O que ainda não foi medido
 
+- O inventário por célula da verificação, acima. É a lacuna maior.
 - O clone estrutural do worker para a aba. Depois do escoamento por aba, ele
   deixou de manter o conjunto inteiro dos dois lados, mas o pico exato no
   navegador não foi medido aqui, porque o benchmark roda em Node.
@@ -477,6 +498,67 @@ recusa e chega à tela. O worker devolve as duas em mensagens diferentes, porque
 tipo de erro não sobrevive ao `postMessage`. O cliente só aceita o fallback
 enquanto nenhuma aba tiver sido escoada.
 
+## A worksheet de reparo, montada sob demanda
+
+A verificação lê o pacote com um segundo leitor e compara célula a célula com o
+principal. Para isso ela produzia duas coisas por aba: o **inventário**, que é o
+que a comparação lê, e uma **worksheet completa**, que só é consultada quando há
+reparo, ou seja quando o leitor principal perdeu uma célula ou uma aba inteira.
+
+A worksheet era montada para toda aba de todo arquivo. Medido pelo código
+entregue, com `OLI_BUDGET_BENCHMARK=1`, sobre 12 abas e 1,44 milhão de células:
+
+| | Custo |
+| --- | ---: |
+| Worksheet de reparo, montada de véspera | **105,5 MiB** |
+| O mesmo, montado sob demanda | 0, enquanto ninguém repara |
+
+O tempo que ela custava é pequeno: 943 ms de 9.078 ms da leitura independente,
+ou 3% do prazo. **Isto é uma mudança de memória, e não de tempo**, e a
+distinção importa porque o alvo de tempo continua sendo outro (a seção seguinte
+deste documento e a 155 do audit).
+
+### Como a worksheet volta a existir sem ser guardada
+
+O inventário já carrega tudo o que a célula da worksheet leva: valor cru, texto
+exibido, formato numérico e fórmula. A data é a única que não viaja pronta, e
+ela é recalculável do valor cru mais o formato, que é exatamente o que a leitura
+original faz. O `!ref` passou a viajar na estrutura da aba, junto de mesclagens
+e linhas ocultas, que já estavam lá.
+
+Ou seja, **a reconstrução não retém nada a mais**: ela lê o que já está vivo. É
+por isso que o desenho é reconstruir, e não guardar o XML da aba ou segurar o
+pacote descompactado, que foram as duas alternativas descartadas por reintroduzir
+retenção.
+
+Três portas, pelo que cada consumidor precisa:
+
+| Porta | Quem usa | O que monta |
+| --- | --- | --- |
+| `cellFor(aba, endereço)` | Reparo por célula | Uma célula |
+| `worksheetFor(aba)` | Recuperação de aba que o principal perdeu | Uma aba |
+| `workbook` | Fallback, quando o leitor principal falhou inteiro | Tudo, e memoizado |
+
+`workbook` é memoizado porque quem o pede está **importando** aquele resultado e
+escreve nele: o fallback marca cada aba com um diagnóstico. Uma cópia nova a
+cada leitura perderia a marca.
+
+### Como a garantia foi verificada
+
+A rede de paridade não cobre este caminho: ela chama `sheetsWithData` sobre o
+workbook do leitor principal e nunca passa pela verificação. Então a prova foi
+feita contra a implementação anterior, sobre o corpus real: **25 arquivos, 110
+abas, 312.392 células de inventário, zero divergências** em três níveis — a
+worksheet reconstruída idêntica à que era montada, as divergências relatadas
+idênticas, e o workbook depois do reparo idêntico célula a célula.
+
+Essa comparação é de uma vez só, porque ela precisa das duas implementações. O
+que fica no repositório é a garantia que se sustenta sozinha: uma inspeção cujo
+`workbook` **lança** ao ser lido, e a verificação passando por cima dela. Sem
+isso, a afirmação "a verificação não monta a worksheet" não seria observável, e
+um teste que apenas confirmasse que a comparação funciona passaria dos dois
+lados.
+
 ## O ZIP lido por posição
 
 `zip-directory.ts` traz o formato e os limites do pacote, sem saber de onde os
@@ -556,24 +638,44 @@ igual. O custo foi zero, porque o desenho por coluna sai de graça: a grade
 entregue custa os mesmos 61,3 MiB, contra 235,8 da worksheet. Ver
 [[CURRENT_STATE_AUDIT#153. A grade de OOXML ligada à normalização: de 25 divergências para 8]].
 
-As 8 que restam têm duas causas. Fórmula volátil, que o caminho atual recalcula
-e uma grade não tem como recalcular, porque exige o texto da fórmula e acesso às
-outras células: essa é a fronteira real da representação. E recorte sem
-metadado, porque `minimalWorksheetForGrid` leva só o `!ref` e o caminho atual
-remapeia mesclagem e linha oculta para o recorte: essa se fecha, e é o próximo
-passo.
+A régua por arquivo acima é grossa demais para decidir qualquer coisa daqui em
+diante, e foi substituída pela contagem por aba: **110 abas pelo caminho atual,
+101 pela grade, 87 idênticas**, ou 79%. O piso de 87 está escrito no teste. Ver
+[[CURRENT_STATE_AUDIT#154. A régua por aba, e a resposta definitiva sobre a divisão em seções]].
+
+O que separa dos 100% são duas causas, e nenhuma delas é "falta um campo na
+grade".
+
+**Fórmula volátil.** O caminho atual recalcula uma fórmula que depende de hoje,
+para um cronograma de 2023 não mostrar o número de dias que faltavam quando o
+arquivo foi salvo. Recalcular exige o texto da fórmula **e** acesso às outras
+células, que é justamente o que uma grade não é. Esta é a fronteira real da
+representação, e a decisão registrada é conviver com ela: uma aba com fórmula
+volátil fica no caminho atual, em vez de a grade passar a recalcular ou a
+aceitar o valor gravado.
+
+**Divisão em seções.** Duas hipóteses foram escritas, medidas e descartadas
+aqui, e as duas estão descritas no audit para ninguém reescrevê-las. A primeira
+era que o recorte perdia mesclagem e linha oculta, porque
+`minimalWorksheetForGrid` leva só o `!ref`; fazer o recorte passar pelos
+fatiadores de worksheet **não mudou nada**. A segunda era que bastava
+`detectIndependentSections` reconhecer banner sobre a grade; com a régua por
+aba, esse conserto não faz **nenhuma** aba a mais coincidir, e só troca dividir
+de menos por dividir de mais. Alinhar as duas divisões é um trabalho próprio,
+com critério de pronto próprio, e não um detalhe da ligação.
 
 O teste natural do outro lado, "em planilha real sem data a grade é
 substituível", não pôde ser escrito: não existe planilha assim no corpus. Num
 domínio de qualidade, data é coluna obrigatória.
 
-O que falta, então, é preciso: **a grade precisa carregar o formato numérico e o
-texto exibido das células de data**, e `sheetToRows` precisa aceitá-los sem
-worksheet. Isso é mudança em `import.ts`, e trazia uma pergunta de custo:
-guardar formato e texto por célula de data reintroduz parte exata do que a grade
-existe para remover.
+### O que era a lacuna, e o custo que ela tinha, medido antes de fechá-la
 
-### O custo disso, medido
+O registro abaixo é de quando a lacuna ainda estava aberta, e fica porque é ele
+que justifica o desenho escolhido. A lacuna era: **a grade precisa carregar o
+formato numérico e o texto exibido das células de data**, e `sheetToRows`
+precisa aceitá-los sem worksheet. Isso é mudança em `import.ts`, e trazia uma
+pergunta de custo, porque guardar formato e texto por célula de data reintroduz
+parte exata do que a grade existe para remover.
 
 | Representação | Memória viva |
 | --- | ---: |

@@ -238,7 +238,10 @@ function sameValue(left: unknown, right: unknown): boolean {
 
 export function compareWasmInventory(
   inventory: WasmWorkbookInventory,
-  inspection: OoxmlInspection,
+  // A comparação lê o inventário e a estrutura, e nada mais. Pedir a inspeção
+  // inteira faria dela uma dependência do workbook, que desde que ele passou a
+  // ser montado sob demanda é justamente o que ninguém aqui quer tocar.
+  inspection: Pick<OoxmlInspection, "sheets" | "structures">,
 ): WasmShadowComparison {
   const rustSheets = new Map(inventory.sheets.map((sheet) => [sheet.name, sheet]));
   const sheetNames = new Set([...rustSheets.keys(), ...inspection.sheets.keys()]);

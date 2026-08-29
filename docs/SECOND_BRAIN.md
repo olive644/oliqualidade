@@ -714,6 +714,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| As duas leituras do pacote **não** são fundidas | fundir recupera a maior parte dos 63% do prazo e destrói a razão de a verificação existir: ela passaria a comparar um leitor consigo mesmo, que é outra garantia, muito mais fraca | os 63% ficam como limitação conhecida e medida; o alvo trocou para a memória que a verificação carregava, que não custa garantia nenhuma — ver [[CURRENT_STATE_AUDIT#158. A verificação carregava uma worksheet de reparo que quase nunca é lida]] |
+| Aba com fórmula volátil fica no caminho atual, e não vai para a grade de OOXML | o caminho atual **recalcula** fórmula que depende de hoje, para um cronograma de 2023 não mostrar os dias que faltavam quando o arquivo foi salvo; recalcular exige o texto da fórmula **e** acesso às outras células, que é justamente o que uma grade não é | as outras duas saídas foram recusadas: aceitar o valor gravado muda o que a pessoa vê, e dar um acessor ao avaliador reintroduz na grade a dependência entre células que ela existe para não ter; a cobertura da grade fica abaixo de 100% **por desenho**, e não por lacuna |
+| A worksheet de reparo da verificação é montada sob demanda, e reconstruída do inventário | ela era montada para toda aba de todo arquivo e só é consultada quando há reparo, que é exceção; custava 105,5 MiB numa planilha de 1,44 milhão de células | reconstruir não retém nada a mais, porque o inventário já carrega valor, texto, formato e fórmula, e a data é recalculável; guardar o XML da aba ou segurar o pacote descompactado foram descartados por reintroduzirem retenção |
+| Garantia sobre custo precisa ser observável, e não inferida de o resultado continuar certo | "a verificação não monta a worksheet" não é verificável por um teste que só confirma que a comparação funciona: ele passa antes e depois | o teste usa uma inspeção cujo `workbook` **lança** ao ser lido, do mesmo jeito que o cliente do CSV progressivo usa um arquivo cujo `arrayBuffer()` lança; é o que separa montar de não montar |
 | Cada entrada do Centro de Atualizações guarda a versão em que saiu, escrita à mão | as 34 entradas usavam `version: APP_VERSION`, então o histórico inteiro se renomeava a cada release e uma correção de agosto aparecia como se fosse da versão de hoje; um teste exigia exatamente isso, e era ele que travava a correção | a versão de cada entrega sai da lista "Versionamento público do produto" deste documento, e não do histórico do Git, que erra por causa da consolidação retroativa da seção 116 — ver [[CURRENT_STATE_AUDIT#157. O Centro de Atualizações reescrevia o passado a cada versão]] |
 | Teste de widget compara identidade, e não presença do tipo | o conserto indevido repunha um histograma recomendado no lugar do configurado, então "existe um histograma no painel" continuava verdadeiro enquanto o trabalho da pessoa sumia | id, título, coluna e contagem de faixas entram na asserção; foi o que separou "sobreviveu" de "foi substituído" — ver [[CURRENT_STATE_AUDIT#156. O histograma configurado era destruído ao recarregar o painel]] |
 | Quando um teste de interface falha depois de trocar dependência, listar o que existe na página antes de culpar a biblioteca | na migração para Recharts 3 o Playwright reprovava sempre no sexto widget, e duas hipóteses erradas (content-visibility e o componente sob Recharts 3) sobreviveram até a página ser sondada | listar os `data-widget-id` renderizados mostrou que `histogram` e `scatter` nunca chegaram ao DOM, o que separa "a biblioteca quebrou" de "o dado nunca chegou lá" |
@@ -983,6 +987,12 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   guardar a versão em que saiu) avança a iteração. Ver
   [[CURRENT_STATE_AUDIT#157. O Centro de Atualizações reescrevia o passado a cada versão]].
 
+- `v0.10.0-beta.16` (a worksheet de reparo da verificação passa a ser montada
+  sob demanda, 105,5 MiB a menos numa planilha de 1,44 milhão de células)
+  avança a iteração: é menos memória durante a importação, com a conferência
+  entre os dois leitores intacta. Ver
+  [[CURRENT_STATE_AUDIT#158. A verificação carregava uma worksheet de reparo que quase nunca é lida]].
+
 - `v0.10.0-beta.11` (botão para parar a resposta, mensagens distintas para os
   três prazos, estado de resposta interrompida e agrupamento das atualizações
   por quadro de tela) avança a iteração: refina o streaming entregue em
@@ -1053,11 +1063,29 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   e só então a aba 2) levaria a primeira aba para cerca de 38% do tempo, mas
   mexe em `inspectOoxml` e `compareAndRepairWithOoxml`, que hoje trabalham sobre
   o pacote inteiro. Registrado como trabalho seguinte, não feito. Ver [[CURRENT_STATE_AUDIT#145. Progresso medido na leitura de planilha, e as abas saindo do worker uma a uma]].
-- **O orçamento de 60s da leitura está mais apertado do que parece.** Um XLSX
-  sintético de 61 MiB, 12 abas e 1,44 milhão de células, dentro de todos os
-  limites do produto, consome 30s numa máquina de desenvolvimento. Numa máquina
-  mais lenta ele é recusado por tempo, não por tamanho. O número não foi mexido
-  nesta rodada; fica registrado porque é o próximo a doer.
+- **O orçamento de 60s da leitura está mais apertado do que parece, e o custo é
+  de célula, não de byte.** Um XLSX sintético de 12 abas e 1,44 milhão de
+  células, dentro de todos os limites do produto, consome cerca de 29s numa
+  máquina de desenvolvimento. A fixture tem **20,7 MiB**, e não os 61 MiB que
+  este documento repetiu por várias versões: a diferença é de compressão e o
+  tempo é o mesmo. Isso importa porque `import-strategy.ts` decide a estratégia
+  **por tamanho em bytes**, e um arquivo pequeno em bytes e denso em células
+  gasta o prazo do mesmo jeito. O número agora é reproduzível com
+  `OLI_BUDGET_BENCHMARK=1`, e o teste falha se o arquivo deixar de caber no
+  prazo. Ver [[CURRENT_STATE_AUDIT#155. O orçamento de 60s virou medida, e o alvo mudou de lugar]].
+- **Dentro desse prazo, 63% é ler o pacote duas vezes**, e a comparação que
+  justifica a segunda leitura custa menos de 7% dela. Fundir as duas leituras
+  resolveria o tempo e destruiria a razão de a verificação existir, que é
+  comparar dois leitores **independentes**. A decisão registrada é **não
+  fundir**. Ver [[CURRENT_STATE_AUDIT#158. A verificação carregava uma worksheet de reparo que quase nunca é lida]].
+- **O mapa de cópias da importação não mede a verificação.** A tabela de
+  `docs/IMPORT_ARCHITECTURE.md`, com a soma viva entre 5,8x e 6,5x o arquivo,
+  vem de `npm run benchmark:import`, que percorre descompactação, `XLSX.read` e
+  linhas e **não passa pela verificação** — que é a maior fase de tempo. A
+  worksheet de reparo saiu do caminho comum (105,5 MiB numa planilha de 1,44
+  milhão de células), mas o inventário por célula continua vivo ao mesmo tempo
+  que o workbook principal e continua fora da tabela. É a maior lacuna conhecida
+  do baseline.
 - **Limitações conhecidas do streaming do assistente.** O backpressure vale até
   a borda da plataforma: a leitura do Gemini é dirigida por `pull`, então o
   servidor só puxa quando o navegador consome, mas o que acontece entre a saída

@@ -65,6 +65,20 @@ function pacoteDoOrcamento(): { bytes: Uint8Array; abas: number; celulas: number
 
 const QUEBRA = "\n";
 const mib = (bytes: number) => Math.round((bytes / (1024 * 1024)) * 10) / 10;
+
+/**
+ * Memória viva, com o coletor forçado quando ele está disponível.
+ *
+ * Só serve entre dois pontos do **mesmo** cenário, e é assim que ela é usada
+ * aqui. Subtrair medidas de cenários seguidos já reportou um caminho consumindo
+ * menos vinte e dois MiB, porque o lixo de um era coletado durante a medição do
+ * outro. Ver a seção 150 do audit.
+ */
+const viva = () => {
+  (globalThis as { gc?: () => void }).gc?.();
+  const uso = process.memoryUsage();
+  return uso.heapUsed + uso.external;
+};
 const pct = (parte: number, todo: number) => `${Math.round((parte / Math.max(1, todo)) * 100)}%`;
 
 describe.skipIf(!ligado)("orçamento de 60s da leitura", () => {
@@ -114,6 +128,24 @@ describe.skipIf(!ligado)("orçamento de 60s da leitura", () => {
         `  dentro da verificação:`,
         `    leitura independente do XML: ${String(leituraIndependenteMs).padStart(6)} ms  ${pct(leituraIndependenteMs, report.verificationMs)} dela`,
         `    comparação e reparo:         ${String(comparacaoMs).padStart(6)} ms  ${pct(comparacaoMs, report.verificationMs)} dela`,
+        "",
+      ].join(QUEBRA),
+    );
+
+    // O que a worksheet de reparo custaria se voltasse a ser montada de
+    // véspera. `inspection.workbook` materializa exatamente o que a leitura
+    // independente montava para toda aba antes de ela passar a ser sob
+    // demanda, então esta é a medida do que a mudança deixou de pagar, tirada
+    // do código entregue e não de uma réplica.
+    const inspecaoLimpa = inspectOoxml(fixture.bytes);
+    const antesDoWorkbook = viva();
+    const materializado = inspecaoLimpa.workbook;
+    const depoisDoWorkbook = viva();
+
+    process.stdout.write(
+      [
+        `  worksheet de reparo, se fosse montada de véspera:`,
+        `    memória viva: ${mib(depoisDoWorkbook - antesDoWorkbook)} MiB em ${materializado.SheetNames.length} abas`,
         "",
       ].join(QUEBRA),
     );

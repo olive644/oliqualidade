@@ -112,14 +112,16 @@ describe("contrato do Reading Engine v2", () => {
         [
           "Dados",
           {
+            ref: "A1:B3",
             mergedRanges: ["A1:B1"],
             hiddenRows: [3],
             hiddenColumns: [{ start: 4, end: 5 }],
           },
         ],
       ]),
-      workbook: { SheetNames: [], Sheets: {} },
-    } satisfies OoxmlInspection;
+      // Sem workbook e sem os acessores de reparo de propósito: a comparação
+      // não os lê, e o tipo do parâmetro diz exatamente isso.
+    } satisfies Pick<OoxmlInspection, "sheets" | "structures">;
 
     expect(
       compareWasmInventory(
