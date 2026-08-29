@@ -10524,5 +10524,61 @@ de versionar.
 
 ### Versão
 
-`0.10.0-beta.19` para `0.10.0-beta.20`, com entrada no Centro de Atualizações:
-os dois são visíveis para quem usa.
+`0.10.0-beta.19` para `0.10.0-beta.21`, com entrada no Centro de Atualizações:
+os dois são visíveis para quem usa. A `beta.20` foi pulada: a primeira tentativa
+de conserto do piscar não resolveu, e a seção continua abaixo.
+
+### A primeira tentativa não resolveu, e o que ela ensinou
+
+Publicada a correção acima, o usuário respondeu que **os widgets continuam
+piscando**. Ou seja, `content-visibility` não era a causa, ou não era a única.
+
+Isso importa registrar por dois motivos. O primeiro é que a remoção dele
+continua certa pelo próprio mérito: a medição mostrou que ele não pulava nada.
+O segundo é o erro de método: a correção foi publicada com a causa **inferida**,
+e não observada, porque o ambiente desta sessão não tem viewport visível.
+
+### As duas causas reais, e por que nenhuma sonda as via
+
+Nenhuma das sondas escritas aqui mediu `transform`. Elas mediram opacidade,
+visibilidade, identidade do elemento e presença da superfície do gráfico — e
+todas deram estáveis, o que reforçou a hipótese errada.
+
+**O card se deslocava ao receber o mouse.**
+
+```css
+.oliam-widget:hover { transform: translateY(-3px) }
+```
+
+O card sobe três pixels. Se o ponteiro estiver nessa faixa perto da borda, o card
+sai de baixo dele, o hover termina, o card desce, o ponteiro volta a estar em
+cima: laço. Ao rolar, o ponteiro fica parado e são os cards que passam por baixo
+dele, então acontece com um atrás do outro — que é exatamente "todos ficam
+sumindo e aparecendo". Uma causa explica os **dois** gatilhos relatados.
+
+O destaque virou só cor de borda e sombra, que dizem a mesma coisa sem mexer na
+geometria.
+
+**Todo card era container de rolagem.** O teto de altura da seção 161 obrigava o
+excesso a rolar dentro do card. Girar a roda com o ponteiro sobre um card rola o
+card antes da página, e o painel parece pular. Isso foi introduzido na
+`beta.19`, ou seja, por esta mesma série.
+
+O teto saiu. O vazio que ele ajudava a resolver já estava resolvido por
+`items-start` sozinho, e o corte da legenda continua resolvido pelo outro lado,
+com `overflow-y: auto` e o card crescendo até o conteúdo. Conferido na captura: a
+legenda da pizza aparece inteira com o bloco "Outros", o histograma mostra os
+botões do rodapé, e a métrica continua terminando onde termina.
+
+### O que continua sem verificação, e o que fazer com isso
+
+O piscar não reproduz aqui. Playwright headless não dispara `:hover` por
+movimento sintético — a sonda de `transform` registrou identidade em 105 quadros
+seguidos, ou seja, o hover nunca chegou a aplicar. O modo headed falha ao abrir
+(`browserType.launch: spawn UNKNOWN`), e o painel de navegador reporta
+`document.hidden` com viewport `[0,0]`.
+
+Então a regra que fica: **num ambiente sem viewport visível, defeito de
+renderização por ponteiro não se confirma, só se descarta por raciocínio.** A
+confirmação tem de vir da pré-visualização, na máquina de quem relatou. Publicar
+como verificado o que só foi inferido foi o erro da primeira tentativa.

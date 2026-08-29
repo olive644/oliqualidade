@@ -7,7 +7,7 @@ export type ProductUpdate = {
   highlights: string[];
 };
 
-export const APP_VERSION = "0.10.0-beta.20";
+export const APP_VERSION = "0.10.0-beta.21";
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 export const CURRENT_UPDATE_ID = APP_VERSION;

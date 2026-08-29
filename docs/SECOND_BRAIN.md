@@ -714,6 +714,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Widget não se desloca ao receber o mouse | `transform: translateY(-3px)` no `:hover` se auto-cancela: o card sobe, sai de baixo do ponteiro que está perto da borda, o hover termina, o card desce; ao rolar acontece com um card atrás do outro, porque o ponteiro fica parado e são os cards que passam | o destaque é só cor de borda e sombra; uma causa explicava os **dois** gatilhos relatados, hover e rolagem — ver [[CURRENT_STATE_AUDIT#162. Os widgets piscavam ao rolar, e o número do meio da pizza tinha sumido]] |
+| Card de widget não é container de rolagem | um teto de altura obriga o excesso a rolar dentro do card, e aí a roda do mouse rola o card antes da página, com o painel parecendo pular | `items-start` sozinho já resolve o card esticado, e `overflow-y: auto` sem teto deixa o card crescer sem cortar nada: o teto só acrescentava o efeito colateral |
+| Num ambiente sem viewport visível, defeito de renderização por ponteiro não se confirma | headless não dispara `:hover` por movimento sintético (a sonda registrou o mesmo `transform` em 105 quadros), headed não abre, e o painel reporta `document.hidden` com viewport `[0,0]` | a causa se descarta por raciocínio, mas a confirmação vem da pré-visualização na máquina de quem relatou; publicar como verificado o que foi só inferido custou uma versão inteira |
 | Widget não usa `content-visibility: auto` | ele descarta a subárvore do widget ao sair da viewport e a reconstrói ao voltar, o `ResponsiveContainer` remede do zero e o widget pisca a cada rolagem; já tinha obrigado o teste visual a forçá-lo desligado, sinal registrado e não lido | medido com 18 gráficos: 4.792 ms com ele e 4.940 ms sem, **com os 18 desenhados nos dois casos** — não pulava nada e cobrava o piscar — ver [[CURRENT_STATE_AUDIT#162. Os widgets piscavam ao rolar, e o número do meio da pizza tinha sumido]] |
 | Rótulo de gráfico aceita viewBox polar **e** cartesiano | o Recharts 3 entrega ao `<Label>` de uma pizza um viewBox cartesiano (`x`,`y`,`width`,`height`), e não o polar com `cx`/`cy` da versão 2; exigir `cx` devolvia `null` em toda renderização e o número do meio da rosca sumia sem erro | `chartLabelCenter` calcula o centro das duas formas; a ausência tinha chegado às imagens de referência gravada como esperado, que é a terceira vez na série |
 | Rótulo de eixo tem folga reservada, e data que não cabe vira `jan/25` | a colisão em 320 px não era de data comprida: os rótulos do meio tinham 6 px de folga e só o primeiro e o último colidiam, porque a âncora `start`/`end` que os mantém dentro do SVG os desloca meia largura para dentro | o orçamento reserva 8 px entre vizinhos, e a forma curta da data absorve o deslocamento; truncar data não serve, porque `2025-01-` ocupa quase o mesmo espaço e apaga o que distingue um ponto do outro — ver [[CURRENT_STATE_AUDIT#161. A estabilização visual dos widgets, e a régua que faltava para o eixo]] |
@@ -1011,9 +1014,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   defeito. Ver
   [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]].
 
-- `v0.10.0-beta.20` (os widgets param de piscar ao rolar, e a pizza volta a
-  mostrar o número no meio) avança a iteração: são duas correções de defeito, e
-  as duas já existiam antes da entrega anterior. Ver
+- `v0.10.0-beta.21` (os widgets param de piscar ao rolar e ao receber o mouse, e
+  a pizza volta a mostrar o número no meio) avança a iteração: são correções de
+  defeito. A `beta.20` **não chegou a sair**: ela continha uma primeira tentativa
+  de conserto do piscar que não resolveu, e a causa real só apareceu depois. Ver
   [[CURRENT_STATE_AUDIT#162. Os widgets piscavam ao rolar, e o número do meio da pizza tinha sumido]].
 
 - `v0.10.0-beta.19` (datas do eixo em forma curta, altura do card por tamanho

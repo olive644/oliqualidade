@@ -1521,14 +1521,24 @@
     0 14px 32px -10px color-mix(in oklab, var(--foreground) 12%, transparent);
   transition:
     box-shadow 220ms ease,
-    transform 220ms ease,
     border-color 220ms ease;
+  /* O destaque de hover é de cor e sombra, e **não move o card**.
+   *
+   * Havia um `transform: translateY(-3px)` aqui, e ele se auto-cancela: o card
+   * sobe, sai de baixo do ponteiro que está perto da borda, o hover termina, o
+   * card desce, o ponteiro volta a estar em cima. O laço pisca enquanto o mouse
+   * estiver na faixa dos três pixels, e ao rolar acontece com um card atrás do
+   * outro, porque o ponteiro fica parado e são os cards que passam por baixo
+   * dele. Um card que é também container de rolagem, como este, torna o efeito
+   * mais fácil de disparar.
+   *
+   * Cor da borda e sombra dizem a mesma coisa sem mexer na geometria, então o
+   * deslocamento saiu junto do `transform` da transição. */
   &:hover {
     border-color: color-mix(in oklab, var(--primary) 28%, var(--border));
     box-shadow:
       0 2px 6px color-mix(in oklab, var(--foreground) 6%, transparent),
       0 24px 48px -12px color-mix(in oklab, var(--primary) 16%, var(--foreground) 10%);
-    transform: translateY(-3px);
   }
 }
 @utility oliam-ranking-row {
