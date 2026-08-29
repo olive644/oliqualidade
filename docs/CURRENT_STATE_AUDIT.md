@@ -10113,3 +10113,133 @@ não acontecia, e isso é visível para quem importa esse tipo de arquivo.
 A seção 158 saiu antes desta, e levou o `0.10.0-beta.16`. As duas foram escritas
 na mesma sessão e as duas apontavam para essa versão; quem entrou depois avançou
 mais uma iteração, em vez de as duas dividirem o mesmo número.
+## 160. A seleção dos widgets era guardada por posição, e escorregava com o filtro
+
+Reportado pelo usuário junto de uma lista de regressões visuais dos widgets. As
+afirmações da lista foram conferidas uma a uma antes de qualquer código, e todas
+as verificáveis se confirmaram. Esta seção fecha a mais grave, que é a única de
+comportamento e não de apresentação.
+
+### O defeito
+
+Quatro widgets guardavam a seleção pelo **índice** do item: pizza, histograma,
+Pareto e dispersão. Nenhum dos quatro tem `useEffect`, ou seja, **não havia
+invalidação nenhuma** quando a série mudava.
+
+A sequência que quebra é a do uso normal: a pessoa seleciona um item, aplica um
+filtro, a série encolhe ou troca de ordem, e a posição guardada passa a apontar
+para outro item.
+
+Reproduzido em teste, com o painel de detalhe inteiro trocando de alvo:
+
+```text
+selecionado: "Gama"
+filtro remove "Alfa"
+detalhe passa a mostrar:
+  "Delta — Posição 3 de 3 categorias visíveis · comparação com Beta...
+   Valor de Delta 100 · Participação 16,7% do total"
+```
+
+Não é só o destaque: é o valor, a participação, a comparação e o botão de
+filtrar, todos descrevendo uma categoria que ninguém escolheu.
+
+No histograma o efeito é outro e igualmente ruim. Mudar de 8 para 3 faixas faz a
+posição 5 deixar de existir, nenhuma barra casa com o destaque, e **todas** as
+barras ficam esmaecidas ao mesmo tempo — medido no teste, 3 de 3 — num estado
+que só um clique novo desfaz.
+
+### A correção
+
+Cada widget passou a guardar a identidade do que foi selecionado, e a derivar a
+posição a partir dela a cada renderização:
+
+| Widget | Identidade |
+| --- | --- |
+| Pizza | Nome da categoria |
+| Pareto | Nome da categoria |
+| Histograma | Rótulo da faixa |
+| Dispersão | Linha de origem, com o par de coordenadas como reserva |
+
+Quando a identidade não está mais na série, `findIndex` devolve -1 e a seleção
+deixa de existir. **Melhor nenhuma seleção do que a seleção de outra coisa**, e
+essa é a regra que o conserto aplica nos quatro.
+
+O estado de `hover` continua por índice de propósito, e vale dizer por quê: ele
+nasce e morre dentro da mesma renderização, então não existe mudança de série
+para ele atravessar. Trocá-lo junto seria mudar o que não está quebrado.
+
+A identidade da dispersão prefere a linha de origem, e não as coordenadas,
+porque é ela que a pessoa selecionou de fato: é o que "Ver linhas de origem"
+abre, e é o que continua sendo o mesmo registro se a coluna de um dos eixos
+mudar. Duas linhas distintas com o mesmo par de valores continuam
+distinguíveis.
+
+### Os testes comparam identidade, e não presença
+
+O teste que já existia para a pizza afirmava que **existe** uma fatia destacada.
+Ele passa nos dois lados: com o defeito, existe uma fatia destacada, só que a
+errada. É exatamente a forma do defeito da seção 156, e ela reapareceu aqui.
+
+Os três testes novos comparam quem está selecionado, e todos os três reprovam
+sem a correção:
+
+- a pizza, depois de uma categoria sair, não pode passar a descrever a vizinha;
+- o Pareto, que **reordena** por contribuição, não pode trocar de categoria
+  quando um valor muda e nada sai da série;
+- o histograma não pode terminar com todas as barras esmaecidas.
+
+### Uma cobertura que foi escrita, medida e descartada
+
+O teste de componente da dispersão foi escrito e não ficou. O gráfico dela não
+redesenha os símbolos depois de uma troca de dado no jsdom: eles vão a zero e o
+bloco de detalhe some junto, então o teste passa igual antes e depois da
+correção. **Um teste que não separa os dois lados é pior que teste nenhum**,
+porque dá aparência de cobertura.
+
+No lugar dele ficou a garantia da regra de identidade, com a ausência registrada
+no próprio arquivo para ninguém procurar o teste que falta e concluir que foi
+esquecido.
+
+### Duas coisas que entraram junto, e por quê
+
+`renderWidget` ganhou `rerenderWidget`. O `rerender` cru exige que quem chama
+repita a árvore de provedores, e é por essa segunda renderização que se observa
+o que sobrevive a uma mudança de dado. Sem isso, cada teste que precise de duas
+passagens espalha o detalhe do provedor.
+
+`WidgetDetailStrip` ganhou a classe `oliam-widget-detail`, sem estilo. A faixa
+de detalhe não tinha gancho estável, e uma busca pelo item selecionado esbarrava
+primeiro no painel de métricas, que usa a mesma marcação de painel e também tem
+título. Foi assim que a primeira versão do teste do Pareto afirmou `"Categorias"`
+em vez do nome da categoria.
+
+### O que esta seção não faz
+
+A lista relatada tem outros seis pontos, todos de apresentação, e nenhum deles
+entra aqui. Eles compartilham as mesmas imagens de referência da regressão
+visual, que precisam ser regeneradas na CI e conferidas à mão, e regenerá-las
+uma vez por correção custaria várias idas. Ficam para a PR seguinte, com as duas
+decisões de desenho já tomadas pelo usuário: **altura por tamanho do widget com
+rolagem interna** para os cards, e **mascote recolhido durante a interação** com
+o gráfico no celular.
+
+Vale registrar o que a conferência encontrou, porque é evidência que já existe no
+repositório e não precisa ser levantada de novo. As imagens de referência
+**gravaram os defeitos como resultado esperado**: em 320 px as datas do gráfico
+de área aparecem colididas (`2025-0` sobre `2025-02-01`) e o mascote cobre o
+rodapé do card; na pizza o tooltip ultrapassa a borda (`... : R$ 2` cortado) e o
+texto `1 categorias agrupadas` aparece duas vezes. Um achado não estava na lista:
+a legenda da pizza é **cortada** no meio, o que é o mesmo problema de altura pelo
+lado oposto — uns cards sobram espaço e outros não cabem.
+
+### Verificação
+
+Suíte completa com 1.195 testes, build e orçamento de desempenho aprovados. A
+rede de paridade da importação não é afetada por esta mudança, que é de
+interface.
+
+### Versão
+
+`0.10.0-beta.17` para `0.10.0-beta.18`, com entrada no Centro de Atualizações: a
+seleção passar a descrever outra categoria depois de um filtro é visível para
+quem usa, e o histograma inteiro apagado também.

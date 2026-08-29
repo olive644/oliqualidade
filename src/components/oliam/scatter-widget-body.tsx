@@ -17,7 +17,12 @@ import { numericKinds, type Column, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, fmt } from "@/lib/format";
 import { chartTooltipName, formatChartTooltipValue } from "@/lib/recharts-compat";
-import { linearTrend, pearsonCorrelation, scatterPoints } from "@/lib/data-pipeline";
+import {
+  linearTrend,
+  pearsonCorrelation,
+  scatterPoints,
+  type ScatterPoint,
+} from "@/lib/data-pipeline";
 import { scatterChartValidity } from "@/lib/chart-validity";
 import {
   compactAxisValue,
@@ -53,6 +58,21 @@ function correlationReading(r: number): { strength: string; direction: string } 
   return { strength, direction };
 }
 
+/**
+ * A identidade de um ponto, para a seleção sobreviver a uma mudança de série.
+ *
+ * A linha de origem vem primeiro porque é o que a pessoa selecionou de fato: é
+ * ela que "Ver linhas de origem" abre, e é ela que continua sendo a mesma se a
+ * coluna de um dos eixos mudar. O par de coordenadas é a reserva para quando a
+ * linha de origem não é conhecida; dois pontos exatamente sobrepostos são
+ * indistinguíveis na tela de qualquer maneira.
+ */
+export function scatterPointKey(point: ScatterPoint): string {
+  return point.sourceRowIndex !== null
+    ? `linha:${point.sourceRowIndex}`
+    : `xy:${point.x}:${point.y}`;
+}
+
 export function ScatterWidgetBody({
   widget: w,
   data,
@@ -72,7 +92,19 @@ export function ScatterWidgetBody({
   sizeControls: React.ReactNode;
   animationDelay: number;
 }) {
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  /**
+   * O ponto selecionado é guardado pela identidade dele, e não pela posição.
+   *
+   * Um filtro remove linhas, e a posição 12 passa a ser outro registro: o painel
+   * de detalhe passava a descrever um par de valores que a pessoa não escolheu,
+   * e "Ver linhas de origem" abria a linha errada.
+   *
+   * A identidade preferida é a linha de origem, que é o que a pessoa de fato
+   * selecionou e o que sobrevive a mudar a coluna de um dos eixos. Quando ela
+   * não existe, o par de coordenadas serve: dois pontos exatamente sobrepostos
+   * são indistinguíveis na tela de qualquer forma.
+   */
+  const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
 
   // Dispersão nunca agrega (soma/média), então uma coluna "não agregável"
   // (Meta, Conformidade — um alvo ou uma taxa) é tão válida no eixo X/Y
@@ -97,7 +129,14 @@ export function ScatterWidgetBody({
       : null;
 
   const missingCount = xCol && yCol ? data.length - points.length : 0;
-  const selectedPoint = selectedIndex !== null ? points[selectedIndex] : null;
+  // A posição sai da identidade a cada renderização. Ponto que saiu da série
+  // deixa de estar selecionado, em vez de a seleção escorregar para o vizinho.
+  const selectedIndex =
+    selectedPointKey === null
+      ? null
+      : (points.findIndex((point) => scatterPointKey(point) === selectedPointKey) ?? -1);
+  const selectedPoint =
+    selectedIndex !== null && selectedIndex >= 0 ? (points[selectedIndex] ?? null) : null;
   const reading = correlation !== null ? correlationReading(correlation) : null;
 
   const metrics: WidgetMetric[] =
@@ -258,9 +297,11 @@ export function ScatterWidgetBody({
                 )}
                 <Scatter
                   data={points}
-                  onClick={(_, index) =>
-                    setSelectedIndex((current) => (current === index ? null : index))
-                  }
+                  onClick={(_, index) => {
+                    const ponto = points[index];
+                    const chave = ponto ? scatterPointKey(ponto) : null;
+                    setSelectedPointKey((atual) => (atual === chave ? null : chave));
+                  }}
                   cursor="pointer"
                   isAnimationActive={false}
                   shape={(props: ScatterPointItem & { index: number }) => {

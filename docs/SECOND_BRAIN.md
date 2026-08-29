@@ -714,6 +714,8 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Estado de seleção de widget é guardado por identidade, e nunca por índice | os quatro widgets com seleção persistente guardavam a posição e nenhum tinha invalidação; depois de um filtro a posição apontava para outro item, e o painel de detalhe inteiro passava a descrever uma categoria que ninguém escolheu | quando a identidade some da série a seleção é desfeita: melhor nenhuma seleção do que a de outra coisa; `hover` continua por índice porque nasce e morre na mesma renderização — ver [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]] |
+| Teste que não separa os dois lados é pior que teste nenhum | o teste de componente da dispersão foi escrito, medido e descartado: o gráfico dela não redesenha os símbolos depois de uma troca de dado no jsdom, então ele passava igual com e sem a correção | no lugar dele ficou a garantia da regra de identidade, com a ausência registrada no próprio arquivo, para ninguém procurar o teste que falta e concluir que foi esquecido |
 | Uma célula que o leitor principal não consegue representar vira vazio na comparação, e não um marcador | `comparable` chamava `toISOString()` numa data inválida e lançava; como a verificação inteira é envolvida por um `try/catch`, o arquivo passava a ser importado **sem conferência nenhuma, em silêncio** | vazio faz a célula seguir as regras que já existem — se os dois leitores exibem o mesmo texto não há divergência, e se o outro tem valor a célula é reparada com ele; um marcador não vazio inventaria divergência em toda célula desse tipo — ver [[CURRENT_STATE_AUDIT#159. A verificação era pulada inteira, em silêncio, por uma data inválida]] |
 | Um `try/catch` em volta de uma verificação transforma estouro em ausência silenciosa dela | o `try/catch` de `workbook-reader.ts` existe por razão boa (arquivo legível não pode ser recusado porque a conferência falhou), e o efeito combinado com um estouro é a conferência sumir sem sinal nenhum | enquanto ninguém rodar a verificação **sobre arquivo real**, um estouro desses vive por tempo indeterminado sem nenhum teste apontando; `import-parity` não passa por ela e `workbook-fidelity` passa só sobre fixture sintética |
 | As duas leituras do pacote **não** são fundidas | fundir recupera a maior parte dos 63% do prazo e destrói a razão de a verificação existir: ela passaria a comparar um leitor consigo mesmo, que é outra garantia, muito mais fraca | os 63% ficam como limitação conhecida e medida; o alvo trocou para a memória que a verificação carregava, que não custa garantia nenhuma — ver [[CURRENT_STATE_AUDIT#158. A verificação carregava uma worksheet de reparo que quase nunca é lida]] |
@@ -998,6 +1000,11 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   planilha inteira) avança a iteração: é correção de defeito, e o defeito era a
   conferência entre os dois leitores sumir em silêncio. Ver
   [[CURRENT_STATE_AUDIT#159. A verificação era pulada inteira, em silêncio, por uma data inválida]].
+
+- `v0.10.0-beta.18` (a seleção de pizza, histograma, Pareto e dispersão passa a
+  seguir a identidade do item, e não a posição) avança a iteração: é correção de
+  defeito. Ver
+  [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]].
 
 - `v0.10.0-beta.11` (botão para parar a resposta, mensagens distintas para os
   três prazos, estado de resposta interrompida e agrupamento das atualizações

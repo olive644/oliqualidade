@@ -86,8 +86,17 @@ export function ParetoWidgetBody({
   animationDelay: number;
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const displayedIndex = activeIndex ?? selectedIndex;
+  /**
+   * A categoria selecionada é guardada pelo **nome**, e não pela posição.
+   *
+   * O Pareto ordena por contribuição, então um filtro não só encurta a série
+   * como reordena o que sobrou: a posição 2 vira outra categoria com muita
+   * facilidade. Guardada por índice, a seleção mudava de alvo sem nada na tela
+   * indicando.
+   *
+   * O hover ao lado continua por índice: ele não atravessa mudança de série.
+   */
+  const [selectedName, setSelectedName] = useState<string | null>(null);
   const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
     useChartHorizontalScroll();
 
@@ -120,6 +129,12 @@ export function ParetoWidgetBody({
           cumulativePercent: entry.cumulativeShare * 100,
         }))
       : [];
+  // A posição sai do nome a cada renderização. Categoria que saiu da série
+  // deixa de estar selecionada, em vez de a seleção escorregar para a vizinha.
+  const selectedIndex =
+    selectedName === null ? null : (series.findIndex((entry) => entry.name === selectedName) ?? -1);
+  const displayedIndex =
+    activeIndex ?? (selectedIndex !== null && selectedIndex >= 0 ? selectedIndex : null);
   // Primeira posição (1-based) em que o acumulado já bateu 80%: "essas N
   // categorias concentram 80% do total" é a leitura clássica de Pareto.
   const vitalFewCount = series.findIndex((entry) => entry.cumulativeShare >= PARETO_THRESHOLD) + 1;
@@ -316,7 +331,10 @@ export function ParetoWidgetBody({
                       dataKey="total"
                       fill={`url(#bar-grad-${w.id})`}
                       radius={4}
-                      onClick={(_, i) => setSelectedIndex((current) => (current === i ? null : i))}
+                      onClick={(_, i) => {
+                        const nome = series[i]?.name ?? null;
+                        setSelectedName((atual) => (atual === nome ? null : nome));
+                      }}
                       onMouseEnter={(_, i) => setActiveIndex(i)}
                       onMouseLeave={() => setActiveIndex(null)}
                       cursor="pointer"
