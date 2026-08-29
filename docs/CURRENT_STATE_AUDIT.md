@@ -10336,6 +10336,22 @@ de rolagem por causa deles. Com 672 px, medido na galeria:
 | Pizza | 672 | 833 | sim |
 
 Seis cabem exatos, dois rolam de verdade, e **nenhum é esticado pelo vizinho**.
+
+### O teto vale só no desktop, e a captura de 320 px é que disse isso
+
+Abaixo de `lg` a grade tem **uma coluna**, ou seja, uma linha por card. Não
+existe vizinho para esticar contra, então não há nada a corrigir naquela largura,
+e limitar a altura ali só acrescenta rolagem dentro do card competindo com a
+rolagem da página.
+
+Isso não veio de raciocínio: veio de olhar a imagem de referência de 320 px na
+conferência, e ver o rodapé do gráfico de área sair do alcance por causa de um
+teto que naquela largura não resolvia problema nenhum. O piso `min-h` continua
+valendo em toda largura; o teto passou a ser `lg:`.
+
+É o segundo erro desta mesma correção encontrado por inspeção visual, e os dois
+teriam passado por qualquer suíte: a primeira versão cortava o gráfico de todo
+card, esta cortava o rodapé só no celular.
 Foi essa medida que respondeu a dúvida de leitura da imagem: o bloco "Outros" da
 pizza parece ficar fora do card, e está dentro — é conteúdo rolável recortado no
 limite, com a borda clara contra fundo branco.

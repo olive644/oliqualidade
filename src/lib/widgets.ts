@@ -687,6 +687,13 @@ export function spanClass(span: WidgetSpan): string {
  * gráfico de área excedia por **7 px** e ganhava barra de rolagem por causa
  * deles. Sobram a pizza (833) e o histograma (815), que rolam de verdade.
  *
+ * O teto vale só a partir de `lg`, e isso não é detalhe. Abaixo disso a grade
+ * tem **uma coluna**, ou seja, uma linha por card: não existe vizinho para
+ * esticar contra, então não há nada a corrigir, e limitar a altura ali só
+ * acrescentaria rolagem dentro do card competindo com a rolagem da página. Foi a
+ * captura de 320 px que mostrou isso: o rodapé do gráfico de área saiu do
+ * alcance por causa de um teto que naquela largura não resolvia problema nenhum.
+ *
  * O outro lado do mesmo problema é o card que **não cabe**: a legenda da pizza
  * era cortada no meio, sem como alcançar o resto, porque `.oliam-widget` tem
  * `overflow: hidden`. Teto sem rolagem só mudaria o corte de lugar, então os
@@ -697,9 +704,9 @@ export function spanClass(span: WidgetSpan): string {
  */
 export function sizeClass(size: WidgetSize, type: WidgetType): string {
   if (type === "table") return "";
-  if (size === "sm") return "min-h-36 max-h-[22rem] lg:min-h-28";
-  if (size === "md") return "min-h-80 max-h-[42rem] lg:min-h-64";
-  return "min-h-[28rem] max-h-[52rem] lg:min-h-[22rem]";
+  if (size === "sm") return "min-h-36 lg:min-h-28 lg:max-h-[22rem]";
+  if (size === "md") return "min-h-80 lg:min-h-64 lg:max-h-[42rem]";
+  return "min-h-[28rem] lg:min-h-[22rem] lg:max-h-[52rem]";
 }
 
 /**
