@@ -9725,3 +9725,92 @@ a ser recusada por tempo e não por tamanho, e é melhor descobrir aqui.
 
 Sem avanço de versão e sem entrada no Centro de Atualizações: nenhuma linha de
 código de produção alterada. O que entra é medição.
+## 156. O histograma configurado era destruído ao recarregar o painel
+
+Achado enquanto se investigava por que a migração para Recharts 3 reprovava no
+Playwright. A falha não era da migração, e o que estava por trás dela é um
+defeito de produto que existe na `main` há tempo.
+
+### O que acontecia
+
+`repairInvalidWidgets` existe para consertar painel salvo cuja planilha mudou:
+se um widget aponta para uma coluna que não existe mais, ele sai e o painel
+volta a ter um conjunto que funciona. Quem decide isso é `widgetCompatible`, e
+ela exigia `groupKey` de todo tipo sem ramo próprio:
+
+```ts
+const group = byKey(widget.groupKey);
+const value = byKey(widget.valueKey);
+return Boolean(group && value && ...);
+```
+
+Histograma e dispersão **não têm `groupKey` por definição**. O histograma mostra
+a distribuição de uma coluna numérica e a dispersão cruza duas, e o próprio
+`createWidget` diz isso em comentário e implementa assim. Os dois caíam na regra
+geral, eram julgados incompatíveis com a planilha que os originou, e o conserto
+os destruía.
+
+Medido com um histograma configurado à mão, antes da correção:
+
+| | Como foi configurado | Depois de recarregar |
+| --- | --- | --- |
+| Título | "Distribuição escolhida por mim" | "Distribuição de Valor" |
+| Coluna | `indice` | `valor` |
+| Faixas | 15 | perdido |
+| O widget | existe | substituído |
+| Total de widgets no painel | 1 | 9 |
+
+A última linha é o efeito colateral que deixava o defeito ainda mais visível:
+bastava um widget parecer incompatível para a grade inteira de recomendações ser
+acrescentada ao painel, toda vez que ele fosse aberto.
+
+### Por que passou despercebido
+
+Porque um histograma continuava aparecendo. A recomendação repunha um widget do
+mesmo tipo, então "existe um histograma no painel" seguia verdadeiro enquanto o
+trabalho da pessoa sumia. Um teste que olhasse tipo, e não identidade, passaria.
+
+É por isso que o teste novo compara id, título, coluna e contagem de faixas, e
+não a presença do tipo.
+
+### A correção
+
+Dois ramos em `widgetCompatible`, seguindo os que já existem para tabela,
+métrica, mapa de calor e os operacionais: o histograma exige uma `valueKey`
+numérica, e a dispersão exige as duas numéricas.
+
+A rede que a função existe para dar continua valendo, e isso está coberto: um
+histograma sobre coluna que sumiu, uma dispersão cujo segundo eixo sumiu e um
+histograma sobre coluna de texto continuam sendo retirados.
+
+### Como apareceu
+
+A PR da migração para Recharts 3 acrescentou um teste de regressão visual que
+monta um painel com nove widgets e espera cada um desenhar. Ele reprovava
+sempre, no sexto, e a leitura fácil seria culpar o Recharts 3.
+
+Duas hipóteses minhas estavam erradas antes desta. A primeira foi
+`content-visibility: auto` nos widgets, que de fato impede o navegador de
+desenhar o que está fora da viewport; forçá-lo a visível não mudou nada. A
+segunda foi o próprio componente do histograma sob Recharts 3; renderizado
+direto em teste de componente com a 3.10.1, ele desenha normalmente.
+
+O que resolveu a dúvida foi sondar a página e listar os widgets realmente
+renderizados: `metric, bar, pie, radar, area, pareto` e dez com id gerado. Não
+havia `histogram` nem `scatter` para desenhar.
+
+Fica registrado como método: quando um teste de interface falha depois de uma
+troca de dependência, listar o que existe na página separa "a biblioteca
+quebrou" de "o dado nunca chegou lá", e as duas conclusões levam a trabalhos
+completamente diferentes.
+
+### Verificação
+
+Os três testes que descrevem o defeito falham sem a correção e passam com ela;
+os três que descrevem a rede de proteção passam dos dois lados. Suíte completa
+com 1.168 testes, e a rede de paridade da importação sem alteração.
+
+### Versão
+
+`0.10.0-beta.13` → `0.10.0-beta.14`, com entrada no Centro de Atualizações: é
+correção visível, e vale para painel já salvo, sem precisar remontar nada.
