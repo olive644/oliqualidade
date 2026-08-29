@@ -25,6 +25,161 @@ type DashboardCapture = {
   breakpoints: number[];
 };
 
+type ChartSvgSnapshot = {
+  dataUrl: string;
+  height: number;
+  width: number;
+};
+
+const SVG_PRESENTATION_PROPERTIES = [
+  "color",
+  "display",
+  "fill",
+  "fill-opacity",
+  "font-family",
+  "font-size",
+  "font-style",
+  "font-weight",
+  "letter-spacing",
+  "opacity",
+  "stroke",
+  "stroke-dasharray",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-opacity",
+  "stroke-width",
+  "stop-color",
+  "stop-opacity",
+  "text-anchor",
+  "visibility",
+] as const;
+
+const SVG_COLOR_PROPERTIES = new Set<string>(["color", "fill", "stroke", "stop-color"]);
+
+/**
+ * O Recharts 3 separa as camadas do gráfico em grupos SVG com z-index. O
+ * html2canvas não preserva essas camadas de forma confiável ao clonar um DOM
+ * grande para PNG/PDF. Congelamos cada SVG como uma imagem autocontida, com
+ * variáveis CSS já resolvidas, apenas dentro do clone usado na exportação.
+ */
+async function chartSvgSnapshots(element: HTMLElement): Promise<ChartSvgSnapshot[]> {
+  const { Canvg } = await import("canvg");
+  const colorCanvas = document.createElement("canvas");
+  colorCanvas.width = 1;
+  colorCanvas.height = 1;
+  const colorContext = colorCanvas.getContext("2d", { willReadFrequently: true });
+  if (!colorContext) throw new Error("chart-svg-color-context");
+  const portableColor = (value: string) => {
+    if (value === "none" || value.startsWith("url(")) return value;
+    colorContext.clearRect(0, 0, 1, 1);
+    colorContext.fillStyle = "#000";
+    colorContext.fillStyle = value;
+    colorContext.fillRect(0, 0, 1, 1);
+    const [red = 0, green = 0, blue = 0, alpha = 255] = colorContext.getImageData(0, 0, 1, 1).data;
+    return alpha === 255
+      ? `rgb(${red}, ${green}, ${blue})`
+      : `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+  };
+  return Promise.all(
+    [...element.querySelectorAll<SVGSVGElement>("svg.recharts-surface")].map(async (svg) => {
+      const rect = svg.getBoundingClientRect();
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      const clone = svg.cloneNode(true) as SVGSVGElement;
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("width", String(width));
+      clone.setAttribute("height", String(height));
+      if (!clone.hasAttribute("viewBox")) clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+      const sourceNodes = [svg, ...svg.querySelectorAll<SVGElement>("*")];
+      const clonedNodes = [clone, ...clone.querySelectorAll<SVGElement>("*")];
+      sourceNodes.forEach((source, index) => {
+        const target = clonedNodes[index];
+        if (!target) return;
+        const computed = getComputedStyle(source);
+        SVG_PRESENTATION_PROPERTIES.forEach((property) => {
+          const value = computed.getPropertyValue(property);
+          if (value) {
+            target.style.setProperty(
+              property,
+              SVG_COLOR_PROPERTIES.has(property) ? portableColor(value) : value,
+            );
+          }
+        });
+      });
+
+      const serialized = new XMLSerializer().serializeToString(clone);
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("chart-svg-canvas-context");
+      const renderer = Canvg.fromString(context, serialized, {
+        ignoreAnimation: true,
+        ignoreMouse: true,
+      });
+      await renderer.render({
+        ignoreAnimation: true,
+        ignoreMouse: true,
+        scaleHeight: height * scale,
+        scaleWidth: width * scale,
+      });
+
+      // Uma regressão do renderizador não pode produzir silenciosamente um
+      // arquivo válido, porém sem gráfico. O limite baixo também contempla
+      // sparklines de um único traço, sem confundir transparência com sucesso.
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let paintedPixels = 0;
+      for (let index = 3; index < pixels.length; index += 4) {
+        if (pixels[index] !== 0) paintedPixels += 1;
+      }
+      if (paintedPixels < 4) throw new Error("chart-svg-rasterization-empty");
+      const dataUrl = canvas.toDataURL("image/png");
+      canvas.width = 1;
+      canvas.height = 1;
+      return {
+        dataUrl,
+        height,
+        width,
+      };
+    }),
+  );
+}
+
+async function replaceChartSvgsForCapture(
+  element: HTMLElement,
+  snapshots: ChartSvgSnapshot[],
+): Promise<() => void> {
+  const originals = [...element.querySelectorAll<SVGSVGElement>("svg.recharts-surface")];
+  const replacements = await Promise.all(
+    originals.map(async (svg, index) => {
+      const snapshot = snapshots[index];
+      if (!snapshot) return null;
+      const image = document.createElement("img");
+      image.alt = "";
+      image.setAttribute("aria-hidden", "true");
+      image.setAttribute("data-export-chart", "true");
+      image.style.width = `${snapshot.width}px`;
+      image.style.height = `${snapshot.height}px`;
+      image.style.maxWidth = "100%";
+      image.style.display = "block";
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("chart-png-loading-failed"));
+        image.src = snapshot.dataUrl;
+      });
+      return { image, svg };
+    }),
+  );
+  replacements.forEach((replacement) => replacement?.svg.replaceWith(replacement.image));
+  return () => {
+    replacements.forEach((replacement) => {
+      if (replacement?.image.isConnected) replacement.image.replaceWith(replacement.svg);
+    });
+  };
+}
+
 async function settleExportLayout() {
   await document.fonts?.ready;
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -53,6 +208,7 @@ function exportBreakpoints(element: HTMLElement) {
 
 async function captureDashboard(element: HTMLElement): Promise<DashboardCapture> {
   const previousScroll = { left: element.scrollLeft, top: element.scrollTop };
+  let restoreChartSvgs = () => {};
   element.classList.add("oliam-export-mode");
   element.scrollTo(0, 0);
   // <details> fechado (ex.: "Observações da planilha") esconde o conteúdo
@@ -71,6 +227,9 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
     const cssWidth = Math.ceil(element.getBoundingClientRect().width);
     const cssHeight = element.scrollHeight;
     const cleanBreakpoints = exportBreakpoints(element);
+    const chartSnapshots = await chartSvgSnapshots(element);
+    restoreChartSvgs = await replaceChartSvgsForCapture(element, chartSnapshots);
+    await settleExportLayout();
     const { default: html2canvas } = await import("html2canvas-pro");
     const canvas = await html2canvas(element, {
       backgroundColor: getComputedStyle(element).backgroundColor,
@@ -96,6 +255,7 @@ async function captureDashboard(element: HTMLElement): Promise<DashboardCapture>
       breakpoints: cleanBreakpoints.map((point) => Math.round(point * renderedScale)),
     };
   } finally {
+    restoreChartSvgs();
     element.classList.remove("oliam-export-mode");
     element.scrollTo(previousScroll.left, previousScroll.top);
     detailsElements.forEach((node, index) => (node.open = previousDetailsOpen[index] ?? false));

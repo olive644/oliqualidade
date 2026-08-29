@@ -103,8 +103,8 @@ test.describe("fluxo de leitura analítica", () => {
       .poll(() =>
         area.evaluate((widget) => {
           const svg = widget.querySelector("svg.recharts-surface")?.getBoundingClientRect();
-          const ticks = [...widget.querySelectorAll(".recharts-xAxis text")].map((tick) =>
-            tick.getBoundingClientRect(),
+          const ticks = [...widget.querySelectorAll(".recharts-xAxis-tick-labels text")].map(
+            (tick) => tick.getBoundingClientRect(),
           );
           if (!svg || ticks.length < 2) return false;
           return ticks[0]!.left >= svg.left && ticks.at(-1)!.right <= svg.right;

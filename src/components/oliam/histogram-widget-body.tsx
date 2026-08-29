@@ -5,17 +5,19 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   LabelList,
+  Rectangle,
   ResponsiveContainer,
   Tooltip as ChartTooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import type { BarShapeProps } from "recharts";
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type FilterRule, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
 import { parseNumericValue } from "@/lib/format";
+import { numericChartTooltipValue, numericLabelValue } from "@/lib/recharts-compat";
 import {
   barChartPresentation,
   histogramBins,
@@ -280,10 +282,15 @@ export function HistogramWidgetBody({
                         borderRadius: 12,
                         fontSize: 12,
                       }}
-                      formatter={(value: number) => [
-                        `${value.toLocaleString("pt-BR")} registro(s)`,
-                        "Contagem",
-                      ]}
+                      formatter={(value) => {
+                        const count = numericChartTooltipValue(value);
+                        return [
+                          count === null
+                            ? "Contagem indisponível"
+                            : `${count.toLocaleString("pt-BR")} registro(s)`,
+                          "Contagem",
+                        ];
+                      }}
                     />
                     <Bar
                       dataKey="total"
@@ -294,34 +301,36 @@ export function HistogramWidgetBody({
                       onMouseLeave={() => setActiveIndex(null)}
                       cursor="pointer"
                       isAnimationActive={false}
+                      shape={(shapeProps: BarShapeProps) => {
+                        const highlighted = displayedIndex === shapeProps.index;
+                        return (
+                          <Rectangle
+                            {...shapeProps}
+                            className="oliam-chart-bar-cell"
+                            fill={`url(#bar-grad-${w.id})`}
+                            opacity={displayedIndex === null || highlighted ? 1 : 0.45}
+                            stroke={highlighted ? "var(--primary)" : "none"}
+                            strokeWidth={highlighted ? 1 : 0}
+                            style={
+                              {
+                                ...shapeProps.style,
+                                "--oliam-bar-delay": `${Math.min(shapeProps.index, 14) * 42}ms`,
+                                filter: highlighted ? "brightness(1.08)" : "none",
+                              } as CSSProperties
+                            }
+                          />
+                        );
+                      }}
                     >
-                      {series.map((entry, i) => (
-                        <Cell
-                          key={i}
-                          className="oliam-chart-bar-cell"
-                          // Sem conditionalColor aqui: `entry.total` é a
-                          // contagem de linhas da faixa, não um valor de
-                          // valueCol — testar contra a regra de formatação
-                          // condicional da coluna compararia grandezas
-                          // diferentes (contagem x valor real).
-                          fill={`url(#bar-grad-${w.id})`}
-                          opacity={displayedIndex === null || displayedIndex === i ? 1 : 0.45}
-                          stroke={displayedIndex === i ? "var(--primary)" : "none"}
-                          strokeWidth={displayedIndex === i ? 1 : 0}
-                          style={
-                            {
-                              "--oliam-bar-delay": `${Math.min(i, 14) * 42}ms`,
-                              filter: displayedIndex === i ? "brightness(1.08)" : "none",
-                            } as CSSProperties
-                          }
-                        />
-                      ))}
                       <LabelList
                         dataKey="total"
                         position="top"
                         fontSize={10}
                         fill="var(--muted-foreground)"
-                        formatter={(v: number) => (v > 0 ? v.toLocaleString("pt-BR") : "")}
+                        formatter={(value) => {
+                          const count = numericLabelValue(value);
+                          return count !== null && count > 0 ? count.toLocaleString("pt-BR") : "";
+                        }}
                       />
                     </Bar>
                   </BarChart>

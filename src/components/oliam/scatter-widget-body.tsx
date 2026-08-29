@@ -10,11 +10,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { ScatterPointItem } from "recharts";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { numericKinds, type Column, type Row, type Widget } from "@/lib/types";
 import { sizeClass, spanClass } from "@/lib/widgets";
 import { conditionalColor, fmt } from "@/lib/format";
+import { chartTooltipName, formatChartTooltipValue } from "@/lib/recharts-compat";
 import { linearTrend, pearsonCorrelation, scatterPoints } from "@/lib/data-pipeline";
 import { scatterChartValidity } from "@/lib/chart-validity";
 import {
@@ -237,9 +239,9 @@ export function ScatterWidgetBody({
                     borderRadius: 12,
                     fontSize: 12,
                   }}
-                  formatter={(value: number, name: string) => [
-                    fmt(value, name === xCol.label ? xCol.kind : yCol.kind),
-                    name,
+                  formatter={(value, name) => [
+                    formatChartTooltipValue(value, name === xCol.label ? xCol.kind : yCol.kind),
+                    chartTooltipName(name, "Valor"),
                   ]}
                 />
                 {trendLine && (
@@ -261,23 +263,23 @@ export function ScatterWidgetBody({
                   }
                   cursor="pointer"
                   isAnimationActive={false}
-                  shape={(props: {
-                    cx?: number;
-                    cy?: number;
-                    payload?: { y?: number };
-                    index?: number;
-                  }) => {
+                  shape={(props: ScatterPointItem & { index: number }) => {
                     if (props.cx === undefined || props.cy === undefined) return <g />;
+                    const payload: unknown = props.payload;
+                    const pointY =
+                      typeof payload === "object" &&
+                      payload !== null &&
+                      "y" in payload &&
+                      typeof payload.y === "number"
+                        ? payload.y
+                        : null;
                     // Mesmo critério de barra/pizza/ranking/box plot: a cor
                     // condicional da coluna do eixo Y (o "resultado" que se
                     // está avaliando), quando o usuário configurou uma regra
                     // para ela.
                     const color =
-                      conditionalColor(
-                        props.payload?.y ?? null,
-                        yCol.kind,
-                        yCol.conditionalFormat,
-                      ) ?? "var(--primary)";
+                      conditionalColor(pointY, yCol.kind, yCol.conditionalFormat) ??
+                      "var(--primary)";
                     const isSelected = selectedIndex === props.index;
                     return (
                       <circle

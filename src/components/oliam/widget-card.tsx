@@ -1,24 +1,6 @@
 import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
 import { Fragment, lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Label,
-  LabelList,
-  Line,
-  LineChart,
-  Pie,
-  PieChart as RPieChart,
-  ResponsiveContainer,
-  Tooltip as ChartTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
   Activity,
   AlertTriangle,
   ArrowDown,
