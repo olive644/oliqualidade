@@ -9869,3 +9869,129 @@ Três, e nenhuma delas é a que existia:
 `0.10.0-beta.14` → `0.10.0-beta.15`, junto da entrada da migração dos gráficos
 para a versão 3 da biblioteca de desenho, que veio na seção anterior sem
 marcador próprio.
+## 158. A verificação carregava uma worksheet de reparo que quase nunca é lida
+
+Achado ao medir a segunda das duas decisões pendentes da sessão anterior, a de
+fundir as duas leituras do pacote. A decisão foi não fundir, e a medida feita
+para instruí-la encontrou outra coisa no caminho.
+
+### O que a verificação monta
+
+Toda planilha do Excel é lida duas vezes, por leitores independentes, e o
+resultado é comparado célula a célula. A segunda leitura produzia duas coisas
+por aba:
+
+| Estrutura | Para quê |
+| --- | --- |
+| Inventário por célula | É o que a comparação lê, em toda aba |
+| Worksheet completa do SheetJS | Só é consultada quando há reparo |
+
+A worksheet era montada para **toda aba de todo arquivo**. Ela é lida em dois
+casos, e os dois são exceção: quando o leitor principal perdeu uma célula, e
+quando perdeu uma aba inteira.
+
+### O custo, medido pelo código entregue
+
+`OLI_BUDGET_BENCHMARK=1` passou a medir também isto, sobre a mesma fixture de 12
+abas e 1,44 milhão de células que ele já usava:
+
+| | Custo |
+| --- | ---: |
+| Worksheet de reparo, montada de véspera | **105,5 MiB** |
+| O mesmo, sob demanda | 0, enquanto ninguém repara |
+
+O número se repete até a décima de MiB entre execuções. A medida sai de
+`inspection.workbook`, que materializa exatamente o que era montado antes, então
+ela é do programa entregue e não de uma réplica.
+
+Em tempo o ganho é pequeno e precisa ser dito como tal: 943 ms de 9.078 ms da
+leitura independente, ou 3% do prazo de 60s. **Isto é memória, não tempo.**
+Apresentá-lo como resposta ao gargalo de tempo da seção 155 seria falso: aquele
+continua sendo as duas leituras completas do pacote, e a decisão registrada
+nesta sessão foi não fundi-las.
+
+### Por que reconstruir, e não guardar
+
+O inventário já carrega tudo o que a célula da worksheet leva: valor cru, texto
+exibido, formato numérico e fórmula. A data é a única que não viaja pronta, e
+ela é recalculável do valor cru mais o formato, que é exatamente o que a leitura
+original faz. O `!ref` passou a viajar na estrutura da aba, ao lado de
+mesclagens e linhas ocultas, que já estavam lá.
+
+Ou seja, **reconstruir não retém nada a mais**: tudo o que ela lê já está vivo.
+As duas alternativas foram descartadas por isso mesmo. Guardar o XML da aba
+mantém dezenas de MiB de string viva. Segurar o pacote descompactado devolve
+cerca de 1x o arquivo, e nos caminhos em que `inspectOoxml` descompacta por
+conta própria essa retenção seria nova.
+
+Três portas entraram, uma por consumidor, em vez de uma porta grande:
+`cellFor` monta uma célula, `worksheetFor` monta uma aba, e `workbook` monta
+tudo. Só o fallback usa a última, e ali o workbook **é** o produto: o leitor
+principal falhou e é ele que vai ser importado. Por isso ele é memoizado — o
+fallback marca cada aba com um diagnóstico, e uma cópia nova a cada leitura
+perderia a marca.
+
+### A rede de paridade não cobre este caminho
+
+Vale registrar, porque é fácil supor o contrário. `import-parity.test.ts` lê com
+`XLSX.read` e chama `sheetsWithData`: ele nunca passa pela verificação. Rodá-lo
+aqui confirma que nada em volta quebrou, e não confirma nada sobre a mudança.
+
+A prova foi feita contra a implementação anterior, copiada da `main` para o lado
+e executada no mesmo processo, sobre o corpus real: **25 arquivos, 110 abas,
+312.392 células de inventário, zero divergências**, em três níveis — a worksheet
+reconstruída idêntica à que era montada, as divergências relatadas idênticas, e
+o workbook depois do reparo idêntico célula a célula.
+
+Essa comparação não fica no repositório porque ela precisa das duas
+implementações vivas. O que fica é a garantia que se sustenta sozinha, e ela é
+sobre custo, então precisa ser observável: uma inspeção cujo `workbook` **lança**
+ao ser lido, com a verificação passando por cima dela. Um teste que apenas
+confirmasse que a comparação funciona passaria antes e depois, e não separaria
+montar de não montar.
+
+### Um estouro real encontrado de passagem, e não corrigido aqui
+
+A comparação acima estourou nos dois lados, com `Invalid time value`, num
+arquivo real do corpus. Ou seja, é defeito que já existe na `main` e não veio
+desta mudança. Em produção o bloco inteiro da verificação é envolvido por um
+`try/catch` que existe para um arquivo legível não ser recusado por falha da
+conferência, então o efeito é que **aquele arquivo é importado sem verificação
+nenhuma, em silêncio**: sem comparação, sem reparo e sem nada na tela dizendo
+que a segunda leitura não aconteceu.
+
+Fica para uma correção própria, porque é outro assunto: o que está errado é
+`comparable` chamar `toISOString()` numa data inválida. Ver
+[[CURRENT_STATE_AUDIT#159. A verificação era pulada inteira, em silêncio, por uma data inválida]].
+
+### O mapa de cópias estava incompleto
+
+`docs/IMPORT_ARCHITECTURE.md` diz que o pico da importação é o workbook do
+SheetJS, com a soma viva entre 5,8x e 6,5x o arquivo. Esses números vêm de
+`npm run benchmark:import`, que percorre descompactação, `XLSX.read` e linhas, e
+**não passa pela verificação**. As duas estruturas acima ficam vivas ao mesmo
+tempo que o workbook principal, porque é contra ele que elas são comparadas, e
+nenhuma das duas aparecia na tabela.
+
+Uma saiu. A outra, o inventário por célula, continua lá e continua sem ser
+medida no baseline. Ficou registrada no documento como a maior lacuna conhecida
+dele, em vez de a tabela seguir sendo lida como se fosse o pico inteiro.
+
+### Verificação
+
+Suíte completa com 1.188 testes, build e orçamento de desempenho aprovados. A
+rede de paridade gravada antes e conferida depois, com resultado idêntico, pelo
+que ela cobre. O chunk `global-search` foi de 415,4 para 415,9 KiB de um teto de
+450,0.
+
+Um teste de estrutura precisou ser atualizado, porque `OoxmlSheetStructure`
+ganhou o `!ref`, e a asserção comparava o objeto inteiro. E
+`compareWasmInventory` teve o tipo do parâmetro estreitado para o que ela de
+fato lê: ela nunca tocou no workbook, e pedir a inspeção inteira a tornava
+dependente justamente da parte que ninguém deve mais tocar.
+
+### Versão
+
+`0.10.0-beta.15` para `0.10.0-beta.16`, com entrada no Centro de Atualizações:
+menos memória durante a importação é menos chance de a aba do navegador ser
+encerrada no meio dela, o que é visível para quem importa planilha grande.

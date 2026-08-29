@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-29-planilha-do-excel-ocupa-menos-memoria",
+    version: "0.10.0-beta.16",
+    date: "2026-08-29",
+    title: "Planilha do Excel ocupa menos memória durante a conferência",
+    summary:
+      "Toda planilha do Excel é lida duas vezes por leitores diferentes, e o resultado é comparado célula a célula antes de chegar até você. A segunda leitura montava uma cópia completa da planilha que quase nunca era consultada. Agora ela é montada só quando há mesmo algo a corrigir. Medido numa planilha de 12 abas e 1,44 milhão de células: 105,5 MB a menos.",
+    highlights: [
+      "Menos memória quer dizer menos chance de a aba do navegador ser encerrada no meio da importação de uma planilha grande.",
+      "A conferência continua exatamente a mesma: dois leitores independentes, comparação célula a célula e correção automática quando um deles perde alguma coisa.",
+      "Conferido em 25 planilhas reais e 110 abas: mesmo resultado, mesma correção, célula a célula.",
+    ],
+  },
+  {
     id: "2026-08-29-graficos-em-biblioteca-nova",
     version: "0.10.0-beta.15",
     date: "2026-08-29",

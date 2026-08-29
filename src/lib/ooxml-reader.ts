@@ -23,13 +23,51 @@ export type ReaderDivergence = {
   repaired: boolean;
 };
 
+/**
+ * O resultado da leitura independente do pacote.
+ *
+ * `sheets` é o inventário por célula, que é o que a comparação lê. A
+ * worksheet equivalente **não** é montada junto: ela só existe quando alguém
+ * a pede, e é reconstruída a partir do próprio inventário, que já está vivo.
+ *
+ * O motivo é medido. Montar a worksheet de toda aba custa 129,8 MiB num
+ * arquivo de 1,44 milhão de células, e ela só é consultada quando há reparo, o
+ * que é a exceção. Ver
+ * [[CURRENT_STATE_AUDIT#158. A verificação carregava uma worksheet de reparo que quase nunca é lida]].
+ */
 export type OoxmlInspection = {
   sheets: Map<string, Map<string, ReaderCell>>;
   structures: Map<string, OoxmlSheetStructure>;
-  workbook: XLSX.WorkBook;
+  /** As abas legíveis, na ordem em que o pacote as declara. */
+  sheetNames: string[];
+  /**
+   * Uma célula da aba, montada na hora a partir do inventário.
+   *
+   * É o que o reparo por célula precisa, e reconstruir uma célula custa uma
+   * célula. Reconstruir a aba inteira para ler uma delas seria pagar a
+   * worksheet que este desenho existe para não pagar.
+   */
+  cellFor: (sheetName: string, address: string) => XLSX.CellObject | undefined;
+  /** A aba inteira como worksheet, montada na hora. Para recuperar uma aba que o leitor principal perdeu. */
+  worksheetFor: (sheetName: string) => XLSX.WorkSheet | undefined;
+  /**
+   * O pacote inteiro como workbook, materializado na primeira leitura.
+   *
+   * Só o caminho de fallback o usa, e ali ele é o produto: o leitor principal
+   * falhou e este workbook é o que vai ser importado. Na verificação, que é o
+   * caminho comum, ninguém toca nele e nada é montado.
+   */
+  readonly workbook: XLSX.WorkBook;
 };
 
 export type OoxmlSheetStructure = {
+  /**
+   * O `!ref` da aba, como o XML o declara ou como as células o delimitam.
+   *
+   * Viaja junto porque quem reconstrói a worksheet a partir do inventário
+   * precisa dele, e recalculá-lo exigiria percorrer as células de novo.
+   */
+  ref: string;
   mergedRanges: string[];
   hiddenRows: number[];
   hiddenColumns: Array<{ start: number; end: number }>;
@@ -275,11 +313,16 @@ function* parseSheetCells(
 const cellReachesWorksheet = (cell: ParsedSheetCell) =>
   cell.rawValue != null || cell.formula !== undefined;
 
+/**
+ * Lê a aba para inventário e estrutura, sem montar worksheet nenhuma.
+ *
+ * A worksheet equivalente sai de `worksheetFromInventory`, e só quando alguém a
+ * pede. Montá-la aqui significava montá-la para toda aba de todo arquivo,
+ * quando o único consumidor é o reparo, que é a exceção.
+ */
 function readSheet(xml: string, strings: string[], formats: string[], date1904: boolean) {
   const cells = new Map<string, ReaderCell>();
-  const worksheet: XLSX.WorkSheet = {};
   let range: XLSX.Range | null = null;
-  const rows: XLSX.RowInfo[] = [];
   const hiddenRows: number[] = [];
   const hiddenColumns: Array<{ start: number; end: number }> = [];
   const mergedRanges: string[] = [];
@@ -289,11 +332,9 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
     if (!Number.isInteger(rowNumber) || rowNumber < 1) continue;
     const hidden = attrs["hidden"] === "1" || attrs["hidden"] === "true";
     if (hidden) {
-      rows[rowNumber - 1] = { hidden: true };
       hiddenRows.push(rowNumber);
     }
   }
-  if (rows.length) worksheet["!rows"] = rows;
   for (const match of xml.matchAll(/<col\b[^>]*(?:\/>|>)/g)) {
     const attrs = attributes(match[0]);
     if (attrs["hidden"] !== "1" && attrs["hidden"] !== "true") continue;
@@ -302,17 +343,14 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) continue;
     hiddenColumns.push({ start, end });
   }
-  if (hiddenColumns.length) {
-    const columns: XLSX.ColInfo[] = [];
-    for (const { start, end } of hiddenColumns)
-      for (let column = start; column <= end; column++) columns[column - 1] = { hidden: true };
-    worksheet["!cols"] = columns;
-  }
   for (const match of xml.matchAll(MERGE_TAG)) {
     const reference = match[1]!;
     try {
-      worksheet["!merges"] ??= [];
-      worksheet["!merges"].push(XLSX.utils.decode_range(reference));
+      // Decodificar aqui é o que separa uma mesclagem válida de uma inválida: a
+      // inválida lança, e o verificador independente a ignora. O resultado não
+      // é guardado porque quem monta a worksheet decodifica de novo, e guardar
+      // um `Range` por mesclagem custaria mais do que a string.
+      XLSX.utils.decode_range(reference);
       mergedRanges.push(reference);
     } catch {
       // Estruturas inválidas são ignoradas pelo verificador independente.
@@ -327,19 +365,9 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
       ...(numberFormat !== "General" ? { numberFormat } : {}),
       ...(formula ? { formula: `=${formula}` } : {}),
     });
+    // O `!ref` continua saindo daqui porque ele delimita as células que
+    // **chegam** à worksheet, e esta é a única passagem que as conhece.
     if (!cellReachesWorksheet(parsed)) continue;
-    const cell: XLSX.CellObject = {
-      t: typeof rawValue === "boolean" ? "b" : typeof rawValue === "number" ? "n" : "s",
-      v: rawValue ?? "",
-      w: displayValue,
-      ...(numberFormat !== "General" ? { z: numberFormat } : {}),
-      ...(formula ? { f: formula } : {}),
-    };
-    if (dateValue) {
-      cell.t = "d";
-      cell.v = dateValue;
-    }
-    worksheet[address] = cell;
     const decoded = XLSX.utils.decode_cell(address);
     range = range
       ? {
@@ -349,8 +377,74 @@ function readSheet(xml: string, strings: string[], formats: string[], date1904: 
       : { s: decoded, e: decoded };
   }
   const dimension = /<dimension\b[^>]*ref="([^"]+)"/.exec(xml)?.[1];
-  worksheet["!ref"] = dimension || (range ? XLSX.utils.encode_range(range) : "A1");
-  return { cells, worksheet, structure: { mergedRanges, hiddenRows, hiddenColumns } };
+  const ref = dimension || (range ? XLSX.utils.encode_range(range) : "A1");
+  return { cells, structure: { ref, mergedRanges, hiddenRows, hiddenColumns } };
+}
+
+/**
+ * Uma célula da worksheet, reconstruída a partir da entrada do inventário.
+ *
+ * O inventário guarda tudo o que a célula da worksheet carrega: valor cru,
+ * texto exibido, formato numérico e fórmula. A data é a única que não viaja
+ * pronta, e ela é recalculável do valor cru mais o formato, que é exatamente o
+ * que a leitura original faz. Por isso a reconstrução não retém nada a mais.
+ */
+function cellFromInventory(cell: ReaderCell, date1904: boolean): XLSX.CellObject {
+  const { rawValue, displayValue, numberFormat, formula } = cell;
+  const built: XLSX.CellObject = {
+    t: typeof rawValue === "boolean" ? "b" : typeof rawValue === "number" ? "n" : "s",
+    v: rawValue ?? "",
+    w: displayValue,
+    ...(numberFormat ? { z: numberFormat } : {}),
+    // O inventário guarda a fórmula com o `=` que ele mesmo acrescenta; a
+    // worksheet a quer sem.
+    ...(formula ? { f: formula.slice(1) } : {}),
+  };
+  const dateValue =
+    typeof rawValue === "number" && XLSX.SSF.is_date(numberFormat ?? "General")
+      ? serialDate(rawValue, date1904)
+      : null;
+  if (dateValue) {
+    built.t = "d";
+    built.v = dateValue;
+  }
+  return built;
+}
+
+/**
+ * A aba inteira como worksheet, reconstruída a partir do inventário.
+ *
+ * Vale a mesma regra de `cellFromInventory`: uma célula sem valor e sem fórmula
+ * existe no inventário mas não na worksheet, porque ela está no XML só para
+ * carregar formatação.
+ */
+function worksheetFromInventory(
+  cells: Map<string, ReaderCell>,
+  structure: OoxmlSheetStructure,
+  date1904: boolean,
+): XLSX.WorkSheet {
+  const worksheet: XLSX.WorkSheet = {};
+  if (structure.hiddenRows.length) {
+    const rows: XLSX.RowInfo[] = [];
+    for (const rowNumber of structure.hiddenRows) rows[rowNumber - 1] = { hidden: true };
+    worksheet["!rows"] = rows;
+  }
+  if (structure.hiddenColumns.length) {
+    const columns: XLSX.ColInfo[] = [];
+    for (const { start, end } of structure.hiddenColumns)
+      for (let column = start; column <= end; column++) columns[column - 1] = { hidden: true };
+    worksheet["!cols"] = columns;
+  }
+  if (structure.mergedRanges.length)
+    worksheet["!merges"] = structure.mergedRanges.map((reference) =>
+      XLSX.utils.decode_range(reference),
+    );
+  for (const [address, cell] of cells) {
+    if (cell.rawValue == null && cell.formula === undefined) continue;
+    worksheet[address] = cellFromInventory(cell, date1904);
+  }
+  worksheet["!ref"] = structure.ref;
+  return worksheet;
 }
 
 /**
@@ -579,9 +673,9 @@ export function inspectOoxml(
 ): OoxmlInspection {
   const archive = isOoxmlArchive(input) ? input : unzipOoxmlArchive(input);
   const { rels, strings, formats, date1904, declaredSheets } = readWorkbookParts(archive);
-  const workbook = XLSX.utils.book_new();
   const sheets = new Map<string, Map<string, ReaderCell>>();
   const structures = new Map<string, OoxmlSheetStructure>();
+  const sheetNames: string[] = [];
   for (const [index, match] of declaredSheets.entries()) {
     const attrs = attributes(match[0]);
     const name = decodeOoxmlText(attrs["name"] ?? "Planilha");
@@ -591,13 +685,44 @@ export function inspectOoxml(
       continue;
     }
     const parsed = readSheet(archiveText(archive, path), strings, formats, date1904);
-    XLSX.utils.book_append_sheet(workbook, parsed.worksheet, name.slice(0, 31));
     sheets.set(name, parsed.cells);
     structures.set(name, parsed.structure);
+    sheetNames.push(name);
     onSheetDone?.(index + 1, declaredSheets.length);
   }
-  if (!workbook.SheetNames.length) throw new Error("Nenhuma aba OOXML legível foi encontrada.");
-  return { sheets, structures, workbook };
+  if (!sheetNames.length) throw new Error("Nenhuma aba OOXML legível foi encontrada.");
+
+  const worksheetFor = (sheetName: string) => {
+    const cells = sheets.get(sheetName);
+    const structure = structures.get(sheetName);
+    if (!cells || !structure) return undefined;
+    return worksheetFromInventory(cells, structure, date1904);
+  };
+
+  // O workbook inteiro só existe se alguém o pedir, e a partir daí ele é o
+  // mesmo objeto: quem o usa está importando este resultado, e devolver uma
+  // cópia nova a cada leitura faria duas chamadas divergirem depois de escritas.
+  let materialized: XLSX.WorkBook | undefined;
+
+  return {
+    sheets,
+    structures,
+    sheetNames,
+    cellFor: (sheetName, address) => {
+      const cell = sheets.get(sheetName)?.get(address);
+      if (!cell || (cell.rawValue == null && cell.formula === undefined)) return undefined;
+      return cellFromInventory(cell, date1904);
+    },
+    worksheetFor,
+    get workbook() {
+      if (materialized) return materialized;
+      const workbook = XLSX.utils.book_new();
+      for (const name of sheetNames)
+        XLSX.utils.book_append_sheet(workbook, worksheetFor(name)!, name.slice(0, 31));
+      materialized = workbook;
+      return workbook;
+    },
+  };
 }
 
 function comparable(value: unknown): string {
@@ -621,10 +746,10 @@ export function compareAndRepairWithOoxml(
     completed += 1;
     let sheet = primary.Sheets[sheetName];
     if (!sheet) {
-      const recoveredSheet = inspection.workbook.Sheets[sheetName];
+      const recoveredSheet = inspection.worksheetFor(sheetName);
       if (!recoveredSheet) continue;
       if (!primary.SheetNames.includes(sheetName)) {
-        const sourceIndex = inspection.workbook.SheetNames.indexOf(sheetName);
+        const sourceIndex = inspection.sheetNames.indexOf(sheetName);
         const insertionIndex =
           sourceIndex < 0
             ? primary.SheetNames.length
@@ -654,9 +779,8 @@ export function compareAndRepairWithOoxml(
         continue;
       const missingPrimary = !cell || (primaryValue === "" && independentValue !== "");
       if (missingPrimary) {
-        const fallbackCell = inspection.workbook.Sheets[sheetName]?.[address] as
-          XLSX.CellObject | undefined;
-        if (fallbackCell) setWorksheetCellAtAddress(sheet, address, { ...fallbackCell });
+        const fallbackCell = inspection.cellFor(sheetName, address);
+        if (fallbackCell) setWorksheetCellAtAddress(sheet, address, fallbackCell);
       }
       divergences.push({
         sheet: sheetName,

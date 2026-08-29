@@ -33,6 +33,9 @@ describe("fidelidade entre leitores independentes", () => {
     expect(fallback.sheets.get("Cabeçalho deslocado")?.get("A4")?.rawValue).toBe("Data");
     expect(fallback.workbook.SheetNames).toContain("Regiões lado a lado");
     expect(fallback.structures.get("Cabeçalho deslocado")).toEqual({
+      // O `!ref` viaja na estrutura porque é dele que a worksheet de reparo é
+      // reconstruída, agora que ela não é mais montada de véspera.
+      ref: "A1:G8",
       mergedRanges: ["A1:F1"],
       hiddenRows: [2],
       hiddenColumns: [{ start: 3, end: 3 }],
