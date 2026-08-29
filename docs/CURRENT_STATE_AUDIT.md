@@ -9366,9 +9366,10 @@ o tem.
 `SheetSourceGrid`, em `import.ts`, está declarado sem `boolean`, embora o
 caminho atual já produza `true`/`false`: uma célula `t="b"` chega assim pelo
 `sheet_to_json`, e a anotação genérica ali é uma asserção, não uma conversão.
-Alargar o tipo cascateia por cerca de oito assinaturas internas do arquivo do
-qual todo o corpus depende, então não foi feito aqui. Fica registrado no tipo
-`OoxmlSheetGrid`, que declara o conjunto correto, e num comentário.
+Alargar o tipo cascateia pelas assinaturas internas do arquivo do qual todo o
+corpus depende, então não foi feito aqui. Ficou para a seção seguinte, que o
+corrigiu e descobriu que eram 33 assinaturas, e não oito. Ver
+[[CURRENT_STATE_AUDIT#152. O tipo da grade omitia o booleano, e o caminho atual sempre o produziu]].
 
 ### Versão
 
@@ -9376,3 +9377,66 @@ Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
 visível para quem usa. Nenhum chamador usa a grade nova, e o comportamento da
 importação de OOXML é o mesmo, verificado pela rede de paridade sobre 110 abas
 de 25 arquivos reais.
+## 152. O tipo da grade omitia o booleano, e o caminho atual sempre o produziu
+
+Correção encontrada de passagem na seção 151, e fechada aqui antes da ligação
+que ia esbarrar nela.
+
+### O que estava errado
+
+`SheetSourceGrid` declarava `(string | number | Date | null)[][]`. Uma célula
+`t="b"` do Excel chega como `true` ou `false` através de
+`sheet_to_json(ws, { header: 1, defval: null })`, e o parâmetro de tipo daquela
+chamada é uma **asserção**, não uma conversão. Ou seja, o caminho atual sempre
+entregou booleanos ali, e o tipo dizia o contrário desde que existe.
+
+Não era erro de comportamento, e não havia defeito visível: `normalizeRawRow`
+deixa passar tudo o que não é `Date`, e as funções seguintes só fazem `String()`
+do valor. O que existia era uma anotação falsa, no arquivo do qual todo o corpus
+depende, esperando a primeira pessoa que confiasse nela.
+
+### Por que a omissão sobreviveu tanto
+
+A união estava repetida à mão em **33 assinaturas internas** de `import.ts`.
+Corrigir uma delas sem corrigir as outras 32 não compila, então a alternativa
+prática era não corrigir nenhuma. Duas uniões repetidas viram dois lugares onde
+o tipo pode divergir; trinta e três viram uma barreira.
+
+A correção, então, não é só acrescentar `boolean`: é dar nome ao que estava
+repetido.
+
+| Tipo | O que é |
+| --- | --- |
+| `SheetSourceGrid` | A grade como entra, com `Date` |
+| `SheetSourceRow` | Uma linha dela |
+| `NormalizedCellValue` | Um valor depois de `normalizeRawRow`: sem `Date`, com booleano |
+| `NormalizedSheetRow` | Uma linha depois dela |
+
+Com os nomes, acrescentar um valor ao conjunto passa a ser uma linha, e não
+trinta e três.
+
+### Duas assinaturas que também mentiam
+
+`isRepeatedHeaderRow` declarava receber `Date`, e recebe linha já normalizada,
+onde data virou texto: o `Date` nunca chegou a acontecer ali, e o booleano
+sempre chegou. E um acumulador de células de cabeçalho estava tipado como
+`(string | number)[]` num ponto que recebe valor de célula qualquer.
+
+### Verificação
+
+A rede de paridade foi gravada antes e conferida depois: **110 abas de 25
+arquivos reais, resultado idêntico**. Isso importa mais que o normal aqui,
+porque uma mudança só de tipo que altera comportamento seria justamente a que
+passaria despercebida.
+
+O diff em `import.ts` foi conferido linha a linha e **não tem nenhuma alteração
+fora de tipo e comentário**. Suíte completa com 1.159 testes, build e orçamento
+aprovados.
+
+O elenco que a seção 151 tinha deixado no teste da grade de OOXML, marcando esta
+lacuna, saiu junto: os dois tipos agora coincidem de verdade.
+
+### Versão
+
+Sem avanço de versão e sem entrada no Centro de Atualizações: nada aqui é
+visível para quem usa, e nenhum byte de comportamento mudou.
