@@ -393,6 +393,89 @@ describe.skipIf(!locais.length)("a grade contra a worksheet, em planilhas reais"
 });
 
 /**
+ * A mesma comparação, contada por aba em vez de por arquivo.
+ *
+ * A contagem por arquivo é grosseira: um arquivo de doze abas conta como uma
+ * divergência quando uma única aba diverge, e some do numerador inteiro. Ela
+ * serviu para dizer que a lacuna da data estava fechada, e não serve para
+ * decidir uma mudança que mexe em quantas abas cada caminho produz.
+ *
+ * Esta conta as abas: quantas o caminho atual produz, quantas a grade produz, e
+ * quantas delas são idênticas nome a nome e linha a linha.
+ */
+function compararPorAba(caminho: string) {
+  let inspecao;
+  let grades;
+  try {
+    const bytes = new Uint8Array(readFileSync(caminho));
+    inspecao = inspectOoxml(bytes);
+    grades = readOoxmlSheetGrids(bytes);
+  } catch {
+    return null;
+  }
+
+  const minimo: XLSX.WorkBook = {
+    SheetNames: [...inspecao.workbook.SheetNames],
+    Sheets: {},
+  } as XLSX.WorkBook;
+  for (const nome of inspecao.workbook.SheetNames) {
+    const grade = grades.get(nome);
+    if (!grade) return null;
+    minimo.Sheets[nome] = worksheetMinimaDaGrade(grade);
+  }
+
+  const pelaWorksheet = sheetsWithData(inspecao.workbook);
+  const pelaGrade = sheetsWithData(minimo, {
+    gridFor: (nome) => {
+      const grade = grades.get(nome);
+      return grade
+        ? { aoa: grade.aoa, textAoa: grade.textAoa, cellFormats: grade.cellFormats }
+        : undefined;
+    },
+  });
+
+  // Uma aba conta como igual quando existe dos dois lados com o mesmo nome e o
+  // mesmo conteúdo. O nome entra porque a divisão em seções o muda, e é
+  // justamente a divisão que está em avaliação.
+  const porNome = new Map(pelaGrade.map((aba) => [aba.name, aba]));
+  let iguais = 0;
+  for (const atual of pelaWorksheet) {
+    const nova = porNome.get(atual.name);
+    if (nova && describeImportedSheetsDifferences([atual], [nova], 1).length === 0) iguais += 1;
+  }
+
+  return {
+    caminho,
+    abasAtuais: pelaWorksheet.length,
+    abasDaGrade: pelaGrade.length,
+    abasIguais: iguais,
+  };
+}
+
+describe.skipIf(!locais.length)("quanto da divisão em abas a grade reproduz", () => {
+  it("conta as abas, e não os arquivos", { timeout: 300_000 }, () => {
+    const medidas = locais
+      .map((caminho) => compararPorAba(caminho))
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    const totalAtuais = medidas.reduce((soma, item) => soma + item.abasAtuais, 0);
+    const totalDaGrade = medidas.reduce((soma, item) => soma + item.abasDaGrade, 0);
+    const totalIguais = medidas.reduce((soma, item) => soma + item.abasIguais, 0);
+
+    process.stdout.write(
+      `\n  ${medidas.length} planilhas reais` +
+        `\n  ${totalAtuais} abas pelo caminho atual, ${totalDaGrade} pela grade` +
+        `\n  ${totalIguais} abas idênticas nos dois caminhos` +
+        ` (${Math.round((totalIguais / Math.max(1, totalAtuais)) * 100)}%)\n`,
+    );
+
+    // Piso, para a medida não regredir em silêncio. Ele é o que existe hoje, e
+    // sobe quando o próximo incremento melhorar de verdade.
+    expect(totalIguais).toBeGreaterThanOrEqual(87);
+  });
+});
+
+/**
  * A medição que decide se vale fechar a lacuna da data.
  *
  * A grade existe para tirar a worksheet do caminho, e a lacuna encontrada pede
