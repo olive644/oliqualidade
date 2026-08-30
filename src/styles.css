@@ -1521,19 +1521,24 @@
    * O que ele comprava foi medido, com 18 widgets de gráfico: 4.792 ms até o
    * primeiro gráfico com ele, 4.940 ms sem ele, e **os 18 desenhados nos dois
    * casos**. Ou seja, ele não estava pulando nada, e cobrava o piscar. */
-  /* `backwards`, e não `both`.
+  /* `both`, e **não** `backwards`. Isto já foi trocado uma vez e teve de voltar.
    *
-   * `both` é `backwards` mais `forwards`, e o `forwards` mantém a animação
-   * **aplicada para sempre** depois de terminar. Um elemento com animação
-   * aplicada continua candidato a camada própria de composição, e num painel com
-   * muitos widgets isso é uma camada permanente por card; ao rolar, o compositor
-   * descarta e recria camadas, e o card pisca.
+   * O raciocínio da troca era que o `forwards` de `both` não compraria nada,
+   * porque o último quadro de `oliam-in` é `opacity: 1; transform: none`, que é
+   * o estado padrão do elemento. A medida desmentiu: com `backwards`, o
+   * documento inteiro passou a ter 1.843 px de altura numa janela de 1.080, ou
+   * seja a página ganhou uma rolagem externa que não existia, e o painel subia
+   * para fora da tela ao rolar.
    *
-   * O `forwards` aqui não compra nada: o último quadro de `oliam-in` é
-   * `opacity: 1; transform: none`, que é exatamente o estado padrão do elemento.
-   * O `backwards` é o que importa, porque é ele que segura o card invisível
-   * durante o atraso escalonado da entrada. */
-  animation: oliam-in 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+   * A razão é que um `transform` **aplicado por animação**, mesmo valendo
+   * `none`, faz do elemento um bloco de contenção para descendentes
+   * posicionados. Com `forwards` isso vale para sempre depois da entrada; sem
+   * ele, cai quando a animação termina, e algum descendente escapa e passa a
+   * somar altura ao documento.
+   *
+   * Registrado aqui porque a troca é tentadora e o efeito colateral não é
+   * óbvio: ver a seção 167 do audit. */
+  animation: oliam-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
   border-radius: var(--radius-2xl);
   border: 1px solid var(--border);
   /* Horizontal continua escondido, porque o gráfico que rola de lado tem o

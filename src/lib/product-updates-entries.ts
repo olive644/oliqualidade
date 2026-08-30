@@ -11,6 +11,18 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-30-tela-para-de-descer-e-graficos-desenham-mais-rapido",
+    version: "0.10.0-beta.26",
+    date: "2026-08-30",
+    title: "A tela para de descer ao rolar, e os gráficos desenham mais rápido",
+    summary:
+      "A versão anterior introduziu um defeito: ao rolar, a página inteira descia e deixava uma faixa vazia embaixo do painel. Isso foi corrigido. Junto, a animação de entrada dos gráficos passou a ser mais curta.",
+    highlights: [
+      "A página voltou a ter exatamente a altura da janela. O que rola é o conteúdo do painel, e não a tela toda.",
+      "Os gráficos de área, linha e barras usavam a duração padrão da biblioteca de desenho, de 1,5 segundo, enquanto a pizza já usava 0,68. Agora todos usam o mesmo valor mais curto.",
+    ],
+  },
+  {
     id: "2026-08-30-rolar-o-painel-deixa-de-travar-a-tela",
     version: "0.10.0-beta.25",
     date: "2026-08-30",

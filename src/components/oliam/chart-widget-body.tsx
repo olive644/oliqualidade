@@ -40,6 +40,7 @@ import { groupableKinds, sizeClass, spanClass } from "@/lib/widgets";
 import { isReferenceMetric } from "@/lib/reference-metrics";
 import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/format";
 import {
+  CHART_ANIMATION_MS,
   chartAnimationEnabled,
   chartLabelCenter,
   chartTooltipName,
@@ -966,7 +967,7 @@ export function ChartWidgetBody({
                     onMouseLeave={() => setActivePieIndex(null)}
                     cursor="pointer"
                     isAnimationActive={chartAnimationEnabled()}
-                    animationDuration={680}
+                    animationDuration={CHART_ANIMATION_MS}
                     animationEasing="ease-out"
                   >
                     <Label
@@ -1195,6 +1196,7 @@ export function ChartWidgetBody({
                         dot={false}
                         activeDot={{ r: 4 }}
                         isAnimationActive={chartAnimationEnabled()}
+                        animationDuration={CHART_ANIMATION_MS}
                       />
                       <Area
                         type="monotone"
@@ -1208,6 +1210,7 @@ export function ChartWidgetBody({
                         dot={false}
                         activeDot={{ r: 4 }}
                         isAnimationActive={chartAnimationEnabled()}
+                        animationDuration={CHART_ANIMATION_MS}
                       />
                       <Line
                         type="monotone"
@@ -1220,6 +1223,7 @@ export function ChartWidgetBody({
                         dot={false}
                         activeDot={false}
                         isAnimationActive={chartAnimationEnabled()}
+                        animationDuration={CHART_ANIMATION_MS}
                       />
                       <Line
                         type="monotone"
@@ -1259,6 +1263,7 @@ export function ChartWidgetBody({
                           );
                         }}
                         isAnimationActive={chartAnimationEnabled()}
+                        animationDuration={CHART_ANIMATION_MS}
                       />
                       <Line
                         type="monotone"
@@ -1269,6 +1274,7 @@ export function ChartWidgetBody({
                         dot={false}
                         activeDot={false}
                         isAnimationActive={chartAnimationEnabled()}
+                        animationDuration={CHART_ANIMATION_MS}
                       />
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -1401,6 +1407,7 @@ export function ChartWidgetBody({
                         );
                       }}
                       isAnimationActive={chartAnimationEnabled()}
+                      animationDuration={CHART_ANIMATION_MS}
                     />
                   </LineChart>
                 </ResponsiveContainer>

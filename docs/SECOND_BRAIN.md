@@ -714,6 +714,8 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| A animação de entrada do widget usa `both`, e trocar por `backwards` quebra o layout | um `transform` aplicado por animação, mesmo valendo `none`, faz do elemento bloco de contenção para descendentes posicionados; sem `forwards` isso cai quando a animação termina e algum descendente passa a somar altura ao documento | medido: o documento foi de 1.080 para 1.843 px numa janela de 1.080, e o painel subia para fora da tela ao rolar — ver [[CURRENT_STATE_AUDIT#167. A troca de `both` por `backwards` fez a página inteira ganhar rolagem]] |
+| Todo gráfico declara `animationDuration`, e nenhum herda o padrão | o padrão do Recharts é 1.500 ms, e só a pizza declarava 680; a diferença entre um widget e o vizinho aparecia como câmera lenta num deles | os sete pontos usam a mesma constante, com o valor que a pizza já usava |
 | Rolar com o ponteiro sobre o painel é o que custa, e não a rolagem em si | ao rolar o ponteiro fica parado e são os widgets que passam por baixo dele, disparando `mouseenter`/`mouseleave` em cada barra, fatia e ponto; medido: 8 tarefas longas e 357 mutações com o ponteiro sobre o painel, **zero de tudo** com ele fora | `pointer-events: none` nos widgets enquanto rola, armado no `wheel` e no `touchmove` além do `scroll`, porque o `scroll` chega tarde demais — ver [[CURRENT_STATE_AUDIT#166. A gravação do usuário mudou o diagnóstico: era saturação da thread, não compositor]] |
 | Comparação com duas variáveis de uma vez não conclui nada | a primeira medida opunha "ponteiro sobre + roda" a "ponteiro fora + script", e a conclusão certa teria vindo por sorte; o cruzamento que faltava (ponteiro sobre + script) foi o que isolou a posição do ponteiro | rodar o cruzamento antes de concluir, sempre |
 | `backdrop-filter` não fica sobre conteúdo que rola | ele obriga o compositor a reler e desfocar o que passa por baixo a cada quadro da rolagem, e é causa conhecida de repintura visível no Chromium; estava na barra do topo, na barra do painel e nos botões de seta que ficam **sobre o desenho** de barras, histograma e Pareto | fundo opaco com a mesma cor, que na tela é praticamente o mesmo resultado — ver [[CURRENT_STATE_AUDIT#165. O filtro de fundo, e o limite do que este ambiente consegue ver]] |
@@ -1023,6 +1025,10 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   seguir a identidade do item, e não a posição) avança a iteração: é correção de
   defeito. Ver
   [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]].
+
+- `v0.10.0-beta.26` (a tela para de descer ao rolar, e os gráficos desenham mais
+  rápido) avança a iteração: corrige uma regressão introduzida na `beta.24`. Ver
+  [[CURRENT_STATE_AUDIT#167. A troca de `both` por `backwards` fez a página inteira ganhar rolagem]].
 
 - `v0.10.0-beta.25` (rolar o painel deixa de travar a tela) avança a iteração: é
   correção de defeito, **medida antes e depois** — 72% menos thread bloqueada

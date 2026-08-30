@@ -10946,3 +10946,76 @@ Suíte completa com 1.204 testes, build e orçamento aprovados.
 ### Versão
 
 `0.10.0-beta.24` para `0.10.0-beta.25`, com entrada no Centro de Atualizações.
+## 167. A troca de `both` por `backwards` fez a página inteira ganhar rolagem
+
+Regressão introduzida por mim na seção 165 e relatada pelo usuário com a
+descrição exata: "a tela ta descendo, nao tinha isso antes".
+
+### O que quebrou
+
+`.oliam-widget` usava `animation: ... both`. O raciocínio da troca para
+`backwards` era que o `forwards` não compraria nada, porque o último quadro de
+`oliam-in` é `opacity: 1; transform: none`, que é o estado padrão do elemento.
+
+Medido, o raciocínio estava errado. Numa janela de 1.080 px:
+
+| Commit | `documentElement.scrollHeight` |
+| --- | ---: |
+| `2556b11`, antes desta série | 1.080 |
+| `758c3b8`, estabilização visual | 1.080 |
+| `d72459b` | 1.080 |
+| **`4cf21ae`, o filtro de fundo** | **1.843** |
+| `8f42ebc` | 1.843 |
+
+A página ganhou 763 px de rolagem externa que não existiam. Ao rolar, o painel
+subia para fora da tela: o elemento de conteúdo ia de `top: 160` para
+`top: -603`, deixando uma faixa vazia embaixo.
+
+Isolado dentro da própria `4cf21ae`, que trazia duas mudanças: restaurar o
+`backdrop-filter` **não** corrige, e restaurar `animation-fill-mode: both`
+corrige. Ou seja, a culpa é da animação, e não do filtro.
+
+### Por que acontece
+
+Um `transform` **aplicado por animação**, mesmo valendo `none`, faz do elemento
+um bloco de contenção para descendentes posicionados. Com `forwards` isso vale
+para sempre depois da entrada; sem ele, cai quando a animação termina, e algum
+descendente escapa e passa a somar altura ao documento.
+
+O `both` voltou, com o registro no próprio CSS, porque a troca é tentadora e o
+efeito colateral não é óbvio.
+
+### A animação em câmera lenta
+
+O usuário também relatou que o gráfico de área passou a aparecer "em câmera
+lenta". Medido: a curva leva **904 ms** para assentar depois do carregamento.
+
+A causa não é reinício — contando as mudanças da curva durante a rolagem, são
+duas. É a duração: **só a pizza declarava `animationDuration`**, com 680 ms.
+Área, linha e barras herdavam o padrão do Recharts, que é 1.500 ms. A diferença
+entre um widget e o vizinho era visível.
+
+Os sete pontos passaram a usar a mesma constante, com o valor que a pizza já
+usava. Uniformiza para baixo em vez de inventar um número.
+
+### O que continua sem reprodução
+
+O piscar de barras e histograma ao inspecionar com o mouse continua relatado e
+continua sem reproduzir aqui depois da guarda da seção 166. A guarda cortou 72%
+do tempo de thread bloqueada durante a rolagem, medido, mas o relato é sobre
+**inspecionar**, que é hover sem rolagem — e nesse caso a guarda não age, por
+desenho.
+
+Fica registrado como a próxima coisa a medir, e com o instrumento certo já
+identificado: contar tarefas longas durante hover parado sobre um gráfico, sem
+rolagem nenhuma.
+
+### Verificação
+
+Suíte completa com 1.204 testes, build e orçamento aprovados. A altura do
+documento volta a 1.080 antes e depois de rolar, e o painel não sai mais do
+lugar.
+
+### Versão
+
+`0.10.0-beta.25` para `0.10.0-beta.26`, com entrada no Centro de Atualizações.
