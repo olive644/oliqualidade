@@ -594,3 +594,73 @@ describe("a seleção acompanha a identidade também no Pareto e na dispersão",
     );
   });
 });
+
+/**
+ * Um componente definido dentro de um hook é uma função nova a cada
+ * renderização, e o React trata função nova como **tipo novo**: ele desmonta a
+ * subárvore inteira e monta outra no lugar. Quando essa subárvore está
+ * sobreposta ao gráfico, como os botões de rolagem, cada renderização a faz
+ * piscar — e passar o mouse pelo card renderiza várias vezes por segundo.
+ *
+ * Medido antes do conserto, com uma sonda que marca o elemento e observa a
+ * marca quadro a quadro: os botões assumiram 22 identidades numa passagem de
+ * mouse, enquanto o `svg` e o `wrapper` do gráfico mantiveram uma só.
+ *
+ * A garantia aqui é de **identidade do elemento**, e não de presença: afirmar
+ * que os botões existem depois de redesenhar passaria dos dois lados.
+ */
+describe("a sobreposição de rolagem do gráfico não é remontada a cada desenho", () => {
+  const muitasCategorias = Array.from({ length: 14 }, (_, i) => `Categoria ${i + 1}`);
+  const colunas: Column[] = [
+    { key: "categoria", label: "Categoria", kind: "category", visible: true, description: "" },
+    { key: "valor", label: "Valor", kind: "number", visible: true, description: "" },
+  ];
+  const linhas = (fator: number): Row[] =>
+    muitasCategorias.map((categoria, i) => ({ categoria, valor: (i + 1) * fator }));
+
+  const barra = (fator: number) => (
+    <ChartWidgetBody
+      widget={{
+        id: "w-barra-remonta",
+        type: "bar",
+        groupKey: "categoria",
+        valueKey: "valor",
+        op: "sum",
+        dataMode: "aggregate",
+        span: 3,
+        size: "md",
+      }}
+      data={linhas(fator)}
+      columns={colunas}
+      numericCols={colunas.filter((c) => c.kind === "number")}
+      groupableCols={colunas.filter((c) => c.kind === "category")}
+      semanticProfiles={[]}
+      filters={[]}
+      setFilters={() => {}}
+      onConfigure={() => {}}
+      onShowSource={() => {}}
+      dragProps={{}}
+      sizeControls={null}
+      animationDelay={0}
+    />
+  );
+
+  it("mantém o mesmo elemento dos botões depois de um redesenho", async () => {
+    setMeasuredSize(900);
+    setPrefersReducedMotion(true);
+    const { container, rerenderWidget } = renderWidget(barra(1));
+
+    await waitFor(() =>
+      expect(container.querySelector("[aria-label^='Navegação horizontal']")).not.toBeNull(),
+    );
+    const antes = container.querySelector("[aria-label^='Navegação horizontal']");
+
+    rerenderWidget(barra(2));
+    await waitFor(() =>
+      expect(container.querySelector("[aria-label^='Navegação horizontal']")).not.toBeNull(),
+    );
+
+    // O mesmo nó do DOM, e não outro com a mesma aparência.
+    expect(container.querySelector("[aria-label^='Navegação horizontal']")).toBe(antes);
+  });
+});

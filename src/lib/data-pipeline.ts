@@ -1303,13 +1303,20 @@ export function buildAreaComparisonSeries(
  */
 export function collapsePieSeries<T extends { name: string; total: number }>(
   series: T[],
-): (T | { name: string; total: number; count: number })[] {
+): (T | { name: string; total: number; count: number; grouped: true })[] {
   if (series.length <= 6) return series;
   const sorted = [...series].sort((a, b) => b.total - a.total);
   const top = sorted.slice(0, 5);
   const restItems = sorted.slice(5);
   const rest = restItems.reduce((s, x) => s + x.total, 0);
-  return rest ? [...top, { name: "Outros", total: rest, count: restItems.length }] : top;
+  // `grouped` marca a fatia sintética, e existe porque `count` sozinho não
+  // distingue as duas coisas: numa fatia comum ele é a **contagem de linhas**
+  // que entraram na categoria, e só nesta ele é a quantidade de categorias
+  // reunidas. Sem a marca, a legenda lia "29 categorias agrupadas" embaixo de
+  // uma categoria só, quando o 29 eram registros.
+  return rest
+    ? [...top, { name: "Outros", total: rest, count: restItems.length, grouped: true }]
+    : top;
 }
 
 export function pieRoundnessFor(series: { total: number }[]): {

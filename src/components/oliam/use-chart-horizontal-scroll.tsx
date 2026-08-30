@@ -1,7 +1,66 @@
-import { useRef } from "react";
+import { useCallback, useMemo, useRef, type RefObject } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+
+/**
+ * Os botões de rolagem, num componente de módulo e não dentro do hook.
+ *
+ * Isto não é organização: é correção de defeito. Definido dentro do hook, o
+ * componente era uma **função nova a cada renderização**, e o React trata
+ * função nova como tipo novo — desmonta a subárvore inteira e monta outra no
+ * lugar. Como os botões ficam sobrepostos ao gráfico, cada renderização os
+ * fazia piscar, e passar o mouse pelo card renderiza várias vezes por segundo.
+ *
+ * Medido antes do conserto, com uma sonda que marca o elemento e observa a
+ * marca quadro a quadro: os botões assumiram **22 identidades diferentes** numa
+ * passagem de mouse, enquanto o `svg` e o `wrapper` do gráfico mantiveram uma
+ * só. Ou seja, não era o gráfico que remontava, era o que está por cima dele.
+ */
+function ChartScrollButtonsBase({
+  label,
+  compact = false,
+  onScroll,
+}: {
+  label: string;
+  compact?: boolean;
+  onScroll: (direction: -1 | 1) => void;
+}) {
+  const botao = cn(
+    "rounded-full bg-card/90 shadow-sm backdrop-blur pointer-coarse:size-12",
+    compact ? "size-7" : "size-8",
+  );
+  return (
+    <div
+      className={cn("absolute z-10 flex gap-1", compact ? "right-1 top-1" : "right-5 top-5")}
+      data-export-controls
+      aria-label={`Navegação horizontal do ${label}`}
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={botao}
+        onClick={() => onScroll(-1)}
+        aria-label={`Rolar ${label} para a esquerda`}
+        title="Rolar para a esquerda"
+      >
+        <ArrowLeft className={compact ? "size-3.5" : "size-4"} />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={botao}
+        onClick={() => onScroll(1)}
+        aria-label={`Rolar ${label} para a direita`}
+        title="Rolar para a direita"
+      >
+        <ArrowRight className={compact ? "size-3.5" : "size-4"} />
+      </Button>
+    </div>
+  );
+}
 
 /**
  * Gráfico com muitas categorias: permite arrastar com o mouse pra rolar na
@@ -54,51 +113,27 @@ export function useChartHorizontalScroll() {
     el.addEventListener("pointercancel", onUp);
   };
 
-  const scrollChart = (direction: -1 | 1) => {
+  const scrollChart = useCallback((direction: -1 | 1) => {
     const el = chartScrollRef.current;
     if (!el) return;
     el.scrollBy({
       left: direction * Math.max(el.clientWidth * 0.75, 240),
       behavior: "smooth",
     });
-  };
+  }, []);
 
-  const ChartScrollButtons = ({ label, compact = false }: { label: string; compact?: boolean }) => (
-    <div
-      className={cn("absolute z-10 flex gap-1", compact ? "right-1 top-1" : "right-5 top-5")}
-      data-export-controls
-      aria-label={`Navegação horizontal do ${label}`}
-    >
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className={cn(
-          "rounded-full bg-card/90 shadow-sm backdrop-blur pointer-coarse:size-12",
-          compact ? "size-7" : "size-8",
-        )}
-        onClick={() => scrollChart(-1)}
-        aria-label={`Rolar ${label} para a esquerda`}
-        title="Rolar para a esquerda"
-      >
-        <ArrowLeft className={compact ? "size-3.5" : "size-4"} />
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className={cn(
-          "rounded-full bg-card/90 shadow-sm backdrop-blur pointer-coarse:size-12",
-          compact ? "size-7" : "size-8",
-        )}
-        onClick={() => scrollChart(1)}
-        aria-label={`Rolar ${label} para a direita`}
-        title="Rolar para a direita"
-      >
-        <ArrowRight className={compact ? "size-3.5" : "size-4"} />
-      </Button>
-    </div>
+  // O elemento devolvido é uma referência ao **mesmo** componente de módulo, com
+  // as props presas. Quem chama continua escrevendo `<ChartScrollButtons ... />`
+  // e o React reconhece o tipo entre renderizações, em vez de remontar.
+  const ChartScrollButtons = useMemo(
+    () =>
+      function ChartScrollButtons(props: { label: string; compact?: boolean }) {
+        return <ChartScrollButtonsBase {...props} onScroll={scrollChart} />;
+      },
+    [scrollChart],
   );
 
   return { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons };
 }
+
+export type ChartScrollRef = RefObject<HTMLDivElement | null>;

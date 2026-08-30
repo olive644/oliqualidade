@@ -1,5 +1,5 @@
 import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import {
   Area,
   Bar,
@@ -145,6 +145,15 @@ export function ChartWidgetBody({
    * da mesma renderização, então não existe mudança de série para atravessar.
    */
   const [selectedPieName, setSelectedPieName] = useState<string | null>(null);
+  /**
+   * Onde a rosca da pizza está de fato, anotado enquanto os setores desenham.
+   *
+   * O rótulo do meio precisa do centro da rosca, e o Recharts 3 não o entrega:
+   * o `viewBox` que chega ao `<Label>` é o da caixa de plotagem. Os dois
+   * coincidem enquanto a rosca estiver centrada nela, e num painel real onde
+   * ela não estava o número foi parar longe do desenho.
+   */
+  const centroDaRosca = useRef<{ cx: number; cy: number } | null>(null);
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
     useChartHorizontalScroll();
@@ -863,17 +872,24 @@ export function ChartWidgetBody({
                             })
                         : "participação indisponível";
                       const payload = entry.payload;
-                      const count =
+                      // Só a fatia sintética "Outros" reúne categorias. Numa
+                      // categoria comum, `count` é a contagem de linhas, e
+                      // anunciá-la como "categorias agrupadas" descrevia o
+                      // número errado — no painel real aparecia "25 categorias
+                      // agrupadas" embaixo de uma categoria só.
+                      const agrupada =
                         typeof payload === "object" &&
                         payload !== null &&
+                        "grouped" in payload &&
+                        payload.grouped === true &&
                         "count" in payload &&
                         typeof payload.count === "number"
                           ? payload.count
                           : undefined;
                       return [
                         formatted,
-                        count
-                          ? `${share} do total · ${groupedCategoriesLabel(count)}`
+                        agrupada
+                          ? `${share} do total · ${groupedCategoriesLabel(agrupada)}`
                           : `${share} do total`,
                       ];
                     }}
@@ -893,6 +909,14 @@ export function ChartWidgetBody({
                     // mantém seleção fixa, hover e toque independentes do
                     // estado transitório do Tooltip, inclusive em exportação.
                     shape={(shapeProps: PieSectorShapeProps) => {
+                      // O centro real da rosca, anotado de onde ele é
+                      // verdade. O rótulo do meio o calculava do viewBox, que é
+                      // a **caixa de plotagem**, e isso só coincide enquanto a
+                      // rosca estiver centrada nela. Num painel real onde ela
+                      // não estava, o número foi parar longe do desenho. Aqui o
+                      // valor vem do próprio setor, que é onde a rosca está.
+                      if (typeof shapeProps.cx === "number" && typeof shapeProps.cy === "number")
+                        centroDaRosca.current = { cx: shapeProps.cx, cy: shapeProps.cy };
                       const highlighted = displayedPieIndex === shapeProps.index;
                       const radians = -((shapeProps.midAngle ?? 0) * Math.PI) / 180;
                       const offset = highlighted ? 5 : 0;
@@ -958,9 +982,12 @@ export function ChartWidgetBody({
                         // As duas formas continuam aceitas: a polar porque é a
                         // que o contrato documentado promete, a cartesiana
                         // porque é a que chega de fato.
-                        const center = chartLabelCenter(viewBox);
-                        if (!center) return null;
-                        const box = center;
+                        // O centro anotado pelos setores tem precedência: ele é
+                        // onde a rosca de fato está. O cálculo pelo viewBox é a
+                        // reserva para a primeira renderização, antes de
+                        // qualquer setor ter desenhado.
+                        const box = centroDaRosca.current ?? chartLabelCenter(viewBox);
+                        if (!box) return null;
                         const active =
                           displayedPieIndex !== null ? pieSeries[displayedPieIndex] : null;
                         const label = active ? truncateLabel(active.name, 12) : "Total";
@@ -1061,7 +1088,10 @@ export function ChartWidgetBody({
             Tabela alternativa à pizza:{" "}
             {pieSeries
               .map((g) =>
-                "count" in g && g.count
+                // Mesma distinção da legenda: só a fatia sintética reúne
+                // categorias, e o leitor de tela não pode anunciar a contagem
+                // de linhas de uma categoria comum como se fossem categorias.
+                "grouped" in g && g.grouped && "count" in g && g.count
                   ? `${g.name} (${groupedCategoriesLabel(g.count)}), ${g.total}`
                   : `${g.name}, ${g.total}`,
               )

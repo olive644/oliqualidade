@@ -1094,8 +1094,31 @@ describe("collapsePieSeries", () => {
       { name: "C", total: 80 },
       { name: "D", total: 70 },
       { name: "E", total: 60 },
-      { name: "Outros", total: 15, count: 2 },
+      { name: "Outros", total: 15, count: 2, grouped: true },
     ]);
+  });
+
+  it("só a fatia sintética é marcada como agrupada", () => {
+    // `count` existe nas duas, e significa coisas diferentes: numa categoria
+    // comum é a contagem de linhas que entraram nela, e só na sintética é a
+    // quantidade de categorias reunidas. Sem a marca, a legenda do painel real
+    // escrevia "29 categorias agrupadas" embaixo de uma categoria só.
+    const comContagem = [
+      { name: "A", total: 100, count: 29 },
+      { name: "B", total: 90, count: 25 },
+      { name: "C", total: 80, count: 7 },
+      { name: "D", total: 70, count: 4 },
+      { name: "E", total: 60, count: 3 },
+      { name: "F", total: 10, count: 2 },
+      { name: "G", total: 5, count: 1 },
+    ];
+    const reduzida = collapsePieSeries(comContagem);
+    expect(reduzida.filter((entry) => "grouped" in entry && entry.grouped)).toEqual([
+      { name: "Outros", total: 15, count: 2, grouped: true },
+    ]);
+    // As comuns mantêm o `count` delas, e nenhuma vira agrupada por engano.
+    expect(reduzida.slice(0, 5).every((entry) => !("grouped" in entry))).toBe(true);
+    expect(reduzida[0]).toEqual({ name: "A", total: 100, count: 29 });
   });
 
   it("reproduz o caso real relatado: coluna de alta cardinalidade em modo linha a linha vira no máximo 6 fatias", () => {
