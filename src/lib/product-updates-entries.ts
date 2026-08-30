@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-30-setas-do-grafico-param-de-piscar",
+    version: "0.10.0-beta.23",
+    date: "2026-08-30",
+    title: "As setas de navegação do gráfico param de piscar",
+    summary:
+      "Nos gráficos com muitas categorias — barras, histograma e Pareto — as setas que ficam sobre o gráfico eram recriadas do zero a cada vez que o widget era redesenhado. Como isso acontece várias vezes por segundo ao passar o mouse pelo card, elas piscavam sem parar.",
+    highlights: [
+      "As setas continuam iguais e no mesmo lugar. O que mudou é que agora são as mesmas, em vez de novas a cada instante.",
+      "Medido: numa passagem de mouse, elas eram trocadas 22 vezes. Agora nenhuma.",
+      "O gráfico em si nunca foi recriado. Era só a camada sobreposta a ele.",
+    ],
+  },
+  {
     id: "2026-08-30-legenda-da-pizza-para-de-contar-categoria-errado",
     version: "0.10.0-beta.22",
     date: "2026-08-30",

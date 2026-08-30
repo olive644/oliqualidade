@@ -714,6 +714,8 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Componente nunca é declarado dentro de um hook ou de outro componente | a função é nova a cada renderização, o React trata função nova como tipo novo, e desmonta a subárvore para montar outra; sobreposto ao gráfico, isso vira piscar a cada desenho | medido: os botões de rolagem assumiram 22 identidades numa passagem de mouse enquanto o `svg` manteve uma só — não era o gráfico que remontava, era a camada em cima dele; ver [[CURRENT_STATE_AUDIT#164. Os botões de rolagem eram remontados a cada desenho, e piscavam sobre o gráfico]] |
+| Sonda de remontagem marca o elemento e observa a marca, quadro a quadro | comparar presença não distingue "continua o mesmo" de "foi trocado por outro igual", e foi isso que deixou o defeito escondido enquanto as sondas olhavam opacidade, visibilidade e presença do gráfico | marca que some é elemento trocado; foi o que apontou a camada certa depois de três hipóteses erradas |
 | Ler vídeo sem `ffmpeg`: servir pelo servidor de desenvolvimento e extrair quadros com o Playwright | não há `ffmpeg` na máquina e o Read não abre vídeo; o navegador decodifica e o Playwright salva cada instante em disco | foi assim que o painel real do usuário virou catorze imagens legíveis, e foi o vídeo que mostrou dois defeitos que nenhuma sonda tinha mostrado — ver [[CURRENT_STATE_AUDIT#163. O vídeo do painel real, e o que ele mostrou que nenhuma sonda mostrava]] |
 | `count` de uma fatia de pizza significa coisas diferentes conforme a fatia | numa categoria comum é a contagem de linhas, e só na sintética "Outros" é a quantidade de categorias reunidas; a legenda lia o mesmo campo nos dois casos e escrevia "29 categorias agrupadas" embaixo de uma categoria só | a fatia sintética é marcada com `grouped`, e o texto só aparece nela; comparar por nome seria frágil |
 | O centro do rótulo da pizza vem do setor, e não do `viewBox` | o `viewBox` é a caixa de plotagem, e coincide com o centro da rosca só enquanto a rosca estiver centrada nela; num painel real onde não estava, o número foi parar longe do desenho | o centro é anotado enquanto os setores desenham, com o cálculo pelo `viewBox` como reserva da primeira renderização |
@@ -1016,6 +1018,11 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   seguir a identidade do item, e não a posição) avança a iteração: é correção de
   defeito. Ver
   [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]].
+
+- `v0.10.0-beta.23` (as setas de navegação do gráfico param de piscar) avança a
+  iteração: é correção de defeito, e a primeira causa de piscar reproduzida e
+  verificada corrigida no mesmo ambiente. Ver
+  [[CURRENT_STATE_AUDIT#164. Os botões de rolagem eram remontados a cada desenho, e piscavam sobre o gráfico]].
 
 - `v0.10.0-beta.22` (a legenda da pizza para de chamar registros de categorias,
   e o número do meio passa a ser posicionado pelo desenho da rosca) avança a

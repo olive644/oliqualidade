@@ -10657,3 +10657,82 @@ que só a fatia sintética é marcada como agrupada, e que as comuns mantêm o
 
 `0.10.0-beta.21` para `0.10.0-beta.22`, com entrada no Centro de Atualizações: o
 texto errado na legenda é visível para quem usa.
+## 164. Os botões de rolagem eram remontados a cada desenho, e piscavam sobre o gráfico
+
+O usuário estreitou o relato: o piscar é pior **no gráfico de barras e no
+histograma**. Isso é informação, e não repetição — os dois compartilham uma coisa
+que os outros não têm.
+
+### O que os dois têm em comum
+
+`useChartHorizontalScroll`, o hook da rolagem horizontal. Ele é usado por barras,
+histograma e Pareto, e por mais nenhum widget de gráfico.
+
+### O defeito
+
+`ChartScrollButtons` era declarado **dentro do corpo do hook**:
+
+```tsx
+export function useChartHorizontalScroll() {
+  ...
+  const ChartScrollButtons = ({ label, compact }) => ( ... );
+  return { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons };
+}
+```
+
+O hook roda a cada renderização, então a função é nova a cada renderização. O
+React compara tipos por identidade: função nova é tipo novo, e tipo novo faz ele
+**desmontar a subárvore e montar outra**. Os botões ficam posicionados sobre o
+gráfico, então cada renderização os apagava e redesenhava.
+
+Passar o mouse por um card dispara renderização várias vezes por segundo, que é
+exatamente o gatilho relatado.
+
+### A medida, antes e depois
+
+A sonda marca cada elemento na primeira vez que o vê e observa a marca quadro a
+quadro. Marca que some é elemento trocado.
+
+| Elemento | Antes | Depois |
+| --- | ---: | ---: |
+| Botões de rolagem | **22 identidades** | 1 |
+| `svg` do gráfico | 1 | 1 |
+| `wrapper` do Recharts | 1 | 1 |
+| Largura do container | estável | estável |
+
+Ou seja, **nunca foi o gráfico que remontava**: era a camada sobreposta a ele. As
+sondas anteriores olhavam o gráfico, e por isso não viam nada.
+
+### A correção
+
+O componente foi para o escopo do módulo, com o que ele precisa entrando por
+prop. O hook devolve uma referência estável, memoizada, para que quem chama
+continue escrevendo `<ChartScrollButtons ... />` sem saber de nada disso.
+
+O padrão foi procurado no resto do projeto e não existe em outro lugar:
+`join-sheet-dialog` e `presentation-mode` devolvem **elementos** já construídos,
+e não tipos de componente, o que não tem esse problema.
+
+### A garantia
+
+Compara **identidade do elemento** entre dois desenhos, e não presença: afirmar
+que os botões existem depois de redesenhar passaria dos dois lados. O teste
+reprova sem a correção e passa com ela.
+
+### O que isto encerra, e o que não
+
+Esta é a primeira causa de piscar que foi **reproduzida e verificada corrigida**
+no mesmo ambiente, sem depender de olhar na máquina de quem relatou. As duas
+anteriores — o card que se deslocava no hover e o card que virava container de
+rolagem — continuam consertadas por raciocínio mecânico, sem confirmação
+independente.
+
+A rosca parcial da pizza, da seção 163, continua em aberto e sem reprodução.
+
+### Verificação
+
+Suíte completa com 1.204 testes, build e orçamento aprovados.
+
+### Versão
+
+`0.10.0-beta.22` para `0.10.0-beta.23`, com entrada no Centro de Atualizações.
