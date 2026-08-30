@@ -714,6 +714,8 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Rolar com o ponteiro sobre o painel é o que custa, e não a rolagem em si | ao rolar o ponteiro fica parado e são os widgets que passam por baixo dele, disparando `mouseenter`/`mouseleave` em cada barra, fatia e ponto; medido: 8 tarefas longas e 357 mutações com o ponteiro sobre o painel, **zero de tudo** com ele fora | `pointer-events: none` nos widgets enquanto rola, armado no `wheel` e no `touchmove` além do `scroll`, porque o `scroll` chega tarde demais — ver [[CURRENT_STATE_AUDIT#166. A gravação do usuário mudou o diagnóstico: era saturação da thread, não compositor]] |
+| Comparação com duas variáveis de uma vez não conclui nada | a primeira medida opunha "ponteiro sobre + roda" a "ponteiro fora + script", e a conclusão certa teria vindo por sorte; o cruzamento que faltava (ponteiro sobre + script) foi o que isolou a posição do ponteiro | rodar o cruzamento antes de concluir, sempre |
 | `backdrop-filter` não fica sobre conteúdo que rola | ele obriga o compositor a reler e desfocar o que passa por baixo a cada quadro da rolagem, e é causa conhecida de repintura visível no Chromium; estava na barra do topo, na barra do painel e nos botões de seta que ficam **sobre o desenho** de barras, histograma e Pareto | fundo opaco com a mesma cor, que na tela é praticamente o mesmo resultado — ver [[CURRENT_STATE_AUDIT#165. O filtro de fundo, e o limite do que este ambiente consegue ver]] |
 | Animação de entrada usa `backwards`, e nunca `both` | o `forwards` de `both` mantém a animação aplicada depois de terminar, e elemento com animação aplicada continua candidato a camada própria de composição — uma camada permanente por card | o último quadro de `oliam-in` é o estado padrão do elemento, então `forwards` não compra nada; `backwards` é o que segura o card invisível durante o atraso escalonado |
 | Defeito de compositor não se observa neste ambiente | headless não rasteriza por GPU e o painel de navegador roda com `document.hidden` e viewport `[0,0]`; sete hipóteses de piscar foram eliminadas por sonda, e o que sobrou é o nível que nenhuma sonda alcança | o próximo passo não é inspeção de código, e sim o gravador de desempenho com a aba de camadas, na máquina de quem relata |
@@ -1021,6 +1023,11 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   seguir a identidade do item, e não a posição) avança a iteração: é correção de
   defeito. Ver
   [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]].
+
+- `v0.10.0-beta.25` (rolar o painel deixa de travar a tela) avança a iteração: é
+  correção de defeito, **medida antes e depois** — 72% menos thread bloqueada
+  durante a rolagem. Ver
+  [[CURRENT_STATE_AUDIT#166. A gravação do usuário mudou o diagnóstico: era saturação da thread, não compositor]].
 
 - `v0.10.0-beta.24` (fim do desfoque de fundo sobre conteúdo que rola) avança a
   iteração: é correção de defeito, **não verificada neste ambiente**. Ver

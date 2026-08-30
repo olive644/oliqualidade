@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-30-rolar-o-painel-deixa-de-travar-a-tela",
+    version: "0.10.0-beta.25",
+    date: "2026-08-30",
+    title: "Rolar o painel deixa de travar a tela",
+    summary:
+      "Ao rolar, o ponteiro fica parado e são os widgets que passam por baixo dele. Cada barra, fatia e ponto que cruzava o cursor era tratado como se você tivesse apontado para ele, e o gráfico inteiro era redesenhado. Com vários gráficos na tela, isso ocupava o navegador quase o tempo todo da rolagem, e é o que aparecia como piscar.",
+    highlights: [
+      "Medido num painel de sete gráficos: o tempo em que o navegador ficava ocupado durante a rolagem caiu de 3.064 para 854 milissegundos, e as trocas de elemento no desenho caíram de 168 para 42.",
+      "Enquanto você rola, os gráficos deixam de responder ao ponteiro. Assim que a rolagem para, tudo volta ao normal em uma fração de segundo.",
+      "O detalhe ao passar o mouse continua igual quando você não está rolando.",
+    ],
+  },
+  {
     id: "2026-08-30-fim-do-desfoque-que-repintava-a-cada-rolagem",
     version: "0.10.0-beta.24",
     date: "2026-08-30",

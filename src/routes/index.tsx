@@ -192,6 +192,7 @@ import { useBackgroundReviewAnalysis } from "@/components/oliam/use-background-r
 import { useDashboardExport } from "@/components/oliam/use-dashboard-export";
 import { useSheetMutations } from "@/components/oliam/use-sheet-mutations";
 import { useUndoRedoHistory } from "@/components/oliam/use-undo-redo-history";
+import { useScrollHoverGuard } from "@/components/oliam/use-scroll-hover-guard";
 import { useWidgetActions } from "@/components/oliam/use-widget-actions";
 import { QualitySignalsPanel } from "@/components/oliam/quality-signals-panel";
 import { MissingRulesPanel } from "@/components/oliam/missing-rules-panel";
@@ -1303,6 +1304,11 @@ function Dashboard(p: {
   privateMode: boolean;
   togglePrivateMode: () => void;
 }) {
+  // Desliga o hover dos widgets enquanto a página rola. Sem isto, o ponteiro
+  // parado com os widgets passando por baixo dispara uma cascata de
+  // `mouseenter`/`mouseleave` que satura a thread principal justamente durante
+  // a rolagem. Medido em `use-scroll-hover-guard.ts`.
+  useScrollHoverGuard();
   const { dashboard: d } = p;
   const activeSheetIndex = Math.min(Math.max(d.activeSheetIndex, 0), d.sheets.length - 1);
   const sheet = d.sheets[activeSheetIndex]!;
