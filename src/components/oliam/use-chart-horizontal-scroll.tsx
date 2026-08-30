@@ -26,8 +26,12 @@ function ChartScrollButtonsBase({
   compact?: boolean;
   onScroll: (direction: -1 | 1) => void;
 }) {
+  // Fundo opaco, sem `backdrop-blur`. Estes botões ficam **sobre a área do
+  // gráfico**, e um filtro de fundo ali obriga o compositor a reler e desfocar
+  // o desenho por baixo a cada quadro em que ele se mexe. São exatamente os três
+  // widgets que o usuário relatou piscar mais: barras, histograma e Pareto.
   const botao = cn(
-    "rounded-full bg-card/90 shadow-sm backdrop-blur pointer-coarse:size-12",
+    "rounded-full bg-card shadow-sm pointer-coarse:size-12",
     compact ? "size-7" : "size-8",
   );
   return (

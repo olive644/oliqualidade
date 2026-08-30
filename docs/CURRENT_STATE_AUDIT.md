@@ -10736,3 +10736,109 @@ Suíte completa com 1.204 testes, build e orçamento aprovados.
 ### Versão
 
 `0.10.0-beta.22` para `0.10.0-beta.23`, com entrada no Centro de Atualizações.
+## 165. O filtro de fundo, e o limite do que este ambiente consegue ver
+
+Quinta rodada sobre o mesmo relato, depois de o usuário dizer que continua
+piscando e sugerir procurar em PRs antigas ou refazer a lógica dos widgets. A
+sugestão foi seguida: em vez de atacar outro mecanismo isolado, a pergunta
+passou a ser o que **reage à rolagem**.
+
+### O que foi eliminado por medição, e é bastante
+
+Antes desta seção, cinco hipóteses já tinham caído com sonda própria. Nesta,
+duas a mais:
+
+| Hipótese | Como foi medida | Resultado |
+| --- | --- | --- |
+| `content-visibility` descartando conteúdo | tempo até desenhar, com e sem | não pulava nada |
+| Card se deslocando no hover | inspeção do CSS | causa real, corrigida |
+| Card como container de rolagem | inspeção do CSS | causa real, corrigida |
+| Remontagem dos botões de rolagem | marca por elemento, quadro a quadro | 22 identidades, corrigido |
+| Remontagem do gráfico | mesma sonda | 1 identidade, nunca foi |
+| Reanimação do desenho ao rolar | geometria do `path` em 165 quadros | **zero trocas** |
+| Ouvinte de rolagem mudando estado | busca no código | não existe |
+
+A sonda de reanimação é a mais informativa das novas: ela amostra o `d` da
+primeira forma de cada gráfico a cada quadro durante rolagem e hover. Se o
+Recharts reanimasse por identidade nova do array de série, a geometria mudaria.
+Não muda, em nenhum dos três gráficos.
+
+### O que sobra, e por que não aparece aqui
+
+Sobra o nível de **compositor**, que este ambiente não tem: Playwright headless
+não rasteriza por GPU, e o painel de navegador desta sessão roda com
+`document.hidden` e viewport `[0,0]`.
+
+Dois elementos do projeto fazem exatamente o que produz repintura visível
+durante rolagem no Chromium, e os dois estavam presentes:
+
+**`backdrop-filter` sobre conteúdo que rola.** A barra do topo e a barra do
+painel ficam por cima da área que rola, com `blur(10px)`. Um filtro de fundo ali
+obriga o compositor a reler e desfocar o que passa por baixo **a cada quadro**.
+Os botões de seta dos gráficos tinham o mesmo, e ficam sobre o próprio desenho —
+nos três widgets que o usuário nomeou: barras, histograma e Pareto.
+
+O fundo era 92% opaco com desfoque, e passou a opaco com a mesma cor. Na tela é
+praticamente o mesmo resultado.
+
+**Animação aplicada para sempre.** `.oliam-widget` usava `animation: ... both`.
+`both` é `backwards` mais `forwards`, e o `forwards` mantém a animação aplicada
+depois de terminar, o que mantém o elemento como candidato a camada própria de
+composição. Num painel com muitos cards, é uma camada permanente por card.
+
+O `forwards` não comprava nada: o último quadro de `oliam-in` é
+`opacity: 1; transform: none`, que é o estado padrão do elemento. O `backwards`
+é o que importa, porque é ele que segura o card invisível durante o atraso
+escalonado da entrada.
+
+### O que este registro precisa deixar claro
+
+Estas duas correções **não foram verificadas**. Elas são causas conhecidas e
+específicas do sintoma, e atingem exatamente os widgets nomeados, mas o ambiente
+não consegue observá-las. É a mesma limitação da seção 162, e ela já custou uma
+versão publicada como resolvida sem ter sido.
+
+Se depois delas ainda piscar, o caminho deixa de ser inspeção de código e passa a
+ser o gravador de desempenho do navegador na máquina de quem relata, com a aba
+de camadas aberta durante a rolagem. Isso mostra promoção e descarte de camada,
+que é a única coisa que ainda não foi olhada.
+
+### Verificação
+
+Suíte completa com 1.204 testes, build e orçamento aprovados. As imagens de
+referência saem de novo, porque o fundo dos botões deixou de ser translúcido.
+
+### Versão
+
+`0.10.0-beta.23` para `0.10.0-beta.24`, com entrada no Centro de Atualizações.
+
+### A PR do Recharts 3 foi verificada, a pedido do usuário
+
+O usuário levantou que o piscar começou depois da migração da seção 148, e a
+suspeita tinha base: aquela PR trocou as `<Cell>` filhas por
+`shape={(props) => ...}` inline, que é uma função nova a cada renderização.
+Como o Recharts trata a forma como tipo de componente, o padrão é o mesmo que
+causava a remontagem dos botões de rolagem da seção 164.
+
+Medido, e o resultado **não confirma**. A sonda marca cada elemento SVG e observa
+a marca quadro a quadro:
+
+| Cenário | Elementos criados | Conjuntos de identidade |
+| --- | ---: | ---: |
+| Passando o mouse sobre as barras | 138 | 15 |
+| Com a forma estabilizada por referência | 146 | 16 |
+| **Parado, sem interação nenhuma** | 42 | 3 |
+
+Duas conclusões saem daí, e as duas são negativas.
+
+A primeira: estabilizar a identidade da função **não muda nada**. A refatoração
+foi escrita, medida e descartada, em vez de ficar no repositório sem evidência.
+
+A segunda, mais importante: as formas são recriadas **sem interação nenhuma**, e
+a marcação de tempo mostra quando — 4.917 ms, 6.384 ms e 6.440 ms de vida da
+página, e depois silêncio pelos cinco segundos seguintes. Ou seja, é acomodação
+depois da montagem, e não um laço. Um comportamento que para sozinho não é o que
+alguém vê como piscar contínuo ao rolar.
+
+A hipótese do usuário estava bem formulada e foi respondida por medida: a PR do
+Recharts 3 introduziu o padrão, e o padrão não produz o sintoma.
