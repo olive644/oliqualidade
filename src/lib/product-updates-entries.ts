@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-30-fim-do-desfoque-que-repintava-a-cada-rolagem",
+    version: "0.10.0-beta.24",
+    date: "2026-08-30",
+    title: "Fim do desfoque que obrigava a tela a se repintar a cada rolagem",
+    summary:
+      "A barra do topo e os botões de seta sobre os gráficos usavam um efeito de desfoque do que passa por trás deles. Esse efeito obriga o navegador a redesenhar tudo o que está atrás, quadro a quadro, enquanto você rola — e é a causa conhecida desse tipo de piscar.",
+    highlights: [
+      "O fundo da barra do topo era 90% opaco com desfoque; agora é opaco, com a mesma cor. Na tela o resultado é praticamente o mesmo.",
+      "Os botões de seta sobre os gráficos de barras, histograma e Pareto também perderam o desfoque. Eles ficam exatamente por cima do desenho, que é o pior lugar possível para esse efeito.",
+      "A animação de entrada dos cards deixou de ficar aplicada para sempre depois de terminar, o que mantinha cada card numa camada própria de desenho sem necessidade.",
+    ],
+  },
+  {
     id: "2026-08-30-setas-do-grafico-param-de-piscar",
     version: "0.10.0-beta.23",
     date: "2026-08-30",
