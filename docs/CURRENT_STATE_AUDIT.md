@@ -10842,3 +10842,107 @@ alguém vê como piscar contínuo ao rolar.
 
 A hipótese do usuário estava bem formulada e foi respondida por medida: a PR do
 Recharts 3 introduziu o padrão, e o padrão não produz o sintoma.
+## 166. A gravação do usuário mudou o diagnóstico: era saturação da thread, não compositor
+
+O usuário mandou uma gravação de desempenho da produção. Ela desmentiu a
+hipótese da seção 165 e apontou o lugar certo.
+
+### O que a gravação dizia
+
+| Métrica | Valor |
+| --- | --- |
+| INP | **1.137 ms** (bom é abaixo de 200) |
+| Scripting | 9.846 ms de 22.700 |
+| Rendering | 6.191 ms |
+| Thread principal | 11.387 ms |
+
+Setenta por cento do tempo em script e layout, contínuo, com o DevTools
+apontando "Forced reflow" e "Optimize DOM size". Isso não é camada de
+composição sendo descartada: é a thread principal ocupada.
+
+E, ao contrário de tudo o que foi tentado nas seções 162 a 165, **isto este
+ambiente consegue medir**.
+
+### A medição, e o achado
+
+Um painel de sete gráficos mais tabela, com `PerformanceObserver` de `longtask`:
+
+| Estado | Tarefas longas | Soma |
+| --- | ---: | ---: |
+| Parado | 0 | 0 ms |
+| Rolando | 18 | 3.687 ms |
+
+Parado não custa nada; rolar custa quase quatro segundos de thread bloqueada,
+com tarefas isoladas de até 417 ms. Uma tarefa longa é qualquer coisa acima de
+50 ms, e meio segundo de bloqueio derruba dezenas de quadros — que é como o
+piscar aparece.
+
+O que discrimina não é o método de rolagem, e sim **onde está o ponteiro**:
+
+| Cenário | Tarefas longas | Mutações de DOM |
+| --- | ---: | ---: |
+| Ponteiro sobre o painel | 8 | 357 |
+| Ponteiro fora do painel | **0** | **0** |
+
+A causa fica evidente descrita assim: ao rolar, o ponteiro fica **parado** e são
+os widgets que passam por baixo dele. Cada barra, fatia e ponto que cruza o
+cursor dispara `mouseenter` e `mouseleave`, cada um muda estado, cada mudança
+re-renderiza o widget, e o Recharts troca os elementos do desenho. Rolar com o
+cursor sobre o painel é a forma normal de rolar.
+
+### Uma comparação viciada, corrigida a tempo
+
+A primeira versão desta medida comparava "ponteiro sobre, roda do mouse" com
+"ponteiro fora, rolagem por script" — duas variáveis de uma vez. A conclusão
+teria sido a mesma, mas por sorte. Rodar o cruzamento que faltava, ponteiro
+sobre o painel com rolagem por script, é o que separou de verdade: 304 mutações,
+ou seja o método não importa e a posição importa.
+
+### O conserto, e por que é por `pointer-events`
+
+Enquanto a página rola, `body.oliam-rolando .oliam-widget` recebe
+`pointer-events: none`, e a classe sai 150 ms depois do último evento.
+
+O corte é no evento e não dentro de cada manipulador porque **boa parte do
+trabalho não é nossa**: o Recharts tem o próprio rastreamento de mouse para
+tooltip e ponto ativo, e uma trava nos nossos manipuladores não o alcançaria.
+
+A classe entra por manipulação direta do DOM, sem estado do React: o ouvinte
+roda a cada quadro de rolagem, e re-renderizar por causa dele trocaria o
+problema pelo mesmo problema.
+
+### Uma correção medida duas vezes, porque a primeira não bastou
+
+Armada só no `scroll`, a guarda quase não mudou nada: 357 mutações contra 371.
+A amostragem quadro a quadro mostrou por quê — a guarda alternava entre ligada e
+desligada durante a mesma rolagem, porque o `scroll` chega **depois** de o
+navegador já ter reposicionado o conteúdo e refeito o teste de acerto sob o
+ponteiro.
+
+Armada também no `wheel` e no `touchmove`, que chegam antes:
+
+| | Antes | Depois |
+| --- | ---: | ---: |
+| Tarefas longas | 8 | **3** |
+| Thread bloqueada | 3.064 ms | **854 ms** |
+| Mutações de DOM | 357 | **197** |
+| Trocas de filhos nos widgets | 168 | **42** |
+
+**72% menos tempo bloqueado.** Vale registrar que a primeira versão foi medida e
+reprovada em vez de ser publicada como conserto, que é o erro cometido na seção
+162.
+
+### O que continua
+
+As 98 mudanças de `cx` no gráfico de área são constantes em toda medição, com ou
+sem guarda, e não foram explicadas. São atualizações de atributo em elementos que
+já existem, muito mais baratas que troca de filho, mas ficam registradas como o
+que sobra.
+
+### Verificação
+
+Suíte completa com 1.204 testes, build e orçamento aprovados.
+
+### Versão
+
+`0.10.0-beta.24` para `0.10.0-beta.25`, com entrada no Centro de Atualizações.

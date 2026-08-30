@@ -5836,3 +5836,20 @@ body {
     display: none;
   }
 }
+
+/* Enquanto a página rola, o widget não recebe evento de ponteiro.
+ *
+ * Ao rolar, o ponteiro fica parado e são os widgets que passam por baixo dele,
+ * então cada barra, fatia e ponto que cruza o cursor dispara `mouseenter` e
+ * `mouseleave`. Cada um muda estado, re-renderiza o widget e faz o Recharts
+ * trocar os elementos do desenho — medido: 8 tarefas longas somando 3.064 ms e
+ * 357 mutações de DOM com o ponteiro sobre o painel, contra zero de tudo com o
+ * ponteiro fora.
+ *
+ * O corte é aqui, e não dentro de cada manipulador, porque boa parte do
+ * trabalho é do próprio Recharts, que tem o seu rastreamento de mouse para
+ * tooltip e ponto ativo. A classe volta 150ms depois do último evento de
+ * rolagem, e quem a põe é o `useScrollHoverGuard`. */
+body.oliam-rolando .oliam-widget {
+  pointer-events: none;
+}
