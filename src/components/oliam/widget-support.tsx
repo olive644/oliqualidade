@@ -990,7 +990,14 @@ export function PieLegend({
   onHoverIndex,
   onSelectIndex,
 }: {
-  items: { name: string; total: number; count?: number; color: string }[];
+  /**
+   * `grouped` distingue a fatia sintética "Outros" das demais. As duas têm
+   * `count`, e ele significa coisas diferentes: numa categoria comum é a
+   * contagem de linhas, e só na sintética é a quantidade de categorias
+   * reunidas. Sem essa distinção a legenda escrevia "29 categorias agrupadas"
+   * embaixo de uma categoria só.
+   */
+  items: { name: string; total: number; count?: number; grouped?: boolean; color: string }[];
   kind?: Kind;
   activeIndex?: number | null;
   onHoverIndex?: (i: number | null) => void;
@@ -1044,7 +1051,7 @@ export function PieLegend({
                 <span className="block">{fmt(entry.total, kind ?? "number") ?? entry.total}</span>
                 <span className="block text-[9px]">{pct.toFixed(1)}%</span>
               </span>
-              {entry.count ? (
+              {entry.grouped && entry.count ? (
                 <span className="col-span-2 pl-[18px] text-[9px] text-muted-foreground">
                   {groupedCategoriesLabel(entry.count)}
                 </span>

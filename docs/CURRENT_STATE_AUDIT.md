@@ -10582,3 +10582,78 @@ Então a regra que fica: **num ambiente sem viewport visível, defeito de
 renderização por ponteiro não se confirma, só se descarta por raciocínio.** A
 confirmação tem de vir da pré-visualização, na máquina de quem relatou. Publicar
 como verificado o que só foi inferido foi o erro da primeira tentativa.
+## 163. O vídeo do painel real, e o que ele mostrou que nenhuma sonda mostrava
+
+O usuário gravou o painel dele em vídeo. Sem `ffmpeg` na máquina, os quadros
+foram extraídos pelo próprio navegador: o arquivo foi servido pelo servidor de
+desenvolvimento e o Playwright buscou catorze instantes, salvando cada um em
+disco. Fica registrado porque é a forma de ler um vídeo aqui.
+
+### O que o vídeo mostrou
+
+Três coisas, e só a primeira estava no relato.
+
+**A rosca da pizza desenha como um arco parcial.** Em repouso, sem mouse em
+cima, ela ocupa cerca de 115 por 65 pixels numa área de gráfico de cerca de 440
+por 230. Não é quadro de animação: dois instantes separados por quatro segundos
+mostram o mesmo.
+
+**O número do meio ficou longe do desenho.** A correção da seção 162 calcula o
+centro a partir do `viewBox`, que é a **caixa de plotagem**. Isso só coincide com
+o centro da rosca enquanto a rosca estiver centrada nela, e no painel real ela
+não está. Ou seja, aquela correção trouxe o número de volta e o pôs no lugar
+errado quando a geometria já estava errada.
+
+**A legenda chamava registros de categorias.** Embaixo de "Periféricos" lia-se
+"29 categorias agrupadas", e 29 é a quantidade de **linhas** daquela categoria.
+`collapsePieSeries` só acrescenta `count` com o sentido de "categorias reunidas"
+na fatia sintética "Outros"; nas demais, `count` vem de `groupAndAggregate` e é
+contagem de linhas. Os dois usavam o mesmo campo, e a legenda lia o errado.
+
+### O que foi corrigido
+
+A fatia sintética passou a ser marcada com `grouped`, e o texto só aparece nela —
+na legenda, no tooltip e na leitura para leitor de tela. `count` sozinho não
+distinguia as duas coisas, e é por isso que a marca existe em vez de uma
+comparação por nome.
+
+O rótulo do meio passou a usar o centro **anotado pelos setores** enquanto eles
+desenham, com o cálculo pelo `viewBox` como reserva para a primeira renderização.
+O centro do setor é onde a rosca está, independentemente de onde a caixa de
+plotagem esteja. Conferido no reprodutor: rosca centrada em (478, 461), texto em
+(477, 460).
+
+### O que não foi corrigido, e o que falta para corrigir
+
+**A rosca parcial continua.** Um reprodutor com a mesma forma de dados do painel
+do vídeo — 100 linhas, quatro categorias, soma de quantidade, viewport de 1900
+por 948, tema escuro — desenha uma rosca **completa e centrada**, de 149 pixels
+numa área de 409 por 208. Ou seja, a causa não está na forma dos dados nem no
+tamanho da janela.
+
+Também foram descartados por medição, cada um com sonda própria: reinício da
+animação por hover (envelope estável entre 156 e 158 pixels ao passear sobre os
+setores), reinício por mudança de largura (mesma estabilidade ao redimensionar a
+janela em nove passos), remontagem do elemento pelo React, e mudança de opacidade
+ou de visibilidade.
+
+O que resta suspeitar é a medição do contêiner do gráfico na máquina de quem
+relatou: a proporção observada, 115 de largura por 65 de altura, é compatível com
+um anel desenhado para uma caixa mais alta do que a que o SVG tem, e portanto
+cortado embaixo. Isso é hipótese, não conclusão.
+
+**O que falta é medida da máquina certa.** Fica registrado o que pedir: a
+geometria do SVG, o envelope dos setores e o centro do texto, tirados no painel
+onde o defeito acontece. Três números respondem o que catorze quadros de vídeo
+não responderam.
+
+### Verificação
+
+Suíte completa com 1.203 testes, build e orçamento aprovados. O teste novo fixa
+que só a fatia sintética é marcada como agrupada, e que as comuns mantêm o
+`count` delas sem virar agrupadas por engano.
+
+### Versão
+
+`0.10.0-beta.21` para `0.10.0-beta.22`, com entrada no Centro de Atualizações: o
+texto errado na legenda é visível para quem usa.

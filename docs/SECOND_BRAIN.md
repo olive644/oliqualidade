@@ -714,6 +714,9 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
 
 | Decisão                                                      | Motivo                                                          | Consequência                                                                                  |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Ler vídeo sem `ffmpeg`: servir pelo servidor de desenvolvimento e extrair quadros com o Playwright | não há `ffmpeg` na máquina e o Read não abre vídeo; o navegador decodifica e o Playwright salva cada instante em disco | foi assim que o painel real do usuário virou catorze imagens legíveis, e foi o vídeo que mostrou dois defeitos que nenhuma sonda tinha mostrado — ver [[CURRENT_STATE_AUDIT#163. O vídeo do painel real, e o que ele mostrou que nenhuma sonda mostrava]] |
+| `count` de uma fatia de pizza significa coisas diferentes conforme a fatia | numa categoria comum é a contagem de linhas, e só na sintética "Outros" é a quantidade de categorias reunidas; a legenda lia o mesmo campo nos dois casos e escrevia "29 categorias agrupadas" embaixo de uma categoria só | a fatia sintética é marcada com `grouped`, e o texto só aparece nela; comparar por nome seria frágil |
+| O centro do rótulo da pizza vem do setor, e não do `viewBox` | o `viewBox` é a caixa de plotagem, e coincide com o centro da rosca só enquanto a rosca estiver centrada nela; num painel real onde não estava, o número foi parar longe do desenho | o centro é anotado enquanto os setores desenham, com o cálculo pelo `viewBox` como reserva da primeira renderização |
 | Widget não se desloca ao receber o mouse | `transform: translateY(-3px)` no `:hover` se auto-cancela: o card sobe, sai de baixo do ponteiro que está perto da borda, o hover termina, o card desce; ao rolar acontece com um card atrás do outro, porque o ponteiro fica parado e são os cards que passam | o destaque é só cor de borda e sombra; uma causa explicava os **dois** gatilhos relatados, hover e rolagem — ver [[CURRENT_STATE_AUDIT#162. Os widgets piscavam ao rolar, e o número do meio da pizza tinha sumido]] |
 | Card de widget não é container de rolagem | um teto de altura obriga o excesso a rolar dentro do card, e aí a roda do mouse rola o card antes da página, com o painel parecendo pular | `items-start` sozinho já resolve o card esticado, e `overflow-y: auto` sem teto deixa o card crescer sem cortar nada: o teto só acrescentava o efeito colateral |
 | Num ambiente sem viewport visível, defeito de renderização por ponteiro não se confirma | headless não dispara `:hover` por movimento sintético (a sonda registrou o mesmo `transform` em 105 quadros), headed não abre, e o painel reporta `document.hidden` com viewport `[0,0]` | a causa se descarta por raciocínio, mas a confirmação vem da pré-visualização na máquina de quem relatou; publicar como verificado o que foi só inferido custou uma versão inteira |
@@ -1013,6 +1016,11 @@ Não redescobrir — cada uma já custou tempo real numa sessão anterior.
   seguir a identidade do item, e não a posição) avança a iteração: é correção de
   defeito. Ver
   [[CURRENT_STATE_AUDIT#160. A seleção dos widgets era guardada por posição, e escorregava com o filtro]].
+
+- `v0.10.0-beta.22` (a legenda da pizza para de chamar registros de categorias,
+  e o número do meio passa a ser posicionado pelo desenho da rosca) avança a
+  iteração: é correção de defeito. Ver
+  [[CURRENT_STATE_AUDIT#163. O vídeo do painel real, e o que ele mostrou que nenhuma sonda mostrava]].
 
 - `v0.10.0-beta.21` (os widgets param de piscar ao rolar e ao receber o mouse, e
   a pizza volta a mostrar o número no meio) avança a iteração: são correções de

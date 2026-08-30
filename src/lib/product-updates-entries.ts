@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-30-legenda-da-pizza-para-de-contar-categoria-errado",
+    version: "0.10.0-beta.22",
+    date: "2026-08-30",
+    title: "A legenda da pizza para de chamar registros de categorias",
+    summary:
+      "Embaixo de cada fatia aparecia algo como “29 categorias agrupadas”, mas 29 era a quantidade de registros daquela categoria, não de categorias. Esse texto só faz sentido na fatia “Outros”, que é a única que de fato reúne várias categorias.",
+    highlights: [
+      "O texto agora aparece só na fatia “Outros”, que é onde ele descreve o número certo. Nas demais fatias ele sai.",
+      "Vale na legenda, no detalhe que aparece ao passar o mouse e na leitura para leitor de tela.",
+      "O número no meio da rosca passou a ser posicionado pelo desenho da própria rosca, e não pela caixa do gráfico, para não ficar deslocado quando o desenho não está centrado.",
+    ],
+  },
+  {
     id: "2026-08-29-widgets-param-de-piscar-e-a-pizza-volta-a-mostrar-o-numero",
     version: "0.10.0-beta.21",
     date: "2026-08-29",
