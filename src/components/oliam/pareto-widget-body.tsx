@@ -53,6 +53,7 @@ import {
   WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
+import { useHoverIndex } from "./use-hover-index";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
 
 const PARETO_THRESHOLD = 0.8;
@@ -86,7 +87,7 @@ export function ParetoWidgetBody({
   sizeControls: React.ReactNode;
   animationDelay: number;
 }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useHoverIndex();
   /**
    * A categoria selecionada é guardada pelo **nome**, e não pela posição.
    *

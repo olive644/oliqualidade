@@ -1,5 +1,5 @@
 import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
-import { useRef, useState, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Area,
   Bar,
@@ -97,6 +97,7 @@ import {
   WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
+import { useHoverIndex } from "./use-hover-index";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
 import { useMeasuredWidth } from "./use-measured-width";
 
@@ -133,7 +134,7 @@ export function ChartWidgetBody({
   // sem descartar filtros de outras colunas (ex: clicar num mapa e numa
   // linha do tempo ao mesmo tempo); clicar de novo no mesmo valor remove o
   // filtro.
-  const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
+  const [activePieIndex, setActivePieIndex] = useHoverIndex();
   /**
    * A fatia selecionada é guardada pelo **nome**, e não pela posição.
    *
@@ -155,7 +156,7 @@ export function ChartWidgetBody({
    * ela não estava o número foi parar longe do desenho.
    */
   const centroDaRosca = useRef<{ cx: number; cy: number } | null>(null);
-  const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
+  const [activeBarIndex, setActiveBarIndex] = useHoverIndex();
   const { chartScrollRef, handleChartScrollPointerDown, ChartScrollButtons } =
     useChartHorizontalScroll();
   // Largura real da área do gráfico, medida no navegador. O recuo interno
@@ -245,31 +246,52 @@ export function ChartWidgetBody({
       <BarChart3 className="size-3.5 shrink-0 text-muted-foreground" />
     );
   const groupOptions = w.type === "line" ? columns.filter((c) => c.kind === "date") : groupableCols;
-  const grouped =
-    groupCol && valueCol
-      ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode).map((g) => ({
-          name: g.name,
-          total: g.total,
-          ...(g.count !== undefined ? { count: g.count } : {}),
-          ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
-          ...(g.sourceRowIndex !== undefined ? { sourceRowIndex: g.sourceRowIndex } : {}),
-          ...(g.sourceRowIndexes ? { sourceRowIndexes: g.sourceRowIndexes } : {}),
-        }))
-      : [];
-  const completeSeries =
-    w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
-      ? sortChronologically(grouped)
-      : grouped;
-  const barOrder =
-    w.type === "bar" && dataMode !== "raw"
-      ? sortBarCategories(completeSeries, w.barSort ?? "auto")
-      : null;
-  const orderedSeries = barOrder ? barOrder.series : completeSeries;
-  const renderableSeries =
-    w.type === "pie"
-      ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
-      : limitChartSeriesForRendering(orderedSeries);
-  const series = renderableSeries.items;
+  /**
+   * O pipeline da série, memoizado — e isto é correção de defeito, não estilo.
+   *
+   * O array chega ao Recharts como `data`. Recalculado a cada renderização, ele
+   * tem identidade nova toda vez, e o Recharts trata identidade nova como série
+   * nova: destrói os elementos do desenho e cria outros. Como o hover de cada
+   * barra muda estado, passear o mouse sobre um gráfico recria as barras dezenas
+   * de vezes por segundo.
+   *
+   * Medido, passeando o mouse sobre um gráfico de barras **sem rolar nada**:
+   * 14 tarefas longas somando 2.541 ms e 109 trocas de filhos no widget. É o
+   * que se vê como piscar ao inspecionar.
+   *
+   * As dependências são os dados e a configuração que de fato mudam a série. O
+   * hover **não** entra, de propósito: é justamente ele que não pode reconstruir
+   * o array.
+   */
+  const { series, renderableSeries, barOrder, completeSeries } = useMemo(() => {
+    const grouped =
+      groupCol && valueCol
+        ? chartSeries(data, groupCol.key, valueCol.key, op, dataMode).map((g) => ({
+            name: g.name,
+            total: g.total,
+            ...(g.count !== undefined ? { count: g.count } : {}),
+            ...(g.sourceRow ? { sourceRow: g.sourceRow } : {}),
+            ...(g.sourceRowIndex !== undefined ? { sourceRowIndex: g.sourceRowIndex } : {}),
+            ...(g.sourceRowIndexes ? { sourceRowIndexes: g.sourceRowIndexes } : {}),
+          }))
+        : [];
+    const completeSeries =
+      w.type === "line" || (w.type === "area" && groupCol?.kind === "date")
+        ? sortChronologically(grouped)
+        : grouped;
+    const barOrder =
+      w.type === "bar" && dataMode !== "raw"
+        ? sortBarCategories(completeSeries, w.barSort ?? "auto")
+        : null;
+    const orderedSeries = barOrder ? barOrder.series : completeSeries;
+    const renderableSeries =
+      w.type === "pie"
+        ? { items: orderedSeries, omitted: 0, total: orderedSeries.length }
+        : limitChartSeriesForRendering(orderedSeries);
+    const series = renderableSeries.items;
+    return { series, renderableSeries, barOrder, completeSeries };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, groupCol?.key, valueCol?.key, op, dataMode, w.type, w.barSort, w.topN]);
   // Metas podem ser classificadas como referência semântica, não como métrica
   // agregável. Por isso a detecção precisa considerar todas as colunas
   // numéricas do painel, e não apenas `numericCols`.

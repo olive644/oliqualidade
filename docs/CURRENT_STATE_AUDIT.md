@@ -10998,17 +10998,52 @@ entre um widget e o vizinho era visível.
 Os sete pontos passaram a usar a mesma constante, com o valor que a pizza já
 usava. Uniformiza para baixo em vez de inventar um número.
 
-### O que continua sem reprodução
+### O piscar ao inspecionar, medido e corrigido
 
-O piscar de barras e histograma ao inspecionar com o mouse continua relatado e
-continua sem reproduzir aqui depois da guarda da seção 166. A guarda cortou 72%
-do tempo de thread bloqueada durante a rolagem, medido, mas o relato é sobre
-**inspecionar**, que é hover sem rolagem — e nesse caso a guarda não age, por
-desenho.
+A guarda da seção 166 corta o hover **durante a rolagem**, e o relato agora era
+sobre **inspecionar**: hover sem rolar, onde ela não age por desenho. Medido com
+o instrumento que faltava — passear o ponteiro sobre um gráfico de 25 barras sem
+rolar nada:
 
-Fica registrado como a próxima coisa a medir, e com o instrumento certo já
-identificado: contar tarefas longas durante hover parado sobre um gráfico, sem
-rolagem nenhuma.
+| Cenário | Tarefas longas | Tempo bloqueado | Trocas de filhos |
+| --- | ---: | ---: | ---: |
+| Como estava | 14 | 2.883 ms | 105 |
+| **Sem hover nenhum**, o teto do ganho | 2 | 504 ms | — |
+
+Ou seja, **o hover respondia por 83% do custo**. O perfil de CPU nomeou onde:
+`React.createElement` com 743 ms e `jsxDEV` com 335, que é a árvore inteira do
+gráfico — eixos, grade, vinte e cinco formas, legenda e painel — sendo recriada a
+cada barra que o ponteiro atravessa, só para trocar qual delas está destacada.
+
+Duas mudanças, e o interessante é que **só valem juntas**:
+
+**O índice sob o ponteiro espera 90 ms.** Atravessar não é inspecionar: quem
+arrasta o ponteiro de um lado ao outro não está lendo cada barra do caminho, e
+quem quer ler para. A saída de hover não espera, porque atraso ali apareceria
+como destaque preso.
+
+**O pipeline da série é memoizado.** O array chega ao Recharts como `data`, e
+recalculado a cada renderização ele tem identidade nova toda vez, o que faz o
+Recharts destruir e recriar os elementos do desenho.
+
+Medido separadamente, a memoização **sozinha não mudava nada** — com tudo sendo
+reconstruído a cada hover, a identidade estável do array não ajudava. Com o
+amortecimento no lugar, ela derruba o restante quase pela metade. As duas
+juntas:
+
+| | Antes | Depois | Teto |
+| --- | ---: | ---: | ---: |
+| Tarefas longas | 14 | **3** | 2 |
+| Tempo bloqueado | 2.883 ms | **~700 ms** | 504 ms |
+| Trocas de filhos | 105 | **8** | — |
+
+Três execuções seguidas do resultado final deram 725, 682 e 709 ms, ou seja o
+número é estável. A primeira execução depois de mexer no arquivo deu 1.095 ms e
+foi descartada como ruído de recompilação — vale registrar, porque uma amostra só
+teria sugerido metade do ganho real.
+
+O destaque da barra, o tooltip e o painel de leitura continuam funcionando,
+conferido na captura de regressão visual.
 
 ### Verificação
 
