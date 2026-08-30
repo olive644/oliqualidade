@@ -10811,3 +10811,34 @@ referência saem de novo, porque o fundo dos botões deixou de ser translúcido.
 ### Versão
 
 `0.10.0-beta.23` para `0.10.0-beta.24`, com entrada no Centro de Atualizações.
+
+### A PR do Recharts 3 foi verificada, a pedido do usuário
+
+O usuário levantou que o piscar começou depois da migração da seção 148, e a
+suspeita tinha base: aquela PR trocou as `<Cell>` filhas por
+`shape={(props) => ...}` inline, que é uma função nova a cada renderização.
+Como o Recharts trata a forma como tipo de componente, o padrão é o mesmo que
+causava a remontagem dos botões de rolagem da seção 164.
+
+Medido, e o resultado **não confirma**. A sonda marca cada elemento SVG e observa
+a marca quadro a quadro:
+
+| Cenário | Elementos criados | Conjuntos de identidade |
+| --- | ---: | ---: |
+| Passando o mouse sobre as barras | 138 | 15 |
+| Com a forma estabilizada por referência | 146 | 16 |
+| **Parado, sem interação nenhuma** | 42 | 3 |
+
+Duas conclusões saem daí, e as duas são negativas.
+
+A primeira: estabilizar a identidade da função **não muda nada**. A refatoração
+foi escrita, medida e descartada, em vez de ficar no repositório sem evidência.
+
+A segunda, mais importante: as formas são recriadas **sem interação nenhuma**, e
+a marcação de tempo mostra quando — 4.917 ms, 6.384 ms e 6.440 ms de vida da
+página, e depois silêncio pelos cinco segundos seguintes. Ou seja, é acomodação
+depois da montagem, e não um laço. Um comportamento que para sozinho não é o que
+alguém vê como piscar contínuo ao rolar.
+
+A hipótese do usuário estava bem formulada e foi respondida por medida: a PR do
+Recharts 3 introduziu o padrão, e o padrão não produz o sintoma.
