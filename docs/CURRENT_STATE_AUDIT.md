@@ -10946,3 +10946,111 @@ Suíte completa com 1.204 testes, build e orçamento aprovados.
 ### Versão
 
 `0.10.0-beta.24` para `0.10.0-beta.25`, com entrada no Centro de Atualizações.
+## 167. A troca de `both` por `backwards` fez a página inteira ganhar rolagem
+
+Regressão introduzida por mim na seção 165 e relatada pelo usuário com a
+descrição exata: "a tela ta descendo, nao tinha isso antes".
+
+### O que quebrou
+
+`.oliam-widget` usava `animation: ... both`. O raciocínio da troca para
+`backwards` era que o `forwards` não compraria nada, porque o último quadro de
+`oliam-in` é `opacity: 1; transform: none`, que é o estado padrão do elemento.
+
+Medido, o raciocínio estava errado. Numa janela de 1.080 px:
+
+| Commit | `documentElement.scrollHeight` |
+| --- | ---: |
+| `2556b11`, antes desta série | 1.080 |
+| `758c3b8`, estabilização visual | 1.080 |
+| `d72459b` | 1.080 |
+| **`4cf21ae`, o filtro de fundo** | **1.843** |
+| `8f42ebc` | 1.843 |
+
+A página ganhou 763 px de rolagem externa que não existiam. Ao rolar, o painel
+subia para fora da tela: o elemento de conteúdo ia de `top: 160` para
+`top: -603`, deixando uma faixa vazia embaixo.
+
+Isolado dentro da própria `4cf21ae`, que trazia duas mudanças: restaurar o
+`backdrop-filter` **não** corrige, e restaurar `animation-fill-mode: both`
+corrige. Ou seja, a culpa é da animação, e não do filtro.
+
+### Por que acontece
+
+Um `transform` **aplicado por animação**, mesmo valendo `none`, faz do elemento
+um bloco de contenção para descendentes posicionados. Com `forwards` isso vale
+para sempre depois da entrada; sem ele, cai quando a animação termina, e algum
+descendente escapa e passa a somar altura ao documento.
+
+O `both` voltou, com o registro no próprio CSS, porque a troca é tentadora e o
+efeito colateral não é óbvio.
+
+### A animação em câmera lenta
+
+O usuário também relatou que o gráfico de área passou a aparecer "em câmera
+lenta". Medido: a curva leva **904 ms** para assentar depois do carregamento.
+
+A causa não é reinício — contando as mudanças da curva durante a rolagem, são
+duas. É a duração: **só a pizza declarava `animationDuration`**, com 680 ms.
+Área, linha e barras herdavam o padrão do Recharts, que é 1.500 ms. A diferença
+entre um widget e o vizinho era visível.
+
+Os sete pontos passaram a usar a mesma constante, com o valor que a pizza já
+usava. Uniformiza para baixo em vez de inventar um número.
+
+### O piscar ao inspecionar, medido e corrigido
+
+A guarda da seção 166 corta o hover **durante a rolagem**, e o relato agora era
+sobre **inspecionar**: hover sem rolar, onde ela não age por desenho. Medido com
+o instrumento que faltava — passear o ponteiro sobre um gráfico de 25 barras sem
+rolar nada:
+
+| Cenário | Tarefas longas | Tempo bloqueado | Trocas de filhos |
+| --- | ---: | ---: | ---: |
+| Como estava | 14 | 2.883 ms | 105 |
+| **Sem hover nenhum**, o teto do ganho | 2 | 504 ms | — |
+
+Ou seja, **o hover respondia por 83% do custo**. O perfil de CPU nomeou onde:
+`React.createElement` com 743 ms e `jsxDEV` com 335, que é a árvore inteira do
+gráfico — eixos, grade, vinte e cinco formas, legenda e painel — sendo recriada a
+cada barra que o ponteiro atravessa, só para trocar qual delas está destacada.
+
+Duas mudanças, e o interessante é que **só valem juntas**:
+
+**O índice sob o ponteiro espera 90 ms.** Atravessar não é inspecionar: quem
+arrasta o ponteiro de um lado ao outro não está lendo cada barra do caminho, e
+quem quer ler para. A saída de hover não espera, porque atraso ali apareceria
+como destaque preso.
+
+**O pipeline da série é memoizado.** O array chega ao Recharts como `data`, e
+recalculado a cada renderização ele tem identidade nova toda vez, o que faz o
+Recharts destruir e recriar os elementos do desenho.
+
+Medido separadamente, a memoização **sozinha não mudava nada** — com tudo sendo
+reconstruído a cada hover, a identidade estável do array não ajudava. Com o
+amortecimento no lugar, ela derruba o restante quase pela metade. As duas
+juntas:
+
+| | Antes | Depois | Teto |
+| --- | ---: | ---: | ---: |
+| Tarefas longas | 14 | **3** | 2 |
+| Tempo bloqueado | 2.883 ms | **~700 ms** | 504 ms |
+| Trocas de filhos | 105 | **8** | — |
+
+Três execuções seguidas do resultado final deram 725, 682 e 709 ms, ou seja o
+número é estável. A primeira execução depois de mexer no arquivo deu 1.095 ms e
+foi descartada como ruído de recompilação — vale registrar, porque uma amostra só
+teria sugerido metade do ganho real.
+
+O destaque da barra, o tooltip e o painel de leitura continuam funcionando,
+conferido na captura de regressão visual.
+
+### Verificação
+
+Suíte completa com 1.204 testes, build e orçamento aprovados. A altura do
+documento volta a 1.080 antes e depois de rolar, e o painel não sai mais do
+lugar.
+
+### Versão
+
+`0.10.0-beta.25` para `0.10.0-beta.26`, com entrada no Centro de Atualizações.

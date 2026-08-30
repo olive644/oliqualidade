@@ -36,6 +36,7 @@ import {
   WidgetEvidencePanel,
 } from "./widget-support";
 import { WidgetConfigBar } from "./widget-config-context";
+import { useHoverIndex } from "./use-hover-index";
 import { useChartHorizontalScroll } from "./use-chart-horizontal-scroll";
 
 const BIN_COUNT_OPTIONS = [5, 8, 10, 15, 20];
@@ -65,7 +66,7 @@ export function HistogramWidgetBody({
   sizeControls: React.ReactNode;
   animationDelay: number;
 }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useHoverIndex();
   /**
    * A faixa selecionada é guardada pelo **rótulo dela**, e não pela posição.
    *

@@ -13,6 +13,20 @@ export function chartAnimationEnabled(): boolean {
  * Strings numéricas são aceitas; valores vazios, infinitos ou inválidos
  * falham explicitamente para que o SVG não receba NaN.
  */
+/**
+ * Quanto tempo a entrada de um gráfico leva.
+ *
+ * O Recharts usa 1.500 ms por padrão, e num painel com vários gráficos isso é
+ * lido como lentidão: a curva do gráfico de área levava quase um segundo para
+ * assentar depois de a página carregar, e o usuário descreveu como "câmera
+ * lenta". A pizza já declarava 680 ms desde a migração; o resto herdava o
+ * padrão, e a diferença entre um widget e o vizinho era visível.
+ *
+ * 680 ms é o valor que a pizza já usava, então isto uniformiza para baixo em
+ * vez de inventar um número novo.
+ */
+export const CHART_ANIMATION_MS = 680;
+
 export function finiteChartCoordinate(value: string | number | undefined): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string" || value.trim() === "") return null;
