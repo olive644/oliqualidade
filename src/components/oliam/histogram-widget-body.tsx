@@ -1,5 +1,5 @@
 import { sourceRowIndexesOf } from "@/lib/chart-source-rows";
-import { useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { BarChart2 } from "lucide-react";
 import {
   Bar,
@@ -87,17 +87,23 @@ export function HistogramWidgetBody({
     configuredValueCol && numericKinds.includes(configuredValueCol.kind)
       ? configuredValueCol
       : numericCols[0];
-  const validValues = valueCol ? numericValuesFor(data, valueCol.key) : [];
-  const chartValidity = valueCol ? histogramChartValidity(validValues) : null;
-  const bins = valueCol ? histogramBins(data, valueCol.key, w.binCount) : [];
+  // Hover troca só o destaque. Recriar valores, faixas e objetos da série nessa
+  // troca fazia o Recharts receber um `data` novo e remontar as barras, mesmo
+  // quando os dados da planilha não tinham mudado.
+  const { validValues, chartValidity, bins, series } = useMemo(() => {
+    const validValues = valueCol ? numericValuesFor(data, valueCol.key) : [];
+    const chartValidity = valueCol ? histogramChartValidity(validValues) : null;
+    const bins = valueCol ? histogramBins(data, valueCol.key, w.binCount) : [];
+    const series = histogramBinsWithData(bins).map((bin) => ({
+      name: bin.label,
+      total: bin.count,
+      rangeStart: bin.rangeStart,
+      rangeEnd: bin.rangeEnd,
+      ...(bin.sourceRowIndexes ? { sourceRowIndexes: bin.sourceRowIndexes } : {}),
+    }));
+    return { validValues, chartValidity, bins, series };
+  }, [data, valueCol?.key, w.binCount]);
   const emptyBinCount = bins.filter((bin) => bin.count === 0).length;
-  const series = histogramBinsWithData(bins).map((bin) => ({
-    name: bin.label,
-    total: bin.count,
-    rangeStart: bin.rangeStart,
-    rangeEnd: bin.rangeEnd,
-    ...(bin.sourceRowIndexes ? { sourceRowIndexes: bin.sourceRowIndexes } : {}),
-  }));
   const showsExactValues =
     series.length > 1 && series.every((bin) => bin.rangeStart === bin.rangeEnd);
   const distinctValueCount = new Set(validValues).size;

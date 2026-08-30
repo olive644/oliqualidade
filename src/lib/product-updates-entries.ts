@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-30-barras-e-histogramas-param-de-piscar-ao-inspecionar",
+    version: "0.10.0-beta.27",
+    date: "2026-08-30",
+    title: "Barras e histogramas ficam estáveis ao inspecionar",
+    summary:
+      "Ao mover o mouse entre barras, o destaque voltava por um instante ao estado normal antes de acompanhar a próxima barra. No histograma, essa interação ainda remontava a série inteira. Os dois comportamentos apareciam como piscar.",
+    highlights: [
+      "O destaque anterior permanece visível enquanto o próximo é preparado, sem o quadro intermediário que fazia todas as barras piscarem.",
+      "O histograma preserva a mesma série enquanto você só inspeciona as faixas, reduzindo reconstruções desnecessárias do desenho.",
+      "As barras não reaparecem mais por uma animação de opacidade quando o desenho é atualizado durante a interação.",
+    ],
+  },
+  {
     id: "2026-08-30-tela-para-de-descer-e-graficos-desenham-mais-rapido",
     version: "0.10.0-beta.26",
     date: "2026-08-30",

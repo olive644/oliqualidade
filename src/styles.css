@@ -1645,8 +1645,9 @@
    A paleta, a geometria final e o layout continuam definidos pelos próprios
    widgets, para que a leitura visual permaneça idêntica ao fim do movimento. */
 .oliam-chart-bar-cell {
-  animation: oliam-chart-bar-rise 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
-  animation-delay: var(--oliam-bar-delay, 0ms);
+  /* A entrada por opacidade transformava qualquer remount do SVG em uma barra
+     que some e reaparece. Barras e histogramas mudam de destaque com frequência;
+     a transição abaixo mantém esse feedback sem reanimar a série inteira. */
   transition:
     opacity 220ms ease,
     stroke 220ms ease,
@@ -1686,15 +1687,6 @@
 
 .oliam-chart-detail-swap {
   animation: oliam-chart-detail-swap 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes oliam-chart-bar-rise {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 @keyframes oliam-chart-pie-spin-in {

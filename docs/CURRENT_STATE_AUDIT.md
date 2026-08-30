@@ -11054,3 +11054,49 @@ lugar.
 ### Versão
 
 `0.10.0-beta.25` para `0.10.0-beta.26`, com entrada no Centro de Atualizações.
+## 168. O amortecimento do hover ainda criava um quadro de piscar entre barras
+
+O relato seguinte foi específico: gráficos de barras e histogramas ainda
+"piscavam muito" ao inspecionar. A correção da seção 167 reduziu custo, mas não
+eliminava uma transição visual criada pelo próprio hook de hover.
+
+### O quadro intermediário
+
+Ao cruzar de uma barra para a vizinha, o navegador emite saída da primeira antes
+da entrada na segunda. `useHoverIndex` limpava o índice imediatamente na saída e
+esperava 90 ms na entrada. Nesse intervalo, nenhuma barra era ativa: todas
+voltavam à opacidade normal e depois escureciam de novo para destacar a nova.
+
+O hook agora agenda também a limpeza. Se a entrada seguinte acontecer dentro dos
+90 ms, ela cancela a limpeza e o destaque anterior permanece até o próximo estar
+pronto. O teste do hook atravessa duas barras e exige que nunca exista o estado
+intermediário sem destaque.
+
+### O histograma ainda recriava a série
+
+O gráfico de barras principal já memoizava o array entregue ao Recharts, mas o
+histograma ainda recalculava valores válidos, faixas e objetos de série em toda
+renderização. Um hover local mudava o estado e entregava uma referência `data`
+nova ao Recharts, capaz de remontar as barras mesmo sem mudar a planilha.
+
+Esse pipeline passou a ser memoizado por dados, coluna e quantidade de faixas.
+Hover não é dependência da série.
+
+### Animação de entrada não é animação de inspeção
+
+`.oliam-chart-bar-cell` iniciava com opacidade zero. Quando uma montagem do SVG
+ocorria por atualização legítima, essa regra fazia a barra sumir e reaparecer.
+O efeito foi removido das barras, mantendo transições curtas de opacidade, borda
+e brilho para comunicar o destaque sem esconder o dado.
+
+### Cobertura e limite conhecido
+
+Os screenshots de regressão usam movimento reduzido e desligam animações, por
+isso não podiam capturar este defeito. A nova cobertura de componente usa relógio
+falso para verificar a sequência de hover. A confirmação visual completa segue
+no CI com navegadores instalados e deve incluir movimento habilitado em trabalho
+posterior.
+
+### Versão
+
+`0.10.0-beta.26` para `0.10.0-beta.27`, com entrada no Centro de Atualizações.
