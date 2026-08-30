@@ -76,3 +76,39 @@ export function seriesPointFromChartPayload(
 export function numericLabelValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
+
+/**
+ * O centro de um rótulo de gráfico, a partir do viewBox que o Recharts entrega.
+ *
+ * Existe porque a versão 3 mudou o que chega aqui sem avisar. O `<Label>` de uma
+ * pizza recebia um viewBox **polar**, com `cx` e `cy`; agora recebe um
+ * **cartesiano**, com `x`, `y`, `width` e `height`. Código que exigia `cx`
+ * devolvia `null` em toda renderização, e o número do meio da rosca desapareceu
+ * sem nenhum erro — a ausência foi inclusive gravada nas imagens de referência
+ * como se fosse o resultado esperado.
+ *
+ * As duas formas continuam aceitas: a polar porque é a que a documentação
+ * promete, e a cartesiana porque é a que chega de fato. Devolve `null` quando
+ * nenhuma das duas dá um par de coordenadas finito, para o SVG nunca receber
+ * `NaN`.
+ */
+export function chartLabelCenter(viewBox: unknown): { cx: number; cy: number } | null {
+  if (typeof viewBox !== "object" || viewBox === null) return null;
+  const box = viewBox as Record<string, unknown>;
+  const polar = { cx: box["cx"], cy: box["cy"] };
+  if (typeof polar.cx === "number" && typeof polar.cy === "number")
+    return Number.isFinite(polar.cx) && Number.isFinite(polar.cy)
+      ? { cx: polar.cx, cy: polar.cy }
+      : null;
+  const { x, y, width, height } = box;
+  if (
+    typeof x !== "number" ||
+    typeof y !== "number" ||
+    typeof width !== "number" ||
+    typeof height !== "number"
+  )
+    return null;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  return Number.isFinite(cx) && Number.isFinite(cy) ? { cx, cy } : null;
+}

@@ -1493,8 +1493,18 @@
    * seus limites vivem em `lib/widget-density.ts`, que é a fonte usada
    * também pelas decisões feitas em JavaScript. */
   container: oliam-widget / inline-size;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 360px;
+  /* Sem `content-visibility: auto`, e isto é decisão medida.
+   *
+   * Ele existia para um painel longo não desenhar o que está fora da tela. O
+   * preço é que o navegador **joga fora** a subárvore do widget quando ela sai
+   * da viewport e a reconstrói quando volta: o `ResponsiveContainer` do gráfico
+   * remede do zero, e o widget pisca a cada rolagem. O mesmo mecanismo já tinha
+   * obrigado o teste de regressão visual a forçar `content-visibility: visible`
+   * para os gráficos existirem.
+   *
+   * O que ele comprava foi medido, com 18 widgets de gráfico: 4.792 ms até o
+   * primeiro gráfico com ele, 4.940 ms sem ele, e **os 18 desenhados nos dois
+   * casos**. Ou seja, ele não estava pulando nada, e cobrava o piscar. */
   animation: oliam-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
   border-radius: var(--radius-2xl);
   border: 1px solid var(--border);
@@ -1511,14 +1521,24 @@
     0 14px 32px -10px color-mix(in oklab, var(--foreground) 12%, transparent);
   transition:
     box-shadow 220ms ease,
-    transform 220ms ease,
     border-color 220ms ease;
+  /* O destaque de hover é de cor e sombra, e **não move o card**.
+   *
+   * Havia um `transform: translateY(-3px)` aqui, e ele se auto-cancela: o card
+   * sobe, sai de baixo do ponteiro que está perto da borda, o hover termina, o
+   * card desce, o ponteiro volta a estar em cima. O laço pisca enquanto o mouse
+   * estiver na faixa dos três pixels, e ao rolar acontece com um card atrás do
+   * outro, porque o ponteiro fica parado e são os cards que passam por baixo
+   * dele. Um card que é também container de rolagem, como este, torna o efeito
+   * mais fácil de disparar.
+   *
+   * Cor da borda e sombra dizem a mesma coisa sem mexer na geometria, então o
+   * deslocamento saiu junto do `transform` da transição. */
   &:hover {
     border-color: color-mix(in oklab, var(--primary) 28%, var(--border));
     box-shadow:
       0 2px 6px color-mix(in oklab, var(--foreground) 6%, transparent),
       0 24px 48px -12px color-mix(in oklab, var(--primary) 16%, var(--foreground) 10%);
-    transform: translateY(-3px);
   }
 }
 @utility oliam-ranking-row {

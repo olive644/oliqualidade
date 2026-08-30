@@ -10441,3 +10441,144 @@ devolver 6 caracteres onde devolvia 7, que é o efeito direto da folga reservada
 
 `0.10.0-beta.18` para `0.10.0-beta.19`, com entrada no Centro de Atualizações:
 tudo aqui é visível para quem usa.
+## 162. Os widgets piscavam ao rolar, e o número do meio da pizza tinha sumido
+
+Dois defeitos relatados pelo usuário depois da entrega da seção 161, e os dois
+já existiam antes dela.
+
+### A hipótese que foi testada e descartada primeiro
+
+O usuário levantou que a interface estivesse desajustada com a leitura por
+streaming entregue nas seções 149 a 159. Isso é testável, e foi testado antes de
+qualquer conserto: a sonda monta o painel **direto no armazenamento local**, sem
+passar por importação nenhuma, e os dois defeitos aparecem lá.
+
+A leitura não é a causa, e vale registrar que a pergunta foi respondida por
+medição e não por argumento.
+
+### O número do meio da pizza
+
+`<Label position="center">` decidia se desenhava a partir de `viewBox.cx`. Foi
+sondado o que o Recharts 3 de fato entrega ali:
+
+```text
+props: ["x","y","position","angle","offset","zIndex","textBreakAll","viewBox"]
+viewBox: {"x":6,"y":6,"upperWidth":191,"lowerWidth":191,"width":191,"height":196}
+```
+
+É um viewBox **cartesiano**. A versão 2 entregava um polar, com `cx` e `cy`. Sem
+`cx`, a guarda devolvia `null` em toda renderização e o texto do centro
+desaparecia sem erro nenhum.
+
+Confirmado pela sonda antes do conserto: a pizza tinha 6 setores desenhados e
+**zero elementos `<text>`** no SVG.
+
+Isto é regressão da migração da seção 148, e ela chegou às imagens de referência
+da seção 161 gravada como resultado esperado. É a terceira vez nesta série que
+uma imagem de referência documenta um defeito, e reforça o que já estava escrito:
+conferir a imagem não é formalidade.
+
+`chartLabelCenter` passou a aceitar as duas formas, a polar porque é a que a
+documentação promete e a cartesiana porque é a que chega. Devolve `null` só
+quando nenhuma das duas dá um par finito, para o SVG nunca receber `NaN`.
+
+### O piscar ao rolar
+
+`.oliam-widget` tinha `content-visibility: auto`. O que ele faz é exatamente o
+que o usuário descreveu: o navegador **descarta a subárvore** do widget quando
+ela sai da viewport e a reconstrói quando volta. O `ResponsiveContainer` do
+gráfico remede do zero a cada volta, e o widget pisca.
+
+O mesmo mecanismo já tinha obrigado o teste de regressão visual a forçar
+`content-visibility: visible` para os gráficos existirem, o que era um sinal
+registrado e não lido.
+
+Antes de remover, o que ele comprava foi medido, com 18 widgets de gráfico:
+
+| | Até o primeiro gráfico | Desenhados |
+| --- | ---: | ---: |
+| Com `content-visibility` | 4.792 ms | 18 de 18 |
+| Sem `content-visibility` | 4.940 ms | 18 de 18 |
+
+A diferença está dentro do ruído, e **os 18 são desenhados nos dois casos**: ele
+não estava pulando nada, e cobrava o piscar. Saiu.
+
+### O que não foi possível verificar aqui
+
+O piscar não reproduz em Playwright headless nem no painel de navegador desta
+sessão, que reporta `document.hidden` e viewport `[0,0]`. Sem viewport visível
+não há "fora da tela", que é a condição que dispara o mecanismo.
+
+Ou seja: a causa é mecânica e a medição do custo é real, mas **a confirmação de
+que o piscar acabou depende de olhar na máquina de quem relatou**. Fica dito, em
+vez de a correção ser apresentada como verificada.
+
+### Verificação
+
+Suíte completa com 1.202 testes, build e orçamento aprovados. O centro da pizza
+foi conferido na captura: a rosca passou a mostrar `R$ 1.526,67 / Total`.
+
+As onze imagens de referência foram removidas de novo, porque gravavam a
+ausência do número do centro. Precisam ser regeneradas na CI e conferidas antes
+de versionar.
+
+### Versão
+
+`0.10.0-beta.19` para `0.10.0-beta.21`, com entrada no Centro de Atualizações:
+os dois são visíveis para quem usa. A `beta.20` foi pulada: a primeira tentativa
+de conserto do piscar não resolveu, e a seção continua abaixo.
+
+### A primeira tentativa não resolveu, e o que ela ensinou
+
+Publicada a correção acima, o usuário respondeu que **os widgets continuam
+piscando**. Ou seja, `content-visibility` não era a causa, ou não era a única.
+
+Isso importa registrar por dois motivos. O primeiro é que a remoção dele
+continua certa pelo próprio mérito: a medição mostrou que ele não pulava nada.
+O segundo é o erro de método: a correção foi publicada com a causa **inferida**,
+e não observada, porque o ambiente desta sessão não tem viewport visível.
+
+### As duas causas reais, e por que nenhuma sonda as via
+
+Nenhuma das sondas escritas aqui mediu `transform`. Elas mediram opacidade,
+visibilidade, identidade do elemento e presença da superfície do gráfico — e
+todas deram estáveis, o que reforçou a hipótese errada.
+
+**O card se deslocava ao receber o mouse.**
+
+```css
+.oliam-widget:hover { transform: translateY(-3px) }
+```
+
+O card sobe três pixels. Se o ponteiro estiver nessa faixa perto da borda, o card
+sai de baixo dele, o hover termina, o card desce, o ponteiro volta a estar em
+cima: laço. Ao rolar, o ponteiro fica parado e são os cards que passam por baixo
+dele, então acontece com um atrás do outro — que é exatamente "todos ficam
+sumindo e aparecendo". Uma causa explica os **dois** gatilhos relatados.
+
+O destaque virou só cor de borda e sombra, que dizem a mesma coisa sem mexer na
+geometria.
+
+**Todo card era container de rolagem.** O teto de altura da seção 161 obrigava o
+excesso a rolar dentro do card. Girar a roda com o ponteiro sobre um card rola o
+card antes da página, e o painel parece pular. Isso foi introduzido na
+`beta.19`, ou seja, por esta mesma série.
+
+O teto saiu. O vazio que ele ajudava a resolver já estava resolvido por
+`items-start` sozinho, e o corte da legenda continua resolvido pelo outro lado,
+com `overflow-y: auto` e o card crescendo até o conteúdo. Conferido na captura: a
+legenda da pizza aparece inteira com o bloco "Outros", o histograma mostra os
+botões do rodapé, e a métrica continua terminando onde termina.
+
+### O que continua sem verificação, e o que fazer com isso
+
+O piscar não reproduz aqui. Playwright headless não dispara `:hover` por
+movimento sintético — a sonda de `transform` registrou identidade em 105 quadros
+seguidos, ou seja, o hover nunca chegou a aplicar. O modo headed falha ao abrir
+(`browserType.launch: spawn UNKNOWN`), e o painel de navegador reporta
+`document.hidden` com viewport `[0,0]`.
+
+Então a regra que fica: **num ambiente sem viewport visível, defeito de
+renderização por ponteiro não se confirma, só se descarta por raciocínio.** A
+confirmação tem de vir da pré-visualização, na máquina de quem relatou. Publicar
+como verificado o que só foi inferido foi o erro da primeira tentativa.

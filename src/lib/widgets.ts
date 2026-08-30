@@ -671,42 +671,30 @@ export function spanClass(span: WidgetSpan): string {
 /**
  * A altura do card sai do tamanho escolhido, e não do vizinho mais alto.
  *
- * Antes havia só um piso (`min-h`), e o card é item de grade: a grade estica
- * todo item da linha até a altura do mais alto, então uma métrica ao lado de um
- * gráfico de barras ganhava um vazio do tamanho do gráfico. Quem para de
- * esticar é o `items-start` da grade; o que este cálculo dá é o intervalo em
- * que cada tamanho pode crescer.
+ * Só um piso, e nenhum teto. O card é item de grade, e a grade estica todo item
+ * da linha até a altura do mais alto, então uma métrica ao lado de um gráfico de
+ * barras ganhava um vazio do tamanho do gráfico. **Quem resolve isso é o
+ * `items-start` da grade**, e só ele: com `items-start` o card já termina onde o
+ * conteúdo dele termina.
  *
- * Os tetos saem de medição, e não do nome do tamanho. Medido na galeria de
- * regressão visual, a altura de conteúdo de um card `md` vai de 440 px
- * (dispersão) a 833 px (pizza), contra os 256 px que o `min-h` sugeria. Fixar a
- * altura no valor antigo cortava o gráfico de quase todo widget, então o teto
- * fica onde a maioria cabe inteira e só os dois mais altos rolam.
+ * Houve um teto por tamanho aqui, e ele foi retirado. O teto obrigava o excesso
+ * a rolar dentro do card, o que transforma **todo card num container de
+ * rolagem**: passar o mouse por cima e girar a roda passa a rolar o card antes
+ * da página, e o painel inteiro parece pular. Como o vazio já estava resolvido
+ * pelo `items-start`, o teto só acrescentava esse efeito.
  *
- * O teto de 672 px também saiu de medida, e não de arredondamento: com 640 px o
- * gráfico de área excedia por **7 px** e ganhava barra de rolagem por causa
- * deles. Sobram a pizza (833) e o histograma (815), que rolam de verdade.
- *
- * O teto vale só a partir de `lg`, e isso não é detalhe. Abaixo disso a grade
- * tem **uma coluna**, ou seja, uma linha por card: não existe vizinho para
- * esticar contra, então não há nada a corrigir, e limitar a altura ali só
- * acrescentaria rolagem dentro do card competindo com a rolagem da página. Foi a
- * captura de 320 px que mostrou isso: o rodapé do gráfico de área saiu do
- * alcance por causa de um teto que naquela largura não resolvia problema nenhum.
- *
- * O outro lado do mesmo problema é o card que **não cabe**: a legenda da pizza
- * era cortada no meio, sem como alcançar o resto, porque `.oliam-widget` tem
- * `overflow: hidden`. Teto sem rolagem só mudaria o corte de lugar, então os
- * dois andam juntos e não fazem sentido separados.
+ * O corte que motivou o teto continua resolvido pelo outro lado: `.oliam-widget`
+ * tem `overflow-y: auto`, então nada fica inalcançável; sem teto o card cresce e
+ * a rolagem interna simplesmente não chega a acontecer.
  *
  * A tabela continua de fora: ela já governa a própria altura e tem rolagem
  * própria.
  */
 export function sizeClass(size: WidgetSize, type: WidgetType): string {
   if (type === "table") return "";
-  if (size === "sm") return "min-h-36 lg:min-h-28 lg:max-h-[22rem]";
-  if (size === "md") return "min-h-80 lg:min-h-64 lg:max-h-[42rem]";
-  return "min-h-[28rem] lg:min-h-[22rem] lg:max-h-[52rem]";
+  if (size === "sm") return "min-h-36 lg:min-h-28";
+  if (size === "md") return "min-h-80 lg:min-h-64";
+  return "min-h-[28rem] lg:min-h-[22rem]";
 }
 
 /**

@@ -11,6 +11,21 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-08-29-widgets-param-de-piscar-e-a-pizza-volta-a-mostrar-o-numero",
+    version: "0.10.0-beta.21",
+    date: "2026-08-29",
+    title: "Os widgets param de piscar ao rolar, e a pizza volta a mostrar o número no meio",
+    summary:
+      "Dois defeitos relatados. Ao rolar o painel ou passar o mouse, os widgets sumiam e reapareciam. E o valor que ficava no centro da rosca do gráfico de pizza tinha desaparecido.",
+    highlights: [
+      "O card não se desloca mais ao receber o mouse. O deslocamento de três pixels tirava o próprio card de baixo do ponteiro, o destaque acabava, o card voltava, e isso se repetia — ao rolar, acontecia com um card atrás do outro. O destaque continua, por cor de borda e sombra.",
+      "Cada card volta a crescer até o conteúdo dele. O limite de altura que existia obrigava o excesso a rolar dentro do card, então a roda do mouse rolava o card antes da página e o painel parecia pular.",
+      "Também saiu uma otimização que descartava o conteúdo do widget fora da tela e o reconstruía ao voltar. Medido com 18 gráficos, ela não estava economizando nada.",
+      "O número no meio da pizza sumiu na migração da biblioteca de gráficos, que passou a informar o centro do desenho em outro formato. Ele voltou, e agora as duas formas são aceitas.",
+      "Nenhum painel precisa ser refeito.",
+    ],
+  },
+  {
     id: "2026-08-29-widgets-mais-legiveis-no-celular",
     version: "0.10.0-beta.19",
     date: "2026-08-29",

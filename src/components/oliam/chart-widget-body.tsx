@@ -41,6 +41,7 @@ import { isReferenceMetric } from "@/lib/reference-metrics";
 import { conditionalColor, fmt, palette, sortChronologically } from "@/lib/format";
 import {
   chartAnimationEnabled,
+  chartLabelCenter,
   chartTooltipName,
   formatChartTooltipValue,
   numericChartTooltipValue,
@@ -947,8 +948,19 @@ export function ChartWidgetBody({
                     <Label
                       position="center"
                       content={({ viewBox }) => {
-                        const box = viewBox as { cx?: number; cy?: number } | undefined;
-                        if (box?.cx === undefined || box?.cy === undefined) return null;
+                        // O Recharts 3 entrega aqui um viewBox **cartesiano**
+                        // (`x`, `y`, `width`, `height`), e não o polar com
+                        // `cx`/`cy` que a versão 2 entregava. Exigir `cx`
+                        // devolvia `null` em toda renderização, e o número no
+                        // meio da rosca simplesmente sumiu — as imagens de
+                        // referência gravaram a ausência como esperado.
+                        //
+                        // As duas formas continuam aceitas: a polar porque é a
+                        // que o contrato documentado promete, a cartesiana
+                        // porque é a que chega de fato.
+                        const center = chartLabelCenter(viewBox);
+                        if (!center) return null;
+                        const box = center;
                         const active =
                           displayedPieIndex !== null ? pieSeries[displayedPieIndex] : null;
                         const label = active ? truncateLabel(active.name, 12) : "Total";

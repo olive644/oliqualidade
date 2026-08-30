@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  chartLabelCenter,
   chartTooltipName,
   finiteChartCoordinate,
   formatChartTooltipValue,
@@ -39,5 +40,34 @@ describe("compatibilidade com contratos do Recharts 3", () => {
     });
     expect(seriesPointFromChartPayload({ name: "Alfa", total: Number.NaN })).toBeNull();
     expect(seriesPointFromChartPayload(null)).toBeNull();
+  });
+});
+
+describe("chartLabelCenter", () => {
+  it("aceita o viewBox cartesiano, que é o que o Recharts 3 entrega", () => {
+    // Foi este formato que quebrou o número no meio da rosca: sem `cx`, a
+    // guarda antiga devolvia `null` em toda renderização e o texto sumia.
+    expect(chartLabelCenter({ x: 6, y: 6, width: 191, height: 196 })).toEqual({
+      cx: 101.5,
+      cy: 104,
+    });
+  });
+
+  it("continua aceitando o viewBox polar, que é o que a documentação promete", () => {
+    expect(chartLabelCenter({ cx: 120, cy: 90, innerRadius: 40, outerRadius: 70 })).toEqual({
+      cx: 120,
+      cy: 90,
+    });
+  });
+
+  it("recusa o que não dá um par finito, para o SVG nunca receber NaN", () => {
+    expect(chartLabelCenter(null)).toBeNull();
+    expect(chartLabelCenter(undefined)).toBeNull();
+    expect(chartLabelCenter({})).toBeNull();
+    expect(chartLabelCenter({ x: 0, y: 0, width: Number.NaN, height: 10 })).toBeNull();
+    expect(chartLabelCenter({ cx: Number.POSITIVE_INFINITY, cy: 3 })).toBeNull();
+    // Coordenada como string não conta: o cálculo do centro é aritmético, e
+    // "6" + 191/2 daria concatenação em vez de soma.
+    expect(chartLabelCenter({ x: "6", y: "6", width: 100, height: 100 })).toBeNull();
   });
 });
