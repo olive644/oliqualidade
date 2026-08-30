@@ -27,8 +27,12 @@ const ESPERA_MS = 90;
  * quer ler para. Noventa milissegundos é curto o bastante para a leitura
  * parecer imediata, e longo o bastante para engolir a travessia.
  *
- * A saída de hover não espera: tirar o ponteiro do gráfico apaga o destaque na
- * hora, porque atraso ali apareceria como destaque preso.
+ * Entre duas barras vizinhas, porém, o mouse sai de uma antes de entrar na
+ * outra. Limpar o índice na mesma hora criava um quadro intermediário em que
+ * todas voltavam ao estado normal e, 90 ms depois, escureciam de novo. Isso é
+ * o piscar que se vê ao atravessar barras ou faixas. A saída também espera: se
+ * houver uma nova entrada logo em seguida, ela cancela a limpeza e o destaque
+ * anterior continua até o próximo estar pronto.
  */
 export function useHoverIndex(): [number | null, (index: number | null) => void] {
   const [indice, setIndice] = useState<number | null>(null);
@@ -43,10 +47,6 @@ export function useHoverIndex(): [number | null, (index: number | null) => void]
 
   const definir = useCallback((proximo: number | null) => {
     if (pendente.current) clearTimeout(pendente.current);
-    if (proximo === null) {
-      setIndice(null);
-      return;
-    }
     pendente.current = setTimeout(() => setIndice(proximo), ESPERA_MS);
   }, []);
 
