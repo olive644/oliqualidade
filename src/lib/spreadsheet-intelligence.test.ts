@@ -35,6 +35,29 @@ describe("spreadsheet intelligence", () => {
     expect(inferSemanticProfile(columns[4]!, rows).unitFamily).toBe("temperature");
   });
 
+  it("não contamina a unidade de uma coluna de texto com a palavra de uma única linha", () => {
+    // Bug real: coluna "Descrição" que lista nomes de parâmetro de análise
+    // ("Temperatura", "pH", "Cloro residual"...) era classificada com
+    // unidade "°C" só porque uma das linhas continha a palavra
+    // "Temperatura" — a detecção de unidade rodava sobre o conteúdo da
+    // coluna mesmo sem ela ser uma medida numérica.
+    const descriptionColumn: Column = {
+      key: "parametro",
+      label: "Descrição",
+      kind: "text",
+      visible: true,
+      description: "",
+    };
+    const parameterRows: Row[] = [
+      { parametro: "Temperatura" },
+      { parametro: "pH" },
+      { parametro: "Cloro residual" },
+    ];
+    const profile = inferSemanticProfile(descriptionColumn, parameterRows);
+    expect(profile.unitFamily).toBe("unknown");
+    expect(profile.unit).toBeNull();
+  });
+
   it("mantém endereço e semântica no modelo canônico", () => {
     const cells = buildCanonicalCells("Vendas", rows, columns, {
       header: { row: 3, confidence: 0.95 },

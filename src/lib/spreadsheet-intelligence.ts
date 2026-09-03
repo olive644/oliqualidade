@@ -324,9 +324,18 @@ export function inferSemanticProfile(
     warnings.push(`Qualidade da coluna: ${diagnostic.qualityScore}%.`);
     confidence -= Math.round((70 - diagnostic.qualityScore) / 3);
   }
+  // Amostra de valores só entra na detecção quando a coluna já é uma medida
+  // (número/moeda/percentual) — é assim que "35°C"/"10mg/L" escrito dentro
+  // da própria célula ainda é reconhecido. Numa coluna de texto/categoria,
+  // examinar o conteúdo contamina a unidade da coluna inteira com a palavra
+  // de uma única linha: bug real numa coluna "Descrição" que listava nomes
+  // de parâmetro ("Temperatura", "pH", "Cloro residual"...) — a simples
+  // presença da palavra "Temperatura" numa linha fazia a coluna inteira,
+  // texto e tudo, ser classificada com unidade "°C".
+  const measurementLike = ["number", "currency", "percentage"].includes(column.kind);
   const { unit, unitFamily } = detectUnit(
     `${column.label} ${column.description}`,
-    rows,
+    measurementLike ? rows : [],
     column.key,
   );
   const aggregable = ["result", "quantity", "price", "total"].includes(role);
