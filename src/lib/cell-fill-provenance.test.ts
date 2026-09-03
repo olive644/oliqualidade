@@ -283,3 +283,43 @@ describe("resolveSourceCellFills em cronograma real", () => {
     expect(resolved).toEqual([]);
   });
 });
+
+// Bug real (FRS-QA-BR-405): o cabeçalho da planilha usa "jan"/"fev" em
+// minúsculas (comum em cronogramas brasileiros), mas o rótulo da coluna vem
+// capitalizado ("Jan"/"Fev") porque `inferOne` (format.ts) capitaliza a
+// primeira letra de qualquer rótulo derivado da chave. A comparação exata e
+// sensível a maiúsculas fazia essas colunas nunca serem encontradas no
+// cabeçalho de origem, então toda a faixa (inclusive a célula de status
+// "Executado" marcada só por cor) era atribuída à coluna anterior.
+describe("resolveSourceCellFills com cabeçalho de origem em minúsculas", () => {
+  const monthColumns: Column[] = [
+    { key: "jan", label: "Jan", kind: "text", visible: true, description: "" },
+    { key: "fev", label: "Fev", kind: "text", visible: true, description: "" },
+  ];
+  const monthRows: Row[] = [{ jan: null, fev: null }];
+  const monthGrid: SourceGrid = {
+    startRow: 1,
+    startColumn: 1,
+    totalRows: 2,
+    totalColumns: 2,
+    rows: [
+      ["jan", "fev"],
+      [null, null],
+    ],
+    truncatedRows: false,
+    truncatedColumns: false,
+  };
+  const monthDiagnostics = (cellFills: ImportDiagnostics["cellFills"]) =>
+    ({ header: { row: 1, confidence: 1 }, cellFills }) as ImportDiagnostics;
+
+  it("casa a coluna pela chave mesmo com o cabeçalho de origem em minúsculas", () => {
+    const resolved = resolveSourceCellFills(
+      monthRows,
+      monthColumns,
+      monthDiagnostics([{ address: "A2", color: "#00B050" }]),
+      cleanAudit,
+      monthGrid,
+    );
+    expect(resolved).toEqual([{ rowIndex: 0, columnKey: "jan", color: "#00B050" }]);
+  });
+});

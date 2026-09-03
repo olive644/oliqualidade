@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { normalizeHeader } from "@/lib/cell-provenance";
 import type { ImportAudit, SourceGrid } from "@/lib/import";
 import type { ImportDiagnostics } from "@/lib/import-intelligence";
 import type { Column, Row } from "@/lib/types";
@@ -11,31 +12,56 @@ export type SourceCellFill = {
 
 /**
  * Resolve a cor de preenchimento original do Excel por (linha final, coluna
- * final), casando o rótulo de cada coluna com o texto literal da linha de
- * cabeçalho na grade de origem e assumindo que os dados seguem o cabeçalho
- * sequencialmente, sem lacuna.
+ * final), casando a chave/rótulo de cada coluna (sem acento/caixa, ver
+ * `headerCandidates`) com o texto literal da linha de cabeçalho na grade de
+ * origem e assumindo que os dados seguem o cabeçalho sequencialmente, sem
+ * lacuna.
  *
  * Deliberadamente conservador: só resolve quando a aba é "simples" o
  * bastante pra essa suposição sequencial ser segura (nenhuma linha oculta,
  * em branco, de rodapé ou de cabeçalho repetido foi descartada; a grade de
- * origem não foi truncada; o rótulo da coluna bate com exatamente uma
- * célula do cabeçalho). Fora dessas condições, devolve `[]` — nunca associa
- * uma cor a uma célula sem ter certeza de qual célula é essa. Ver seção 79
- * do CURRENT_STATE_AUDIT.md para o porquê dessa cautela.
+ * origem não foi truncada; a coluna bate com exatamente uma célula do
+ * cabeçalho). Fora dessas condições, devolve `[]` — nunca associa uma cor a
+ * uma célula sem ter certeza de qual célula é essa. Ver seção 79 do
+ * CURRENT_STATE_AUDIT.md para o porquê dessa cautela.
  */
 /**
- * Último segmento de um rótulo hierárquico. O import combina grupo e
- * subcoluna de um cabeçalho de duas linhas ("CALIBRAÇÃO 2023 — JAN"), mas na
- * grade de origem o texto da célula é só o segmento ("JAN"), então é por ele
- * que a coluna precisa ser encontrada.
+ * Candidatos de texto de cabeçalho para uma coluna, do mais específico/
+ * confiável para o mais genérico, já normalizados (sem acento/caixa — um
+ * cabeçalho real em minúsculas como "jan" não pode deixar de bater com uma
+ * coluna rotulada "Jan" só por causa da maiúscula que `inferOne` adiciona em
+ * `format.ts`). Nessa ordem:
+ * 1. `column.key`: o texto literal da célula de cabeçalho, capturado sem
+ *    nenhuma transformação no momento da importação.
+ * 2. Último segmento de um rótulo hierárquico ("CALIBRAÇÃO 2023 — JAN" → só
+ *    "JAN", que é o texto que de fato aparece na grade de origem).
+ * 3. O rótulo completo.
+ * 4. Primeiro segmento (o grupo, ex. "CALIBRAÇÃO 2023") — o mais genérico,
+ *    por costumar aparecer mais de uma vez no cabeçalho.
+ * Deduplicado preservando a ordem, para que o chamador possa parar no
+ * primeiro candidato que casa com exatamente uma célula do cabeçalho.
  */
-function labelSegments(label: string): string[] {
-  const trimmed = label.trim();
-  const parts = trimmed.split(" — ").map((part) => part.trim());
-  // Do mais específico para o mais geral: uma subcoluna ("JAN") identifica a
-  // coluna exata, enquanto o grupo ("CALIBRAÇÃO 2023") aparece uma vez só e
-  // serviria de fallback para cabeçalhos não hierárquicos.
-  return [...new Set([trimmed, ...parts.reverse()])].filter(Boolean);
+function headerCandidates(column: Pick<Column, "key" | "label">): string[] {
+  const label = column.label.trim();
+  const parts = label
+    .split(" — ")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const specific = parts.length > 1 ? parts[parts.length - 1]! : label;
+  const group = parts.length > 1 ? parts[0]! : null;
+  const raw = [column.key, specific, label, group].filter((value): value is string =>
+    Boolean(value),
+  );
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of raw) {
+    const normalized = normalizeHeader(value);
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+  return result;
 }
 
 /**
@@ -88,12 +114,11 @@ function resolveSourceLayout(
   const columnStartByKey = new Map<string, number>();
   const takenIndexes = new Set<number>();
   for (const column of columns) {
-    for (const segment of labelSegments(column.label)) {
+    for (const candidate of headerCandidates(column)) {
       const matches = new Set<number>();
       for (const headerRow of headerRows) {
         headerRow.forEach((value, index) => {
-          if (typeof value === "string" && value.trim() === segment && !takenIndexes.has(index))
-            matches.add(index);
+          if (normalizeHeader(value) === candidate && !takenIndexes.has(index)) matches.add(index);
         });
       }
       if (matches.size === 1) {
