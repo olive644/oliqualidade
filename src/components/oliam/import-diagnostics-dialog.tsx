@@ -32,6 +32,7 @@ const readerLabels: Record<WorkbookReaderId, string> = {
   "rust-wasm": "Rust/WASM",
   "ooxml-recovery": "Recuperação OOXML (fallback)",
   "csv-progressivo": "CSV por streaming",
+  "ooxml-progressivo": "XLSX progressivo (sem worksheet)",
 };
 
 const formatBytes = (bytes: number) => {

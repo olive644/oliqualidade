@@ -2,7 +2,31 @@ import type { SheetOption } from "@/lib/import";
 import type { OoxmlInspection } from "@/lib/ooxml-reader";
 
 export type WorkbookReaderId =
-  "sheetjs" | "sheetjs-verified" | "rust-wasm" | "ooxml-recovery" | "csv-progressivo";
+  | "sheetjs"
+  | "sheetjs-verified"
+  | "rust-wasm"
+  | "ooxml-recovery"
+  | "csv-progressivo"
+  | "ooxml-progressivo";
+
+/**
+ * Pedido explícito para usar o caminho atual, e não uma falha do arquivo.
+ *
+ * Existe separado de um `Error` comum porque as duas situações levam a coisas
+ * opostas: uma recusa (um PDF renomeado para `.csv`, uma planilha grande
+ * demais) precisa chegar à pessoa, e uma indisponibilidade do caminho novo
+ * precisa ser invisível, com o leitor validado assumindo no lugar.
+ *
+ * Mora aqui, e não em `csv-progressive-import.ts`, porque os dois coordenadores
+ * progressivos (CSV e OOXML) o lançam, e uma cópia por formato seria dois
+ * lugares onde o critério de "isto não se aplica" poderia divergir.
+ */
+export class ProgressiveImportFallback extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "ProgressiveImportFallback";
+  }
+}
 export type WasmShadowStatus = "unavailable" | "sampled-out" | "matched" | "diverged" | "failed";
 export type WasmReaderMode = "shadow" | "candidate";
 export type WasmCandidateStatus = "shadow" | "not-eligible" | "primary" | "fallback";
