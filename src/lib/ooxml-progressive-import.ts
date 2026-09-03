@@ -1,6 +1,6 @@
 import type * as XLSX from "xlsx";
 import { checkWorkbookContent } from "@/lib/file-signature";
-import { streamSheetsWithData, type SheetOption } from "@/lib/import";
+import { sheetsWithData, type SheetOption } from "@/lib/import";
 import { unzipOoxmlArchive, type OoxmlArchive } from "@/lib/ooxml-archive";
 import {
   minimalWorksheetForOoxmlGrid,
@@ -64,20 +64,38 @@ import {
  * descompactado. Sem isso, o ganho de memória viria à custa de apagar esses
  * recursos de toda planilha grande o suficiente para cair neste caminho.
  *
- * Duas divergências conhecidas contra o caminho atual continuam sem solução
- * aqui, e a decisão registrada em `docs/IMPORT_ARCHITECTURE.md` é conviver com
- * elas em vez de bloquear a ligação por causa delas: fórmula volátil (o
- * caminho atual recalcula; a grade não tem acesso a outras células para
- * recalcular) e divisão em seções (a grade mínima não carrega mesclagem e
- * linha oculta remapeadas para o recorte). Nenhuma das duas perde dado — as
- * duas estão cobertas por `ooxml-sheet-grid.test.ts`, que também mede: 87 de
- * 110 abas do corpus real saem idênticas pelos dois caminhos.
+ * Duas divergências conhecidas contra o caminho atual são tratadas de jeitos
+ * diferentes, e a diferença importa para a segurança deste caminho:
  *
- * Por isso `PROGRESSIVE_IMPORT_SUPPORT.ooxml` continua falso: o módulo existe,
- * está testado e pronto para ser chamado, mas ligar de verdade (fazer
- * `chooseImportStrategy` escolhê-lo) muda o resultado real de quem importa um
- * arquivo grande com fórmula volátil ou com várias regiões numa aba, e essa
- * mudança de comportamento merece sua própria decisão, separada desta.
+ * - **Fórmula volátil**: o caminho atual recalcula uma fórmula que depende de
+ *   hoje; a grade não tem acesso a outras células para recalcular, então o
+ *   valor sai como estava gravado no arquivo. Não perde dado, é sempre um
+ *   número plausível, e a decisão registrada em `docs/IMPORT_ARCHITECTURE.md`
+ *   é conviver com isso.
+ * - **Divisão em seções**: `detectIndependentSections` e a divisão geométrica
+ *   podem dividir uma aba em quantidades diferentes de tabelas pelos dois
+ *   caminhos (mais ou menos seções, nomes diferentes). Aqui **não** se convive
+ *   com isso: toda aba que sai dividida (nome com o separador `" · "`, o mesmo
+ *   que `sheetOptionsForName`/`unifiedBlocksOption` usam) faz o arquivo
+ *   inteiro cair em `ProgressiveImportFallback`, e o leitor validado assume no
+ *   lugar. Sem um segundo motor para comparar, não dá para saber aqui se a
+ *   divisão que aconteceu é a mesma que o caminho atual faria, e arriscar um
+ *   agrupamento de linhas diferente do que a pessoa veria pelo caminho
+ *   validado é o tipo de erro que este projeto não aceita pela economia de
+ *   memória. O custo desta recusa é baixo: nos arquivos reais do corpus, toda
+ *   aba com várias seções tem menos de 1 MiB, muito abaixo do teto que decide
+ *   usar este caminho — na prática, um arquivo grande o suficiente para
+ *   precisar dele quase nunca é também um documento de seções.
+ *
+ * `ooxml-sheet-grid.test.ts` mede a grade isolada contra o corpus: 87 de 110
+ * abas saem idênticas pelos dois caminhos, e as que não saem só divergem por
+ * fórmula volátil ou divisão em seções — nunca por dado perdido.
+ *
+ * `PROGRESSIVE_IMPORT_SUPPORT.ooxml` continua falso por ora: o módulo existe,
+ * está testado (incluindo a recusa contra divisão em seções) e pronto para
+ * ser chamado, mas ligar de verdade — fazer `chooseImportStrategy` escolhê-lo
+ * — é uma decisão de produto sobre um caminho novo em produção, separada desta
+ * ligação.
  */
 
 /**
@@ -101,6 +119,23 @@ import {
  */
 export function estimateProgressiveOoxmlPeakMemoryBytes({ cells }: { cells: number }): number {
   return Math.round(Math.max(0, cells) * 175);
+}
+
+/**
+ * O separador que toda aba dividida em seções carrega no nome, tanto pela
+ * divisão geométrica (`... · Região N`) quanto pela detecção de seções por
+ * título (`... · <rótulo da seção>`) e pelos blocos unificados
+ * (`... · Blocos unificados`). Ver `sheetOptionsForName`/`unifiedBlocksOption`
+ * em `import.ts`.
+ */
+const SECTION_SPLIT_MARKER = " · ";
+
+/** `sheetsWithData` com a fonte de grade já resolvida por nome de aba. */
+function sheetsWithDataFromGrids(
+  workbook: XLSX.WorkBook,
+  grids: Map<string, OoxmlSheetGrid>,
+): SheetOption[] {
+  return sheetsWithData(workbook, { gridFor: (name) => grids.get(name) });
 }
 
 export type OoxmlProgressiveImportOptions = {
@@ -183,18 +218,29 @@ export function readOoxmlWorkbookProgressively(
 
   options.onProgress?.({ stage: "analyzing" });
   const analysisStartedAt = Date.now();
+  // Bufferizado antes de emitir qualquer coisa, de propósito: a divisão em
+  // seções (`detectIndependentSections`/regiões geométricas) é a divergência
+  // conhecida que ainda separa este caminho do atual (ver o comentário do topo
+  // do arquivo). Sem o segundo motor para comparar, não dá para saber aqui se
+  // uma divisão que aconteceu é a mesma que o caminho atual faria — só dá para
+  // saber que ela aconteceu, pelo separador " · " que toda aba dividida
+  // carrega no nome (`sheetOptionsForName`/`unifiedBlocksOption`). Detectar
+  // isso e recusar é mais seguro que arriscar um nome ou agrupamento de linhas
+  // diferente do que a pessoa veria pelo caminho validado. O custo é baixo: nos
+  // arquivos reais medidos, toda aba com várias seções tem menos de 1 MiB —
+  // muito abaixo do teto que decide usar este caminho.
+  const analyzed = sheetsWithDataFromGrids(workbook, grids);
+  if (analyzed.some((option) => option.name.includes(SECTION_SPLIT_MARKER)))
+    throw new ProgressiveImportFallback(
+      "A planilha tem uma aba dividida em várias seções, e este caminho ainda não cobre essa divisão com segurança.",
+    );
   const collected: SheetOption[] = [];
   let emitted = 0;
-  streamSheetsWithData(
-    workbook,
-    (option) => {
-      emitted += 1;
-      options.onSheet?.(option);
-      if (!options.onSheet) collected.push(option);
-    },
-    undefined,
-    { gridFor: (name) => grids.get(name) },
-  );
+  for (const option of analyzed) {
+    emitted += 1;
+    options.onSheet?.(option);
+    if (!options.onSheet) collected.push(option);
+  }
   const analysisMs = Date.now() - analysisStartedAt;
   options.onProgress?.({ stage: "complete" });
 

@@ -143,7 +143,7 @@ Nenhuma implementação de leitor mora ali.
 | Formato | Hoje | Planejado |
 | --- | --- | --- |
 | CSV, TXT, TSV | **Caminho progressivo acima do teto de conforto**, caminho atual abaixo dele | Ligado por `csv-progressive-import.ts` |
-| XLSX, XLSM, XLTX, XLTM | Caminho atual. Coordenador escrito e testado (`ooxml-progressive-import.ts`), `support.ooxml` ainda `false` | Ligar depois de alinhar a divisão em seções entre os dois caminhos; depois, acesso ao ZIP por entrada |
+| XLSX, XLSM, XLTX, XLTM | Caminho atual. Coordenador escrito, testado e com recusa contra divisão em seções (`ooxml-progressive-import.ts`), `support.ooxml` ainda `false`; recomendação registrada é ligar | Ligar `support.ooxml`; depois, acesso ao ZIP por entrada (streaming verdadeiro) |
 | ODS e demais | Caminho atual | Sem plano de caminho progressivo |
 
 O CSV está ligado; o OOXML não. Para ele o seletor continua devolvendo
@@ -654,15 +654,23 @@ representação, e a decisão registrada é conviver com ela: uma aba com fórmu
 volátil fica no caminho atual, em vez de a grade passar a recalcular ou a
 aceitar o valor gravado.
 
-**Divisão em seções.** Duas hipóteses foram escritas, medidas e descartadas
-aqui, e as duas estão descritas no audit para ninguém reescrevê-las. A primeira
+**Divisão em seções.** Três hipóteses foram escritas, medidas e descartadas
+aqui, e as três estão descritas no audit para ninguém reescrevê-las. A primeira
 era que o recorte perdia mesclagem e linha oculta, porque
 `minimalWorksheetForGrid` leva só o `!ref`; fazer o recorte passar pelos
 fatiadores de worksheet **não mudou nada**. A segunda era que bastava
 `detectIndependentSections` reconhecer banner sobre a grade; com a régua por
 aba, esse conserto não faz **nenhuma** aba a mais coincidir, e só troca dividir
-de menos por dividir de mais. Alinhar as duas divisões é um trabalho próprio,
-com critério de pronto próprio, e não um detalhe da ligação.
+de menos por dividir de mais. A terceira era que `hasHorizontalMerge` (dentro
+de `detectIndependentSections`) lia o valor da mesclagem pela worksheet, que
+numa fonte de grade não tem célula nenhuma — trocar essa leitura pela grade de
+texto **melhorou** um arquivo real (mesma quantidade e nomes de aba que o
+caminho atual) mas **piorou** outro que antes batia perfeitamente, líquido de
+17 para 16 em 25 planilhas. Alinhar as duas divisões continua sendo um
+trabalho próprio, com critério de pronto próprio, e não um detalhe da ligação.
+A solução aplicada não foi alinhar: foi reconhecer que uma divisão diferente é
+sempre detectável pelo nome (`" · "`) e recusar o arquivo inteiro nesse caso —
+ver "O coordenador, ligado e ainda desligado", abaixo.
 
 O teste natural do outro lado, "em planilha real sem data a grade é
 substituível", não pôde ser escrito: não existe planilha assim no corpus. Num
@@ -743,11 +751,13 @@ por 8 colunas:
 por inteiro e os recursos de `attachWorkbookFeatures`, que a medição da grade
 sozinha não contabiliza.
 
-`PROGRESSIVE_IMPORT_SUPPORT.ooxml` continua `false`. O worker e o cliente já
-sabem falar a estratégia `"ooxml-progressivo"`, mas `chooseImportStrategy`
-nunca a escolhe enquanto o suporte estiver desligado: ligar de verdade muda o
-resultado real de arquivos com fórmula volátil ou com várias regiões numa aba
-(seção 154 do audit e `ooxml-sheet-grid.test.ts`), e essa mudança de
-comportamento é uma decisão própria, tomada depois que a divisão em seções for
-alinhada entre os dois caminhos. Ver seção 169 do audit para a medição
-completa e o que falta.
+`PROGRESSIVE_IMPORT_SUPPORT.ooxml` continua `false` por ora, mas o bloqueio
+original — alinhar a divisão em seções antes de ligar — não foi resolvido por
+alinhamento, e sim por recusa: o coordenador agora recusa (`ProgressiveImportFallback`)
+qualquer arquivo em que alguma aba saia dividida (nome com o separador `" · "`,
+que toda divisão em seções carrega), e o leitor validado assume no lugar sem a
+pessoa perceber. Fórmula volátil continua sendo uma divergência com a qual se
+convive (o valor sai como gravado, nunca perde dado), pela mesma razão já
+registrada. Ver o comentário no topo de `ooxml-progressive-import.ts` e a
+seção 169 do audit para a medição completa e a recomendação sobre ligar o
+suporte.

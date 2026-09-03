@@ -134,6 +134,29 @@ describe("recusa contra indisponibilidade, e não contra falha do arquivo", () =
       /não foi possível reconhecer|não reconhecido|Formato/i,
     );
   });
+
+  it("uma aba dividida em seções recusa o arquivo inteiro, mesmo sem falha no leitor", () => {
+    // Mesmos dados de import.test.ts ("separa quadros empilhados que se
+    // encostam..."): dois quadros com título explícito terminado em ":", sem
+    // linha vazia entre eles. `detectIndependentSections` os divide em duas
+    // abas nomeadas com o separador " · ", e é esse nome que o coordenador usa
+    // para recusar — sem um segundo motor para comparar, não dá para saber
+    // aqui se o caminho atual dividiria do mesmo jeito.
+    const bytes = pacoteDe([
+      ["Bebidas:"],
+      ["Produto", "Quantidade", "Análise"],
+      ["Suco", 1, "Bolores"],
+      ["Refrigerante", 2, "Leveduras"],
+      ["Água Potável:"],
+      ["Material", "Frequência", "Análise"],
+      ["Água", "Diário", "Cloro"],
+      ["Água", "Mensal", "Coliformes"],
+    ]);
+
+    expect(() => readOoxmlWorkbookProgressively(bytes, { fileName: "planilha.xlsx" })).toThrow(
+      ProgressiveImportFallback,
+    );
+  });
 });
 
 /**
@@ -157,11 +180,12 @@ const locais = planilhasLocais();
 
 describe.skipIf(!locais.length)("o coordenador contra o caminho atual, em planilhas reais", () => {
   it(
-    "reproduz o piso já medido para a grade isolada: pelo menos 87 abas idênticas",
+    "recusa arquivo com divisão em seções, e o resto bate com o caminho atual",
     { timeout: 300_000 },
     async () => {
       let abasAtuais = 0;
       let abasIguais = 0;
+      let arquivosRecusados = 0;
       for (const caminho of locais) {
         const bytes = new Uint8Array(readFileSync(caminho));
         let atual;
@@ -174,7 +198,10 @@ describe.skipIf(!locais.length)("o coordenador contra o caminho atual, em planil
         try {
           progressivo = abasPeloCaminhoProgressivo(bytes, caminho);
         } catch (erro) {
-          if (erro instanceof ProgressiveImportFallback) continue;
+          if (erro instanceof ProgressiveImportFallback) {
+            arquivosRecusados += 1;
+            continue;
+          }
           throw erro;
         }
         abasAtuais += atual.length;
@@ -187,9 +214,17 @@ describe.skipIf(!locais.length)("o coordenador contra o caminho atual, em planil
       }
 
       process.stdout.write(
-        `\n  ${abasAtuais} abas pelo caminho atual, ${abasIguais} idênticas pelo coordenador\n`,
+        `\n  ${abasAtuais} abas pelo caminho atual (fora dos arquivos recusados), ` +
+          `${abasIguais} idênticas pelo coordenador, ${arquivosRecusados} arquivo(s) recusado(s)\n`,
       );
-      expect(abasIguais).toBeGreaterThanOrEqual(87);
+      // O piso caiu de 87 (medido antes da recusa contra divisão em seções
+      // existir) para 79: o único arquivo do corpus com uma aba dividida em
+      // seções (FRS-QA-BR-405) passou a ser recusado inteiro, e ele também
+      // contribuía abas que batiam (fora das divididas). Excluir o arquivo
+      // inteiro em vez de aba a aba é a escolha mais simples e mais segura —
+      // ver o comentário no topo de `ooxml-progressive-import.ts`.
+      expect(arquivosRecusados).toBeGreaterThanOrEqual(1);
+      expect(abasIguais).toBeGreaterThanOrEqual(79);
     },
   );
 });
