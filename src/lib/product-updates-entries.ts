@@ -11,6 +11,19 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-09-02-nota-de-rodape-repetida-para-de-virar-registro",
+    version: "0.10.0-beta.28",
+    date: "2026-09-02",
+    title: "Nota de rodapé repetida por bloco para de virar registro na tabela",
+    summary:
+      "Num cronograma com um grupo de colunas por trimestre, a mesma nota de rodapé mesclada embaixo de cada grupo podia escapar do corte de notas do fim da planilha e aparecer como um registro a mais — a própria frase da nota virando uma categoria no gráfico.",
+    highlights: [
+      "Uma linha cujo conteúdo vem inteiro de uma mesclagem que cobre várias linhas e várias colunas ao mesmo tempo é sempre nota ou título, nunca um registro de tabela — esse sinal, já usado para achar o cabeçalho certo, agora também vale para o corte de notas do fim.",
+      'Antes, a nota só era reconhecida quando começava com palavras como "nota" ou "observação", ou quando a proporção de células preenchidas na linha era baixa; uma nota repetida por vários blocos de coluna lado a lado passava dos dois critérios.',
+      "Verificado com o arquivo real que revelou o problema: o registro fantasma some, e as linhas de dado continuam intactas.",
+    ],
+  },
+  {
     id: "2026-08-30-barras-e-histogramas-param-de-piscar-ao-inspecionar",
     version: "0.10.0-beta.27",
     date: "2026-08-30",
