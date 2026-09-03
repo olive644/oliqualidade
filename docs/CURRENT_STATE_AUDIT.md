@@ -11190,3 +11190,112 @@ Suíte completa (`npx vitest run`): 105 arquivos aprovados, 6 pulados com
 segurança (corpus local); 1213 testes aprovados, 14 pulados. TypeScript,
 ESLint/Prettier (conferido sem o ruído de CRLF do checkout Windows) e build de
 produção aprovados; orçamento de desempenho aprovado.
+
+## 170. A divisão em seções não foi alinhada, foi contornada: recusa por nome
+
+A seção 169 deixou registrado que ligar `PROGRESSIVE_IMPORT_SUPPORT.ooxml`
+dependia de alinhar a divisão em seções entre o caminho atual e a grade. Este
+incremento tentou o alinhamento, mediu que ele não compensa, e resolveu o
+problema de outro jeito: recusa, não conserto.
+
+### A terceira tentativa de alinhar, e por que ela também foi descartada
+
+`docs/IMPORT_ARCHITECTURE.md` já registrava duas hipóteses descartadas para a
+divisão em seções. A terceira, testada aqui: `hasHorizontalMerge` (dentro de
+`detectIndependentSections`, em `import.ts`) decidia se uma mesclagem
+horizontal contava como título lendo o valor da **worksheet**
+(`worksheetCellAtAddress`). Numa fonte de grade, a worksheet mínima
+(`minimalWorksheetForOoxmlGrid`) só carrega `!ref`/`!merges`/`!rows` — nenhuma
+célula —, então essa leitura sempre devolvia ausente, e `hasHorizontalMerge`
+nunca via um título mesclado como título.
+
+A correção óbvia é ler o mesmo valor pela grade de texto (`aoa`), que os dois
+caminhos compartilham por índice relativo a partir de `used`. Medido contra o
+corpus real (25 arquivos, comparação por arquivo inteiro):
+
+| | Batem perfeitamente |
+| --- | ---: |
+| Antes da correção | 17 de 25 |
+| Depois da correção | 16 de 25 |
+
+A correção **ajudou** um arquivo (`FRS-QA-BR-405`, que passou a dividir na
+mesma quantidade e com os mesmos nomes de aba que o caminho atual, embora
+ainda com linhas agrupadas diferente dentro de cada seção) e **piorou** outro
+que antes batia perfeitamente (`DOS-QA-404`, que passou a dividir em 2 abas
+onde o caminho atual usa 1). Líquido negativo, e do mesmo formato que a
+segunda hipótese já descartada: "só troca dividir de menos por dividir de
+mais". A mudança foi revertida.
+
+### A saída: detectar a divergência pelo nome, e recusar o arquivo
+
+Alinhar as duas heurísticas de divisão continua sendo trabalho próprio, sem
+solução encontrada nesta sessão. O que mudou foi a pergunta: em vez de tentar
+igualar as duas divisões, o coordenador agora **detecta quando elas podem ter
+divergido** e recusa o arquivo inteiro, deixando o leitor validado assumir.
+
+O sinal é barato e já existe: toda aba que sai de uma divisão em seções
+carrega o separador `" · "` no nome
+(`sheetOptionsForName`/`unifiedBlocksOption`, em `import.ts`). O coordenador
+lê o workbook inteiro num buffer (antes de emitir qualquer aba, para que o
+contrato de fallback só-antes-de-emitir continue valendo), confere se algum
+nome carrega o separador e, se carregar, lança `ProgressiveImportFallback` em
+vez de entregar o resultado.
+
+O sinal é assimétrico, e isso é uma limitação conhecida: ele pega uma aba que
+a grade **dividiu** (mesmo se dividiu diferente do caminho atual), mas não pega
+uma aba que a grade **deixou de dividir** quando o caminho atual dividiria
+(nesse caso não há separador nenhum no nome da grade). É exatamente o caso de
+`FRS-QA-BR-405` antes da tentativa de alinhamento: a grade não dividia
+"Anexo I", produzia um nome sem separador, e passava pela recusa sem ser
+pega. Por isso a rede que sustenta a segurança aqui não é só a recusa: é a
+recusa **mais** o teto de tamanho do seletor de estratégia — nenhum arquivo do
+corpus com aba dividida em seções passa de 1 MiB, muito abaixo dos ~33 MiB (ou
+~8 MiB em aparelho modesto) que fazem `chooseImportStrategy` considerar o
+caminho progressivo. Um documento de seções pequeno nunca entra neste caminho
+pelo tamanho; um arquivo grande o suficiente para entrar quase nunca é também
+um documento de seções, e se for, a recusa por nome pega o caso mais comum
+(divisão que aconteceu, divergente ou não).
+
+### Medido de novo, com a recusa no lugar
+
+`ooxml-progressive-import.test.ts` mede o coordenador inteiro contra o caminho
+atual (`readWorkbookBytesWithEngine`, e não o `inspectOoxml` isolado da seção
+169), por aba:
+
+| | Antes da recusa | Depois da recusa |
+| --- | ---: | ---: |
+| Arquivos recusados | 0 | **1** (`FRS-QA-BR-405`) |
+| Abas do caminho atual (fora dos recusados) | 114 | 95 |
+| Abas idênticas | 87 | 79 |
+
+O piso caiu de 87 para 79 porque excluir o arquivo inteiro também descarta as
+abas dele que já batiam (as de `Anexo III`, que dividem igual nos dois
+caminhos). Excluir por arquivo, e não aba a aba, é a escolha mais simples e
+mais segura: o contrato de leitura não tem uma noção de "resultado parcial
+confiável", e inventar uma para ganhar algumas abas a mais não vale o risco.
+
+Um teste sintético (`ooxml-progressive-import.test.ts`, "uma aba dividida em
+seções recusa o arquivo inteiro") cobre o caso determinístico — dois quadros
+com título explícito terminado em `:`, sem depender do corpus local — porque a
+única cobertura anterior da recusa vinha de um arquivo real não versionado.
+
+### Recomendação: ligar `PROGRESSIVE_IMPORT_SUPPORT.ooxml`
+
+A pergunta registrada na seção 169 ("ligar de verdade é uma decisão própria")
+agora tem resposta recomendada: **ligar**. Os dois motivos que a mantinham
+desligada mudaram de natureza:
+
+- **Divisão em seções**: deixou de ser "muda o resultado observável sem
+  aviso" e passou a ser "recusa e cai no caminho validado, sem a pessoa ver
+  diferença". O caso não coberto pela recusa (grade que deixa de dividir) só
+  ocorre em arquivos pequenos, fora do alcance do seletor de estratégia.
+- **Fórmula volátil**: nunca mudou. Continua sendo o valor gravado em vez do
+  recalculado, nunca perde dado, e a decisão de conviver com isso já estava
+  tomada antes desta sessão.
+
+Nenhuma nova medição de corpus real acima do teto de conforto existe — o
+corpus local não tem arquivo grande o suficiente para exercer o caminho
+progressivo de verdade em produção. É a mesma lacuna que já valia para a
+decisão de ligar o CSV progressivo, e foi aceita lá pela mesma razão: o
+seletor de estratégia já é o que decide quando o caminho vale a pena, e o
+coordenador foi testado exaustivamente dentro do que o corpus local permite.
