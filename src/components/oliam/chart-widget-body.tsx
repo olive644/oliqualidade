@@ -216,8 +216,8 @@ export function ChartWidgetBody({
       ? `${valueCol?.label ?? "Valores"} por linha de ${groupCol?.label ?? "categoria"}`
       : op === "count"
         ? w.type === "pie"
-          ? `Distribuição de registros por ${groupCol?.label ?? ""}`
-          : `Contagem de registros por ${groupCol?.label ?? ""}`
+          ? `Distribuição por ${groupCol?.label ?? ""}`
+          : `Contagem por ${groupCol?.label ?? ""}`
         : w.type === "line"
           ? `Evolução de ${valueCol?.label ?? ""}`
           : w.type === "area"

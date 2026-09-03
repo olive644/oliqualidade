@@ -220,7 +220,10 @@ export function WidgetHead({
             aria-hidden="true"
           />
           {icon && <span className="shrink-0 text-primary [&_svg]:size-4">{icon}</span>}
-          <h2 className="truncate font-display text-[13px] font-semibold tracking-tight">
+          <h2
+            className="truncate font-display text-[13px] font-semibold tracking-tight"
+            title={title}
+          >
             {title}
           </h2>
         </div>
