@@ -253,4 +253,71 @@ describe("escolha do caminho de importacao", () => {
     expect(pedidos.map((p) => p["strategy"])).toEqual(["csv-progressivo", "atual"]);
     expect(resultado.sheets.map((s) => s.name)).toEqual(["Planilha"]);
   });
+
+  const xlsx = (size: number) =>
+    ({
+      name: "planilha.xlsx",
+      size,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    }) as unknown as File;
+
+  it("manda os bytes ao worker quando o XLSX e grande, pela estrategia ooxml-progressivo", async () => {
+    vi.stubGlobal("Worker", RecordingWorker);
+    vi.stubGlobal("crypto", { randomUUID: () => "id-fixo" });
+    RecordingWorker.ultima = null;
+
+    // 40 MiB de XLSX: o pico previsto do caminho atual passa do teto de conforto.
+    await readWorkbookFileWithReport(xlsx(40 * 1024 * 1024));
+
+    expect(RecordingWorker.ultima?.["strategy"]).toBe("ooxml-progressivo");
+    expect(RecordingWorker.ultima?.["bytes"]).toBeDefined();
+  });
+
+  it("mantem o caminho atual para o XLSX pequeno, que e o validado pelo corpus", async () => {
+    vi.stubGlobal("Worker", RecordingWorker);
+    vi.stubGlobal("crypto", { randomUUID: () => "id-fixo" });
+    RecordingWorker.ultima = null;
+
+    await readWorkbookFileWithReport(xlsx(1_000));
+
+    expect(RecordingWorker.ultima?.["strategy"]).toBe("atual");
+  });
+
+  it("cai no leitor validado quando o worker diz que o caminho novo de OOXML nao serve", async () => {
+    // Acontece com um arquivo cuja aba saiu dividida em secoes, ou que o
+    // leitor de grade nao reconhece: o coordenador devolve a leitura, sem
+    // recusar o arquivo e sem que a pessoa veja nada disso.
+    const pedidos: Record<string, unknown>[] = [];
+    class FallbackWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      terminate = vi.fn();
+
+      postMessage(request: Record<string, unknown>) {
+        pedidos.push(request);
+        const primeiro = request["strategy"] === "ooxml-progressivo";
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: primeiro
+              ? { id: request["id"], type: "fallback", message: "aba dividida em secoes" }
+              : {
+                  id: request["id"],
+                  type: "result",
+                  result: {
+                    sheets: [{ name: "Planilha", rows: [{ a: 1 }] }],
+                    report: { sheets: 1 },
+                  },
+                },
+          } as MessageEvent),
+        );
+      }
+    }
+    vi.stubGlobal("Worker", FallbackWorker);
+    vi.stubGlobal("crypto", { randomUUID: () => "id-fixo" });
+
+    const resultado = await readWorkbookFileWithReport(xlsx(40 * 1024 * 1024));
+
+    expect(pedidos.map((p) => p["strategy"])).toEqual(["ooxml-progressivo", "atual"]);
+    expect(resultado.sheets.map((s) => s.name)).toEqual(["Planilha"]);
+  });
 });
