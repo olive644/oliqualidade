@@ -5,6 +5,7 @@ import {
 } from "@/lib/csv-progressive-import";
 import type { SheetOption } from "@/lib/import";
 import { chooseImportStrategy, isConstrainedDevice } from "@/lib/import-strategy";
+import { readOoxmlWorkbookProgressively } from "@/lib/ooxml-progressive-import";
 import { readWorkbookBytesWithEngine, type WorkbookReadProgress } from "@/lib/workbook-reader";
 import type { WorkbookReadResult } from "@/lib/workbook-reading-engine";
 
@@ -17,7 +18,8 @@ type WorkerResponse =
 
 type WorkerRequestBody =
   | { strategy: "atual"; bytes: ArrayBuffer; fileName: string }
-  | { strategy: "csv-progressivo"; file: Blob; fileName: string };
+  | { strategy: "csv-progressivo"; file: Blob; fileName: string }
+  | { strategy: "ooxml-progressivo"; bytes: ArrayBuffer; fileName: string };
 
 export const MAX_WORKBOOK_BYTES = 100 * 1024 * 1024;
 export const WORKBOOK_READ_TIMEOUT_MS = 60_000;
@@ -74,23 +76,22 @@ export async function readWorkbookFileWithReport(
     support: PROGRESSIVE_IMPORT_SUPPORT,
   });
 
-  if (decision.strategy === "csv-progressivo") {
+  if (decision.strategy === "csv-progressivo" || decision.strategy === "ooxml-progressivo") {
     // Uma aba já entregue não pode ser entregue de novo pelo outro caminho, e
     // por isso o fallback só é aceito enquanto nada saiu. Hoje ele só acontece
     // no reconhecimento do conteúdo, antes de qualquer leitura, mas essa
     // garantia mora aqui e não na ordem interna do coordenador.
     let streamed = false;
+    const wrappedOnSheet =
+      onSheet &&
+      ((sheet: SheetOption) => {
+        streamed = true;
+        onSheet(sheet);
+      });
     try {
-      return await readProgressively(
-        file,
-        onProgress,
-        signal,
-        onSheet &&
-          ((sheet: SheetOption) => {
-            streamed = true;
-            onSheet(sheet);
-          }),
-      );
+      return decision.strategy === "csv-progressivo"
+        ? await readProgressively(file, onProgress, signal, wrappedOnSheet)
+        : await readOoxmlProgressively(file, onProgress, signal, wrappedOnSheet);
     } catch (error) {
       if (isAbort(error) || streamed) throw error;
       if (!(error instanceof ProgressiveImportFallback)) throw error;
@@ -132,6 +133,47 @@ async function readProgressively(
   return runInWorker(
     { strategy: "csv-progressivo", file, fileName: file.name },
     [],
+    onProgress,
+    signal,
+    onSheet,
+  );
+}
+
+/**
+ * Caminho progressivo de OOXML: o arquivo ainda atravessa como bytes.
+ *
+ * Ao contrário do CSV, `readOoxmlSheetGrids` expande o ZIP inteiro em memória
+ * (ver `ooxml-progressive-import.ts`), então não há ganho em mandar o `File`
+ * como referência aqui: o worker precisaria do `ArrayBuffer` de qualquer jeito.
+ * O que este caminho evita é só a construção do workbook do SheetJS, que é a
+ * cópia que domina o pico.
+ */
+async function readOoxmlProgressively(
+  file: File,
+  onProgress?: (progress: WorkbookReadProgress) => void,
+  signal?: AbortSignal,
+  onSheet?: (sheet: SheetOption) => void,
+): Promise<WorkbookReadResult> {
+  const bytes = await file.arrayBuffer();
+  if (signal?.aborted) throw cancelled();
+  if (typeof Worker === "undefined")
+    return withStreamedSheets((collect) =>
+      Promise.resolve(
+        readOoxmlWorkbookProgressively(bytes, {
+          fileName: file.name,
+          ...(signal ? { signal } : {}),
+          ...(onProgress ? { onProgress } : {}),
+          onSheet: (sheet) => {
+            collect(sheet);
+            onSheet?.(sheet);
+          },
+        }),
+      ),
+    );
+
+  return runInWorker(
+    { strategy: "ooxml-progressivo", bytes, fileName: file.name },
+    [bytes],
     onProgress,
     signal,
     onSheet,

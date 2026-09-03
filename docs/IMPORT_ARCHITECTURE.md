@@ -143,7 +143,7 @@ Nenhuma implementação de leitor mora ali.
 | Formato | Hoje | Planejado |
 | --- | --- | --- |
 | CSV, TXT, TSV | **Caminho progressivo acima do teto de conforto**, caminho atual abaixo dele | Ligado por `csv-progressive-import.ts` |
-| XLSX, XLSM, XLTX, XLTM | Caminho atual | Leitura progressiva com acesso ao ZIP por entrada |
+| XLSX, XLSM, XLTX, XLTM | Caminho atual. Coordenador escrito e testado (`ooxml-progressive-import.ts`), `support.ooxml` ainda `false` | Ligar depois de alinhar a divisão em seções entre os dois caminhos; depois, acesso ao ZIP por entrada |
 | ODS e demais | Caminho atual | Sem plano de caminho progressivo |
 
 O CSV está ligado; o OOXML não. Para ele o seletor continua devolvendo
@@ -719,3 +719,35 @@ O desenho, então, está decidido e tem número: **formato por coluna quando ela
 homogênea, e por célula só nas que não são.** Os 94% saem de graça, e os 6%
 pagam 6,3 MiB no pior caso. O texto exibido nunca é duplicado, porque a grade já
 o tem.
+
+## O coordenador, ligado e ainda desligado
+
+`ooxml-progressive-import.ts` é a ligação que faltava: recebe os mesmos bytes
+do caminho atual, descompacta uma vez, lê cada aba com `readOoxmlSheetGrids`,
+monta um workbook mínimo com `!ref`/`!merges`/`!rows`
+(`minimalWorksheetForOoxmlGrid`), anexa hyperlinks, comentários, imagens,
+formas, gráficos e cor de preenchimento com `attachWorkbookFeatures` sobre o
+mesmo pacote, e normaliza com `sheetsWithData(wb, { gridFor })`. Não roda
+`XLSX.read` nem a verificação cruzada de `inspectOoxml`/`compareAndRepairWithOoxml`.
+
+Medido pelo coordenador inteiro, e não pela grade isolada, com 120 mil linhas
+por 8 colunas:
+
+| Caminho | Pico | Tempo |
+| --- | ---: | ---: |
+| Atual | 337,4 MiB | 23.026 ms |
+| Progressivo | **156,9 MiB** | **14.207 ms** |
+
+53% menos memória, 38% mais rápido, mesma quantidade de linhas. É menos que os
+76% da grade isolada porque o coordenador também mantém vivo o ZIP expandido
+por inteiro e os recursos de `attachWorkbookFeatures`, que a medição da grade
+sozinha não contabiliza.
+
+`PROGRESSIVE_IMPORT_SUPPORT.ooxml` continua `false`. O worker e o cliente já
+sabem falar a estratégia `"ooxml-progressivo"`, mas `chooseImportStrategy`
+nunca a escolhe enquanto o suporte estiver desligado: ligar de verdade muda o
+resultado real de arquivos com fórmula volátil ou com várias regiões numa aba
+(seção 154 do audit e `ooxml-sheet-grid.test.ts`), e essa mudança de
+comportamento é uma decisão própria, tomada depois que a divisão em seções for
+alinhada entre os dois caminhos. Ver seção 169 do audit para a medição
+completa e o que falta.

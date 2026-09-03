@@ -22,10 +22,18 @@ import {
 import {
   configuredWasmReaderMode,
   estimateProgressiveCsvPeakMemoryBytes,
+  ProgressiveImportFallback,
   registeredWasmWorkbookReader,
   workbookFormat,
   type WorkbookReadResult,
 } from "@/lib/workbook-reading-engine";
+
+/**
+ * Reexportada por compatibilidade: todo o resto do projeto (worker, cliente,
+ * testes) importa esta classe daqui. A definição mora em
+ * `workbook-reading-engine.ts` porque o coordenador de OOXML também a lança.
+ */
+export { ProgressiveImportFallback };
 
 /**
  * O coordenador do caminho progressivo de CSV.
@@ -92,21 +100,6 @@ export const CSV_PROGRESSIVE_BLOCK_SIZE: number = PROGRESSIVE_BLOCK_SIZE_CANDIDA
  * a verdade.
  */
 export const PROGRESSIVE_IMPORT_SUPPORT: ImportProgressiveSupport = { csv: true, ooxml: false };
-
-/**
- * Pedido explícito para usar o caminho atual, e não uma falha do arquivo.
- *
- * Existe separado de um `Error` comum porque as duas situações levam a coisas
- * opostas: uma recusa (um PDF renomeado para `.csv`, uma planilha grande
- * demais) precisa chegar à pessoa, e uma indisponibilidade do caminho novo
- * precisa ser invisível, com o leitor validado assumindo no lugar.
- */
-export class ProgressiveImportFallback extends Error {
-  constructor(reason: string) {
-    super(reason);
-    this.name = "ProgressiveImportFallback";
-  }
-}
 
 export type CsvProgressiveImportOptions = {
   fileName: string;

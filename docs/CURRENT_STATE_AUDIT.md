@@ -11100,3 +11100,93 @@ posterior.
 ### Versão
 
 `0.10.0-beta.26` para `0.10.0-beta.27`, com entrada no Centro de Atualizações.
+
+## 169. O coordenador do caminho progressivo de OOXML, ainda desligado
+
+`docs/IMPORT_ARCHITECTURE.md` registrava que a grade de OOXML
+(`readOoxmlSheetGrids`) existia e normalizava igual à worksheet em 87 de 110
+abas do corpus real, mas que "nada chama o leitor novo ainda". Este incremento
+fecha essa lacuna: `src/lib/ooxml-progressive-import.ts` é a ligação, no mesmo
+papel que `csv-progressive-import.ts` já tem para CSV.
+
+O coordenador recebe os mesmos bytes do caminho atual (o leitor de grade ainda
+expande o ZIP inteiro em memória — isto é leitura progressiva, não streaming
+verdadeiro, no vocabulário do documento de arquitetura) e:
+
+1. valida conteúdo e limites do ZIP com as mesmas funções do caminho atual
+   (`checkWorkbookContent`, `validateZipWorkbook`);
+2. descompacta uma vez só e lê cada aba com `readOoxmlSheetGrids`;
+3. monta um workbook mínimo (`!ref`, `!merges`, `!rows` por aba, via a nova
+   `minimalWorksheetForOoxmlGrid`, exportada de `ooxml-reader.ts`);
+4. anexa hyperlinks, comentários, imagens, formas, gráficos, autofiltro e cor
+   de preenchimento original com `attachWorkbookFeatures`, sobre o mesmo
+   pacote já descompactado — sem isto, o ganho de memória viria à custa de
+   apagar esses recursos de toda planilha grande o suficiente para cair neste
+   caminho;
+5. chama `sheetsWithData(wb, { gridFor })`, a mesma normalização de sempre.
+
+O que este caminho **não** faz, de propósito: não roda `XLSX.read`, e não roda
+a verificação cruzada (`inspectOoxml` + `compareAndRepairWithOoxml`) nem a
+comparação em sombra do núcleo Rust. Ele confia sozinho no leitor OOXML
+independente que já serve de recuperação quando o SheetJS falha inteiro no
+caminho atual — não é um motor novo, é o mesmo, promovido de rede de segurança
+a principal. `report.reader` sai como `"ooxml-progressivo"` para isso aparecer
+na telemetria, e não ficar disfarçado de `sheetjs-verified`.
+
+### Medido pelo coordenador inteiro, não pela grade isolada
+
+`ooxml-progressive-benchmark.test.ts` mede o mesmo tipo de fixture da seção
+150 (120 mil linhas por 8 colunas, uma coluna de data de verdade), mas pelo
+coordenador completo, e não pela grade sozinha:
+
+| Caminho | Pico | Tempo |
+| --- | ---: | ---: |
+| Atual | 337,4 MiB | 23.026 ms |
+| Progressivo | **156,9 MiB** | **14.207 ms** |
+
+**53% menos memória, 38% mais rápido, mesma quantidade de linhas.** A folga
+entre este número e os 76% da grade isolada (seção 150) vem do que o
+coordenador ainda mantém vivo e a grade sozinha não mede: o ZIP expandido por
+inteiro e os recursos de `attachWorkbookFeatures`. A estimativa de pico do
+seletor (`estimateProgressiveOoxmlPeakMemoryBytes`) usa este número medido
+pelo coordenador (175 bytes/célula, arredondado para cima), e não o da grade
+isolada — reaproveitar o número isolado subestimaria o pico real.
+
+### Recusa contra indisponibilidade, do mesmo jeito que o CSV
+
+`ProgressiveImportFallback` deixou de ser definida em `csv-progressive-import.ts`
+e passou a morar em `workbook-reading-engine.ts`, reexportada de onde estava
+por compatibilidade: os dois coordenadores progressivos a lançam, e uma cópia
+por formato seria dois lugares onde o critério de "isto não se aplica" poderia
+divergir. Um CSV renomeado para `.xlsx`, um ZIP que não é workbook OOXML (sem
+`xl/workbook.xml`) e qualquer falha do leitor de grade caem em
+`ProgressiveImportFallback`: o caminho validado assume, e a pessoa não vê
+nada. Uma assinatura de arquivo irreconhecível continua sendo um erro de
+verdade, que chega à tela.
+
+### Por que continua desligado
+
+`PROGRESSIVE_IMPORT_SUPPORT.ooxml` continua `false`. O módulo existe, está
+testado (unidade, paridade sintética e contra o corpus real, e o benchmark
+acima) e pronto para ser chamado, mas ligar de verdade — fazer
+`chooseImportStrategy` escolhê-lo para arquivos grandes — muda o resultado
+real de quem importa um arquivo com fórmula volátil ou com várias regiões numa
+aba, pelas duas divergências já registradas na seção 154 e em
+`ooxml-sheet-grid.test.ts`: recálculo de fórmula volátil e divisão em seções.
+Nenhuma das duas perde dado, mas mudar o resultado observável de importações
+reais é uma decisão própria, separada desta ligação, e seguirá sendo tomada
+arquivo por arquivo quando a divisão em seções for alinhada entre os dois
+caminhos.
+
+O worker (`workbook.worker.ts`) e o cliente (`workbook-reader-client.ts`) já
+sabem falar a estratégia `"ooxml-progressivo"` — a mesma peça que faltava ficar
+pronta antes de qualquer decisão de ligar. Enquanto o suporte estiver
+desligado, `chooseImportStrategy` nunca a escolhe, e o comportamento de hoje
+continua bit a bit o mesmo.
+
+### Verificação
+
+Suíte completa (`npx vitest run`): 105 arquivos aprovados, 6 pulados com
+segurança (corpus local); 1213 testes aprovados, 14 pulados. TypeScript,
+ESLint/Prettier (conferido sem o ruído de CRLF do checkout Windows) e build de
+produção aprovados; orçamento de desempenho aprovado.

@@ -648,6 +648,27 @@ export function readOoxmlSheetGrid(
   };
 }
 
+/**
+ * Worksheet mínima que acompanha uma grade de OOXML.
+ *
+ * Ao contrário de `minimalWorksheetForGrid` (usada pelo CSV), esta também
+ * carrega mesclagem e linha oculta: a normalização os lê da worksheet, e uma
+ * grade de valores não tem como representá-los. Sem eles, uma linha oculta
+ * entraria como dado e uma mesclagem deixaria de preencher as células vazias
+ * do intervalo.
+ */
+export function minimalWorksheetForOoxmlGrid(grid: OoxmlSheetGrid): XLSX.WorkSheet {
+  const worksheet: XLSX.WorkSheet = { "!ref": grid.ref };
+  if (grid.mergedRanges.length)
+    worksheet["!merges"] = grid.mergedRanges.map((range) => XLSX.utils.decode_range(range));
+  if (grid.hiddenRows.length) {
+    const rows: XLSX.RowInfo[] = [];
+    for (const number of grid.hiddenRows) rows[number - 1] = { hidden: true };
+    worksheet["!rows"] = rows;
+  }
+  return worksheet;
+}
+
 /** As grades de todas as abas do pacote, na ordem em que ele as declara. */
 export function readOoxmlSheetGrids(
   input: ArrayBuffer | Uint8Array | OoxmlArchive,

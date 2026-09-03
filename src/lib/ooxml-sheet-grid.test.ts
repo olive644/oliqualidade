@@ -5,7 +5,11 @@ import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 
 import { sheetsWithData } from "@/lib/import";
-import { inspectOoxml, readOoxmlSheetGrids, type OoxmlSheetGrid } from "@/lib/ooxml-reader";
+import {
+  inspectOoxml,
+  minimalWorksheetForOoxmlGrid,
+  readOoxmlSheetGrids,
+} from "@/lib/ooxml-reader";
 import { describeImportedSheetsDifferences } from "@/lib/progressive-import";
 
 /**
@@ -34,28 +38,6 @@ import { describeImportedSheetsDifferences } from "@/lib/progressive-import";
 
 const encoder = new TextEncoder();
 
-/**
- * A worksheet mínima que acompanha uma grade de OOXML.
- *
- * Além do `!ref`, ela carrega mesclagem e linha oculta, que a normalização lê
- * da worksheet e uma grade de valores não tem como representar. É por isso que
- * `OoxmlSheetGrid` as leva junto: sem elas, uma linha oculta entraria como dado
- * e uma mesclagem deixaria de preencher as células vazias do intervalo.
- */
-function worksheetMinimaDaGrade(grade: OoxmlSheetGrid): XLSX.WorkSheet {
-  const worksheet: XLSX.WorkSheet = { "!ref": grade.ref };
-  if (grade.mergedRanges.length)
-    worksheet["!merges"] = grade.mergedRanges.map((intervalo) =>
-      XLSX.utils.decode_range(intervalo),
-    );
-  if (grade.hiddenRows.length) {
-    const linhas: XLSX.RowInfo[] = [];
-    for (const numero of grade.hiddenRows) linhas[numero - 1] = { hidden: true };
-    worksheet["!rows"] = linhas;
-  }
-  return worksheet;
-}
-
 /** Normaliza o mesmo pacote pelos dois caminhos e devolve onde eles divergem. */
 function diferencasDoPacote(bytes: Uint8Array | Record<string, Uint8Array>) {
   const inspecao = inspectOoxml(bytes);
@@ -68,7 +50,7 @@ function diferencasDoPacote(bytes: Uint8Array | Record<string, Uint8Array>) {
   for (const nome of inspecao.workbook.SheetNames) {
     const grade = grades.get(nome);
     if (!grade) throw new Error(`a aba "${nome}" não produziu grade`);
-    minimo.Sheets[nome] = worksheetMinimaDaGrade(grade);
+    minimo.Sheets[nome] = minimalWorksheetForOoxmlGrid(grade);
   }
 
   const pelaWorksheet = sheetsWithData(inspecao.workbook);
@@ -421,7 +403,7 @@ function compararPorAba(caminho: string) {
   for (const nome of inspecao.workbook.SheetNames) {
     const grade = grades.get(nome);
     if (!grade) return null;
-    minimo.Sheets[nome] = worksheetMinimaDaGrade(grade);
+    minimo.Sheets[nome] = minimalWorksheetForOoxmlGrid(grade);
   }
 
   const pelaWorksheet = sheetsWithData(inspecao.workbook);
