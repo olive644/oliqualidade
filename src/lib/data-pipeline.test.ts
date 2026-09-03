@@ -88,6 +88,21 @@ describe("chartSeries", () => {
     ]);
   });
 
+  it("não cria ponto para valor com quebra de linha embutida (nota confundida com categoria)", () => {
+    // Bug real: uma nota de rodapé escrita na mesma coluna dos códigos de
+    // produto ("Se estiver rodando a mesma gramatura...\nanalisar apenas 1
+    // delas") virava sua própria barra no gráfico. Código/categoria real
+    // nunca tem quebra de linha; uma anotação com Alt+Enter sempre tem.
+    const rowsWithEmbeddedNote: Row[] = [
+      { categoria: "IB01", valor: 10 },
+      { categoria: "Se estiver rodando...\nanalisar apenas 1 delas", valor: 20 },
+    ];
+
+    expect(chartSeries(rowsWithEmbeddedNote, "categoria", "valor", "sum", "raw")).toEqual([
+      { name: "IB01", total: 10, sourceRow: 1 },
+    ]);
+  });
+
   it("inclui valores em notação brasileira (vírgula decimal), em vez de descartá-los silenciosamente", () => {
     // Bug real reportado com uma planilha de laboratório: colunas numéricas
     // com valores como "0,69" (texto, vírgula decimal) eram excluídas da
@@ -577,6 +592,15 @@ describe("groupAndAggregate", () => {
     ];
     const result = groupAndAggregate(rows, "categoria", "valor", "sum");
     expect(result).toEqual([]);
+  });
+
+  it("ignora valor com quebra de linha embutida (nota confundida com categoria)", () => {
+    const rows: Row[] = [
+      { categoria: "IB01", valor: 10 },
+      { categoria: "Se estiver rodando...\nanalisar apenas 1 delas", valor: 20 },
+    ];
+    const result = groupAndAggregate(rows, "categoria", "valor", "sum");
+    expect(result).toEqual([{ name: "IB01", total: 10, count: 1 }]);
   });
 
   it("descarta grupos sem nenhum valor numérico válido (não mostra barra zerada)", () => {

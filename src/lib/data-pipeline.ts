@@ -12,11 +12,17 @@ export const NOT_INFORMED = "Não informado";
 function writtenGroupLabel(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "string" && !value.trim()) return null;
+  // Quebra de linha embutida (Alt+Enter no Excel) é sinal confiável de nota/
+  // comentário, não de categoria real — um código ou nome de categoria nunca
+  // tem quebra de linha. Bug real: uma nota de rodapé escrita na mesma coluna
+  // dos códigos de produto virava sua própria barra no gráfico.
+  if (typeof value === "string" && /[\r\n]/.test(value)) return null;
   return String(value);
 }
 
 /**
- * Quantas linhas têm o valor de agrupamento vazio. Essas linhas nunca entram
+ * Quantas linhas têm o valor de agrupamento vazio (ou uma anotação com
+ * quebra de linha em vez de um valor de verdade). Essas linhas nunca entram
  * em `groupAndAggregate`/`chartSeries` (writtenGroupLabel devolve null e a
  * linha é pulada) — este contador existe só para avisar quantas ficaram de
  * fora, sem mudar esse comportamento de descarte.
