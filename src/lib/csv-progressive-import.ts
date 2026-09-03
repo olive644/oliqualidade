@@ -95,11 +95,17 @@ export const CSV_PROGRESSIVE_BLOCK_SIZE: number = PROGRESSIVE_BLOCK_SIZE_CANDIDA
  * O que existe de fato, para o seletor de estratégia.
  *
  * `import-strategy.ts` continua sem saber quais caminhos foram escritos: ele
- * recebe essa informação. Enquanto `ooxml` for falso, um XLSX grande continua
- * caindo no caminho atual com motivo `caminho-progressivo-indisponivel`, que é
- * a verdade.
+ * recebe essa informação.
+ *
+ * `ooxml: true` desde que `ooxml-progressive-import.ts` passou a recusar
+ * (`ProgressiveImportFallback`) qualquer arquivo com aba dividida em seções —
+ * a única divergência que mudava resultado observável sem aviso. Fórmula
+ * volátil continua divergindo (valor gravado em vez de recalculado), mas
+ * nunca perde dado, e essa decisão já estava tomada antes da ligação. Ver
+ * `docs/CURRENT_STATE_AUDIT.md#170. A divisão em seções não foi alinhada, foi
+ * contornada: recusa por nome`.
  */
-export const PROGRESSIVE_IMPORT_SUPPORT: ImportProgressiveSupport = { csv: true, ooxml: false };
+export const PROGRESSIVE_IMPORT_SUPPORT: ImportProgressiveSupport = { csv: true, ooxml: true };
 
 export type CsvProgressiveImportOptions = {
   fileName: string;

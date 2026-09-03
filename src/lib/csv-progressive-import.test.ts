@@ -390,16 +390,26 @@ describe("ligação com o seletor de estratégia", () => {
     expect(decisao.reason).toBe("pico-confortavel");
   });
 
-  it("o XLSX grande continua sem caminho progressivo, e o motivo diz isso", () => {
+  it("o XLSX grande passa a escolher o caminho progressivo", () => {
     const decisao = chooseImportStrategy({
       fileName: "planilha.xlsx",
       bytes: 40 * 1024 * 1024,
       support: PROGRESSIVE_IMPORT_SUPPORT,
     });
 
+    expect(decisao.strategy).toBe("ooxml-progressivo");
+    expect(decisao.reason).toBe("pico-alto");
+  });
+
+  it("o XLSX pequeno continua no caminho atual, que é o validado pelo corpus", () => {
+    const decisao = chooseImportStrategy({
+      fileName: "planilha.xlsx",
+      bytes: 2 * 1024 * 1024,
+      support: PROGRESSIVE_IMPORT_SUPPORT,
+    });
+
     expect(decisao.strategy).toBe("atual");
-    expect(decisao.preferred).toBe("ooxml-progressivo");
-    expect(decisao.reason).toBe("caminho-progressivo-indisponivel");
+    expect(decisao.reason).toBe("pico-confortavel");
   });
 
   it("o tamanho de bloco vem da lista de candidatos, e não de um número solto", () => {
