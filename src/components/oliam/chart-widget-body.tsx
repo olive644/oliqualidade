@@ -55,6 +55,7 @@ import {
   barChartPresentation,
   barValueLabelsFit,
   chartSeries,
+  countMissingGroupRows,
   TIME_SERIES_SLOT_PX,
   collapsePieSeries,
   limitChartSeriesForRendering,
@@ -77,6 +78,7 @@ import {
   BarTooltip,
   CalculationButton,
   ChartAxisLegend,
+  ChartReadingGuide,
   ChartSeriesLegend,
   ChartDot,
   compactAxisValue,
@@ -610,6 +612,16 @@ export function ChartWidgetBody({
         )}
       </WidgetConfigBar>
       {sizeControls}
+      {groupCol && valueCol && (
+        <ChartReadingGuide
+          group={groupCol.label}
+          metric={valueCol.label}
+          mode={dataMode}
+          op={op}
+          rowCount={data.length}
+          missingGroupCount={countMissingGroupRows(data, groupCol.key)}
+        />
+      )}
       {renderableSeries.omitted > 0 && (
         <p className="border-b border-border bg-secondary-accent/8 px-4 py-2 text-[10px] text-muted-foreground">
           Prévia otimizada: {renderableSeries.items.length.toLocaleString("pt-BR")} de{" "}

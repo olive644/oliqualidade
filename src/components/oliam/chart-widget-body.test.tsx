@@ -96,6 +96,66 @@ describe("ChartWidgetBody, gráfico de barras", () => {
   });
 });
 
+describe("ChartWidgetBody, leitura sobre linhas descartadas do agrupamento", () => {
+  // Camada 3, ponto 1 do relatório do usuário: comparar linhas visíveis vs.
+  // linhas usadas no gráfico e sinalizar a divergência, em vez de descartar
+  // em silêncio. `countMissingGroupRows`/`ChartReadingGuide` já existiam e já
+  // eram usados no box plot e no widget de insights; faltava ligar ao tipo de
+  // widget mais comum (barra/pizza/linha/área).
+  const columnsComFaltante: Column[] = [
+    { key: "setor", label: "Setor", kind: "category", visible: true, description: "" },
+    { key: "custo", label: "Custo", kind: "number", visible: true, description: "" },
+  ];
+  const dataComFaltante: Row[] = [
+    ...setores.map((setor, index) => ({ setor, custo: 1_000 + index * 10 })),
+    { setor: "", custo: 500 },
+  ];
+
+  it("avisa quantas linhas ficaram de fora por falta de valor de agrupamento", () => {
+    setMeasuredSize(900);
+    const widgetComFaltante: Widget = {
+      id: "w-barras-faltante",
+      type: "bar",
+      groupKey: "setor",
+      valueKey: "custo",
+      op: "sum",
+      dataMode: "aggregate",
+      span: 3,
+      size: "md",
+    };
+    const { container } = renderWidget(
+      <ChartWidgetBody
+        widget={widgetComFaltante}
+        data={dataComFaltante}
+        columns={columnsComFaltante}
+        numericCols={columnsComFaltante.filter((c) => c.kind === "number")}
+        groupableCols={columnsComFaltante.filter((c) => c.kind === "category")}
+        semanticProfiles={[]}
+        filters={[]}
+        setFilters={() => {}}
+        onConfigure={() => {}}
+        onShowSource={() => {}}
+        dragProps={{}}
+        sizeControls={null}
+        animationDelay={0}
+      />,
+    );
+
+    expect(container.textContent).toContain(
+      `${dataComFaltante.length.toLocaleString("pt-BR")} registros visíveis`,
+    );
+    expect(container.textContent).toContain('1 linha sem "Setor" não entrou neste gráfico');
+  });
+
+  it("não mostra o aviso quando nenhuma linha ficou de fora", () => {
+    setMeasuredSize(900);
+    const { container } = renderBarWidget();
+
+    expect(container.textContent).not.toContain("não entrou neste gráfico");
+    expect(container.textContent).not.toContain("não entraram neste gráfico");
+  });
+});
+
 const timeColumns: Column[] = [
   { key: "periodo", label: "Período", kind: "date", visible: true, description: "" },
   { key: "resultado", label: "Resultado", kind: "number", visible: true, description: "" },

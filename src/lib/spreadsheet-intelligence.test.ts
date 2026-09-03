@@ -117,6 +117,70 @@ describe("spreadsheet intelligence", () => {
     ).toBe(true);
   });
 
+  it("detecta texto corrido bem mais longo que o resto de uma coluna de categoria, mesmo sem quebra de linha", () => {
+    // Camada 3, ponto 2 do relatório do usuário: nem toda anotação tem
+    // quebra de linha embutida (a exceção acima só cobre essa). Uma frase
+    // sem \n, mas MUITO mais longa em palavras que os demais valores da
+    // mesma coluna categórica, também é sinal de anotação misturada com dado.
+    const shortCategoryRows: Row[] = [
+      "Norte",
+      "Sul",
+      "Leste",
+      "Oeste",
+      "Centro",
+      "Norte",
+      "Sul",
+      "Leste",
+    ].map((regiao, index) => ({
+      codigo: index + 1,
+      regiao,
+      canal: "Loja",
+      receita: 10,
+      temperatura: 20,
+    }));
+    const withProse = [
+      ...shortCategoryRows,
+      {
+        codigo: 99,
+        regiao:
+          "Se estiver rodando a mesma gramatura em diferentes máquinas analisar apenas 1 delas",
+        canal: "Loja",
+        receita: 40,
+        temperatura: 22,
+      },
+    ];
+    const exceptions = detectSpreadsheetExceptions(withProse, columns);
+    expect(
+      exceptions.some(
+        (item) => item.kind === "prose-value" && item.columnKey === "regiao" && item.rowIndex === 9,
+      ),
+    ).toBe(true);
+  });
+
+  it("não marca um nome de categoria legitimamente comprido como texto corrido", () => {
+    // "Centro-Oeste com rótulo longo" é rótulo real usado noutro teste do
+    // projeto (fixture de regressão visual) — 4 palavras, abaixo do piso de
+    // 6, nunca deveria disparar por si só.
+    const rowsComRotuloLongo: Row[] = [
+      "Norte",
+      "Sul",
+      "Leste",
+      "Oeste",
+      "Centro",
+      "Norte",
+      "Sul",
+      "Centro-Oeste com rótulo longo",
+    ].map((regiao, index) => ({
+      codigo: index + 1,
+      regiao,
+      canal: "Loja",
+      receita: 10,
+      temperatura: 20,
+    }));
+    const exceptions = detectSpreadsheetExceptions(rowsComRotuloLongo, columns);
+    expect(exceptions.some((item) => item.kind === "prose-value")).toBe(false);
+  });
+
   it("permite confirmar manualmente papel e unidade", () => {
     expect(
       inferSemanticProfile(columns[0]!, rows, undefined, {

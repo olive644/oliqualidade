@@ -143,7 +143,8 @@ export type SpreadsheetException = {
     | "reader-divergence"
     | "low-confidence"
     | "incompatible-unit"
-    | "embedded-note";
+    | "embedded-note"
+    | "prose-value";
   severity: SpreadsheetExceptionSeverity;
   title: string;
   detail: string;
@@ -504,6 +505,44 @@ export function detectSpreadsheetExceptions(
         });
       }
     });
+    // Sinal mais geral de texto corrido misturado numa coluna categórica —
+    // nem toda anotação tem quebra de linha embutida (a checagem acima só
+    // cobre essa). Uma coluna "category" por definição tem poucos valores
+    // distintos e curtos (inferOne em format.ts: só vira "category" com
+    // menos de 12 valores distintos); um valor MUITO mais longo em palavras
+    // que o resto da própria coluna, combinado com um piso absoluto de
+    // palavras, é sinal de frase/nota — não de rótulo. O piso absoluto (nunca
+    // abaixo de 6 palavras, mesmo com IQR zero) evita marcar um nome de
+    // categoria legitimamente comprido só por ele variar um pouco do resto.
+    if (column.kind === "category") {
+      const wordCounts = values
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim().split(/\s+/).filter(Boolean).length);
+      if (wordCounts.length >= 8) {
+        const sortedCounts = [...wordCounts].sort((a, b) => a - b);
+        const q3 = sortedCounts[Math.floor((sortedCounts.length - 1) * 0.75)]!;
+        const q1 = sortedCounts[Math.floor((sortedCounts.length - 1) * 0.25)]!;
+        const proseThreshold = Math.max(6, q3 + (q3 - q1) * 1.5);
+        rows.forEach((row, rowIndex) => {
+          const raw = row[column.key];
+          if (typeof raw !== "string" || /[\r\n]/.test(raw)) return;
+          const wordCount = raw.trim().split(/\s+/).filter(Boolean).length;
+          if (wordCount > proseThreshold) {
+            exceptions.push({
+              id: `prose-${column.key}-${rowIndex}`,
+              kind: "prose-value",
+              severity: "info",
+              title: "Texto corrido misturado com categoria",
+              detail: `${column.label} tem um valor com ${wordCount} palavras — muito mais longo que os demais valores da coluna, típico de uma frase/anotação, não de uma categoria.`,
+              columnKey: column.key,
+              rowIndex: rowIndex + 1,
+              address: canonicalAddress(columnIndex, rowIndex, diagnostics),
+              value: raw,
+            });
+          }
+        });
+      }
+    }
     const profile = profiles[columnIndex]!;
     if (profile.confidence < 65) {
       exceptions.push({
