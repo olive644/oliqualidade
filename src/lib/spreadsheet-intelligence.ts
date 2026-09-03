@@ -142,7 +142,8 @@ export type SpreadsheetException = {
     | "formula"
     | "reader-divergence"
     | "low-confidence"
-    | "incompatible-unit";
+    | "incompatible-unit"
+    | "embedded-note";
   severity: SpreadsheetExceptionSeverity;
   title: string;
   detail: string;
@@ -472,6 +473,28 @@ export function detectSpreadsheetExceptions(
         columnKey: column.key,
       });
     }
+    // Quebra de linha embutida na célula (Alt+Enter no Excel) é sinal
+    // confiável de anotação/comentário, não de um valor de categoria — um
+    // código ou nome de categoria nunca tem quebra de linha. Diferente do
+    // outlier estatístico abaixo, é checagem de padrão, então dispensa
+    // amostra mínima. Bug real: uma nota de rodapé escrita na mesma coluna
+    // de códigos de produto virava sua própria barra no gráfico de barras.
+    rows.forEach((row, rowIndex) => {
+      const raw = row[column.key];
+      if (typeof raw === "string" && /[\r\n]/.test(raw)) {
+        exceptions.push({
+          id: `note-${column.key}-${rowIndex}`,
+          kind: "embedded-note",
+          severity: "info",
+          title: "Anotação misturada com dado",
+          detail: `${column.label} tem um valor com quebra de linha — típico de uma anotação, não de um dado — e por isso não conta como categoria nos gráficos.`,
+          columnKey: column.key,
+          rowIndex: rowIndex + 1,
+          address: canonicalAddress(columnIndex, rowIndex, diagnostics),
+          value: raw,
+        });
+      }
+    });
     const profile = profiles[columnIndex]!;
     if (profile.confidence < 65) {
       exceptions.push({

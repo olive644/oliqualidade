@@ -71,6 +71,29 @@ describe("spreadsheet intelligence", () => {
     );
   });
 
+  it("detecta anotação com quebra de linha misturada numa coluna de categoria", () => {
+    // Bug real: uma nota de rodapé ("Se estiver rodando a mesma
+    // gramatura...\nanalisar apenas 1 delas") escrita na mesma coluna dos
+    // códigos de produto virava sua própria barra no gráfico de contagem.
+    const withNote = [
+      ...rows,
+      {
+        codigo: 4,
+        regiao: "Se estiver rodando a mesma gramatura...\nanalisar apenas 1 delas",
+        canal: "Loja",
+        receita: 40,
+        temperatura: 22,
+      },
+    ];
+    const exceptions = detectSpreadsheetExceptions(withNote, columns);
+    expect(
+      exceptions.some(
+        (item) =>
+          item.kind === "embedded-note" && item.columnKey === "regiao" && item.rowIndex === 4,
+      ),
+    ).toBe(true);
+  });
+
   it("permite confirmar manualmente papel e unidade", () => {
     expect(
       inferSemanticProfile(columns[0]!, rows, undefined, {

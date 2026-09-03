@@ -974,6 +974,12 @@ export function exceptionGuidance(exception: SpreadsheetException): {
       impact: "Valores com unidades diferentes não podem ser comparados ou somados diretamente.",
       action: "Converta os valores para a mesma unidade ou mantenha-os em métricas separadas.",
     },
+    "embedded-note": {
+      impact:
+        "O valor parece ser uma anotação, não um dado — ele é tratado como vazio e não aparece nas categorias dos gráficos.",
+      action:
+        "Se for mesmo uma anotação, mova-a para fora da coluna de dados ou apague-a; se for um dado real, remova a quebra de linha da célula.",
+    },
   };
   return guidance[exception.kind];
 }
