@@ -68,3 +68,50 @@ export function barTooltipReading({
     count: mode === "aggregate" && typeof point.count === "number" ? point.count : null,
   };
 }
+
+export type PeriodPointReading = {
+  /** Variação percentual em relação ao ponto anterior da série. */
+  changeFromPrevious: number | null;
+  /** Quantos registros sustentam o ponto; null no modo linha a linha. */
+  count: number | null;
+};
+
+const EMPTY_PERIOD_READING: PeriodPointReading = {
+  changeFromPrevious: null,
+  count: null,
+};
+
+/**
+ * Traduz um ponto de linha/área na mesma comparação com o vizinho anterior
+ * que `barTooltipReading` já faz para o eixo cronológico do gráfico de
+ * barras.
+ *
+ * Não existe aqui a separação por tipo de eixo que `barTooltipReading`
+ * precisa: linha e área só desenham série temporal (a série já chega
+ * ordenada cronologicamente), então a comparação com o ponto anterior é
+ * sempre uma comparação com o período anterior de verdade — não há o caso
+ * de eixo de categorias, onde o vizinho é só a maior barra.
+ */
+export function periodPointReading({
+  index,
+  series,
+  mode,
+}: {
+  index: number;
+  series: BarReadingPoint[];
+  mode: ChartDataMode;
+}): PeriodPointReading {
+  const point = index >= 0 ? series[index] : undefined;
+  if (!point) return EMPTY_PERIOD_READING;
+
+  const previous = index > 0 ? series[index - 1]?.total : undefined;
+  const changeFromPrevious =
+    typeof previous === "number" && previous !== 0
+      ? ((point.total - previous) / Math.abs(previous)) * 100
+      : null;
+
+  return {
+    changeFromPrevious,
+    count: mode === "aggregate" && typeof point.count === "number" ? point.count : null,
+  };
+}

@@ -45,7 +45,6 @@ import {
   chartLabelCenter,
   chartTooltipName,
   formatChartTooltipValue,
-  numericChartTooltipValue,
   numericLabelValue,
 } from "@/lib/recharts-compat";
 import {
@@ -85,7 +84,9 @@ import {
   FilterChip,
   groupedCategoriesLabel,
   isCoarsePointer,
+  PeriodPointTooltip,
   PieLegend,
+  PieSliceTooltip,
   SeriesComparisonPanel,
   TrendSummaryPanel,
   truncateLabel,
@@ -867,55 +868,14 @@ export function ChartWidgetBody({
               <ResponsiveContainer width="100%" height="100%">
                 <RPieChart margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
                   <ChartTooltip
-                    contentStyle={{
-                      ...chartTooltipContainment,
-                      background: "var(--popover)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      fontSize: 12,
-                      padding: "8px 12px",
-                      boxShadow:
-                        "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
-                    }}
-                    labelStyle={{
-                      color: "var(--popover-foreground)",
-                      fontWeight: 600,
-                      marginBottom: 2,
-                    }}
-                    itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                    formatter={(value, _name, entry) => {
-                      const numericValue = numericChartTooltipValue(value);
-                      const formatted = formatChartTooltipValue(value, valueCol.kind);
-                      const share = pieTotal
-                        ? numericValue === null
-                          ? "participação indisponível"
-                          : (numericValue / pieTotal).toLocaleString("pt-BR", {
-                              style: "percent",
-                              maximumFractionDigits: 1,
-                            })
-                        : "participação indisponível";
-                      const payload = entry.payload;
-                      // Só a fatia sintética "Outros" reúne categorias. Numa
-                      // categoria comum, `count` é a contagem de linhas, e
-                      // anunciá-la como "categorias agrupadas" descrevia o
-                      // número errado — no painel real aparecia "25 categorias
-                      // agrupadas" embaixo de uma categoria só.
-                      const agrupada =
-                        typeof payload === "object" &&
-                        payload !== null &&
-                        "grouped" in payload &&
-                        payload.grouped === true &&
-                        "count" in payload &&
-                        typeof payload.count === "number"
-                          ? payload.count
-                          : undefined;
-                      return [
-                        formatted,
-                        agrupada
-                          ? `${share} do total · ${groupedCategoriesLabel(agrupada)}`
-                          : `${share} do total`,
-                      ];
-                    }}
+                    content={(props) => (
+                      <PieSliceTooltip
+                        active={props.active}
+                        payload={props.payload}
+                        series={pieSeries}
+                        kind={valueCol.kind}
+                      />
+                    )}
                   />
                   <Pie
                     data={pieSeries}
@@ -1375,23 +1335,16 @@ export function ChartWidgetBody({
                       tickFormatter={(v: number) => compactAxisValue(v, valueCol.kind)}
                     />
                     <ChartTooltip
-                      contentStyle={{
-                        ...chartTooltipContainment,
-                        background: "var(--popover)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 12,
-                        fontSize: 12,
-                        padding: "8px 12px",
-                        boxShadow:
-                          "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
-                      }}
-                      labelStyle={{
-                        color: "var(--popover-foreground)",
-                        fontWeight: 600,
-                        marginBottom: 2,
-                      }}
-                      itemStyle={{ color: "var(--popover-foreground)", padding: 0 }}
-                      formatter={(value) => formatChartTooltipValue(value, valueCol.kind)}
+                      content={(props) => (
+                        <PeriodPointTooltip
+                          active={props.active}
+                          payload={props.payload}
+                          label={typeof props.label === "string" ? props.label : undefined}
+                          series={series}
+                          kind={valueCol.kind}
+                          mode={dataMode}
+                        />
+                      )}
                     />
                     <Line
                       type="monotone"

@@ -69,13 +69,18 @@ import {
 } from "@/lib/widgets";
 import type { ScheduleCellState } from "@/lib/schedule-normalizer";
 import { conditionalColor, fmt } from "@/lib/format";
-import { barTooltipReading } from "@/lib/chart-reading";
-import { finiteChartCoordinate, sourceRowFromChartPayload } from "@/lib/recharts-compat";
+import { barTooltipReading, periodPointReading } from "@/lib/chart-reading";
+import {
+  finiteChartCoordinate,
+  seriesPointFromChartPayload,
+  sourceRowFromChartPayload,
+} from "@/lib/recharts-compat";
 import type { TooltipPayloadEntry } from "recharts";
 import {
   aggregationLabels,
   compactDateAxisLabel,
   NOT_INFORMED,
+  pieComparisonFor,
   type AggregationOp,
   type PieComparison,
   type TrendSummary,
@@ -611,6 +616,172 @@ export function BarTooltip({
             </span>
           )}
           {shareOfLargest !== null && <span>{shareOfLargest.toFixed(0)}% da maior categoria</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tooltip de um ponto de gráfico de linha ou área.
+ *
+ * Mesma cápsula de alta/baixa contra o ponto anterior que `BarTooltip` já
+ * mostra em eixo cronológico, e o mesmo número de registros que sustentam o
+ * ponto no modo agrupado — mas sem a comparação com "a maior barra", que não
+ * existe aqui: linha e área só desenham série temporal, então todo ponto tem
+ * um "antes" de verdade (ver `periodPointReading`, que por isso dispensa o
+ * parâmetro de eixo que `barTooltipReading` precisa).
+ */
+export function PeriodPointTooltip({
+  active,
+  payload,
+  label,
+  series,
+  kind,
+  mode,
+}: {
+  active: boolean | undefined;
+  payload: readonly TooltipPayloadEntry[] | undefined;
+  label: string | undefined;
+  series: { name: string; total: number; count?: number; sourceRow?: number }[];
+  kind: Kind;
+  mode: ChartDataMode;
+}) {
+  if (!active || !payload?.length) return null;
+  const value = payload[0]?.value;
+  if (typeof value !== "number") return null;
+  const sourceRow = sourceRowFromChartPayload(payload[0]?.payload);
+  const idx = sourceRow
+    ? series.findIndex((item) => item.sourceRow === sourceRow)
+    : series.findIndex((item) => item.name === label);
+  const reading = periodPointReading({ index: idx, series, mode });
+  const pct = reading.changeFromPrevious;
+  const up = (pct ?? 0) >= 0;
+  const { count } = reading;
+  return (
+    <div
+      style={{
+        background: "var(--popover)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        fontSize: 12,
+        fontWeight: 400,
+        padding: "8px 12px",
+        boxShadow: "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+      }}
+    >
+      <div style={{ color: "var(--popover-foreground)", fontWeight: 500, marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ color: "var(--muted-foreground)", fontWeight: 400 }}>
+          {fmt(value, kind) ?? value}
+        </span>
+        {mode === "raw" && sourceRow && (
+          <span style={{ color: "var(--muted-foreground)", fontSize: 10 }}>
+            linha {sourceRow} do Excel
+          </span>
+        )}
+        {pct !== null && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 2,
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "1px 6px",
+              borderRadius: 999,
+              color: up ? "var(--chart-2)" : "var(--destructive)",
+              background: `color-mix(in oklab, ${up ? "var(--chart-2)" : "var(--destructive)"} 18%, transparent)`,
+            }}
+          >
+            {up ? "↑" : "↓"} {Math.abs(pct).toFixed(0)}% vs. anterior
+          </span>
+        )}
+      </div>
+      {count !== null && (
+        <div style={{ marginTop: 4, color: "var(--muted-foreground)", fontSize: 10 }}>
+          {count.toLocaleString("pt-BR")} {count === 1 ? "registro" : "registros"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tooltip de uma fatia de pizza.
+ *
+ * Passar o mouse mostrava só o valor e a participação no total; a posição
+ * da fatia entre as demais e a distância para a maior categoria só
+ * apareciam depois de clicar, no `SeriesComparisonPanel`. Aqui a mesma
+ * leitura chega um passo antes, calculada por `pieComparisonFor` — a mesma
+ * função que já alimenta o painel de clique, então as duas nunca podem
+ * divergir sobre "quem é a maior categoria".
+ */
+export function PieSliceTooltip({
+  active,
+  payload,
+  series,
+  kind,
+}: {
+  active: boolean | undefined;
+  payload: readonly TooltipPayloadEntry[] | undefined;
+  series: { name: string; total: number; count?: number; grouped?: boolean }[];
+  kind: Kind;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = seriesPointFromChartPayload(payload[0]?.payload);
+  if (!point) return null;
+  const index = series.findIndex((item) => item.name === point.name);
+  const entry = index >= 0 ? series[index] : undefined;
+  const comparison = index >= 0 ? pieComparisonFor(series, index) : null;
+  const shareLabel =
+    comparison?.share !== null && comparison?.share !== undefined
+      ? comparison.share.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })
+      : null;
+  const grouped = entry?.grouped && entry.count ? entry.count : undefined;
+  return (
+    <div
+      style={{
+        background: "var(--popover)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        fontSize: 12,
+        fontWeight: 400,
+        padding: "8px 12px",
+        boxShadow: "0 8px 24px -6px color-mix(in oklab, var(--foreground) 18%, transparent)",
+      }}
+    >
+      <div style={{ color: "var(--popover-foreground)", fontWeight: 500, marginBottom: 4 }}>
+        {point.name}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ color: "var(--muted-foreground)", fontWeight: 400 }}>
+          {fmt(point.total, kind) ?? point.total}
+        </span>
+        {shareLabel && (
+          <span style={{ color: "var(--muted-foreground)", fontSize: 11, fontWeight: 500 }}>
+            {shareLabel} do total
+          </span>
+        )}
+      </div>
+      {(comparison || grouped) && (
+        <div
+          style={{
+            marginTop: 4,
+            display: "flex",
+            gap: 8,
+            color: "var(--muted-foreground)",
+            fontSize: 10,
+          }}
+        >
+          {comparison && (
+            <span>
+              Posição {comparison.rank} de {comparison.categoryCount}
+            </span>
+          )}
+          {grouped ? <span>{groupedCategoriesLabel(grouped)}</span> : null}
         </div>
       )}
     </div>

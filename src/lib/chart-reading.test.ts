@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { barTooltipReading } from "./chart-reading";
+import { barTooltipReading, periodPointReading } from "./chart-reading";
 
 const ranking = [
   { total: 100, count: 40 },
@@ -95,5 +95,51 @@ describe("barTooltipReading", () => {
     expect(
       barTooltipReading({ index: -1, series: ranking, mode: "aggregate", axis: "category" }),
     ).toEqual({ changeFromPrevious: null, shareOfLargest: null, count: null });
+  });
+});
+
+describe("periodPointReading", () => {
+  it("compara com o período anterior", () => {
+    const reading = periodPointReading({
+      index: 1,
+      series: [{ total: 200 }, { total: 250 }],
+      mode: "aggregate",
+    });
+    expect(reading.changeFromPrevious).toBeCloseTo(25, 10);
+  });
+
+  it("não divide por zero quando o período anterior é zero", () => {
+    const reading = periodPointReading({
+      index: 1,
+      series: [{ total: 0 }, { total: 250 }],
+      mode: "aggregate",
+    });
+    expect(reading.changeFromPrevious).toBeNull();
+  });
+
+  it("não compara o primeiro ponto da série com nada", () => {
+    const reading = periodPointReading({
+      index: 0,
+      series: [{ total: 200 }, { total: 250 }],
+      mode: "aggregate",
+    });
+    expect(reading.changeFromPrevious).toBeNull();
+  });
+
+  it("informa quantos registros sustentam o ponto no modo agrupado", () => {
+    const reading = periodPointReading({ index: 2, series: ranking, mode: "aggregate" });
+    expect(reading.count).toBe(2);
+  });
+
+  it("omite a contagem no modo linha a linha, onde cada marca já é uma linha", () => {
+    const reading = periodPointReading({ index: 2, series: ranking, mode: "raw" });
+    expect(reading.count).toBeNull();
+  });
+
+  it("não quebra quando o ponto sob o mouse não existe mais na série", () => {
+    expect(periodPointReading({ index: -1, series: ranking, mode: "aggregate" })).toEqual({
+      changeFromPrevious: null,
+      count: null,
+    });
   });
 });
