@@ -11,6 +11,20 @@ import type { ProductUpdate } from "@/lib/product-updates";
  */
 export const PRODUCT_UPDATES: ProductUpdate[] = [
   {
+    id: "2026-09-03-grafico-avisa-quando-deixa-linha-de-fora",
+    version: "0.10.0-beta.29",
+    date: "2026-09-03",
+    title:
+      "Gráfico avisa quando deixa alguma linha de fora, e frase solta na categoria vira alerta",
+    summary:
+      "O box plot e o painel de insights já avisavam quando uma linha da planilha ficava fora do agrupamento por não ter valor na coluna usada. Esse aviso agora também aparece nos gráficos de barra, pizza, linha e área, que são os mais usados. Além disso, uma frase corrida numa coluna de categoria (em vez de um rótulo curto) passa a ser sinalizada como possível exceção, mesmo sem quebra de linha.",
+    highlights: [
+      "Todo gráfico de barra, pizza, linha ou área mostra quantos registros estão visíveis e, quando alguma linha foi descartada por falta de valor na coluna de agrupamento, quantas foram e em qual coluna — a mesma auditoria que já existia no box plot e no painel de insights.",
+      "Numa coluna de categoria, um valor com muito mais palavras que o resto da coluna (por exemplo, uma nota escrita por extenso no meio de rótulos curtos) passa a aparecer no painel de exceções, mesmo quando não tem quebra de linha. É só um aviso: o valor continua contando no gráfico.",
+      "O critério é conservador para não confundir uma categoria legitimamente mais longa com uma anotação: só considera colunas com poucos valores distintos, exige uma diferença mínima de palavras, e não repete um aviso que outra checagem já deu para a mesma linha.",
+    ],
+  },
+  {
     id: "2026-09-02-nota-de-rodape-repetida-para-de-virar-registro",
     version: "0.10.0-beta.28",
     date: "2026-09-02",
