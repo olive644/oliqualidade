@@ -693,7 +693,7 @@ function WidgetCardBody({
         <WidgetHead
           title={
             op === "count"
-              ? `Contagem de registros por ${groupCol?.label ?? "local"}`
+              ? `Contagem por ${groupCol?.label ?? "local"}`
               : `${aggregationLabels[op]} de ${valueCol?.label ?? ""} por ${groupCol?.label ?? "local"}`
           }
           icon={<MapPin className="size-3.5 shrink-0 text-muted-foreground" />}

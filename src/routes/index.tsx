@@ -2070,13 +2070,18 @@ function Dashboard(p: {
             <ThemeToggle theme={p.theme} toggle={p.toggleTheme} />
             <Button
               variant="ghost"
-              size="icon"
+              size="sm"
               aria-label={insightOpen ? "Ocultar visão geral" : "Mostrar visão geral"}
               aria-pressed={insightOpen}
-              className={cn(insightOpen && "bg-accent text-primary")}
+              // Ícone com rótulo, mesmo padrão de "Ampliar" no widget: sozinho
+              // entre os outros ícones mudos da barra (tema, desfazer, refazer),
+              // o resumo executivo e o roteiro de análise ficavam fáceis de
+              // nunca notar. Em telas estreitas volta a ser só o ícone.
+              className={cn("h-9 gap-1.5 px-2", insightOpen && "bg-accent text-primary")}
               onClick={() => setInsightOpen((v) => !v)}
             >
-              <PanelRight />
+              <PanelRight className="size-4" />
+              <span className="hidden text-[11px] sm:inline">Visão geral</span>
             </Button>
             <Button
               variant="ghost"
