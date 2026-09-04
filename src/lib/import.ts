@@ -2226,7 +2226,8 @@ export function sheetToRows(
     trailingNotesTrimmed < MAX_TRAILING_TRIM &&
     trailingNotesTrimmed < rows.length - 1
   ) {
-    const last = rows[rows.length - 1 - trailingNotesTrimmed];
+    const index = rows.length - 1 - trailingNotesTrimmed;
+    const last = rows[index];
     if (!last) break;
     const filled = Object.values(last).filter((v) => v !== null && v !== "").length;
     // Formulários operacionais costumam deixar datas futuras já preparadas
@@ -2241,6 +2242,19 @@ export function sheetToRows(
       typeof onlyValue === "string" &&
       /^(?:observa[cç][aã]o|nota|total\b|resumo\b|fonte\b|legenda\b)/i.test(onlyValue.trim())
     ) {
+      trailingNotesTrimmed++;
+      continue;
+    }
+    // Uma linha cujo conteúdo vem de uma mesclagem retangular (várias linhas
+    // E várias colunas na mesma célula) nunca é um registro de tabela de
+    // verdade — é o mesmo sinal que `bannerRows`, acima, já usa para não
+    // confundir um bloco de título/nota com a linha de cabeçalho. Sem isto, um
+    // rodapé assim escapava do corte quando a mesma nota se repete em vários
+    // grupos de colunas (planilhas com blocos lado a lado, cada um com sua
+    // própria mesclagem de rodapé): o preenchimento soma um por grupo e pode
+    // cruzar a proporção que o corte comum aceita como "linha de dado de
+    // verdade", mesmo sendo sempre a mesma nota, nunca um registro distinto.
+    if (bannerRows.has(rowOrigins[index] ?? -1)) {
       trailingNotesTrimmed++;
       continue;
     }

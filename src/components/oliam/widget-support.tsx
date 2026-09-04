@@ -225,7 +225,10 @@ export function WidgetHead({
             aria-hidden="true"
           />
           {icon && <span className="shrink-0 text-primary [&_svg]:size-4">{icon}</span>}
-          <h2 className="truncate font-display text-[13px] font-semibold tracking-tight">
+          <h2
+            className="truncate font-display text-[13px] font-semibold tracking-tight"
+            title={title}
+          >
             {title}
           </h2>
         </div>
@@ -558,6 +561,13 @@ export function BarTooltip({
   const pct = reading.changeFromPrevious;
   const up = (pct ?? 0) >= 0;
   const { shareOfLargest, count } = reading;
+  // Posição e participação no total só valem em eixo de categorias, pela
+  // mesma razão que `shareOfLargest` já se restringe a ele: num eixo
+  // cronológico "posição 3 de 12" descreveria a ordem das barras no tempo, não
+  // o tamanho do valor, e confundiria "recente" com "grande".
+  const comparison = axis === "category" && idx >= 0 ? pieComparisonFor(series, idx) : null;
+  const shareOfTotal =
+    comparison?.share !== null && comparison?.share !== undefined ? comparison.share * 100 : null;
   return (
     <div
       style={{
@@ -600,11 +610,12 @@ export function BarTooltip({
           </span>
         )}
       </div>
-      {(count !== null || shareOfLargest !== null) && (
+      {(count !== null || shareOfLargest !== null || comparison) && (
         <div
           style={{
             marginTop: 4,
             display: "flex",
+            flexWrap: "wrap",
             gap: 8,
             color: "var(--muted-foreground)",
             fontSize: 10,
@@ -616,6 +627,12 @@ export function BarTooltip({
             </span>
           )}
           {shareOfLargest !== null && <span>{shareOfLargest.toFixed(0)}% da maior categoria</span>}
+          {comparison && (
+            <span>
+              Posição {comparison.rank} de {comparison.categoryCount}
+              {shareOfTotal !== null && ` · ${shareOfTotal.toFixed(0)}% do total`}
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -657,7 +674,8 @@ export function PeriodPointTooltip({
   const reading = periodPointReading({ index: idx, series, mode });
   const pct = reading.changeFromPrevious;
   const up = (pct ?? 0) >= 0;
-  const { count } = reading;
+  const { count, vsAverage, isHighest, isLowest } = reading;
+  const aboveAverage = (vsAverage ?? 0) >= 0;
   return (
     <div
       style={{
@@ -700,9 +718,43 @@ export function PeriodPointTooltip({
           </span>
         )}
       </div>
-      {count !== null && (
-        <div style={{ marginTop: 4, color: "var(--muted-foreground)", fontSize: 10 }}>
-          {count.toLocaleString("pt-BR")} {count === 1 ? "registro" : "registros"}
+      {(count !== null || vsAverage !== null || isHighest || isLowest) && (
+        <div
+          style={{
+            marginTop: 4,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            color: "var(--muted-foreground)",
+            fontSize: 10,
+          }}
+        >
+          {count !== null && (
+            <span>
+              {count.toLocaleString("pt-BR")} {count === 1 ? "registro" : "registros"}
+            </span>
+          )}
+          {vsAverage !== null && (
+            <span>
+              {Math.abs(vsAverage).toFixed(0)}% {aboveAverage ? "acima" : "abaixo"} da média do
+              período
+            </span>
+          )}
+          {/* Sem verde/vermelho de propósito: o maior valor de uma série de
+              defeitos é notícia ruim, não boa — colorir por posição (e não por
+              significado) descreveria mal metade dos casos reais, mesmo
+              cuidado que `buildAreaComparisonSeries` já registra para
+              "acima"/"abaixo" da referência. */}
+          {isHighest && (
+            <span style={{ fontWeight: 600, color: "var(--popover-foreground)" }}>
+              Maior valor do período
+            </span>
+          )}
+          {isLowest && (
+            <span style={{ fontWeight: 600, color: "var(--popover-foreground)" }}>
+              Menor valor do período
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -741,6 +793,19 @@ export function PieSliceTooltip({
       ? comparison.share.toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 1 })
       : null;
   const grouped = entry?.grouped && entry.count ? entry.count : undefined;
+  const relativeLabel =
+    comparison?.relativeDifference !== null && comparison?.relativeDifference !== undefined
+      ? Math.abs(comparison.relativeDifference).toLocaleString("pt-BR", {
+          style: "percent",
+          maximumFractionDigits: 1,
+        })
+      : null;
+  const relativeSummary =
+    relativeLabel === null || !comparison?.reference
+      ? null
+      : (comparison.relativeDifference ?? 0) >= 0
+        ? `${relativeLabel} acima de ${comparison.reference.name}`
+        : `${relativeLabel} abaixo de ${comparison.reference.name}`;
   return (
     <div
       style={{
@@ -771,6 +836,7 @@ export function PieSliceTooltip({
           style={{
             marginTop: 4,
             display: "flex",
+            flexWrap: "wrap",
             gap: 8,
             color: "var(--muted-foreground)",
             fontSize: 10,
@@ -781,6 +847,7 @@ export function PieSliceTooltip({
               Posição {comparison.rank} de {comparison.categoryCount}
             </span>
           )}
+          {relativeSummary && <span>{relativeSummary}</span>}
           {grouped ? <span>{groupedCategoriesLabel(grouped)}</span> : null}
         </div>
       )}
