@@ -140,6 +140,37 @@ describe("periodPointReading", () => {
     expect(periodPointReading({ index: -1, series: ranking, mode: "aggregate" })).toEqual({
       changeFromPrevious: null,
       count: null,
+      vsAverage: null,
+      isHighest: false,
+      isLowest: false,
     });
+  });
+
+  const periodo = [{ total: 100 }, { total: 150 }, { total: 90 }, { total: 300 }, { total: 200 }];
+
+  it("compara com a média do período", () => {
+    // Média de [100, 150, 90, 300, 200] é 168; 300 fica (300-168)/168 = 78,57% acima.
+    const reading = periodPointReading({ index: 3, series: periodo, mode: "aggregate" });
+    expect(reading.vsAverage).toBeCloseTo(((300 - 168) / 168) * 100, 6);
+  });
+
+  it("marca o maior valor do período", () => {
+    const reading = periodPointReading({ index: 3, series: periodo, mode: "aggregate" });
+    expect(reading.isHighest).toBe(true);
+    expect(reading.isLowest).toBe(false);
+  });
+
+  it("marca o menor valor do período", () => {
+    const reading = periodPointReading({ index: 2, series: periodo, mode: "aggregate" });
+    expect(reading.isLowest).toBe(true);
+    expect(reading.isHighest).toBe(false);
+  });
+
+  it("não marca pico nem vale com menos de três pontos, mesmo motivo de seriesAverage", () => {
+    const curta = [{ total: 10 }, { total: 20 }];
+    const reading = periodPointReading({ index: 1, series: curta, mode: "aggregate" });
+    expect(reading.isHighest).toBe(false);
+    expect(reading.isLowest).toBe(false);
+    expect(reading.vsAverage).toBeNull();
   });
 });
