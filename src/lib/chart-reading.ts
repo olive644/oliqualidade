@@ -1,4 +1,5 @@
 import type { ChartAxisKind, ChartDataMode } from "@/lib/types";
+import { seriesAverage } from "@/lib/data-pipeline";
 
 export type BarReadingPoint = { total: number; count?: number };
 
@@ -74,11 +75,24 @@ export type PeriodPointReading = {
   changeFromPrevious: number | null;
   /** Quantos registros sustentam o ponto; null no modo linha a linha. */
   count: number | null;
+  /**
+   * Quanto o ponto está acima (positivo) ou abaixo (negativo) da média do
+   * período, em porcentagem. `null` quando a série é curta demais para uma
+   * média ter sentido (mesmo piso de `seriesAverage`) ou a média é zero.
+   */
+  vsAverage: number | null;
+  /** O ponto é o maior valor do período — só quando há pelo menos 3 pontos. */
+  isHighest: boolean;
+  /** O ponto é o menor valor do período — só quando há pelo menos 3 pontos. */
+  isLowest: boolean;
 };
 
 const EMPTY_PERIOD_READING: PeriodPointReading = {
   changeFromPrevious: null,
   count: null,
+  vsAverage: null,
+  isHighest: false,
+  isLowest: false,
 };
 
 /**
@@ -91,6 +105,11 @@ const EMPTY_PERIOD_READING: PeriodPointReading = {
  * ordenada cronologicamente), então a comparação com o ponto anterior é
  * sempre uma comparação com o período anterior de verdade — não há o caso
  * de eixo de categorias, onde o vizinho é só a maior barra.
+ *
+ * "Maior/menor valor do período" exige pelo menos 3 pontos pela mesma razão
+ * que `seriesAverage` exige: com um ou dois pontos, todo ponto seria
+ * trivialmente o maior ou o menor, e a afirmação não diz nada que a pessoa já
+ * não veja olhando o gráfico inteiro.
  */
 export function periodPointReading({
   index,
@@ -110,8 +129,19 @@ export function periodPointReading({
       ? ((point.total - previous) / Math.abs(previous)) * 100
       : null;
 
+  const average = seriesAverage(series);
+  const vsAverage =
+    average !== null && average !== 0 ? ((point.total - average) / Math.abs(average)) * 100 : null;
+
+  const extremesMeaningful = series.length >= 3;
+  const max = extremesMeaningful ? Math.max(...series.map((entry) => entry.total)) : null;
+  const min = extremesMeaningful ? Math.min(...series.map((entry) => entry.total)) : null;
+
   return {
     changeFromPrevious,
     count: mode === "aggregate" && typeof point.count === "number" ? point.count : null,
+    vsAverage,
+    isHighest: max !== null && point.total === max,
+    isLowest: min !== null && point.total === min,
   };
 }
