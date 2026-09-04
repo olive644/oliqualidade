@@ -1047,6 +1047,12 @@ export function exceptionGuidance(exception: SpreadsheetException): {
       action:
         "Se for mesmo uma anotação, mova-a para fora da coluna de dados ou apague-a; se for um dado real, remova a quebra de linha da célula.",
     },
+    "prose-value": {
+      impact:
+        "Esse valor tem muito mais palavras que o resto da coluna — parece ser uma frase ou anotação encaixada onde deveria estar uma categoria curta, o que pode virar uma barra ou fatia espúria nos gráficos.",
+      action:
+        "Se for mesmo uma anotação, mova-a para fora da coluna de dados ou apague-a; se for um valor de categoria real, considere encurtá-lo para manter os gráficos legíveis.",
+    },
   };
   return guidance[exception.kind];
 }
