@@ -726,6 +726,41 @@ describe("sheetToRows", () => {
     expect(warning).toContain("nota");
   });
 
+  it("corta nota de rodapé repetida em blocos de coluna lado a lado, mesmo com proporção de preenchimento alta", () => {
+    // Reproduz o caso real relatado: um cronograma com um grupo de colunas
+    // por trimestre (aqui, dois grupos de 2 colunas), e uma nota de rodapé
+    // igual mesclada embaixo de CADA grupo, numa mesclagem retangular
+    // (várias linhas E várias colunas na mesma célula). Como o texto se
+    // repete uma vez por grupo, o preenchimento da linha de nota (2 de 4
+    // colunas = 50%) fica ACIMA da proporção que o corte comum aceita como
+    // "linha de dado de verdade" (25%), e a nota nunca começa com uma das
+    // palavras que o outro atalho de corte reconhece ("nota", "observação"
+    // etc.) — sem o sinal de mesclagem retangular, ela escapa do corte e
+    // vira um registro fantasma.
+    const nota =
+      "Se estiver rodando a mesma condição em máquinas diferentes, analisar apenas uma delas";
+    const ws = sheet([
+      ["Máquina 1", "Valor 1", "Máquina 2", "Valor 2"],
+      ["IB01", 10, "IB01", 12],
+      ["IB02", 20, "IB02", 22],
+      [nota, null, nota, null],
+      [null, null, null, null],
+      [null, null, null, null],
+    ]);
+    ws["!merges"] = [
+      { s: { r: 3, c: 0 }, e: { r: 5, c: 1 } },
+      { s: { r: 3, c: 2 }, e: { r: 5, c: 3 } },
+    ];
+
+    const { rows, warning } = sheetToRows(ws);
+
+    expect(rows).toEqual([
+      { "Máquina 1": "IB01", "Valor 1": 10, "Máquina 2": "IB01", "Valor 2": 12 },
+      { "Máquina 1": "IB02", "Valor 1": 20, "Máquina 2": "IB02", "Valor 2": 22 },
+    ]);
+    expect(warning).toContain("nota");
+  });
+
   it("replica descrição longa mesclada verticalmente, mesmo passando de 60 caracteres", () => {
     // Reproduz o bug relatado: uma descrição de item comprida (bem comum
     // em pedido de compra, com especificação técnica detalhada) mesclada
